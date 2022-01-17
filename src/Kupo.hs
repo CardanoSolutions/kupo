@@ -4,11 +4,13 @@
 
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Kupo
-    ( -- * App
-      App (..)
-    , application
+    ( -- * Running
+      Kupo (..)
+    , kupo
     , runWith
     , version
 
@@ -23,6 +25,16 @@ module Kupo
 
 import Kupo.Prelude
 
+import Kupo.App.ChainSync
+    ( Handler (..), mkChainSyncClient )
+import Kupo.Configuration
+    ( Configuration (..), NetworkParameters (..) )
+import Kupo.Control.MonadOuroboros
+    ( MonadOuroboros (..), NodeToClientVersion (..) )
+import Kupo.Control.MonadThrow
+    ( MonadThrow )
+import Kupo.Data.ChainSync
+    ( pattern GenesisPoint )
 import Kupo.Options
     ( Command (..), parseOptions )
 import Kupo.Version
@@ -33,30 +45,56 @@ import Kupo.Version
 --
 
 -- | Main application monad.
-newtype App a = App
-    { unApp :: ReaderT (Env App) IO a
+newtype Kupo a = Kupo
+    { unKupo :: ReaderT (Env Kupo) IO a
     } deriving newtype
         ( Functor, Applicative, Monad
-        , MonadReader (Env App)
+        , MonadReader (Env Kupo)
         , MonadIO
+        , MonadOuroboros
+        , MonadThrow
         )
 
 -- | Application entry point.
-application :: App ()
-application = pure ()
+kupo :: Kupo ()
+kupo = hijackSigTerm *> do
+    Env{
+        networkParameters = NetworkParameters
+            { networkMagic
+            , slotsPerEpoch
+            }
+        , configuration = Configuration
+            { nodeSocket
+            }
+        } <- ask
+    withChainSyncServer [ NodeToClientV_12 ] networkMagic slotsPerEpoch nodeSocket $
+        mkChainSyncClient handlers points
+ where
+    -- TODO:
+    -- - Get points from command-line and/or from database state
+    -- -
+    points = [GenesisPoint]
+    handlers = Handler
+        { onRollBackward = print
+        , onRollForward = print
+        }
 
 -- | Application runner with an instantiated environment. See 'newEnvironment'.
-runWith :: forall a. App a -> Env App -> IO a
-runWith app = runReaderT (unApp app)
+runWith :: forall a. Kupo a -> Env Kupo -> IO a
+runWith app = runReaderT (unKupo app)
 
 --
 -- Environment
 --
 
 data Env (m :: Type -> Type) = Env
-    deriving stock
-        ( Generic
-        )
+    { networkParameters :: !NetworkParameters
+    , configuration :: !Configuration
+    } deriving stock (Generic)
 
-newEnvironment :: IO (Env App)
-newEnvironment = pure Env
+newEnvironment
+    :: NetworkParameters
+    -> Configuration
+    -> IO (Env Kupo)
+newEnvironment networkParameters configuration =
+    pure Env{networkParameters, configuration}

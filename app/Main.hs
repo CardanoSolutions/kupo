@@ -11,3 +11,6 @@ main :: IO ()
 main = parseOptions >>= \case
     Version -> do
         putTextLn version
+    Run (Identity ntwrk) cfg -> do
+        env <- newEnvironment ntwrk cfg
+        kupo `runWith` env

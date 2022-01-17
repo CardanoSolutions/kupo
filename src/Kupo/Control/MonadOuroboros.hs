@@ -9,7 +9,6 @@ module Kupo.Control.MonadOuroboros
     , NetworkMagic (..)
     , EpochSlots (..)
     , NodeToClientVersion (..)
-    , Block
     ) where
 
 import Kupo.Prelude
@@ -18,8 +17,6 @@ import Cardano.Chain.Slotting
     ( EpochSlots (..) )
 import Cardano.Ledger.Crypto
     ( StandardCrypto )
-import Control.Monad.Class.MonadST
-    ( MonadST )
 import Control.Tracer
     ( nullTracer )
 import Data.Map.Strict
@@ -63,18 +60,18 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
 import Ouroboros.Network.Protocol.Handshake.Version
     ( combineVersions, simpleSingletonVersions )
 
-class MonadOuroboros (m :: Type -> Type) block where
+class MonadOuroboros (m :: Type -> Type) where
+    type Block m :: Type
     withChainSyncServer
         :: [NodeToClientVersion]
         -> NetworkMagic
         -> EpochSlots
         -> FilePath
-        -> ChainSyncClientPipelined block (Point block) (Tip block) m ()
+        -> ChainSyncClientPipelined (Block m) (Point (Block m)) (Tip (Block m)) IO ()
         -> m ()
 
-type Block = CardanoBlock StandardCrypto
-
-instance MonadOuroboros IO Block where
+instance MonadOuroboros IO where
+    type Block IO = CardanoBlock StandardCrypto
     withChainSyncServer wantedVersions networkMagic slotsPerEpoch socket client =
         withIOManager $ \iocp -> do
             connectTo (localSnocket iocp) tracers versions socket
@@ -109,16 +106,22 @@ instance MonadOuroboros IO Block where
                     }
                 ]
 
+instance MonadOuroboros (ReaderT r IO) where
+    type Block (ReaderT r IO) = Block IO
+    withChainSyncServer wantedVersions networkMagic slotsPerEpoch socket =
+        lift . withChainSyncServer wantedVersions networkMagic slotsPerEpoch socket
+
 codecs
-    :: forall m. (MonadST m)
-    => EpochSlots
+    :: EpochSlots
     -> NodeToClientVersion
-    -> ClientCodecs Block m
+    -> ClientCodecs (Block IO) IO
 codecs epochSlots nodeToClientV =
     clientCodecs cfg (supportedVersions ! nodeToClientV) nodeToClientV
   where
-    supportedVersions = supportedNodeToClientVersions (Proxy @Block)
-    cfg = CardanoCodecConfig byron shelley allegra mary alonzo
+    supportedVersions =
+        supportedNodeToClientVersions (Proxy @(Block IO))
+    cfg =
+        CardanoCodecConfig byron shelley allegra mary alonzo
       where
         byron   = ByronCodecConfig epochSlots
         shelley = ShelleyCodecConfig

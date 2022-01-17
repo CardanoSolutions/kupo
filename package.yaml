@@ -34,22 +34,31 @@ library:
     - -Werror
     - -O2
   dependencies:
+    - aeson
+    - bytestring
+    - cardano-ledger-byron
+    - cardano-ledger-core
+    - containers
+    - contra-tracer
+    - filepath
+    - generic-lens
     - io-classes
+    - lens-aeson
+    - network-mux
     - optparse-applicative
     - ouroboros-consensus
     - ouroboros-consensus-byron
     - ouroboros-consensus-cardano
     - ouroboros-consensus-shelley
     - ouroboros-network
-    - cardano-ledger-core
-    - cardano-ledger-byron
-    - containers
-    - contra-tracer
     - ouroboros-network-framework
-    - bytestring
+    - profunctors
     - relude
+    - time
+    - transformers
     - typed-protocols
-    - network-mux
+    - unix
+    - yaml
 
 executables:
   kupo:
