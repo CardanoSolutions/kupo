@@ -1,0 +1,53 @@
+_config: !include ".hpack.config.yaml"
+
+name:                kupo
+version:             0.1.0
+stability:           experimental
+github:              "cardanosolutions/kupo"
+license:             MPL-2.0
+author:              "KtorZ <matthias.benkort@gmail.com>"
+maintainer:          "matthias.benkort@gmail.com"
+copyright:           "2020-2021 KtorZ"
+description:         Please see the README on GitHub at <https://github.com/cardanosolutions/kupo/tree/master/README.md>
+synopsis:            A daemon for building lookup indexes from entities of the Cardano blockchain
+category:            Web
+
+# extra-source-files:
+
+dependencies:
+- base >= 4.7 && < 5
+
+default-extensions: *default-extensions
+
+flags:
+  production:
+    description: Compile executables for production.
+    default: False
+    manual: True
+
+library:
+  source-dirs: src
+  ghc-options: *ghc-options-lib
+  when:
+    condition: flag(production)
+    ghc-options:
+    - -Werror
+    - -O2
+  dependencies:
+    - optparse-applicative
+    - relude
+
+
+executables:
+  kupo:
+    main: Main.hs
+    source-dirs: app
+    ghc-options: *ghc-options-executable
+    when:
+      condition: flag(production)
+      ghc-options:
+      - -O2
+      - -Werror
+      - '"-with-rtsopts=-T -N2"'
+    dependencies:
+    - kupo

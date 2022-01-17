@@ -1,0 +1,132 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
+
+name:           kupo
+version:        0.1.0
+synopsis:       A daemon for building lookup indexes from entities of the Cardano blockchain
+description:    Please see the README on GitHub at <https://github.com/cardanosolutions/kupo/tree/master/README.md>
+category:       Web
+stability:      experimental
+homepage:       https://github.com/cardanosolutions/kupo#readme
+bug-reports:    https://github.com/cardanosolutions/kupo/issues
+author:         KtorZ <matthias.benkort@gmail.com>
+maintainer:     matthias.benkort@gmail.com
+copyright:      2020-2021 KtorZ
+license:        MPL-2.0
+license-file:   LICENSE
+build-type:     Simple
+
+source-repository head
+  type: git
+  location: https://github.com/cardanosolutions/kupo
+
+flag production
+  description: Compile executables for production.
+  manual: True
+  default: False
+
+library
+  exposed-modules:
+      Kupo
+      Kupo.Options
+      Kupo.Prelude
+      Kupo.Version
+  other-modules:
+      Paths_kupo
+  hs-source-dirs:
+      src
+  default-extensions:
+      BangPatterns
+      BinaryLiterals
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveTraversable
+      EmptyDataDecls
+      ExistentialQuantification
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      InstanceSigs
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      NamedFieldPuns
+      NoImplicitPrelude
+      NumericUnderscores
+      OverloadedStrings
+      PartialTypeSignatures
+      PatternGuards
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TupleSections
+      TypeFamilies
+      TypeSynonymInstances
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages
+  build-depends:
+      base >=4.7 && <5
+    , optparse-applicative
+    , relude
+  if flag(production)
+    ghc-options: -Werror -O2
+  default-language: Haskell2010
+
+executable kupo
+  main-is: Main.hs
+  other-modules:
+      Paths_kupo
+  hs-source-dirs:
+      app
+  default-extensions:
+      BangPatterns
+      BinaryLiterals
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveTraversable
+      EmptyDataDecls
+      ExistentialQuantification
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      InstanceSigs
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      NamedFieldPuns
+      NoImplicitPrelude
+      NumericUnderscores
+      OverloadedStrings
+      PartialTypeSignatures
+      PatternGuards
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TupleSections
+      TypeFamilies
+      TypeSynonymInstances
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -threaded -rtsopts
+  build-depends:
+      base >=4.7 && <5
+    , kupo
+  if flag(production)
+    ghc-options: -O2 -Werror "-with-rtsopts=-T -N2"
+  default-language: Haskell2010
