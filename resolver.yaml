@@ -125,10 +125,10 @@ packages:
   - ouroboros-consensus-byron
   - ouroboros-consensus-byronspec
   - ouroboros-consensus-byron-test
-  - ouroboros-consensus-cardano
   - ouroboros-consensus-protocol
   - ouroboros-consensus-shelley
   - ouroboros-consensus-shelley-test
+  - ouroboros-consensus-cardano
   - ouroboros-consensus-cardano-test
   - ouroboros-network
   - ouroboros-network-framework

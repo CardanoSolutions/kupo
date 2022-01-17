@@ -117,7 +117,7 @@ serverPortOption = option auto $ mempty
     <> long "port"
     <> metavar "TCP/PORT"
     <> help "Port to listen on."
-    <> value 1337
+    <> value 1442
     <> showDefault
 
 -- | [--version|-v] | version
