@@ -7,4 +7,43 @@ module Kupo.Prelude
       module Relude
     ) where
 
-import Relude
+import Relude hiding
+    ( MVar
+    , Nat
+    , Option
+    , STM
+    , TMVar
+    , TVar
+    , atomically
+    , catchSTM
+    , isEmptyTMVar
+    , mkWeakTMVar
+    , modifyTVar'
+    , newEmptyMVar
+    , newEmptyTMVar
+    , newEmptyTMVarIO
+    , newMVar
+    , newTMVar
+    , newTMVarIO
+    , newTVar
+    , newTVarIO
+    , putMVar
+    , putTMVar
+    , readMVar
+    , readTMVar
+    , readTVar
+    , readTVarIO
+    , swapMVar
+    , swapTMVar
+    , takeMVar
+    , takeTMVar
+    , throwSTM
+    , traceM
+    , tryPutMVar
+    , tryPutTMVar
+    , tryReadMVar
+    , tryReadTMVar
+    , tryTakeMVar
+    , tryTakeTMVar
+    , writeTVar
+    )

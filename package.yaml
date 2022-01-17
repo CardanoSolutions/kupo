@@ -34,8 +34,11 @@ library:
     - -Werror
     - -O2
   dependencies:
+    - io-classes
     - optparse-applicative
+    - ouroboros-network
     - relude
+    - typed-protocols
 
 
 executables:
