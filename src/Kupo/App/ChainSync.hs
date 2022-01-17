@@ -12,10 +12,10 @@ import Kupo.Prelude
 
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
+import Kupo.Data.ChainSync
+    ( IsBlock, Point (..), Tip (..) )
 import Network.TypedProtocol.Pipelined
     ( Nat (..), natToInt )
-import Ouroboros.Network.Block
-    ( Point (..), StandardHash, Tip (..) )
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     ( ChainSyncClientPipelined (..)
     , ClientPipelinedStIdle (..)
@@ -35,8 +35,7 @@ data Handler m block = Handler
 mkChainSyncClient
     :: forall m block.
         ( MonadThrow m
-        , StandardHash block
-        , Typeable block
+        , IsBlock block
         )
     => Handler m block
     -> [Point block]
@@ -86,5 +85,4 @@ data IntersectionNotFoundException block = IntersectionNotFoundException
     , tip :: Tip block
         -- ^ Current known tip of the chain.
     } deriving (Show)
-instance (Typeable block, StandardHash block) =>
-    Exception (IntersectionNotFoundException block)
+instance (IsBlock block) => Exception (IntersectionNotFoundException block)
