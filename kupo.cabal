@@ -32,8 +32,11 @@ library
   exposed-modules:
       Kupo
       Kupo.App.ChainSync
+      Kupo.Configuration
+      Kupo.Control.MonadOuroboros
       Kupo.Control.MonadSTM
       Kupo.Control.MonadThrow
+      Kupo.Data.ChainSync
       Kupo.Options
       Kupo.Prelude
       Kupo.Version
@@ -79,9 +82,20 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages
   build-depends:
       base >=4.7 && <5
+    , bytestring
+    , cardano-ledger-byron
+    , cardano-ledger-core
+    , containers
+    , contra-tracer
     , io-classes
+    , network-mux
     , optparse-applicative
+    , ouroboros-consensus
+    , ouroboros-consensus-byron
+    , ouroboros-consensus-cardano
+    , ouroboros-consensus-shelley
     , ouroboros-network
+    , ouroboros-network-framework
     , relude
     , typed-protocols
   if flag(production)

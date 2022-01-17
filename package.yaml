@@ -36,10 +36,20 @@ library:
   dependencies:
     - io-classes
     - optparse-applicative
+    - ouroboros-consensus
+    - ouroboros-consensus-byron
+    - ouroboros-consensus-cardano
+    - ouroboros-consensus-shelley
     - ouroboros-network
+    - cardano-ledger-core
+    - cardano-ledger-byron
+    - containers
+    - contra-tracer
+    - ouroboros-network-framework
+    - bytestring
     - relude
     - typed-protocols
-
+    - network-mux
 
 executables:
   kupo:
