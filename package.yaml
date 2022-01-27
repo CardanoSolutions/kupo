@@ -36,6 +36,9 @@ library:
   dependencies:
     - aeson
     - bytestring
+    - cardano-ledger-alonzo
+    - cardano-ledger-shelley
+    - cardano-ledger-shelley-ma
     - cardano-ledger-byron
     - cardano-ledger-core
     - containers

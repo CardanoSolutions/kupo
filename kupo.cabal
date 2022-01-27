@@ -37,6 +37,7 @@ library
       Kupo.Control.MonadSTM
       Kupo.Control.MonadThrow
       Kupo.Data.ChainSync
+      Kupo.Data.Match.Address
       Kupo.Options
       Kupo.Prelude
       Kupo.Version
@@ -84,8 +85,11 @@ library
       aeson
     , base >=4.7 && <5
     , bytestring
+    , cardano-ledger-alonzo
     , cardano-ledger-byron
     , cardano-ledger-core
+    , cardano-ledger-shelley
+    , cardano-ledger-shelley-ma
     , containers
     , contra-tracer
     , filepath

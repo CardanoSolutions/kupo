@@ -23,6 +23,16 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     , ClientStNext (..)
     )
 
+-- | Exception thrown when creating a chain-sync client from an invalid list of
+-- points.
+data IntersectionNotFoundException block = IntersectionNotFoundException
+    { points :: [Point block]
+        -- ^ Provided points for intersection.
+    , tip :: Tip block
+        -- ^ Current known tip of the chain.
+    } deriving (Show)
+instance (IsBlock block) => Exception (IntersectionNotFoundException block)
+
 -- | A message handler for the chain-sync client. Messages are guaranteed (by
 -- the protocol) to arrive in order.
 data Handler m block = Handler
@@ -47,7 +57,6 @@ mkChainSyncClient Handler{onRollBackward, onRollForward} points =
         :: ClientPipelinedStIntersect block (Point block) (Tip block) m ()
     clientStIntersect = ClientPipelinedStIntersect
         { recvMsgIntersectFound = \_point _tip -> do
-            -- TODO: Logging.
             pure $ clientStIdle Zero
         , recvMsgIntersectNotFound = \tip -> do
             throwIO $ IntersectionNotFoundException{points,tip}
@@ -74,15 +83,9 @@ mkChainSyncClient Handler{onRollBackward, onRollForward} points =
                 onRollBackward point $> clientStIdle n
             }
 
+-- | Maximum pipelining at any given time. No need to go too high here, it only
+-- arms performance beyond a certain point.
+--
+-- TODO: Make this configurable as it depends on available machine's resources.
 maxInFlight :: Int
-maxInFlight = 100
-
--- | Exception thrown when creating a chain-sync client from an invalid list of
--- points.
-data IntersectionNotFoundException block = IntersectionNotFoundException
-    { points :: [Point block]
-        -- ^ Provided points for intersection.
-    , tip :: Tip block
-        -- ^ Current known tip of the chain.
-    } deriving (Show)
-instance (IsBlock block) => Exception (IntersectionNotFoundException block)
+maxInFlight = 75
