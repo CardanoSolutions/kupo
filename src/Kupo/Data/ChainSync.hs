@@ -10,7 +10,7 @@ module Kupo.Data.ChainSync
       Crypto
 
       -- * Block
-    , Block (..)
+    , Block
     , IsBlock
     , foldBlock
 
@@ -36,8 +36,6 @@ module Kupo.Data.ChainSync
       -- * Address
     , getPaymentPartBytes
     , getDelegationPartBytes
-    , serialiseAddress
-    , deserialiseAddress
 
       -- * Point
     , Point (..)
@@ -49,6 +47,8 @@ module Kupo.Data.ChainSync
 
 import Kupo.Prelude
 
+import Cardano.Binary
+    ( serialize )
 import Cardano.Ledger.Allegra
     ( AllegraEra )
 import Cardano.Ledger.Alonzo
@@ -59,8 +59,16 @@ import Cardano.Ledger.Mary
     ( MaryEra )
 import Cardano.Ledger.Shelley
     ( ShelleyEra )
+import Cardano.Ledger.Val
+    ( Val (inject) )
+import Data.Binary.Put
+    ( putLazyByteString, runPut )
+import Data.Maybe.Strict
+    ( StrictMaybe (..), strictMaybeToMaybe )
+import Data.Sequence.Strict
+    ( pattern (:<|), pattern Empty, StrictSeq )
 import Ouroboros.Consensus.Cardano.Block
-    ( CardanoBlock, CardanoEras, GenTx (..), HardForkBlock (..) )
+    ( CardanoBlock, HardForkBlock (..) )
 import Ouroboros.Consensus.Shelley.Ledger.Block
     ( ShelleyBlock (..) )
 import Ouroboros.Network.Block
@@ -72,9 +80,13 @@ import qualified Cardano.Ledger.Alonzo.Tx as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxBody as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxSeq as Ledger.Alonzo
 import qualified Cardano.Ledger.Block as Ledger
+import qualified Cardano.Ledger.Core as Ledger.Core
+import qualified Cardano.Ledger.Credential as Ledger
+import qualified Cardano.Ledger.Era as Ledger.Era
 import qualified Cardano.Ledger.Mary.Value as Ledger
 import qualified Cardano.Ledger.Shelley.BlockChain as Ledger.Shelley
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
+import qualified Cardano.Ledger.ShelleyMA.TxBody as Ledger.MaryAllegra
 import qualified Cardano.Ledger.TxIn as Ledger
 
 -- Block
@@ -135,11 +147,59 @@ getTransactionId = \case
         Ledger.txid @(AlonzoEra crypto)  (Ledger.Alonzo.body tx)
 
 mapMaybeOutputs
-    :: (OutputReference crypto -> Output crypto -> Maybe a)
+    :: forall a crypto. (Crypto crypto)
+    => (OutputReference crypto -> Output crypto -> Maybe a)
     -> Transaction crypto
     -> [a]
-mapMaybeOutputs fn tx =
-    undefined
+mapMaybeOutputs fn = \case
+    TransactionShelley tx ->
+        let
+            body = Ledger.Shelley.body tx
+            txId = Ledger.txid @(ShelleyEra crypto) body
+            outs = Ledger.Shelley._outputs body
+         in
+            traverseAndTransform (asAlonzoOutput inject) txId 0 outs
+    TransactionAllegra tx ->
+        let
+            body = Ledger.Shelley.body tx
+            txId = Ledger.txid @(AllegraEra crypto) body
+            outs = Ledger.MaryAllegra.outputs' body
+         in
+            traverseAndTransform (asAlonzoOutput inject) txId 0 outs
+    TransactionMary tx ->
+        let
+            body = Ledger.Shelley.body tx
+            txId = Ledger.txid @(MaryEra crypto) body
+            outs = Ledger.MaryAllegra.outputs' body
+         in
+            traverseAndTransform (asAlonzoOutput identity) txId 0 outs
+    TransactionAlonzo tx ->
+        let
+            body = Ledger.Alonzo.body tx
+            txId = Ledger.txid @(AlonzoEra crypto) body
+            outs = Ledger.Alonzo.outputs' body
+         in
+            traverseAndTransform identity txId 0 outs
+  where
+    traverseAndTransform
+        :: forall output. ()
+        => (output -> Output crypto)
+        -> TransactionId crypto
+        -> Natural
+        -> StrictSeq output
+        -> [a]
+    traverseAndTransform transform txId ix = \case
+        Empty -> []
+        output :<| rest ->
+            let
+                outputRef = Ledger.TxIn txId ix
+                results   = traverseAndTransform transform txId (succ ix) rest
+             in
+                case fn outputRef (transform output) of
+                    Nothing ->
+                        results
+                    Just result ->
+                        result : results
 
 -- Input
 
@@ -161,22 +221,38 @@ type Value crypto =
     Ledger.Value crypto
 
 getAddress
-    :: Output crypto
+    :: (Crypto crypto)
+    => Output crypto
     -> Address crypto
-getAddress =
-    undefined
+getAddress (Ledger.Alonzo.TxOut address _value _datumHash) =
+    address
 
 getValue
-    :: Output crypto
+    :: (Crypto crypto)
+    => Output crypto
     -> Value crypto
-getValue =
-    undefined
+getValue (Ledger.Alonzo.TxOut _address value _datumHash) =
+    value
 
 getDatumHash
-    :: Output crypto
+    :: (Crypto crypto)
+    => Output crypto
     -> Maybe (DatumHash crypto)
-getDatumHash =
-    undefined
+getDatumHash (Ledger.Alonzo.TxOut _address _value datumHash) =
+    (strictMaybeToMaybe datumHash)
+
+asAlonzoOutput
+    :: forall (era :: Type -> Type) crypto.
+        ( Ledger.Era.Era (era crypto)
+        , Ledger.Era.Crypto (era crypto) ~ crypto
+        , Ledger.Core.TxOut (era crypto) ~ Ledger.Shelley.TxOut (era crypto)
+        , Show (Ledger.Core.Value (era crypto))
+        )
+    => (Ledger.Core.Value (era crypto) -> Ledger.Value crypto)
+    -> Ledger.Core.TxOut (era crypto)
+    -> Ledger.Core.TxOut (AlonzoEra crypto)
+asAlonzoOutput liftValue (Ledger.Shelley.TxOut addr value) =
+    Ledger.Alonzo.TxOut addr (liftValue value) SNothing
 
 -- Address
 
@@ -185,23 +261,19 @@ type Address crypto = Ledger.Addr crypto
 getPaymentPartBytes
     :: Address crypto
     -> ByteString
-getPaymentPartBytes =
-    undefined
+getPaymentPartBytes = \case
+    Ledger.Addr _ payment _ ->
+        toStrict $ runPut $ Ledger.putCredential payment
+    Ledger.AddrBootstrap (Ledger.BootstrapAddress addr) ->
+        toStrict $ runPut $ putLazyByteString (serialize addr)
 
 getDelegationPartBytes
     :: Address crypto
     -> Maybe ByteString
-getDelegationPartBytes =
-    undefined
-
-serialiseAddress
-    :: Address crypto
-    -> ByteString
-serialiseAddress =
-    undefined
-
-deserialiseAddress
-    :: ByteString
-    -> Maybe (Address crypto)
-deserialiseAddress =
-    undefined
+getDelegationPartBytes = \case
+    Ledger.Addr _ _ (Ledger.StakeRefBase delegation) ->
+        Just $ toStrict $ runPut $ Ledger.putCredential delegation
+    Ledger.Addr{} ->
+        Nothing
+    Ledger.AddrBootstrap{} ->
+        Nothing

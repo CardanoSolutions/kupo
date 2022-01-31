@@ -20,18 +20,24 @@ Currently, Kupo only synchronizes output references from the chain. That is, it 
 $ kupo 
   --node-socket /some/path/node.socket \
   --node-config /some/path/node.config \
-  --match "addr_vkh1l66raev2z6rdstm077r7yxh7yyj9wdczsm4l0sh8swalcp350sj:*" \
-  --match "addr_vkh1ugfy2ums9pht7lpw0qamlnltg0h93gtgdkp0dlmc0cs67f08ycr:*"
+  --match "addr_vkh1l66raev2z6rdstm077r7yxh7yyj9wdczsm4l0sh8swalcp350sj^*" \
+  --match "addr_vkh1ugfy2ums9pht7lpw0qamlnltg0h93gtgdkp0dlmc0cs67f08ycr^*"
 ```
 
-This will build an index for all addresses matched by the patterns. Patterns are of the form `{address}|(({hash}|*)[-({hash}|*)])` where `{address}` is an address and `{hash}` is a bech32 (or base16) hash digest of a verification key or script or a wildcard matching everything. Patterns are additive, so specifying multiple ones will increase the number of addresses being matched. Also, they come in two parts, as it is possible to match for either of (or both) the payment part of the delegation part of an address. Incidentally, it is possible to match for all address by using `*` as a pattern. 
+This will build an index for all addresses matched by the patterns. Patterns are of the form 
+
+```
+{address} | ({hash}|*)[^({hash}|*)] 
+```
+
+where `{address}` is an address and `{hash}` is a bech32 (or base16) hash digest of a verification key or script or a wildcard matching everything. Patterns are additive, so specifying multiple ones will increase the number of addresses being matched. Also, they come in two parts, as it is possible to match for either of (or both) the payment part of the delegation part of an address. Incidentally, it is possible to match for all address by using `*` as a pattern. 
 
 For example, here are a few valid patterns:
 
 - `*`
-- `*-*`
+- `*^*`
 - `script1l66raev2z6rdstm077r7yxh7yyj9wdczsm4l0sh8swalcaydj5n`
-- `script1l66raev2z6rdstm077r7yxh7yyj9wdczsm4l0sh8swalcaydj5n-*`
+- `script1l66raev2z6rdstm077r7yxh7yyj9wdczsm4l0sh8swalcaydj5n^*`
 - `addr_vkh1l66raev2z6rdstm077r7yxh7yyj9wdczsm4l0sh8swalcp350sj-stake_vkh1l66raev2z6rdstm077r7yxh7yyj9wdczsm4l0sh8swalcl9gf43`
 - `*-stake_vkh1l66raev2z6rdstm077r7yxh7yyj9wdczsm4l0sh8swalcl9gf43`
 

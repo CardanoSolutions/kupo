@@ -35,7 +35,9 @@ library:
     - -O2
   dependencies:
     - aeson
+    - binary
     - bytestring
+    - cardano-binary
     - cardano-ledger-alonzo
     - cardano-ledger-shelley
     - cardano-ledger-shelley-ma
@@ -57,6 +59,7 @@ library:
     - ouroboros-network-framework
     - profunctors
     - relude
+    - strict-containers
     - time
     - transformers
     - typed-protocols

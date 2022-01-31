@@ -915,19 +915,6 @@ packages:
     git: https://github.com/input-output-hk/ouroboros-network
     commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
 - completed:
-    subdir: ouroboros-consensus-cardano
-    name: ouroboros-consensus-cardano
-    version: 0.1.0.0
-    git: https://github.com/input-output-hk/ouroboros-network
-    pantry-tree:
-      size: 1429
-      sha256: 9d51ea12450f5eee6b09187e346cd52b0af31b5db9fe1a83c7d5cbf11104f258
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
-  original:
-    subdir: ouroboros-consensus-cardano
-    git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
-- completed:
     subdir: ouroboros-consensus-protocol
     name: ouroboros-consensus-protocol
     version: 0.1.0.0
@@ -964,6 +951,19 @@ packages:
     commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
   original:
     subdir: ouroboros-consensus-shelley-test
+    git: https://github.com/input-output-hk/ouroboros-network
+    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+- completed:
+    subdir: ouroboros-consensus-cardano
+    name: ouroboros-consensus-cardano
+    version: 0.1.0.0
+    git: https://github.com/input-output-hk/ouroboros-network
+    pantry-tree:
+      size: 1429
+      sha256: 9d51ea12450f5eee6b09187e346cd52b0af31b5db9fe1a83c7d5cbf11104f258
+    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+  original:
+    subdir: ouroboros-consensus-cardano
     git: https://github.com/input-output-hk/ouroboros-network
     commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
 - completed:

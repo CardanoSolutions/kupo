@@ -84,7 +84,9 @@ library
   build-depends:
       aeson
     , base >=4.7 && <5
+    , binary
     , bytestring
+    , cardano-binary
     , cardano-ledger-alonzo
     , cardano-ledger-byron
     , cardano-ledger-core
@@ -106,6 +108,7 @@ library
     , ouroboros-network-framework
     , profunctors
     , relude
+    , strict-containers
     , time
     , transformers
     , typed-protocols
