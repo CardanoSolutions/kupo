@@ -37,7 +37,7 @@ library
       Kupo.Control.MonadSTM
       Kupo.Control.MonadThrow
       Kupo.Data.ChainSync
-      Kupo.Data.Match.Address
+      Kupo.Data.Pattern.Address
       Kupo.Options
       Kupo.Prelude
       Kupo.Version

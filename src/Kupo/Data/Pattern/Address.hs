@@ -2,8 +2,8 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-module Kupo.Data.Match.Address
-    ( Match (..)
+module Kupo.Data.Pattern.Address
+    ( Pattern (..)
     , matching
     , Result (..)
     , matchBlock
@@ -28,14 +28,14 @@ import Kupo.Data.ChainSync
     , mapMaybeOutputs
     )
 
-data Match crypto
+data Pattern crypto
     = MatchAny
     | MatchPaymentPart ByteString
     | MatchDelegationPart ByteString
     | MatchExact (Address crypto)
     deriving Show
 
-matching :: Alternative f => Address crypto -> Match crypto -> f ()
+matching :: Alternative f => Address crypto -> Pattern crypto -> f ()
 matching addr = guard . \case
     MatchAny ->
         True
@@ -61,18 +61,18 @@ data Result crypto = Result
 -- results.
 matchBlock
     :: forall crypto. (Crypto crypto)
-    => [Match crypto]
+    => [Pattern crypto]
     -> Block crypto
-    -> [(Match crypto, Result crypto)]
+    -> [(Pattern crypto, Result crypto)]
 matchBlock ms = flip foldBlock [] $ \tx result ->
-    concatMap (flip mapMaybeOutputs tx . mkMatch) ms ++ result
+    concatMap (flip mapMaybeOutputs tx . match) ms ++ result
   where
-    mkMatch
-        :: Match crypto
+    match
+        :: Pattern crypto
         -> OutputReference crypto
         -> Output crypto
-        -> Maybe (Match crypto, Result crypto)
-    mkMatch m reference out = do
+        -> Maybe (Pattern crypto, Result crypto)
+    match m reference out = do
         getAddress out `matching` m
         pure
             ( m
