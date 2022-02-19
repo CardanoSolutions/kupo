@@ -56,6 +56,7 @@ library
       DeriveFunctor
       DeriveGeneric
       DeriveTraversable
+      DerivingStrategies
       EmptyDataDecls
       ExistentialQuantification
       FlexibleContexts
@@ -77,6 +78,7 @@ library
       ScopedTypeVariables
       StandaloneDeriving
       TupleSections
+      TypeApplications
       TypeFamilies
       TypeSynonymInstances
       ViewPatterns
@@ -87,11 +89,14 @@ library
     , binary
     , bytestring
     , cardano-binary
+    , cardano-crypto-class
     , cardano-ledger-alonzo
     , cardano-ledger-byron
     , cardano-ledger-core
     , cardano-ledger-shelley
     , cardano-ledger-shelley-ma
+    , cardano-protocol-tpraos
+    , cardano-slotting
     , containers
     , contra-tracer
     , filepath
@@ -109,6 +114,7 @@ library
     , profunctors
     , relude
     , strict-containers
+    , text
     , time
     , transformers
     , typed-protocols
@@ -135,6 +141,7 @@ executable kupo
       DeriveFunctor
       DeriveGeneric
       DeriveTraversable
+      DerivingStrategies
       EmptyDataDecls
       ExistentialQuantification
       FlexibleContexts
@@ -156,6 +163,7 @@ executable kupo
       ScopedTypeVariables
       StandaloneDeriving
       TupleSections
+      TypeApplications
       TypeFamilies
       TypeSynonymInstances
       ViewPatterns

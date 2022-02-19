@@ -38,11 +38,14 @@ library:
     - binary
     - bytestring
     - cardano-binary
+    - cardano-crypto-class
     - cardano-ledger-alonzo
     - cardano-ledger-shelley
     - cardano-ledger-shelley-ma
     - cardano-ledger-byron
     - cardano-ledger-core
+    - cardano-protocol-tpraos
+    - cardano-slotting
     - containers
     - contra-tracer
     - filepath
@@ -60,6 +63,7 @@ library:
     - profunctors
     - relude
     - strict-containers
+    - text
     - time
     - transformers
     - typed-protocols

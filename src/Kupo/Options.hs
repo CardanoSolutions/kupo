@@ -26,22 +26,26 @@ import Options.Applicative
 
 import Control.Monad.Trans.Except
     ( throwE, withExceptT )
+import Data.Aeson
+    ( FromJSON )
 import Data.Aeson.Lens
-    ( key, _Integer, _String )
-import Data.Time.Format.ISO8601
-    ( iso8601ParseM )
+    ( key, _String )
 import Kupo.Configuration
-    ( Configuration (..)
-    , EpochSlots (..)
-    , NetworkMagic (..)
+    ( Block
+    , Configuration (..)
     , NetworkParameters (..)
-    , SystemStart (..)
+    , Pattern (..)
+    , Point (..)
+    , StandardCrypto
+    , pointFromText
     )
+import Options.Applicative.Help.Pretty
+    ( indent, string, vsep )
 import System.FilePath.Posix
     ( replaceFileName )
 
+import qualified Data.Aeson as Json
 import qualified Data.Yaml as Yaml
-import qualified Data.Yaml.Pretty as Yaml
 
 data Command (f :: Type -> Type)
     = Run (f NetworkParameters) Configuration
@@ -78,6 +82,8 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> nodeConfigOption
                     <*> serverHostOption
                     <*> serverPortOption
+                    <*> optional sinceOption
+                    <*> many patternOption
                 )
         )
 
@@ -120,6 +126,25 @@ serverPortOption = option auto $ mempty
     <> value 1442
     <> showDefault
 
+-- | [--since=POINT]
+sinceOption :: Parser (Point (Block StandardCrypto))
+sinceOption = option (maybeReader rdr) $ mempty
+    <> long "since"
+    <> metavar "POINT"
+    <> helpDoc (Just $ vsep
+        [ string "A point on chain from where to start syncing. Expects either:"
+        , indent 2 "- \"origin\""
+        , indent 2 "- A dot-separated integer (slot number) and base16-encoded \
+                   \digest (block header hash)."
+        ])
+  where
+    rdr :: String -> Maybe (Point (Block StandardCrypto))
+    rdr = pointFromText . toText
+
+-- | [--match=PATTERN]
+patternOption :: Parser (Pattern StandardCrypto)
+patternOption = undefined
+
 -- | [--version|-v] | version
 versionOptionOrCommand :: Parser (Command f)
 versionOptionOrCommand =
@@ -140,41 +165,22 @@ versionOptionOrCommand =
 -- Environment
 --
 
--- TODO: This code is mostly duplicated with Ogmios and could be factored out in
--- a small module.
 parseNetworkParameters :: FilePath -> IO NetworkParameters
 parseNetworkParameters configFile = runOrDie $ do
-    config <- decodeYaml configFile
+    config <- decodeYaml @Yaml.Value configFile
     let genesisFiles = (,)
             <$> config ^? key "ByronGenesisFile" . _String
             <*> config ^? key "ShelleyGenesisFile" . _String
     case genesisFiles of
         Nothing ->
-            throwE "Missing 'ByronGenesisFile' and/or 'ShelleyGenesisFile' from Cardano's configuration?"
+            throwE "Missing 'ByronGenesisFile' and/or 'ShelleyGenesisFile' from \
+                   \Cardano's configuration (i.e. '--node-config' option)?"
         Just (toString -> byronGenesisFile, toString -> shelleyGenesisFile) -> do
             byronGenesis   <- decodeYaml (replaceFileName configFile byronGenesisFile)
             shelleyGenesis <- decodeYaml (replaceFileName configFile shelleyGenesisFile)
-            let params = (,,)
-                    <$> (shelleyGenesis ^? key "networkMagic" . _Integer)
-                    <*> (iso8601ParseM . toString =<< shelleyGenesis ^? key "systemStart" . _String)
-                    <*> (byronGenesis ^? key "protocolConsts" . key "k" . _Integer)
-            case params of
-                Nothing -> do
-                    let prettyYaml = decodeUtf8 (Yaml.encodePretty Yaml.defConfig shelleyGenesis)
-                    throwE $ toString $ unwords
-                        [ "Couldn't find (or failed to parse) required network"
-                        , "parameters (networkMagic, systemStart and/or epochLength)"
-                        , "in genesis file: \n" <> prettyYaml
-                        ]
-                Just (nm, ss, k) ->
-                    return NetworkParameters
-                        { networkMagic =
-                            NetworkMagic (fromIntegral nm)
-                        , systemStart =
-                            SystemStart ss
-                        , slotsPerEpoch  =
-                            EpochSlots (fromIntegral $ 10 * k)
-                        }
+            case Json.fromJSON (Json.Object (byronGenesis <> shelleyGenesis)) of
+                Json.Error e -> throwE e
+                Json.Success params -> pure params
   where
     runOrDie :: ExceptT String IO a -> IO a
     runOrDie = runExceptT >=> either die pure
@@ -182,5 +188,5 @@ parseNetworkParameters configFile = runOrDie $ do
     prettyParseException :: Yaml.ParseException -> String
     prettyParseException e = "Failed to decode JSON (or YAML) file: " <> show e
 
-    decodeYaml :: FilePath -> ExceptT String IO Yaml.Value
+    decodeYaml :: FromJSON a => FilePath -> ExceptT String IO a
     decodeYaml = withExceptT prettyParseException . ExceptT . Yaml.decodeFileEither

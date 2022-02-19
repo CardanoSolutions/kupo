@@ -3,7 +3,6 @@
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Kupo.Data.ChainSync
     ( -- * Constraints
@@ -37,9 +36,16 @@ module Kupo.Data.ChainSync
     , getPaymentPartBytes
     , getDelegationPartBytes
 
+      -- * SlotNo
+    , SlotNo (..)
+
+      -- * HeaderHash
+    , HeaderHash
+
       -- * Point
     , Point (..)
     , pattern GenesisPoint
+    , pattern BlockPoint
 
       -- * Tip
     , Tip (..)
@@ -61,6 +67,8 @@ import Cardano.Ledger.Shelley
     ( ShelleyEra )
 import Cardano.Ledger.Val
     ( Val (inject) )
+import Cardano.Slotting.Slot
+    ( SlotNo (..) )
 import Data.Binary.Put
     ( putLazyByteString, runPut )
 import Data.Maybe.Strict
@@ -72,7 +80,13 @@ import Ouroboros.Consensus.Cardano.Block
 import Ouroboros.Consensus.Shelley.Ledger.Block
     ( ShelleyBlock (..) )
 import Ouroboros.Network.Block
-    ( pattern GenesisPoint, Point (..), StandardHash, Tip (..) )
+    ( pattern BlockPoint
+    , pattern GenesisPoint
+    , HeaderHash
+    , Point (..)
+    , StandardHash
+    , Tip (..)
+    )
 
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.Data as Ledger

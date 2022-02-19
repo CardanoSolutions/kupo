@@ -15,6 +15,7 @@ language_extensions: &default-extensions
 - DeriveFunctor
 - DeriveGeneric
 - DeriveTraversable
+- DerivingStrategies
 - EmptyDataDecls
 - ExistentialQuantification
 - FlexibleContexts
@@ -36,6 +37,7 @@ language_extensions: &default-extensions
 - ScopedTypeVariables
 - StandaloneDeriving
 - TupleSections
+- TypeApplications
 - TypeFamilies
 - TypeSynonymInstances
 - ViewPatterns

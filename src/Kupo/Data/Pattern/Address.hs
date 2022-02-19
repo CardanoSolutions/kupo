@@ -33,7 +33,7 @@ data Pattern crypto
     | MatchPaymentPart ByteString
     | MatchDelegationPart ByteString
     | MatchExact (Address crypto)
-    deriving Show
+    deriving (Generic, Eq, Show)
 
 matching :: Alternative f => Address crypto -> Pattern crypto -> f ()
 matching addr = guard . \case
