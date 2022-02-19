@@ -36,6 +36,7 @@ library:
   dependencies:
     - aeson
     - base16
+    - base58-bytestring
     - base64
     - bech32
     - bech32-th

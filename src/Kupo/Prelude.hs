@@ -11,6 +11,8 @@ module Kupo.Prelude
     , (^?)
     , encodeBase16
     , decodeBase16
+    , encodeBase58
+    , decodeBase58
     , encodeBase64
     , decodeBase64
     ) where
@@ -71,6 +73,8 @@ import System.Posix.Signals
     , softwareTermination
     )
 
+import qualified Data.ByteString.Base58 as Base58
+
 -- | Copied from: https://hackage.haskell.org/package/generic-lens-1.1.0.0/docs/src/Data.Generics.Internal.VL.Prism.html
 infixl 8 ^?
 (^?) :: s -> ((a -> Const (First a) a) -> s -> Const (First a) s) -> Maybe a
@@ -87,3 +91,16 @@ hijackSigTerm =
     liftIO $ void (installHandler softwareTermination handler empty)
   where
     handler = CatchOnce (raiseSignal keyboardSignal)
+
+-- | Decode a byte string from 'Base58', re-defining here to align interfaces
+-- with base16 & base64.
+decodeBase58 :: ByteString -> Either Text ByteString
+decodeBase58 =
+    maybe (Left msg) Right . Base58.decodeBase58 Base58.bitcoinAlphabet
+  where
+    msg = "failed to decode Base58-encoded string."
+
+-- | Encode some byte string to 'Text' as Base58. See note on 'decodeBase58'.
+encodeBase58 :: ByteString -> Text
+encodeBase58 =
+    decodeUtf8. Base58.encodeBase58 Base58.bitcoinAlphabet

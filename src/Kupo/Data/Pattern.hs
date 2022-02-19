@@ -81,6 +81,11 @@ patternFromText txt =
                    | otherwise -> do
                         empty
             )
+        <|>
+        readerBase58 txt
+            (\bytes -> do
+                MatchExact <$> addressFromBytes bytes
+            )
 
     readerPaymentOrDelegation =
         case T.splitOn "/" txt of
@@ -135,6 +140,10 @@ patternFromText txt =
 
     readerBase16 str action = do
         bytes <- either (const Nothing) Just . decodeBase16 . encodeUtf8 $ str
+        action bytes
+
+    readerBase58 str action = do
+        bytes <- either (const Nothing) Just . decodeBase58 . encodeUtf8 $ str
         action bytes
 
     readerBech32 str action = do
