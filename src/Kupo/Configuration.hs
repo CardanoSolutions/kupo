@@ -53,7 +53,7 @@ import Kupo.Data.ChainSync
     , Point (..)
     , SlotNo (..)
     )
-import Kupo.Data.Pattern.Address
+import Kupo.Data.Pattern
     ( Pattern (..), patternFromText )
 import Ouroboros.Consensus.BlockchainTime.WallClock.Types
     ( SystemStart (..) )

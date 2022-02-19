@@ -9,8 +9,16 @@ module Kupo.Prelude
     , view
     , (^.)
     , (^?)
+    , encodeBase16
+    , decodeBase16
+    , encodeBase64
+    , decodeBase64
     ) where
 
+import Data.ByteString.Base16
+    ( decodeBase16, encodeBase16 )
+import Data.ByteString.Base64
+    ( decodeBase64, encodeBase64 )
 import Data.Generics.Internal.VL.Lens
     ( view, (^.) )
 import Data.Profunctor.Unsafe

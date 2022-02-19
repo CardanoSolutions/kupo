@@ -4,7 +4,7 @@
 
 {-# LANGUAGE QuasiQuotes #-}
 
-module Kupo.Data.Pattern.Address
+module Kupo.Data.Pattern
     ( -- * Pattern
       Pattern (..)
     , patternFromText
@@ -22,8 +22,6 @@ import Kupo.Prelude
 
 import Codec.Binary.Bech32.TH
     ( humanReadablePart )
-import Data.ByteString.Base16
-    ( decodeBase16 )
 import Kupo.Data.ChainSync
     ( Address
     , Blake2b_224
@@ -90,10 +88,10 @@ patternFromText txt =
                 if  | payment == wildcard && delegation == wildcard ->
                         pure (MatchAny onlyShelley)
                     | payment == wildcard ->
-                        MatchPayment
+                        MatchDelegation
                             <$> readerCredential delegation
                     | delegation == wildcard ->
-                        MatchDelegation
+                        MatchPayment
                             <$> readerCredential payment
                     | otherwise -> do
                         MatchPaymentAndDelegation

@@ -55,6 +55,8 @@
 - ignore: {name: "Use newTMVarIO"}
 - ignore: {name: "Use newEmptyTMVarIO"}
 - ignore: {name: "Use newTVarIO"}
+- ignore: {name: "Use catMaybes"}
+- ignore: {name: "Use head"}
 
 # Add custom hints for this project
 #

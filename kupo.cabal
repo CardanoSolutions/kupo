@@ -37,7 +37,7 @@ library
       Kupo.Control.MonadSTM
       Kupo.Control.MonadThrow
       Kupo.Data.ChainSync
-      Kupo.Data.Pattern.Address
+      Kupo.Data.Pattern
       Kupo.Options
       Kupo.Prelude
       Kupo.Version
@@ -87,18 +87,17 @@ library
       aeson
     , base >=4.7 && <5
     , base16
+    , base64
     , bech32
     , bech32-th
     , binary
     , bytestring
-    , cardano-binary
     , cardano-crypto-class
     , cardano-ledger-alonzo
     , cardano-ledger-byron
     , cardano-ledger-core
     , cardano-ledger-shelley
     , cardano-ledger-shelley-ma
-    , cardano-protocol-tpraos
     , cardano-slotting
     , containers
     , contra-tracer
@@ -176,4 +175,62 @@ executable kupo
     , kupo
   if flag(production)
     ghc-options: -O2 -Werror "-with-rtsopts=-T -N2"
+  default-language: Haskell2010
+
+test-suite unit
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Kupo.Data.PatternSpec
+      Paths_kupo
+  hs-source-dirs:
+      test
+  default-extensions:
+      BangPatterns
+      BinaryLiterals
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveTraversable
+      DerivingStrategies
+      EmptyDataDecls
+      ExistentialQuantification
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      InstanceSigs
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      NamedFieldPuns
+      NoImplicitPrelude
+      NumericUnderscores
+      OverloadedStrings
+      PartialTypeSignatures
+      PatternGuards
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      TypeSynonymInstances
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -threaded -rtsopts -with-rtsopts=-N
+  build-tool-depends:
+      hspec-discover:hspec-discover
+  build-depends:
+      QuickCheck
+    , base
+    , bytestring
+    , containers
+    , hspec
+    , kupo
+    , relude
   default-language: Haskell2010

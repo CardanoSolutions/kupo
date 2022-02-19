@@ -36,18 +36,17 @@ library:
   dependencies:
     - aeson
     - base16
+    - base64
     - bech32
     - bech32-th
     - binary
     - bytestring
-    - cardano-binary
     - cardano-crypto-class
     - cardano-ledger-alonzo
     - cardano-ledger-shelley
     - cardano-ledger-shelley-ma
     - cardano-ledger-byron
     - cardano-ledger-core
-    - cardano-protocol-tpraos
     - cardano-slotting
     - containers
     - contra-tracer
@@ -72,6 +71,22 @@ library:
     - typed-protocols
     - unix
     - yaml
+
+tests:
+  unit:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options: *ghc-options-test
+    dependencies:
+    - base
+    - bytestring
+    - containers
+    - hspec
+    - kupo
+    - relude
+    - QuickCheck
+    build-tools:
+    - hspec-discover
 
 executables:
   kupo:
