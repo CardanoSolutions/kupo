@@ -2,6 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE PatternSynonyms #-}
 
 module Kupo.Data.ChainSync
@@ -25,7 +26,6 @@ module Kupo.Data.ChainSync
 
       -- * Output
     , Output
-    , Address
     , getAddress
     , Value
     , getValue
@@ -33,11 +33,20 @@ module Kupo.Data.ChainSync
     , getDatumHash
 
       -- * Address
+    , Address
+    , addressFromBytes
+    , isBootstrap
     , getPaymentPartBytes
     , getDelegationPartBytes
 
       -- * SlotNo
     , SlotNo (..)
+
+      -- * Hash
+    , digest
+    , digestSize
+    , Blake2b_224
+    , Blake2b_256
 
       -- * HeaderHash
     , HeaderHash
@@ -53,8 +62,8 @@ module Kupo.Data.ChainSync
 
 import Kupo.Prelude
 
-import Cardano.Binary
-    ( serialize )
+import Cardano.Crypto.Hash
+    ( Blake2b_224, Blake2b_256, HashAlgorithm (..), sizeHash )
 import Cardano.Ledger.Allegra
     ( AllegraEra )
 import Cardano.Ledger.Alonzo
@@ -70,7 +79,7 @@ import Cardano.Ledger.Val
 import Cardano.Slotting.Slot
     ( SlotNo (..) )
 import Data.Binary.Put
-    ( putLazyByteString, runPut )
+    ( runPut )
 import Data.Maybe.Strict
     ( StrictMaybe (..), strictMaybeToMaybe )
 import Data.Sequence.Strict
@@ -272,14 +281,24 @@ asAlonzoOutput liftValue (Ledger.Shelley.TxOut addr value) =
 
 type Address crypto = Ledger.Addr crypto
 
+addressFromBytes :: Crypto crypto => ByteString -> Maybe (Address crypto)
+addressFromBytes = Ledger.deserialiseAddr
+{-# INLINEABLE addressFromBytes #-}
+
+isBootstrap :: Address crypto -> Bool
+isBootstrap = \case
+    Ledger.AddrBootstrap{} -> True
+    Ledger.Addr{} -> False
+{-# INLINEABLE isBootstrap #-}
+
 getPaymentPartBytes
     :: Address crypto
-    -> ByteString
+    -> Maybe ByteString
 getPaymentPartBytes = \case
     Ledger.Addr _ payment _ ->
-        toStrict $ runPut $ Ledger.putCredential payment
-    Ledger.AddrBootstrap (Ledger.BootstrapAddress addr) ->
-        toStrict $ runPut $ putLazyByteString (serialize addr)
+        Just $ toStrict $ runPut $ Ledger.putCredential payment
+    Ledger.AddrBootstrap{} ->
+        Nothing
 
 getDelegationPartBytes
     :: Address crypto
@@ -291,3 +310,9 @@ getDelegationPartBytes = \case
         Nothing
     Ledger.AddrBootstrap{} ->
         Nothing
+
+-- Hash
+
+digestSize :: forall alg. HashAlgorithm alg => Int
+digestSize =
+    fromIntegral (sizeHash (Proxy @alg))

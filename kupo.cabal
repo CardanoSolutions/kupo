@@ -86,6 +86,9 @@ library
   build-depends:
       aeson
     , base >=4.7 && <5
+    , base16
+    , bech32
+    , bech32-th
     , binary
     , bytestring
     , cardano-binary

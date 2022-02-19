@@ -35,6 +35,9 @@ library:
     - -O2
   dependencies:
     - aeson
+    - base16
+    - bech32
+    - bech32-th
     - binary
     - bytestring
     - cardano-binary

@@ -18,6 +18,7 @@ module Kupo.Configuration
     , Pattern (..)
 
     -- ** FromText
+    , patternFromText
     , pointFromText
     , headerHashFromText
     , slotNoFromText
@@ -53,7 +54,7 @@ import Kupo.Data.ChainSync
     , SlotNo (..)
     )
 import Kupo.Data.Pattern.Address
-    ( Pattern (..) )
+    ( Pattern (..), patternFromText )
 import Ouroboros.Consensus.BlockchainTime.WallClock.Types
     ( SystemStart (..) )
 import Ouroboros.Consensus.HardFork.Combinator

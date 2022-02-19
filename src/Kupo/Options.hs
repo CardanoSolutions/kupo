@@ -21,7 +21,8 @@ module Kupo.Options
     , parseNetworkParameters
     ) where
 
-import Kupo.Prelude
+import Kupo.Prelude hiding
+    ( group )
 import Options.Applicative
 
 import Control.Monad.Trans.Except
@@ -37,10 +38,11 @@ import Kupo.Configuration
     , Pattern (..)
     , Point (..)
     , StandardCrypto
+    , patternFromText
     , pointFromText
     )
 import Options.Applicative.Help.Pretty
-    ( indent, string, vsep )
+    ( Doc, align, fillSep, hardline, indent, softbreak, text, vsep )
 import System.FilePath.Posix
     ( replaceFileName )
 
@@ -72,6 +74,51 @@ parseOptionsPure args =
 parserInfo :: ParserInfo (Command Proxy)
 parserInfo = info (helper <*> parser) $ mempty
     <> progDesc "Kupo - A daemon for building portable lookup indexes on Cardano."
+    <> footerDoc (Just $ vsep
+        [ "Patterns: "
+        , indent 2 "Patterns have the following syntax:"
+        , mempty
+        , indent 2 "PATTERN"
+        , indent 4 "   ╭───╮                                  "
+        , indent 4 "╾┬─┤ * ├───────────────────────────────┬╼ "
+        , indent 4 " │ ╰───╯                               │  "
+        , indent 4 " │ ┏━━━━━━━━━┓                         │  "
+        , indent 4 " ├─┫ ADDRESS ┣─────────────────────────┤  "
+        , indent 4 " │ ┗━━━━━━━━━┛                         │  "
+        , indent 4 " │ ┏━━━━━━━━━━━━━━━┓                   │  "
+        , indent 4 " ├─┫ STAKE-ADDRESS ┣───────────────────┤  "
+        , indent 4 " │ ┗━━━━━━━━━━━━━━━┛                   │  "
+        , indent 4 " │ ┏━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━┓ │  "
+        , indent 4 " └─┫ CREDENTIAL ┣─┤ / ├─┫ CREDENTIAL ┣─┘  "
+        , indent 4 "   ┗━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━┛    "
+        , mempty
+        , indent 2 "CREDENTIAL"
+        , indent 4 "   ╭───╮                                                     "
+        , indent 4 "╾┬─┤ * ├──────────────────────────────────────────────────┬╼ "
+        , indent 4 " │ ╰───╯                                                  │  "
+        , indent 4 " │ ┏━━━━━━━━━━━━━━━━━━━━━━━━┓                             │  "
+        , indent 4 " ├─┫ BASE16(bytes .size 32) ┣─────────────────────────────┤  "
+        , indent 4 " │ ┗━━━━━━━━━━━━━━━━━━━━━━━━┛                             │  "
+        , indent 4 " │ ┏━━━━━━━━━━━━━━━━━━━━━━━━┓                             │  "
+        , indent 4 " ├─┫ BASE16(bytes .size 28) ┣─────────────────────────────┤  "
+        , indent 4 " │ ┗━━━━━━━━━━━━━━━━━━━━━━━━┛                             │  "
+        , indent 4 " │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓           │  "
+        , indent 4 " ├─┫ BECH32(bytes) .hrp (vk|addr_vk|stake_vk) ┣───────────┤  "
+        , indent 4 " │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛           │  "
+        , indent 4 " │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │  "
+        , indent 4 " └─┫ BECH32(bytes) .hrp (vkh|addr_vkh|stake_vkh|script) ┣─┘  "
+        , indent 4 "   ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛    "
+        , mempty
+        , indent 2 "Examples:"
+        , mempty
+        , indent 4 "🗸 --match *"
+        , indent 4 "🗸 --match */*"
+        , indent 4 "🗸 --match addr1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgz4xq9p"
+        , indent 4 "🗸 --match addr_vk1x7da0l25j04my8sej5ntrgdn38wmshxhplxdfjskn07ufavsgtkqn5hljl/*"
+        , indent 4 "🗸 --match */script1cda3khwqv60360rp5m7akt50m6ttapacs8rqhn5w342z7r35m37"
+        , indent 4 "🗸 --match dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e/*"
+        , indent 4 "🗸 --match */4fc6bb0c93780ad706425d9f7dc1d3c5e3ddbf29ba8486dce904a5fc"
+        ])
   where
     parser =
         versionOptionOrCommand
@@ -131,11 +178,15 @@ sinceOption :: Parser (Point (Block StandardCrypto))
 sinceOption = option (maybeReader rdr) $ mempty
     <> long "since"
     <> metavar "POINT"
-    <> helpDoc (Just $ vsep
-        [ string "A point on chain from where to start syncing. Expects either:"
-        , indent 2 "- \"origin\""
-        , indent 2 "- A dot-separated integer (slot number) and base16-encoded \
-                   \digest (block header hash)."
+    <> helpDoc (Just $ mconcat
+        [ "A point on chain from where to start syncing. "
+        , softbreak
+        , "Expects either:"
+        , hardline
+        , vsep
+            [ align $ indent 2 "- \"origin\""
+            , align $ indent 2 $ longline "- A dot-separated integer (slot number) and base16-encoded digest (block header hash)."
+            ]
         ])
   where
     rdr :: String -> Maybe (Point (Block StandardCrypto))
@@ -143,7 +194,10 @@ sinceOption = option (maybeReader rdr) $ mempty
 
 -- | [--match=PATTERN]
 patternOption :: Parser (Pattern StandardCrypto)
-patternOption = undefined
+patternOption = option (maybeReader (patternFromText . toText)) $ mempty
+    <> long "match"
+    <> metavar "PATTERN"
+    <> help "A pattern to match on. Can be provided multiple times (as a logical disjunction, i.e. 'or')"
 
 -- | [--version|-v] | version
 versionOptionOrCommand :: Parser (Command f)
@@ -190,3 +244,10 @@ parseNetworkParameters configFile = runOrDie $ do
 
     decodeYaml :: FromJSON a => FilePath -> ExceptT String IO a
     decodeYaml = withExceptT prettyParseException . ExceptT . Yaml.decodeFileEither
+
+--
+-- Helper
+--
+
+longline :: Text -> Doc
+longline = fillSep . fmap (text . toString) . words
