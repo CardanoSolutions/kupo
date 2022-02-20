@@ -128,7 +128,7 @@ pointFromText txt =
 
     blockPointFromText = BlockPoint
         <$> slotNoFromText slotNo
-        <*> headerHashFromText headerHash
+        <*> headerHashFromText (T.drop 1 headerHash)
       where
         (slotNo, headerHash) = T.breakOn "." (T.strip txt)
 

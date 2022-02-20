@@ -188,6 +188,7 @@ test-suite unit
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Kupo.Data.ConfigurationSpec
       Kupo.Data.PatternSpec
       Paths_kupo
   hs-source-dirs:
