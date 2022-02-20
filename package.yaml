@@ -12,7 +12,8 @@ description:         Please see the README on GitHub at <https://github.com/card
 synopsis:            A daemon for building lookup indexes from entities of the Cardano blockchain
 category:            Web
 
-# extra-source-files:
+extra-source-files:
+- db/*.sql
 
 dependencies:
 - base >= 4.7 && < 5
@@ -51,6 +52,7 @@ library:
     - cardano-slotting
     - containers
     - contra-tracer
+    - file-embed
     - filepath
     - generic-lens
     - io-classes

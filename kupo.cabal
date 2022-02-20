@@ -18,6 +18,8 @@ copyright:      2020-2021 KtorZ
 license:        MPL-2.0
 license-file:   LICENSE
 build-type:     Simple
+extra-source-files:
+    db/001.sql
 
 source-repository head
   type: git
@@ -103,6 +105,7 @@ library
     , cardano-slotting
     , containers
     , contra-tracer
+    , file-embed
     , filepath
     , generic-lens
     , io-classes
