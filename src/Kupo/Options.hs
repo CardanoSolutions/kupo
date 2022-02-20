@@ -74,7 +74,24 @@ parseOptionsPure args =
 parserInfo :: ParserInfo (Command Proxy)
 parserInfo = info (helper <*> parser) $ mempty
     <> progDesc "Kupo - A daemon for building portable lookup indexes on Cardano."
-    <> footerDoc (Just $ vsep
+    <> footerDoc (Just footer')
+  where
+    parser =
+        versionOptionOrCommand
+        <|>
+        ( Run Proxy
+            <$> ( Configuration
+                    <$> nodeSocketOption
+                    <*> nodeConfigOption
+                    <*> workDirOption
+                    <*> serverHostOption
+                    <*> serverPortOption
+                    <*> optional sinceOption
+                    <*> many patternOption
+                )
+        )
+
+    footer' = vsep
         [ "Patterns: "
         , indent 2 "Patterns have the following syntax:"
         , mempty
@@ -118,21 +135,7 @@ parserInfo = info (helper <*> parser) $ mempty
         , indent 4 "🗸 --match */script1cda3khwqv60360rp5m7akt50m6ttapacs8rqhn5w342z7r35m37"
         , indent 4 "🗸 --match dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e/*"
         , indent 4 "🗸 --match */4fc6bb0c93780ad706425d9f7dc1d3c5e3ddbf29ba8486dce904a5fc"
-        ])
-  where
-    parser =
-        versionOptionOrCommand
-        <|>
-        ( Run Proxy
-            <$> ( Configuration
-                    <$> nodeSocketOption
-                    <*> nodeConfigOption
-                    <*> serverHostOption
-                    <*> serverPortOption
-                    <*> optional sinceOption
-                    <*> many patternOption
-                )
-        )
+        ]
 
 --
 -- Command-line options
@@ -153,6 +156,14 @@ nodeConfigOption = option str $ mempty
     <> metavar "FILEPATH"
     <> help "Path to the node configuration file."
     <> completer (bashCompleter "file")
+
+-- | --workdir=DIR
+workDirOption :: Parser FilePath
+workDirOption = option str $ mempty
+    <> long "workdir"
+    <> metavar "DIRECTORY"
+    <> help "Path to a working directory, where the database is stored."
+    <> completer (bashCompleter "directory")
 
 -- | [--host=IPv4], default: 127.0.0.1
 serverHostOption :: Parser String

@@ -67,6 +67,7 @@ import qualified Data.Text.Read as T
 data Configuration = Configuration
     { nodeSocket :: !FilePath
     , nodeConfig :: !FilePath
+    , workDir :: !FilePath
     , serverHost :: !String
     , serverPort :: !Int
     , since :: !(Maybe (Point (Block StandardCrypto)))
