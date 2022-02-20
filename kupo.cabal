@@ -33,6 +33,7 @@ library
       Kupo
       Kupo.App.ChainSync
       Kupo.Configuration
+      Kupo.Control.MonadDatabase
       Kupo.Control.MonadOuroboros
       Kupo.Control.MonadSTM
       Kupo.Control.MonadThrow
@@ -116,6 +117,7 @@ library
     , ouroboros-network-framework
     , profunctors
     , relude
+    , sqlite-simple
     , strict-containers
     , text
     , time

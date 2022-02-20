@@ -66,6 +66,7 @@ library:
     - profunctors
     - relude
     - strict-containers
+    - sqlite-simple
     - text
     - time
     - transformers
