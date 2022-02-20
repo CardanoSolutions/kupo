@@ -3,7 +3,7 @@
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 module Kupo.App.ChainSync
-    ( Handler (..)
+    ( ChainSyncHandler (..)
     , mkChainSyncClient
     , IntersectionNotFoundException (..)
     ) where
@@ -35,7 +35,7 @@ instance (IsBlock block) => Exception (IntersectionNotFoundException block)
 
 -- | A message handler for the chain-sync client. Messages are guaranteed (by
 -- the protocol) to arrive in order.
-data Handler m block = Handler
+data ChainSyncHandler m block = ChainSyncHandler
     { onRollBackward :: Point block -> m ()
     , onRollForward :: block -> m ()
     }
@@ -47,10 +47,10 @@ mkChainSyncClient
         ( MonadThrow m
         , IsBlock block
         )
-    => Handler m block
+    => ChainSyncHandler m block
     -> [Point block]
     -> ChainSyncClientPipelined block (Point block) (Tip block) m ()
-mkChainSyncClient Handler{onRollBackward, onRollForward} points =
+mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} points =
     ChainSyncClientPipelined (pure $ SendMsgFindIntersect points clientStIntersect)
   where
     clientStIntersect
