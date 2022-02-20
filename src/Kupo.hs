@@ -26,9 +26,11 @@ module Kupo
 import Kupo.Prelude
 
 import Kupo.App.ChainSync
-    ( Handler (..), mkChainSyncClient )
+    ( ChainSyncHandler (..), mkChainSyncClient )
 import Kupo.Configuration
     ( Configuration (..), NetworkParameters (..) )
+import Kupo.Control.MonadDatabase
+    ( Database (..), MonadDatabase (..), databaseFilePath )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..) )
 import Kupo.Control.MonadThrow
@@ -51,6 +53,7 @@ newtype Kupo a = Kupo
         ( Functor, Applicative, Monad
         , MonadReader (Env Kupo)
         , MonadIO
+        , MonadDatabase
         , MonadOuroboros
         , MonadThrow
         )
@@ -65,19 +68,21 @@ kupo = hijackSigTerm *> do
             }
         , configuration = Configuration
             { nodeSocket
+            , workDir
             }
         } <- ask
-    withChainSyncServer [ NodeToClientV_12 ] networkMagic slotsPerEpoch nodeSocket $
-        mkChainSyncClient handlers points
- where
-    -- TODO:
-    -- - Get points from command-line and/or from database state
-    -- -
-    points = [GenesisPoint]
-    handlers = Handler
-        { onRollBackward = print
-        , onRollForward = print
-        }
+
+    withDatabase (databaseFilePath workDir) $ \db -> do
+        mostRecentMigration db >>= print
+
+    -- withChainSyncServer [ NodeToClientV_12 ] networkMagic slotsPerEpoch nodeSocket $
+    --     mkChainSyncClient handlers points
+ --where
+ --   points = [GenesisPoint]
+ --   handlers = ChainSyncHandler
+ --       { onRollBackward = const (pure ())
+ --       , onRollForward = const (pure ())
+ --       }
 
 -- | Application runner with an instantiated environment. See 'newEnvironment'.
 runWith :: forall a. Kupo a -> Env Kupo -> IO a

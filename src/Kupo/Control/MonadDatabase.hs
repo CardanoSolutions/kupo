@@ -2,9 +2,12 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE RecordWildCards #-}
+
 module Kupo.Control.MonadDatabase
     ( -- * Database DSL
       MonadDatabase (..)
+    , databaseFilePath
     , Database (..)
     , TableName
 
@@ -31,10 +34,12 @@ import Database.SQLite.Simple
     )
 import Database.SQLite.Simple.ToField
     ( ToField (..) )
+import System.FilePath
+    ( (</>) )
 
 import qualified Data.Text as T
 
-class MonadDatabase (m :: Type -> Type) where
+class Monad m => MonadDatabase (m :: Type -> Type) where
     withDatabase
         :: FilePath
         -> (Database m -> m a)
@@ -42,10 +47,28 @@ class MonadDatabase (m :: Type -> Type) where
 
 type TableName = String
 
-data Database m = Database
+databaseFilePath :: FilePath -> FilePath
+databaseFilePath workDir = workDir </> "kupo.sqlite3"
+
+data Database (m :: Type -> Type) = Database
     { insertMany :: forall row. (ToRow row) => TableName -> [row] -> m ()
     , mostRecentMigration :: m Integer
     }
+
+-- | Change the underlying 'Monad' of a 'Database' using a natural transformation.
+natDatabase :: (forall a. m a -> n a) -> Database m -> Database n
+natDatabase nat Database{..} = Database
+    { insertMany = \a0 a1 -> nat (insertMany a0 a1)
+    , mostRecentMigration = nat mostRecentMigration
+    }
+
+--
+-- ReaderT
+--
+
+instance MonadDatabase m => MonadDatabase (ReaderT r m) where
+    withDatabase filePath action = ReaderT $ \r ->
+        withDatabase filePath ((`runReaderT` r) . action . natDatabase @m lift)
 
 --
 -- IO
