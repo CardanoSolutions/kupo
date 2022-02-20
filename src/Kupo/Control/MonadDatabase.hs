@@ -8,9 +8,13 @@
 module Kupo.Control.MonadDatabase
     ( -- * Database DSL
       MonadDatabase (..)
-    , databaseFilePath
     , Database (..)
+    , databaseFilePath
+
+      -- ** Tables
     , TableName
+    , tableInputs
+    , tableAddresses
 
       -- * SQL Interface
     , ToRow (..)
@@ -49,8 +53,6 @@ class Monad m => MonadDatabase (m :: Type -> Type) where
         :: FilePath
         -> (Database m -> m a)
         -> m a
-
-type TableName = String
 
 databaseFilePath :: FilePath -> FilePath
 databaseFilePath workDir = workDir </> "kupo.sqlite3"
@@ -104,6 +106,18 @@ mkDatabase conn = Database
 mkPreparedStatement :: Int -> Query
 mkPreparedStatement n =
     Query ("(" <> T.intercalate "," (replicate n "?") <> ")")
+
+--
+-- Tables
+--
+
+type TableName = String
+
+tableInputs :: TableName
+tableInputs = "inputs"
+
+tableAddresses :: TableName
+tableAddresses = "addresses"
 
 --
 -- Migrations

@@ -20,8 +20,12 @@ module Kupo.Data.Pattern
 
 import Kupo.Prelude
 
+import Cardano.Binary
+    ( serialize' )
 import Codec.Binary.Bech32.TH
     ( humanReadablePart )
+import Kupo.Control.MonadDatabase
+    ( SQLData (..), ToRow (..) )
 import Kupo.Data.ChainSync
     ( Address
     , Blake2b_224
@@ -31,6 +35,9 @@ import Kupo.Data.ChainSync
     , DatumHash
     , Output
     , OutputReference
+    , PraosCrypto
+    , SlotNo (..)
+    , Transaction
     , Value
     , addressFromBytes
     , digest
@@ -40,6 +47,7 @@ import Kupo.Data.ChainSync
     , getDatumHash
     , getDelegationPartBytes
     , getPaymentPartBytes
+    , getSlotNo
     , getValue
     , isBootstrap
     , mapMaybeOutputs
@@ -176,11 +184,26 @@ onlyShelley :: MatchBootstrap
 onlyShelley = MatchBootstrap False
 
 data Result crypto = Result
-    { address :: Address crypto
+    { reference :: OutputReference crypto
+    , address :: Address crypto
     , value :: Value crypto
     , datumHash :: Maybe (DatumHash crypto)
-    , reference :: OutputReference crypto
+    , slotNo :: SlotNo
     }
+
+--  output_reference BLOB NOT NULL
+--  address INTEGER NOT NULL
+--  value BLOB NOT NULL
+--  datum_hash BLOB
+--  slot_no INTEGER NOT NULL
+instance PraosCrypto crypto => ToRow (Result crypto) where
+    toRow Result{reference, address, value, datumHash, slotNo} =
+        [ SQLBlob (serialize' reference)
+        , SQLInteger 0 -- FIXME
+        , SQLBlob (serialize' value)
+        , maybe SQLNull (SQLBlob . serialize') datumHash
+        , SQLInteger (fromIntegral (unSlotNo slotNo))
+        ]
 
 -- | Match all outputs in transactions from a block that match any of the given
 -- pattern.
@@ -189,26 +212,29 @@ data Result crypto = Result
 -- multiple patterns. This is to facilitate building an index of matches to
 -- results.
 matchBlock
-    :: forall crypto. (Crypto crypto)
+    :: forall crypto. (PraosCrypto crypto)
     => [Pattern crypto]
     -> Block crypto
-    -> [(Pattern crypto, Result crypto)]
-matchBlock ms = flip foldBlock [] $ \tx result ->
-    concatMap (flip mapMaybeOutputs tx . match) ms ++ result
+    -> [Result crypto]
+matchBlock ms blk =
+    let sl = getSlotNo blk in foldBlock (fn sl) [] blk
   where
+    fn :: SlotNo -> Transaction crypto -> [Result crypto] -> [Result crypto]
+    fn sl tx results =
+        concatMap (flip mapMaybeOutputs tx . match sl) ms ++ results
+
     match
-        :: Pattern crypto
+        :: SlotNo
+        -> Pattern crypto
         -> OutputReference crypto
         -> Output crypto
-        -> Maybe (Pattern crypto, Result crypto)
-    match m reference out = do
+        -> Maybe (Result crypto)
+    match slotNo m reference out = do
         getAddress out `matching` m
-        pure
-            ( m
-            , Result
-                { address = getAddress out
-                , value = getValue out
-                , datumHash = getDatumHash out
-                , reference
-                }
-            )
+        pure Result
+            { reference
+            , address = getAddress out
+            , value = getValue out
+            , datumHash = getDatumHash out
+            , slotNo
+            }

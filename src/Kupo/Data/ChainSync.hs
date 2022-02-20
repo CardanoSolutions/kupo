@@ -8,11 +8,13 @@
 module Kupo.Data.ChainSync
     ( -- * Constraints
       Crypto
+    , PraosCrypto
 
       -- * Block
     , Block
     , IsBlock
     , foldBlock
+    , getSlotNo
 
       -- * Transaction
     , Transaction
@@ -74,6 +76,8 @@ import Cardano.Ledger.Mary
     ( MaryEra )
 import Cardano.Ledger.Shelley
     ( ShelleyEra )
+import Cardano.Ledger.Shelley.API
+    ( PraosCrypto )
 import Cardano.Ledger.Val
     ( Val (inject) )
 import Cardano.Slotting.Slot
@@ -91,6 +95,8 @@ import Ouroboros.Consensus.Shelley.Ledger.Block
 import Ouroboros.Network.Block
     ( pattern BlockPoint
     , pattern GenesisPoint
+    , HasHeader (..)
+    , HeaderFields (..)
     , HeaderHash
     , Point (..)
     , StandardHash
@@ -139,6 +145,22 @@ foldBlock fn b = \case
         foldr (fn . TransactionMary) b (Ledger.Shelley.txSeqTxns' txs)
     BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
         foldr (fn . TransactionAlonzo) b (Ledger.Alonzo.txSeqTxns txs)
+
+getSlotNo
+    :: PraosCrypto crypto
+    => Block crypto
+    -> SlotNo
+getSlotNo = \case
+    BlockByron blk ->
+        headerFieldSlot (getHeaderFields blk)
+    BlockShelley blk ->
+        headerFieldSlot (getHeaderFields blk)
+    BlockAllegra blk ->
+        headerFieldSlot (getHeaderFields blk)
+    BlockMary blk ->
+        headerFieldSlot (getHeaderFields blk)
+    BlockAlonzo blk ->
+        headerFieldSlot (getHeaderFields blk)
 
 -- Transaction
 
