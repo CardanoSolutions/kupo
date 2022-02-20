@@ -1,6 +1,5 @@
-## auto-generated
-docs/public
-docs/static/api
+## Generated
+*.sqlite3
 
 ## Nix
 /result
