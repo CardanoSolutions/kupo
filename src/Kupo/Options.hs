@@ -237,7 +237,7 @@ parseNetworkParameters configFile = runOrDie $ do
                 Json.Success params -> pure params
   where
     runOrDie :: ExceptT String IO a -> IO a
-    runOrDie = runExceptT >=> either die pure
+    runOrDie = runExceptT >=> either (die . ("Failed to parse network parameters: " <>)) pure
 
     prettyParseException :: Yaml.ParseException -> String
     prettyParseException e = "Failed to decode JSON (or YAML) file: " <> show e

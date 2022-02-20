@@ -88,7 +88,7 @@ instance FromJSON NetworkParameters where
     parseJSON = Json.withObject "NetworkParameters" $ \obj -> do
         nm <- obj .: "networkMagic"
         ss <- obj .: "systemStart" >>= parseISO8601
-        k  <- obj .: "protocolConsts"
+        k  <- obj .: "protocolConsts" >>= Json.withObject "protocolConst" (.: "k")
         pure NetworkParameters
             { networkMagic =
                 NetworkMagic (fromIntegral @Integer nm)
