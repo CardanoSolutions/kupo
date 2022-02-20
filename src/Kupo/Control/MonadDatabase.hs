@@ -93,10 +93,9 @@ mkDatabase conn = Database
         rows@(h:_) ->
             let
                 values = mkPreparedStatement (length (toRow h))
+                query = "INSERT INTO " <> tableName <> " VALUES " <> values
              in
-                executeMany conn
-                    ("INSERT INTO " <> tableName <> " VALUES " <> values)
-                    rows
+                executeMany conn query rows
     }
 
 --
@@ -142,7 +141,7 @@ runMigrations conn currentVersion = do
         putStrLn $ "No migration to run; version=" <> show currentVersion
     else do
         putStrLn $ "Running " <> show (length missingMigrations) <> " migration(s) from version=" <> show currentVersion
-        void $ withTransaction conn $ traverse (traverse (\q -> print q >> execute_ conn q)) missingMigrations
+        void $ withTransaction conn $ traverse (traverse (execute_ conn)) missingMigrations
 
 migrations :: [Migration]
 migrations =
