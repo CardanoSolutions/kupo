@@ -9,16 +9,11 @@ module Kupo.Control.MonadDatabase
     ( -- * Database DSL
       MonadDatabase (..)
     , Database (..)
-    , databaseFilePath
-
-      -- ** Tables
-    , TableName
-    , tableInputs
-    , tableAddresses
 
       -- * SQL Interface
-    , ToRow (..)
-    , ToField (..)
+    , Row (..)
+    , Reference (ConcreteReference)
+    , ReferenceKind (..)
     , SQLData (..)
     ) where
 
@@ -37,14 +32,13 @@ import Database.SQLite.Simple
     , executeMany
     , execute_
     , nextRow
+    , query
     , withConnection
     , withStatement
     , withTransaction
     )
-import Database.SQLite.Simple.ToField
-    ( ToField (..) )
-import System.FilePath
-    ( (</>) )
+import GHC.TypeLits
+    ( KnownSymbol, Symbol, symbolVal )
 
 import qualified Data.Text as T
 
@@ -54,18 +48,45 @@ class Monad m => MonadDatabase (m :: Type -> Type) where
         -> (Database m -> m a)
         -> m a
 
-databaseFilePath :: FilePath -> FilePath
-databaseFilePath workDir = workDir </> "kupo.sqlite3"
-
 data Database (m :: Type -> Type) = Database
-    { insertMany :: forall row. (ToRow row) => TableName -> [row] -> m ()
+    { insertMany
+        :: forall tableName referenceTableName.
+            ( KnownSymbol tableName
+            , KnownSymbol referenceTableName
+            )
+        => [Row tableName (Concrete referenceTableName)]
+        -> m ()
     }
 
 -- | Change the underlying 'Monad' of a 'Database' using a natural transformation.
 natDatabase :: (forall a. m a -> n a) -> Database m -> Database n
 natDatabase nat Database{..} = Database
-    { insertMany = \a0 a1 -> nat (insertMany a0 a1)
+    { insertMany = nat . insertMany
     }
+
+data Row (tableName :: Symbol) (reference :: ReferenceKind) where
+    Row :: Reference reference -> [SQLData] -> Row tableName reference
+
+instance ToRow (Row tableName Symbolic) where
+    toRow (Row (SymbolicReference ref) fields) =
+        SQLInteger ref : fields
+
+instance ToRow (Row tableName (Concrete any)) where
+    toRow (Row (ConcreteReference (_columnName, field)) _fields) =
+        [field]
+
+data ReferenceKind = Concrete Symbol | Symbolic
+
+data Reference (reference :: ReferenceKind) where
+    ConcreteReference
+        :: forall tableName. KnownSymbol tableName
+        => (ColumnName, SQLData)
+        -> Reference (Concrete tableName)
+    SymbolicReference
+        :: Int64
+        -> Reference Symbolic
+
+type ColumnName = String
 
 --
 -- ReaderT
@@ -87,36 +108,71 @@ instance MonadDatabase IO where
 
 mkDatabase :: Connection -> Database IO
 mkDatabase conn = Database
-    { insertMany = \(fromString -> tableName) -> \case
-        [] ->
-            pure ()
-        rows@(h:_) ->
-            let
-                values = mkPreparedStatement (length (toRow h))
-                query = "INSERT INTO " <> tableName <> " VALUES " <> values
-             in
-                executeMany conn query rows
+    { insertMany = \rows ->
+        withTransaction conn $ do
+            insertReferences conn rows
+            resolveReferences conn rows >>= insertRows conn
     }
 
 --
 -- Helpers
 --
 
+insertReferences
+    :: forall tableName any.
+        ( KnownSymbol tableName
+        )
+    => Connection
+    -> [Row any (Concrete tableName)]
+    -> IO ()
+insertReferences conn = \case
+    [] -> pure ()
+    rows@((Row (ConcreteReference (fromString -> columnName, _)) _fields):_rest) ->
+        let
+            tableName = fromString (symbolVal (Proxy @tableName))
+            values = mkPreparedStatement 1
+            qry = "INSERT OR IGNORE INTO " <> tableName <> "(" <> columnName <> ") VALUES " <> values
+         in
+            executeMany conn qry rows
+
+resolveReferences
+    :: forall tableName any.
+        ( KnownSymbol tableName
+        )
+    => Connection
+    -> [Row any (Concrete tableName)]
+    -> IO [Row any Symbolic]
+resolveReferences conn = \case
+    [] -> pure []
+    rows@((Row (ConcreteReference (fromString -> columnName, _)) _fields):_rest) -> do
+        let
+            tableName = fromString (symbolVal (Proxy @tableName))
+            values = mkPreparedStatement (length rows)
+            qry = "SELECT id FROM " <> tableName <> " WHERE " <> columnName <> " IN " <> values
+         in do
+            ids <- query conn qry $ (\(Row (ConcreteReference (_, f)) _) -> f) <$> rows
+            pure $ zipWith (\(Only i) (Row _ fields) -> Row (SymbolicReference i) fields) ids rows
+
+insertRows
+    :: forall tableName.
+        ( KnownSymbol tableName
+        )
+    => Connection
+    -> [Row tableName Symbolic]
+    -> IO ()
+insertRows conn = \case
+    [] -> pure ()
+    rows@(h:_) ->
+        let
+            tableName = fromString (symbolVal (Proxy @tableName))
+            values = mkPreparedStatement (length (toRow h))
+            qry = "INSERT OR IGNORE INTO " <> tableName <> " VALUES " <> values
+         in
+            executeMany conn qry rows
+
 mkPreparedStatement :: Int -> Query
 mkPreparedStatement n =
     Query ("(" <> T.intercalate "," (replicate n "?") <> ")")
-
---
--- Tables
---
-
-type TableName = String
-
-tableInputs :: TableName
-tableInputs = "inputs"
-
-tableAddresses :: TableName
-tableAddresses = "addresses"
 
 --
 -- Migrations
