@@ -40,7 +40,7 @@ import Kupo.Control.MonadDatabase
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..) )
 import Kupo.Control.MonadSTM
-    ( atomically )
+    ( MonadSTM (..) )
 import Kupo.Data.ChainSync
     ( pattern GenesisPoint )
 import Kupo.Options
@@ -94,13 +94,13 @@ kupo = hijackSigTerm *> do
             -- 3. If (1) yields something and --since is still provided, we
             -- should fail with an informative error message.
             let points = maybe [GenesisPoint] pure since
-             in mkChainSyncClient (producer mailbox patterns) points
+             in mkChainSyncClient (producer mailbox) points
 
     liftIO $ withDatabase (workDir </> "kupo.sqlite3") $ \db -> do
-        mailbox <- atomically (newMailbox 200)
+        mailbox <- atomically (newMailbox 100)
         concurrently_
             (chainSyncServer mailbox)
-            (consumer mailbox db)
+            (consumer mailbox patterns db)
 
 --
 -- Environment

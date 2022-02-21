@@ -194,14 +194,15 @@ data Result crypto = Result
 -- multiple patterns. This is to facilitate building an index of matches to
 -- results.
 matchBlock
-    :: forall crypto. (PraosCrypto crypto)
-    => [Pattern crypto]
+    :: forall crypto result. (PraosCrypto crypto)
+    => (Result crypto -> result)
+    -> [Pattern crypto]
     -> Block crypto
-    -> [Result crypto]
-matchBlock ms blk =
+    -> [result]
+matchBlock transform ms blk =
     let sl = getSlotNo blk in foldBlock (fn sl) [] blk
   where
-    fn :: SlotNo -> Transaction crypto -> [Result crypto] -> [Result crypto]
+    fn :: SlotNo -> Transaction crypto -> [result] -> [result]
     fn sl tx results =
         concatMap (flip mapMaybeOutputs tx . match sl) ms ++ results
 
@@ -210,10 +211,10 @@ matchBlock ms blk =
         -> Pattern crypto
         -> OutputReference crypto
         -> Output crypto
-        -> Maybe (Result crypto)
+        -> Maybe result
     match slotNo m reference out = do
         getAddress out `matching` m
-        pure Result
+        pure $ transform Result
             { reference
             , address = getAddress out
             , value = getValue out

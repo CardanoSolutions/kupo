@@ -31,6 +31,8 @@ import Kupo.Data.ChainSync
 import Kupo.Data.Pattern
     ( Pattern, Result (..), matchBlock )
 
+import qualified Prelude
+
 --
 -- Producer / Consumer
 --
@@ -40,28 +42,34 @@ producer
         ( MonadSTM m
         , MonadIO m -- FIXME, temporary for strawman logging until proper tracer.
         )
-    => Mailbox m (Row "inputs" (Concrete "addresses"))
-    -> [Pattern StandardCrypto]
+    => Mailbox m (Block StandardCrypto)
     -> ChainSyncHandler m (Block StandardCrypto)
-producer mailbox patterns = ChainSyncHandler
+producer mailbox = ChainSyncHandler
     { onRollBackward = \pt -> do
         -- FIXME: rollbacks should rewind the database.
         liftIO $ putStrLn $ "RollBack to " <> show pt <> "; doing nothing about it."
-    , onRollForward = \blk -> do
-        atomically $ mapM_
-            (putMailbox mailbox . resultToRow)
-            (matchBlock patterns blk)
+    , onRollForward =
+        atomically . putMailbox mailbox
     }
 
 consumer
     :: forall m.
         ( MonadSTM m
+        , MonadIO m
         )
-    => Mailbox m (Row "inputs" (Concrete "addresses"))
+    => Mailbox m (Block StandardCrypto)
+    -> [Pattern StandardCrypto]
     -> Database m
     -> m ()
-consumer mailbox Database{insertMany} = forever $ do
-    atomically (flushMailbox mailbox) >>= insertMany
+consumer mailbox patterns Database{insertMany} = forever $ do
+    blks <- atomically (flushMailbox mailbox)
+    let rows = concatMap (matchBlock resultToRow patterns) blks
+    let len = length rows
+    when (len > 0) $ do
+        liftIO $ putStrLn $ "Inserting " <> show len <> " rows."
+        let maxSlot = (\(Row _ fields) -> show (Prelude.last fields)) $ Prelude.last rows
+        liftIO $ putStrLn $ "Last known slot: " <> maxSlot
+    insertMany rows
 
 --
 -- SQL interface
