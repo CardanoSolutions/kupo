@@ -88,6 +88,8 @@ tests:
     - containers
     - hspec
     - kupo
+    - io-classes
+    - io-sim
     - relude
     - QuickCheck
     build-tools:

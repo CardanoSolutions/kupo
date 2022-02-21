@@ -34,11 +34,15 @@ library
   exposed-modules:
       Kupo
       Kupo.App.ChainSync
+      Kupo.App.Mailbox
       Kupo.Configuration
+      Kupo.Control.MonadAsync
       Kupo.Control.MonadDatabase
+      Kupo.Control.MonadDelay
       Kupo.Control.MonadOuroboros
       Kupo.Control.MonadSTM
       Kupo.Control.MonadThrow
+      Kupo.Control.MonadTime
       Kupo.Data.ChainSync
       Kupo.Data.Pattern
       Kupo.Options
@@ -188,6 +192,7 @@ test-suite unit
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Kupo.App.MailboxSpec
       Kupo.Data.ConfigurationSpec
       Kupo.Data.PatternSpec
       Paths_kupo
@@ -239,6 +244,8 @@ test-suite unit
     , bytestring
     , containers
     , hspec
+    , io-classes
+    , io-sim
     , kupo
     , relude
   default-language: Haskell2010
