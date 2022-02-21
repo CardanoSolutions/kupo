@@ -20,12 +20,8 @@ module Kupo.Data.Pattern
 
 import Kupo.Prelude
 
-import Cardano.Binary
-    ( serialize' )
 import Codec.Binary.Bech32.TH
     ( humanReadablePart )
-import Kupo.Control.MonadDatabase
-    ( SQLData (..), ToRow (..) )
 import Kupo.Data.ChainSync
     ( Address
     , Blake2b_224
@@ -190,20 +186,6 @@ data Result crypto = Result
     , datumHash :: Maybe (DatumHash crypto)
     , slotNo :: SlotNo
     }
-
---  output_reference BLOB NOT NULL
---  address INTEGER NOT NULL
---  value BLOB NOT NULL
---  datum_hash BLOB
---  slot_no INTEGER NOT NULL
-instance PraosCrypto crypto => ToRow (Result crypto) where
-    toRow Result{reference, address, value, datumHash, slotNo} =
-        [ SQLBlob (serialize' reference)
-        , SQLInteger 0 -- FIXME
-        , SQLBlob (serialize' value)
-        , maybe SQLNull (SQLBlob . serialize') datumHash
-        , SQLInteger (fromIntegral (unSlotNo slotNo))
-        ]
 
 -- | Match all outputs in transactions from a block that match any of the given
 -- pattern.

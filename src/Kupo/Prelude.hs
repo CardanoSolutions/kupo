@@ -15,8 +15,11 @@ module Kupo.Prelude
     , decodeBase58
     , encodeBase64
     , decodeBase64
+    , serialize'
     ) where
 
+import Cardano.Binary
+    ( serialize' )
 import Data.ByteString.Base16
     ( decodeBase16, encodeBase16 )
 import Data.ByteString.Base64

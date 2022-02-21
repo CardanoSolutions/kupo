@@ -18,6 +18,7 @@ ghc-options:
     - -Wpartial-fields
     - -Wredundant-constraints
     - -Wunused-packages
+    - -fno-warn-unticked-promoted-constructors
 
   executable: &ghc-options-executable
     - -Wall                         # ^

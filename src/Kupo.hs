@@ -25,24 +25,30 @@ module Kupo
 
 import Kupo.Prelude
 
+import Kupo.App
+    ( consumer, producer )
 import Kupo.App.ChainSync
-    ( ChainSyncHandler (..), mkChainSyncClient )
+    ( mkChainSyncClient )
+import Kupo.App.Mailbox
+    ( newMailbox )
 import Kupo.Configuration
     ( Configuration (..), NetworkParameters (..) )
+import Kupo.Control.MonadAsync
+    ( MonadAsync (..) )
 import Kupo.Control.MonadDatabase
-    ( Database (..), MonadDatabase (..), databaseFilePath, tableInputs )
+    ( MonadDatabase (..) )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..) )
-import Kupo.Control.MonadThrow
-    ( MonadThrow )
+import Kupo.Control.MonadSTM
+    ( atomically )
 import Kupo.Data.ChainSync
     ( pattern GenesisPoint )
-import Kupo.Data.Pattern
-    ( matchBlock )
 import Kupo.Options
     ( Command (..), parseOptions )
 import Kupo.Version
     ( version )
+import System.FilePath
+    ( (</>) )
 
 --
 -- Environment
@@ -52,12 +58,11 @@ import Kupo.Version
 newtype Kupo a = Kupo
     { unKupo :: ReaderT (Env Kupo) IO a
     } deriving newtype
-        ( Functor, Applicative, Monad
+        ( Functor
+        , Applicative
+        , Monad
         , MonadReader (Env Kupo)
         , MonadIO
-        , MonadDatabase
-        , MonadOuroboros
-        , MonadThrow
         )
 
 -- | Application entry point.
@@ -76,8 +81,8 @@ kupo = hijackSigTerm *> do
             }
         } <- ask
 
-    liftIO $ withDatabase (databaseFilePath workDir) $ \db ->
-        withChainSyncServer [ NodeToClientV_12 ] networkMagic slotsPerEpoch nodeSocket $
+    let chainSyncServer mailbox =
+            withChainSyncServer [ NodeToClientV_12 ] networkMagic slotsPerEpoch nodeSocket $
             -- TODO: Instead of defaulting to origin, which is NOT a sensible
             -- default, we should:
             --
@@ -89,24 +94,21 @@ kupo = hijackSigTerm *> do
             -- 3. If (1) yields something and --since is still provided, we
             -- should fail with an informative error message.
             let points = maybe [GenesisPoint] pure since
-             in mkChainSyncClient (handlers patterns db) points
-  where
-    -- TODO: Move under app/
-    handlers patterns db = ChainSyncHandler
-        { onRollBackward = \pt -> do
-            liftIO $ putStrLn $ "RollBack to " <> show pt <> "; doing nothing about it."
-        , onRollForward = \blk -> do
-            let matches = matchBlock patterns blk
-            insertMany db tableInputs matches
-        }
+             in mkChainSyncClient (producer mailbox patterns) points
 
--- | Application runner with an instantiated environment. See 'newEnvironment'.
-runWith :: forall a. Kupo a -> Env Kupo -> IO a
-runWith app = runReaderT (unKupo app)
+    liftIO $ withDatabase (workDir </> "kupo.sqlite3") $ \db -> do
+        mailbox <- atomically (newMailbox 200)
+        concurrently_
+            (chainSyncServer mailbox)
+            (consumer mailbox db)
 
 --
 -- Environment
 --
+
+-- | Application runner with an instantiated environment. See 'newEnvironment'.
+runWith :: forall a. Kupo a -> Env Kupo -> IO a
+runWith app = runReaderT (unKupo app)
 
 data Env (m :: Type -> Type) = Env
     { networkParameters :: !NetworkParameters

@@ -33,6 +33,7 @@ flag production
 library
   exposed-modules:
       Kupo
+      Kupo.App
       Kupo.App.ChainSync
       Kupo.App.Mailbox
       Kupo.Configuration
@@ -89,7 +90,7 @@ library
       TypeFamilies
       TypeSynonymInstances
       ViewPatterns
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -fno-warn-unticked-promoted-constructors
   build-depends:
       aeson
     , base >=4.7 && <5
