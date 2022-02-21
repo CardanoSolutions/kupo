@@ -108,15 +108,37 @@ instance MonadDatabase IO where
 
 mkDatabase :: Connection -> Database IO
 mkDatabase conn = Database
-    { insertMany = \rows ->
-        withTransaction conn $ do
-            insertReferences conn rows
-            resolveReferences conn rows >>= insertRows conn
+    { insertMany = insertMany' conn
     }
 
 --
 -- Helpers
 --
+
+insertMany'
+    :: forall tableName referenceTableName.
+        ( KnownSymbol tableName
+        , KnownSymbol referenceTableName
+        )
+    => Connection
+    -> [Row tableName (Concrete referenceTableName)]
+    -> IO ()
+insertMany' conn rows
+    | length rows > limit = do
+        withTransaction conn $ do
+            insertReferences conn (take limit rows)
+            resolveReferences conn (take limit rows) >>= insertRows conn
+        insertMany' conn (drop limit rows)
+    | otherwise = do
+        withTransaction conn $ do
+            insertReferences conn rows
+            resolveReferences conn rows >>= insertRows conn
+  where
+    -- NOTE:
+    -- There's a (non-configurable) limit of 999 values per query in SQLite. So,
+    -- this 199 actually comes from the number of columns of our largest table
+    -- (i.e. 5, so 199 < 999 / 5)
+    limit = 199
 
 insertReferences
     :: forall tableName any.
