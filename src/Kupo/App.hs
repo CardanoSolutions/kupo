@@ -18,16 +18,16 @@ import Kupo.App.Mailbox
 import Kupo.Configuration
     ( StandardCrypto )
 import Kupo.Control.MonadDatabase
-    ( Database (..)
-    , Reference (..)
-    , ReferenceKind (..)
-    , Row (..)
-    , SQLData (..)
-    )
+    ( Database (..), Row (..), SQLData (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.ChainSync
-    ( Block, SlotNo (..) )
+    ( Block
+    , SlotNo (..)
+    , addressToBytes
+    , getDelegationPartBytes
+    , getPaymentPartBytes
+    )
 import Kupo.Data.Pattern
     ( Pattern, Result (..), matchBlock )
 
@@ -63,13 +63,15 @@ consumer
     -> m ()
 consumer mailbox patterns Database{insertMany} = forever $ do
     blks <- atomically (flushMailbox mailbox)
-    let rows = concatMap (matchBlock resultToRow patterns) blks
-    let len = length rows
+    let (addresses, inputs) = unzip $ concatMap (matchBlock resultToRow patterns) blks
+    let len = length inputs
     when (len > 0) $ do
-        liftIO $ putStrLn $ "Inserting " <> show len <> " rows."
-        let maxSlot = (\(Row _ fields) -> show (Prelude.last fields)) $ Prelude.last rows
+        liftIO $ putStrLn $ "Inserting " <> show len <> " UTXO entries."
+        let maxSlot = (\(Row fields) -> show (Prelude.last fields)) $ Prelude.last inputs
         liftIO $ putStrLn $ "Last known slot: " <> maxSlot
-    insertMany rows
+    -- TODO: TRANSACTION
+    insertMany inputs
+    insertMany addresses
 
 --
 -- SQL interface
@@ -77,11 +79,17 @@ consumer mailbox patterns Database{insertMany} = forever $ do
 
 resultToRow
     :: Result StandardCrypto
-    -> Row "inputs" (Concrete "addresses")
-resultToRow Result{..} = Row
-    (ConcreteReference ("address", SQLBlob (serialize' address)))
-    [ SQLBlob (serialize' reference)
-    , SQLBlob (serialize' value)
-    , maybe SQLNull (SQLBlob . serialize') datumHash
-    , SQLInteger (fromIntegral (unSlotNo slotNo))
-    ]
+    -> (Row "addresses", Row "inputs")
+resultToRow Result{..} =
+    ( Row
+        [ maybe (SQLBlob (addressToBytes address)) SQLBlob (getPaymentPartBytes address)
+        , maybe SQLNull SQLBlob (getDelegationPartBytes address)
+        ]
+    , Row
+        [ SQLBlob (serialize' reference)
+        , SQLBlob (addressToBytes address)
+        , SQLBlob (serialize' value)
+        , maybe SQLNull (SQLBlob . serialize') datumHash
+        , SQLInteger (fromIntegral (unSlotNo slotNo))
+        ]
+    )

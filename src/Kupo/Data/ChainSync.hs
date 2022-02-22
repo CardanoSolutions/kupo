@@ -37,6 +37,7 @@ module Kupo.Data.ChainSync
       -- * Address
     , Address
     , addressFromBytes
+    , addressToBytes
     , isBootstrap
     , getPaymentPartBytes
     , getDelegationPartBytes
@@ -306,6 +307,10 @@ type Address crypto = Ledger.Addr crypto
 addressFromBytes :: Crypto crypto => ByteString -> Maybe (Address crypto)
 addressFromBytes = Ledger.deserialiseAddr
 {-# INLINEABLE addressFromBytes #-}
+
+addressToBytes :: Address crypto -> ByteString
+addressToBytes = Ledger.serialiseAddr
+{-# INLINEABLE addressToBytes #-}
 
 isBootstrap :: Address crypto -> Bool
 isBootstrap = \case

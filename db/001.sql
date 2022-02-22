@@ -2,20 +2,22 @@
 PRAGMA user_version = 1;
 
 CREATE TABLE IF NOT EXISTS addresses (
-  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-  address BLOB
+  payment BLOB NOT NULL,
+  delegation BLOB,
+  PRIMARY KEY (payment, delegation)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS addressById ON addresses(id);
-CREATE UNIQUE INDEX IF NOT EXISTS addressByAddress ON addresses(address);
+CREATE INDEX IF NOT EXISTS addressByPayment ON addresses(payment);
+CREATE INDEX IF NOT EXISTS addressByDelegation ON addresses(delegation);
+CREATE UNIQUE INDEX IF NOT EXISTS addressByPaymentAndDelegation ON addresses(payment, delegation);
 
 CREATE TABLE IF NOT EXISTS inputs (
-  output_reference BLOB PRIMARY KEY NOT NULL,
-  address INTEGER NOT NULL,
+  output_reference BLOB NOT NULL,
+  address BLOB NOT NULL,
   value BLOB NOT NULL,
   datum_hash BLOB,
   slot_no INTEGER NOT NULL,
-  FOREIGN KEY (address) REFERENCES addresses(id)
+  PRIMARY KEY (output_reference)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS inputByAddress ON inputs(address);
+CREATE INDEX IF NOT EXISTS inputsByAddress ON inputs(address);

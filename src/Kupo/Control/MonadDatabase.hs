@@ -2,6 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -12,8 +13,6 @@ module Kupo.Control.MonadDatabase
 
       -- * SQL Interface
     , Row (..)
-    , Reference (ConcreteReference)
-    , ReferenceKind (..)
     , SQLData (..)
     ) where
 
@@ -32,7 +31,6 @@ import Database.SQLite.Simple
     , executeMany
     , execute_
     , nextRow
-    , query
     , withConnection
     , withStatement
     , withTransaction
@@ -50,13 +48,16 @@ class Monad m => MonadDatabase (m :: Type -> Type) where
 
 data Database (m :: Type -> Type) = Database
     { insertMany
-        :: forall tableName referenceTableName.
-            ( KnownSymbol tableName
-            , KnownSymbol referenceTableName
-            )
-        => [Row tableName (Concrete referenceTableName)]
+        :: forall tableName. (IsTable tableName)
+        => [Row tableName]
         -> m ()
     }
+
+class KnownSymbol tableName => IsTable (tableName :: Symbol) where
+    numberOfColumns :: Int
+
+    tableName :: Query
+    tableName = fromString (symbolVal (Proxy @tableName))
 
 -- | Change the underlying 'Monad' of a 'Database' using a natural transformation.
 natDatabase :: (forall a. m a -> n a) -> Database m -> Database n
@@ -64,29 +65,11 @@ natDatabase nat Database{..} = Database
     { insertMany = nat . insertMany
     }
 
-data Row (tableName :: Symbol) (reference :: ReferenceKind) where
-    Row :: Reference reference -> [SQLData] -> Row tableName reference
+data Row (tableName :: Symbol) where
+    Row :: [SQLData] -> Row tableName
 
-instance ToRow (Row tableName Symbolic) where
-    toRow (Row (SymbolicReference ref) fields) =
-        SQLInteger ref : fields
-
-instance ToRow (Row tableName (Concrete any)) where
-    toRow (Row (ConcreteReference (_columnName, field)) _fields) =
-        [field]
-
-data ReferenceKind = Concrete Symbol | Symbolic
-
-data Reference (reference :: ReferenceKind) where
-    ConcreteReference
-        :: forall tableName. KnownSymbol tableName
-        => (ColumnName, SQLData)
-        -> Reference (Concrete tableName)
-    SymbolicReference
-        :: Int64
-        -> Reference Symbolic
-
-type ColumnName = String
+instance ToRow (Row tableName) where
+    toRow (Row fields) = fields
 
 --
 -- ReaderT
@@ -108,87 +91,45 @@ instance MonadDatabase IO where
 
 mkDatabase :: Connection -> Database IO
 mkDatabase conn = Database
-    { insertMany = insertMany' conn
+    { insertMany = safeInsertMany conn
     }
 
 --
 -- Helpers
 --
 
-insertMany'
-    :: forall tableName referenceTableName.
-        ( KnownSymbol tableName
-        , KnownSymbol referenceTableName
+safeInsertMany
+    :: forall tableName.
+        ( IsTable tableName
         )
     => Connection
-    -> [Row tableName (Concrete referenceTableName)]
+    -> [Row tableName]
     -> IO ()
-insertMany' conn rows
+safeInsertMany conn rows
     | length rows > limit = do
-        withTransaction conn $ do
-            insertReferences conn (take limit rows)
-            resolveReferences conn (take limit rows) >>= insertRows conn
-        insertMany' conn (drop limit rows)
+        let (front, rear) = splitAt (limit `div` (numberOfColumns @tableName)) rows
+        insertRows conn front
+        safeInsertMany conn rear
     | otherwise = do
-        withTransaction conn $ do
-            insertReferences conn rows
-            resolveReferences conn rows >>= insertRows conn
+        insertRows conn rows
   where
     -- NOTE:
-    -- There's a (non-configurable) limit of 999 values per query in SQLite. So,
-    -- this 199 actually comes from the number of columns of our largest table
-    -- (i.e. 5, so 199 < 999 / 5)
-    limit = 199
-
-insertReferences
-    :: forall tableName any.
-        ( KnownSymbol tableName
-        )
-    => Connection
-    -> [Row any (Concrete tableName)]
-    -> IO ()
-insertReferences conn = \case
-    [] -> pure ()
-    rows@((Row (ConcreteReference (fromString -> columnName, _)) _fields):_rest) ->
-        let
-            tableName = fromString (symbolVal (Proxy @tableName))
-            values = mkPreparedStatement 1
-            qry = "INSERT OR IGNORE INTO " <> tableName <> "(" <> columnName <> ") VALUES " <> values
-         in
-            executeMany conn qry rows
-
-resolveReferences
-    :: forall tableName any.
-        ( KnownSymbol tableName
-        )
-    => Connection
-    -> [Row any (Concrete tableName)]
-    -> IO [Row any Symbolic]
-resolveReferences conn = \case
-    [] -> pure []
-    rows@((Row (ConcreteReference (fromString -> columnName, _)) _fields):_rest) -> do
-        let
-            tableName = fromString (symbolVal (Proxy @tableName))
-            values = mkPreparedStatement (length rows)
-            qry = "SELECT id FROM " <> tableName <> " WHERE " <> columnName <> " IN " <> values
-         in do
-            ids <- query conn qry $ (\(Row (ConcreteReference (_, f)) _) -> f) <$> rows
-            pure $ zipWith (\(Only i) (Row _ fields) -> Row (SymbolicReference i) fields) ids rows
+    -- There's a (non-configurable) limit of 999 values per query in SQLite.
+    limit = 999
 
 insertRows
     :: forall tableName.
-        ( KnownSymbol tableName
+        ( IsTable tableName
         )
     => Connection
-    -> [Row tableName Symbolic]
+    -> [Row tableName]
     -> IO ()
 insertRows conn = \case
     [] -> pure ()
     rows@(h:_) ->
         let
-            tableName = fromString (symbolVal (Proxy @tableName))
             values = mkPreparedStatement (length (toRow h))
-            qry = "INSERT OR IGNORE INTO " <> tableName <> " VALUES " <> values
+            qry = "INSERT OR IGNORE INTO " <> tableName @tableName <> " VALUES " <> values
          in
             executeMany conn qry rows
 
@@ -199,6 +140,11 @@ mkPreparedStatement n =
 --
 -- Migrations
 --
+
+instance IsTable "inputs" where
+    numberOfColumns = 5
+instance IsTable "addresses" where
+    numberOfColumns = 2
 
 type MigrationRevision = Int
 type Migration = [Query]
