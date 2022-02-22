@@ -18,7 +18,7 @@ import Kupo.App.Mailbox
 import Kupo.Configuration
     ( StandardCrypto )
 import Kupo.Control.MonadDatabase
-    ( Database (..), Row (..), SQLData (..) )
+    ( Database (..), MonadDatabase (..), Row (..), SQLData (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.ChainSync
@@ -56,22 +56,23 @@ consumer
     :: forall m.
         ( MonadSTM m
         , MonadIO m
+        , Monad (Transaction m)
         )
     => Mailbox m (Block StandardCrypto)
     -> [Pattern StandardCrypto]
     -> Database m
     -> m ()
-consumer mailbox patterns Database{insertMany} = forever $ do
+consumer mailbox patterns Database{insertMany, runTransaction} = forever $ do
     blks <- atomically (flushMailbox mailbox)
     let (addresses, inputs) = unzip $ concatMap (matchBlock resultToRow patterns) blks
     let len = length inputs
     when (len > 0) $ do
-        liftIO $ putStrLn $ "Inserting " <> show len <> " UTXO entries."
+        liftIO $ putStrLn $ "Inserting " <> show len <> " UTXO entries from " <> show (length blks) <> " blocks."
         let maxSlot = (\(Row fields) -> show (Prelude.last fields)) $ Prelude.last inputs
         liftIO $ putStrLn $ "Last known slot: " <> maxSlot
-    -- TODO: TRANSACTION
-    insertMany inputs
-    insertMany addresses
+    runTransaction $ do
+        insertMany inputs
+        insertMany addresses
 
 --
 -- SQL interface

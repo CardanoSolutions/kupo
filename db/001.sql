@@ -1,15 +1,5 @@
-/* Used for tracking migrations */
 PRAGMA user_version = 1;
-
-CREATE TABLE IF NOT EXISTS addresses (
-  payment BLOB NOT NULL,
-  delegation BLOB,
-  PRIMARY KEY (payment, delegation)
-);
-
-CREATE INDEX IF NOT EXISTS addressByPayment ON addresses(payment);
-CREATE INDEX IF NOT EXISTS addressByDelegation ON addresses(delegation);
-CREATE UNIQUE INDEX IF NOT EXISTS addressByPaymentAndDelegation ON addresses(payment, delegation);
+PRAGMA journal_mode = WAL;
 
 CREATE TABLE IF NOT EXISTS inputs (
   output_reference BLOB NOT NULL,
@@ -21,3 +11,18 @@ CREATE TABLE IF NOT EXISTS inputs (
 );
 
 CREATE INDEX IF NOT EXISTS inputsByAddress ON inputs(address);
+
+CREATE TABLE IF NOT EXISTS addresses (
+  payment BLOB NOT NULL,
+  delegation BLOB
+);
+
+CREATE INDEX IF NOT EXISTS addressByPayment ON addresses(payment);
+CREATE INDEX IF NOT EXISTS addressByDelegation ON addresses(delegation);
+CREATE UNIQUE INDEX IF NOT EXISTS addressByPaymentAndDelegation ON addresses(payment, delegation);
+
+CREATE TABLE IF NOT EXISTS checkpoints (
+  slot_no INTEGER NOT NULL,
+  header_hash BLOB NOT NULL,
+  PRIMARY KEY (slot_no)
+);

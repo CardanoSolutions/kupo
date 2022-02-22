@@ -3,6 +3,7 @@
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -28,7 +29,7 @@ import Database.SQLite.Simple
     , Query (..)
     , SQLData (..)
     , ToRow (..)
-    , executeMany
+    , execute
     , execute_
     , nextRow
     , withConnection
@@ -40,7 +41,8 @@ import GHC.TypeLits
 
 import qualified Data.Text as T
 
-class Monad m => MonadDatabase (m :: Type -> Type) where
+class (Monad m, Monad (Transaction m)) => MonadDatabase (m :: Type -> Type) where
+    type Transaction m :: (Type -> Type)
     withDatabase
         :: FilePath
         -> (Database m -> m a)
@@ -48,21 +50,13 @@ class Monad m => MonadDatabase (m :: Type -> Type) where
 
 data Database (m :: Type -> Type) = Database
     { insertMany
-        :: forall tableName. (IsTable tableName)
+        :: forall tableName. (KnownSymbol tableName)
         => [Row tableName]
+        -> Transaction m ()
+
+    , runTransaction
+        :: Transaction m ()
         -> m ()
-    }
-
-class KnownSymbol tableName => IsTable (tableName :: Symbol) where
-    numberOfColumns :: Int
-
-    tableName :: Query
-    tableName = fromString (symbolVal (Proxy @tableName))
-
--- | Change the underlying 'Monad' of a 'Database' using a natural transformation.
-natDatabase :: (forall a. m a -> n a) -> Database m -> Database n
-natDatabase nat Database{..} = Database
-    { insertMany = nat . insertMany
     }
 
 data Row (tableName :: Symbol) where
@@ -72,18 +66,14 @@ instance ToRow (Row tableName) where
     toRow (Row fields) = fields
 
 --
--- ReaderT
---
-
-instance MonadDatabase m => MonadDatabase (ReaderT r m) where
-    withDatabase filePath action = ReaderT $ \r ->
-        withDatabase filePath ((`runReaderT` r) . action . natDatabase @m lift)
-
---
 -- IO
 --
 
+newtype WrappedIO a = WrappedIO { runIO :: IO a }
+    deriving newtype (Functor, Applicative, Monad)
+
 instance MonadDatabase IO where
+    type Transaction IO = WrappedIO
     withDatabase filePath action =
         withConnection filePath $ \conn -> do
             databaseVersion conn >>= runMigrations conn
@@ -91,47 +81,28 @@ instance MonadDatabase IO where
 
 mkDatabase :: Connection -> Database IO
 mkDatabase conn = Database
-    { insertMany = safeInsertMany conn
+    { insertMany = WrappedIO . mapM_ (insertRow conn)
+    , runTransaction = withTransaction conn . runIO
     }
+
+insertRow
+    :: forall tableName.
+        ( KnownSymbol tableName
+        )
+    => Connection
+    -> Row tableName
+    -> IO ()
+insertRow conn r =
+    let
+        tableName = fromString (symbolVal (Proxy @tableName))
+        values = mkPreparedStatement (length (toRow r))
+        qry = "INSERT OR IGNORE INTO " <> tableName <> " VALUES " <> values
+     in
+        execute conn qry r
 
 --
 -- Helpers
 --
-
-safeInsertMany
-    :: forall tableName.
-        ( IsTable tableName
-        )
-    => Connection
-    -> [Row tableName]
-    -> IO ()
-safeInsertMany conn rows
-    | length rows > limit = do
-        let (front, rear) = splitAt (limit `div` (numberOfColumns @tableName)) rows
-        insertRows conn front
-        safeInsertMany conn rear
-    | otherwise = do
-        insertRows conn rows
-  where
-    -- NOTE:
-    -- There's a (non-configurable) limit of 999 values per query in SQLite.
-    limit = 999
-
-insertRows
-    :: forall tableName.
-        ( IsTable tableName
-        )
-    => Connection
-    -> [Row tableName]
-    -> IO ()
-insertRows conn = \case
-    [] -> pure ()
-    rows@(h:_) ->
-        let
-            values = mkPreparedStatement (length (toRow h))
-            qry = "INSERT OR IGNORE INTO " <> tableName @tableName <> " VALUES " <> values
-         in
-            executeMany conn qry rows
 
 mkPreparedStatement :: Int -> Query
 mkPreparedStatement n =
@@ -140,11 +111,6 @@ mkPreparedStatement n =
 --
 -- Migrations
 --
-
-instance IsTable "inputs" where
-    numberOfColumns = 5
-instance IsTable "addresses" where
-    numberOfColumns = 2
 
 type MigrationRevision = Int
 type Migration = [Query]

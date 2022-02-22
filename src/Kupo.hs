@@ -97,7 +97,7 @@ kupo = hijackSigTerm *> do
              in mkChainSyncClient (producer mailbox) points
 
     liftIO $ withDatabase (workDir </> "kupo.sqlite3") $ \db -> do
-        mailbox <- atomically (newMailbox 100)
+        mailbox <- atomically (newMailbox 1000)
         concurrently_
             (chainSyncServer mailbox)
             (consumer mailbox patterns db)
