@@ -41,8 +41,8 @@ import GHC.TypeLits
 
 import qualified Data.Text as T
 
-class (Monad m, Monad (Transaction m)) => MonadDatabase (m :: Type -> Type) where
-    type Transaction m :: (Type -> Type)
+class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) where
+    type DBTransaction m :: (Type -> Type)
     withDatabase
         :: FilePath
         -> (Database m -> m a)
@@ -52,10 +52,16 @@ data Database (m :: Type -> Type) = Database
     { insertMany
         :: forall tableName. (KnownSymbol tableName)
         => [Row tableName]
-        -> Transaction m ()
+        -> DBTransaction m ()
+
+    , deleteWhere
+        :: forall tableName. (KnownSymbol tableName)
+        => Query
+        -> Row tableName
+        -> DBTransaction m ()
 
     , runTransaction
-        :: Transaction m ()
+        :: DBTransaction m ()
         -> m ()
     }
 
@@ -73,7 +79,7 @@ newtype WrappedIO a = WrappedIO { runIO :: IO a }
     deriving newtype (Functor, Applicative, Monad)
 
 instance MonadDatabase IO where
-    type Transaction IO = WrappedIO
+    type DBTransaction IO = WrappedIO
     withDatabase filePath action =
         withConnection filePath $ \conn -> do
             databaseVersion conn >>= runMigrations conn
@@ -82,6 +88,7 @@ instance MonadDatabase IO where
 mkDatabase :: Connection -> Database IO
 mkDatabase conn = Database
     { insertMany = WrappedIO . mapM_ (insertRow conn)
+    , deleteWhere = \condition -> WrappedIO . deleteRow conn condition
     , runTransaction = withTransaction conn . runIO
     }
 
@@ -97,6 +104,21 @@ insertRow conn r =
         tableName = fromString (symbolVal (Proxy @tableName))
         values = mkPreparedStatement (length (toRow r))
         qry = "INSERT OR IGNORE INTO " <> tableName <> " VALUES " <> values
+     in
+        execute conn qry r
+
+deleteRow
+    :: forall tableName.
+        ( KnownSymbol tableName
+        )
+    => Connection
+    -> Query
+    -> Row tableName
+    -> IO ()
+deleteRow conn condition r =
+    let
+        tableName = fromString (symbolVal (Proxy @tableName))
+        qry = "DELETE FROM " <> tableName <> " WHERE " <> condition
      in
         execute conn qry r
 
@@ -131,7 +153,8 @@ runMigrations conn currentVersion = do
         putStrLn $ "No migration to run; version=" <> show currentVersion
     else do
         putStrLn $ "Running " <> show (length missingMigrations) <> " migration(s) from version=" <> show currentVersion
-        void $ withTransaction conn $ traverse (traverse (execute_ conn)) missingMigrations
+        void $ withTransaction conn $
+            traverse (traverse (execute_ conn)) missingMigrations
 
 migrations :: [Migration]
 migrations =

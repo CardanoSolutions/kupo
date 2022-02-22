@@ -21,8 +21,6 @@ import Kupo.Prelude
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 
--- Mailbox
-
 type Mailbox m a = TBQueue m a
 
 newMailbox
@@ -34,8 +32,6 @@ newMailbox =
     newTBQueue
 {-# INLINEABLE newMailbox #-}
 
--- Producer
-
 putMailbox
     :: (MonadSTM m)
     => Mailbox m a
@@ -45,12 +41,12 @@ putMailbox =
     writeTBQueue
 {-# INLINEABLE putMailbox #-}
 
--- Consumer
-
 flushMailbox
     :: (MonadSTM m)
     => Mailbox m a
-    -> STM m [a]
-flushMailbox =
-    flushTBQueue
+    -> STM m (NonEmpty a)
+flushMailbox q = do
+    h <- readTBQueue q
+    rest <- flushTBQueue q
+    pure (h :| rest)
 {-# INLINEABLE flushMailbox #-}

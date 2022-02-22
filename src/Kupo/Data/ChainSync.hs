@@ -15,6 +15,7 @@ module Kupo.Data.ChainSync
     , IsBlock
     , foldBlock
     , getSlotNo
+    , getHeaderHash
 
       -- * Transaction
     , Transaction
@@ -89,6 +90,10 @@ import Data.Maybe.Strict
     ( StrictMaybe (..), strictMaybeToMaybe )
 import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
+import Ouroboros.Consensus.Block
+    ( ConvertRawHash (..) )
+import Ouroboros.Consensus.Byron.Ledger.Block
+    ( ByronBlock )
 import Ouroboros.Consensus.Cardano.Block
     ( CardanoBlock, HardForkBlock (..) )
 import Ouroboros.Consensus.Shelley.Ledger.Block
@@ -130,7 +135,9 @@ type IsBlock block =
     )
 
 foldBlock
-    :: forall crypto b. (Crypto crypto)
+    :: forall crypto b.
+        ( Crypto crypto
+        )
     => (Transaction crypto -> b -> b)
     -> b
     -> Block crypto
@@ -148,7 +155,9 @@ foldBlock fn b = \case
         foldr (fn . TransactionAlonzo) b (Ledger.Alonzo.txSeqTxns txs)
 
 getSlotNo
-    :: PraosCrypto crypto
+    :: forall crypto.
+        ( PraosCrypto crypto
+        )
     => Block crypto
     -> SlotNo
 getSlotNo = \case
@@ -162,6 +171,29 @@ getSlotNo = \case
         headerFieldSlot (getHeaderFields blk)
     BlockAlonzo blk ->
         headerFieldSlot (getHeaderFields blk)
+
+getHeaderHash
+    :: forall crypto.
+        ( PraosCrypto crypto
+        )
+    => Block crypto
+    -> ByteString
+getHeaderHash = \case
+    BlockByron blk ->
+        let proxy = Proxy @ByronBlock
+         in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
+    BlockShelley blk ->
+        let proxy = Proxy @(ShelleyBlock (ShelleyEra crypto))
+         in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
+    BlockAllegra blk ->
+        let proxy = Proxy @(ShelleyBlock (AllegraEra crypto))
+         in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
+    BlockMary blk ->
+        let proxy = Proxy @(ShelleyBlock (MaryEra crypto))
+         in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
+    BlockAlonzo blk ->
+        let proxy = Proxy @(ShelleyBlock (AlonzoEra crypto))
+         in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
 
 -- Transaction
 

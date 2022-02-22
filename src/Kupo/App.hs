@@ -26,12 +26,12 @@ import Kupo.Data.ChainSync
     , SlotNo (..)
     , addressToBytes
     , getDelegationPartBytes
+    , getHeaderHash
     , getPaymentPartBytes
+    , getSlotNo
     )
 import Kupo.Data.Pattern
     ( Pattern, Result (..), matchBlock )
-
-import qualified Prelude
 
 --
 -- Producer / Consumer
@@ -56,27 +56,53 @@ consumer
     :: forall m.
         ( MonadSTM m
         , MonadIO m
-        , Monad (Transaction m)
+        , Monad (DBTransaction m)
         )
     => Mailbox m (Block StandardCrypto)
     -> [Pattern StandardCrypto]
     -> Database m
     -> m ()
-consumer mailbox patterns Database{insertMany, runTransaction} = forever $ do
+consumer mailbox patterns Database{..} = forever $ do
     blks <- atomically (flushMailbox mailbox)
-    let (addresses, inputs) = unzip $ concatMap (matchBlock resultToRow patterns) blks
-    let len = length inputs
-    when (len > 0) $ do
-        liftIO $ putStrLn $ "Inserting " <> show len <> " UTXO entries from " <> show (length blks) <> " blocks."
-        let maxSlot = (\(Row fields) -> show (Prelude.last fields)) $ Prelude.last inputs
-        liftIO $ putStrLn $ "Last known slot: " <> maxSlot
+    let lastKnownBlk = last blks
+    let (addresses, inputs) = unzip $ concatMap
+            (matchBlock resultToRow patterns)
+            blks
+    liftIO $ putStrLn $ "Last known slot: " <> show (getSlotNo lastKnownBlk)
+    let rollbackFrontier = getRollbackFrontier lastKnownBlk
     runTransaction $ do
+        insertMany [blockToRow lastKnownBlk]
+        deleteWhere "slot_no < ?" (slotToRow rollbackFrontier)
         insertMany inputs
         insertMany addresses
+
+ -- TODO: 43200 - k/f, we should pull k and f from the protocol params!
+ -- Otherwise, this may start to be insufficient if the values of `k` or `f`
+ -- would change in the future.
+getRollbackFrontier
+    :: Block StandardCrypto
+    -> SlotNo
+getRollbackFrontier blk =
+    getSlotNo blk - 43200
 
 --
 -- SQL interface
 --
+
+blockToRow
+    :: Block StandardCrypto
+    -> Row "checkpoints"
+blockToRow blk =
+    let Row fields = slotToRow (getSlotNo blk)
+     in Row (SQLBlob (getHeaderHash blk) : fields)
+
+slotToRow
+    :: SlotNo
+    -> Row "checkpoints"
+slotToRow sl =
+    Row
+        [ SQLInteger (fromIntegral (unSlotNo sl))
+        ]
 
 resultToRow
     :: Result StandardCrypto

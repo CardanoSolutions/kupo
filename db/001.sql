@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS addressByDelegation ON addresses(delegation);
 CREATE UNIQUE INDEX IF NOT EXISTS addressByPaymentAndDelegation ON addresses(payment, delegation);
 
 CREATE TABLE IF NOT EXISTS checkpoints (
-  slot_no INTEGER NOT NULL,
   header_hash BLOB NOT NULL,
+  slot_no INTEGER NOT NULL,
   PRIMARY KEY (slot_no)
 );
