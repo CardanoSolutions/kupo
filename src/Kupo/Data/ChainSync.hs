@@ -12,7 +12,6 @@ module Kupo.Data.ChainSync
 
       -- * Block
     , Block
-    , IsBlock
     , foldBlock
     , getSlotNo
     , getHeaderHash
@@ -59,6 +58,7 @@ module Kupo.Data.ChainSync
     , Point (..)
     , pattern GenesisPoint
     , pattern BlockPoint
+    , unsafeMkPoint
 
       -- * Tip
     , Tip (..)
@@ -67,7 +67,12 @@ module Kupo.Data.ChainSync
 import Kupo.Prelude
 
 import Cardano.Crypto.Hash
-    ( Blake2b_224, Blake2b_256, HashAlgorithm (..), sizeHash )
+    ( Blake2b_224
+    , Blake2b_256
+    , HashAlgorithm (..)
+    , pattern UnsafeHash
+    , sizeHash
+    )
 import Cardano.Ledger.Allegra
     ( AllegraEra )
 import Cardano.Ledger.Alonzo
@@ -96,8 +101,10 @@ import Ouroboros.Consensus.Byron.Ledger.Block
     ( ByronBlock )
 import Ouroboros.Consensus.Cardano.Block
     ( CardanoBlock, HardForkBlock (..) )
+import Ouroboros.Consensus.HardFork.Combinator.AcrossEras
+    ( OneEraHash (..) )
 import Ouroboros.Consensus.Shelley.Ledger.Block
-    ( ShelleyBlock (..) )
+    ( ShelleyBlock (..), ShelleyHash (..) )
 import Ouroboros.Network.Block
     ( pattern BlockPoint
     , pattern GenesisPoint
@@ -105,7 +112,6 @@ import Ouroboros.Network.Block
     , HeaderFields (..)
     , HeaderHash
     , Point (..)
-    , StandardHash
     , Tip (..)
     )
 
@@ -119,6 +125,7 @@ import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Credential as Ledger
 import qualified Cardano.Ledger.Era as Ledger.Era
 import qualified Cardano.Ledger.Mary.Value as Ledger
+import qualified Cardano.Ledger.Shelley.API as Ledger
 import qualified Cardano.Ledger.Shelley.BlockChain as Ledger.Shelley
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
 import qualified Cardano.Ledger.ShelleyMA.TxBody as Ledger.MaryAllegra
@@ -128,11 +135,6 @@ import qualified Cardano.Ledger.TxIn as Ledger
 
 type Block crypto =
     CardanoBlock crypto
-
-type IsBlock block =
-    ( StandardHash block
-    , Typeable block
-    )
 
 foldBlock
     :: forall crypto b.
@@ -369,6 +371,24 @@ getDelegationPartBytes = \case
         Nothing
     Ledger.AddrBootstrap{} ->
         Nothing
+
+-- Point
+
+unsafeMkPoint
+    :: forall crypto.
+        ( PraosCrypto crypto
+        )
+    => ByteString
+    -> Word64
+    -> Point (Block crypto)
+unsafeMkPoint headerHash slotNo =
+    BlockPoint
+        (SlotNo slotNo)
+        (fromShelleyHash $ fromShortRawHash proxy $ toShort headerHash)
+  where
+    proxy = Proxy @(ShelleyBlock (AlonzoEra crypto))
+    fromShelleyHash (Ledger.unHashHeader . unShelleyHash -> UnsafeHash h) =
+        coerce h
 
 -- Hash
 

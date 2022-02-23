@@ -28,6 +28,7 @@ import Database.SQLite.Simple
     , ToRow (..)
     , execute
     , execute_
+    , fold_
     , nextRow
     , withConnection
     , withStatement
@@ -74,9 +75,15 @@ data Database (m :: Type -> Type) = Database
         -> Word64     -- slot_no
         -> DBTransaction m ()
 
+    , listCheckpointsDesc
+        :: forall checkpoint. ()
+        => (ByteString -> Word64 -> checkpoint)
+        -> DBTransaction m [checkpoint]
+
     , runTransaction
-        :: DBTransaction m ()
-        -> m ()
+        :: forall a. ()
+        => DBTransaction m a
+        -> m a
     }
 
 --
@@ -119,9 +126,15 @@ mkDatabase (toInteger -> longestRollback) conn = Database
             [ SQLBlob headerHash
             , SQLInteger (fromIntegral slotNo)
             ]
-        deleteWhere @"checkpoints" conn "slot_no < ?"
+        execute conn "DELETE FROM checkpoints WHERE slot_no < ?"
             [ SQLInteger (fromIntegral (slotNo - longestRollback))
             ]
+
+    , listCheckpointsDesc = \mk -> WrappedIO $ do
+        -- NOTE: fetching in *ASC*ending order because the list construction
+        -- reverses it,
+        fold_ conn "SELECT * FROM checkpoints ORDER BY slot_no ASC" []
+            $ \xs (headerHash, slotNo) -> pure ((mk headerHash slotNo) : xs)
 
     , runTransaction =
         withTransaction conn . runIO
@@ -139,21 +152,6 @@ insertRow conn r =
         tableName = fromString (symbolVal (Proxy @tableName))
         values = mkPreparedStatement (length (toRow r))
         qry = "INSERT OR IGNORE INTO " <> tableName <> " VALUES " <> values
-     in
-        execute conn qry r
-
-deleteWhere
-    :: forall tableName.
-        ( KnownSymbol tableName
-        )
-    => Connection
-    -> Query
-    -> [SQLData]
-    -> IO ()
-deleteWhere conn condition r =
-    let
-        tableName = fromString (symbolVal (Proxy @tableName))
-        qry = "DELETE FROM " <> tableName <> " WHERE " <> condition
      in
         execute conn qry r
 

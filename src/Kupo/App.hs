@@ -5,7 +5,8 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App
-    ( producer
+    ( startOrResume
+    , producer
     , consumer
     ) where
 
@@ -23,15 +24,45 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.ChainSync
     ( Block
+    , Point
     , SlotNo (..)
     , addressToBytes
     , getDelegationPartBytes
     , getHeaderHash
     , getPaymentPartBytes
     , getSlotNo
+    , unsafeMkPoint
     )
 import Kupo.Data.Pattern
     ( Pattern, Result (..), matchBlock )
+
+--
+-- Application Bootstrapping
+--
+
+startOrResume
+    :: forall m.
+        ( MonadFail m
+        , MonadIO m  -- TODO logger
+        )
+    => Database m
+    -> Maybe (Point (Block StandardCrypto))
+    -> m [Point (Block StandardCrypto)]
+startOrResume Database{..} since = do
+    checkpoints <- runTransaction (listCheckpointsDesc unsafeMkPoint)
+    case (since, checkpoints) of
+        (Nothing, []) ->
+            -- TODO: Use logging instead.
+            fail "No starting points provided and found no previous checkpoints!"
+        (Just{}, _:_) ->
+            -- TODO: Use logging instead.
+            fail "--since provided but found existing database checkpoints!"
+        (Nothing, pts) -> do
+            -- TODO: Use logging instead.
+            liftIO $ putStrLn $ "Found " <> show (length pts) <> " likely checkpoints."
+            pure pts
+        (Just pt, []) ->
+            pure [pt]
 
 --
 -- Producer / Consumer

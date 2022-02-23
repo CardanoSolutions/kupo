@@ -13,9 +13,13 @@ import Kupo.Prelude
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.ChainSync
-    ( IsBlock, Point (..), Tip (..) )
+    ( Point (..), SlotNo, Tip (..) )
 import Network.TypedProtocol.Pipelined
     ( Nat (..), natToInt )
+import Ouroboros.Network.Block
+    ( getTipSlotNo, pointSlot )
+import Ouroboros.Network.Point
+    ( WithOrigin )
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     ( ChainSyncClientPipelined (..)
     , ClientPipelinedStIdle (..)
@@ -25,13 +29,13 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
 
 -- | Exception thrown when creating a chain-sync client from an invalid list of
 -- points.
-data IntersectionNotFoundException block = IntersectionNotFoundException
-    { points :: [Point block]
+data IntersectionNotFoundException = IntersectionNotFoundException
+    { points :: [WithOrigin SlotNo]
         -- ^ Provided points for intersection.
-    , tip :: Tip block
+    , tip :: WithOrigin SlotNo
         -- ^ Current known tip of the chain.
     } deriving (Show)
-instance (IsBlock block) => Exception (IntersectionNotFoundException block)
+instance Exception IntersectionNotFoundException
 
 -- | A message handler for the chain-sync client. Messages are guaranteed (by
 -- the protocol) to arrive in order.
@@ -45,20 +49,20 @@ data ChainSyncHandler m block = ChainSyncHandler
 mkChainSyncClient
     :: forall m block.
         ( MonadThrow m
-        , IsBlock block
         )
     => ChainSyncHandler m block
     -> [Point block]
     -> ChainSyncClientPipelined block (Point block) (Tip block) m ()
-mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} points =
-    ChainSyncClientPipelined (pure $ SendMsgFindIntersect points clientStIntersect)
+mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts =
+    ChainSyncClientPipelined (pure $ SendMsgFindIntersect pts clientStIntersect)
   where
     clientStIntersect
         :: ClientPipelinedStIntersect block (Point block) (Tip block) m ()
     clientStIntersect = ClientPipelinedStIntersect
         { recvMsgIntersectFound = \_point _tip -> do
             pure $ clientStIdle Zero
-        , recvMsgIntersectNotFound = \tip -> do
+        , recvMsgIntersectNotFound = \(getTipSlotNo -> tip) -> do
+            let points = pointSlot <$> pts
             throwIO $ IntersectionNotFoundException{points,tip}
         }
 

@@ -27,6 +27,8 @@ import Ouroboros.Consensus.Cardano
     ( CardanoBlock )
 import Ouroboros.Consensus.Cardano.Block
     ( CodecConfig (..) )
+import Ouroboros.Consensus.HardFork.Combinator.Block
+    ()
 import Ouroboros.Consensus.Network.NodeToClient
     ( ClientCodecs, Codecs' (..), clientCodecs )
 import Ouroboros.Consensus.Node.NetworkProtocolVersion
@@ -34,7 +36,7 @@ import Ouroboros.Consensus.Node.NetworkProtocolVersion
 import Ouroboros.Consensus.Shelley.Ledger.Config
     ( CodecConfig (..) )
 import Ouroboros.Network.Block
-    ( Point (..), Tip (..) )
+    ( Point (..), StandardHash, Tip (..) )
 import Ouroboros.Network.Driver.Simple
     ( runPipelinedPeer )
 import Ouroboros.Network.Magic
@@ -63,12 +65,18 @@ import Ouroboros.Network.Protocol.Handshake.Version
 class MonadOuroboros (m :: Type -> Type) where
     type Block m :: Type
     withChainSyncServer
-        :: [NodeToClientVersion]
+        :: IsBlock (Block m)
+        => [NodeToClientVersion]
         -> NetworkMagic
         -> EpochSlots
         -> FilePath
         -> ChainSyncClientPipelined (Block m) (Point (Block m)) (Tip (Block m)) IO ()
         -> m ()
+
+type IsBlock block =
+    ( StandardHash block
+    , Typeable block
+    )
 
 instance MonadOuroboros IO where
     type Block IO = CardanoBlock StandardCrypto

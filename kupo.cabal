@@ -38,6 +38,7 @@ library
       Kupo.App.Mailbox
       Kupo.Configuration
       Kupo.Control.MonadAsync
+      Kupo.Control.MonadCatch
       Kupo.Control.MonadDatabase
       Kupo.Control.MonadDelay
       Kupo.Control.MonadOuroboros
