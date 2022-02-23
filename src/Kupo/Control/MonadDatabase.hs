@@ -11,10 +11,7 @@ module Kupo.Control.MonadDatabase
     ( -- * Database DSL
       MonadDatabase (..)
     , Database (..)
-
-      -- * SQL Interface
-    , Row (..)
-    , SQLData (..)
+    , LongestRollback (..)
     ) where
 
 import Kupo.Prelude
@@ -37,39 +34,50 @@ import Database.SQLite.Simple
     , withTransaction
     )
 import GHC.TypeLits
-    ( KnownSymbol, Symbol, symbolVal )
+    ( KnownSymbol, symbolVal )
 
 import qualified Data.Text as T
+
 
 class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) where
     type DBTransaction m :: (Type -> Type)
     withDatabase
-        :: FilePath
+        :: LongestRollback
+        -> FilePath
         -> (Database m -> m a)
         -> m a
 
+newtype LongestRollback = LongestRollback
+    { getLongestRollback :: Word64
+    } deriving newtype (Integral, Real, Num, Enum, Ord, Eq)
+
 data Database (m :: Type -> Type) = Database
-    { insertMany
-        :: forall tableName. (KnownSymbol tableName)
-        => [Row tableName]
+    { insertInputs
+        :: [ ( ByteString       -- output_reference
+             , ByteString       -- address
+             , ByteString       -- value
+             , Maybe ByteString -- datum_hash
+             , Word64           -- slot_no
+             )
+           ]
         -> DBTransaction m ()
 
-    , deleteWhere
-        :: forall tableName. (KnownSymbol tableName)
-        => Query
-        -> Row tableName
+    , insertAddresses
+        :: [ ( ByteString       -- payment
+             , Maybe ByteString -- delegation
+             )
+           ]
+        -> DBTransaction m ()
+
+    , insertCheckpoint
+        :: ByteString -- header_hash
+        -> Word64     -- slot_no
         -> DBTransaction m ()
 
     , runTransaction
         :: DBTransaction m ()
         -> m ()
     }
-
-data Row (tableName :: Symbol) where
-    Row :: [SQLData] -> Row tableName
-
-instance ToRow (Row tableName) where
-    toRow (Row fields) = fields
 
 --
 -- IO
@@ -80,16 +88,43 @@ newtype WrappedIO a = WrappedIO { runIO :: IO a }
 
 instance MonadDatabase IO where
     type DBTransaction IO = WrappedIO
-    withDatabase filePath action =
+    withDatabase k filePath action =
         withConnection filePath $ \conn -> do
             databaseVersion conn >>= runMigrations conn
-            action (mkDatabase conn)
+            action (mkDatabase k conn)
 
-mkDatabase :: Connection -> Database IO
-mkDatabase conn = Database
-    { insertMany = WrappedIO . mapM_ (insertRow conn)
-    , deleteWhere = \condition -> WrappedIO . deleteRow conn condition
-    , runTransaction = withTransaction conn . runIO
+mkDatabase :: LongestRollback -> Connection -> Database IO
+mkDatabase (toInteger -> longestRollback) conn = Database
+    { insertInputs = WrappedIO . mapM_
+        (\(outputReference, address, value, datumHash, fromIntegral -> slotNo) ->
+            insertRow @"inputs" conn
+                [ SQLBlob outputReference
+                , SQLBlob address
+                , SQLBlob value
+                , maybe SQLNull SQLBlob datumHash
+                , SQLInteger slotNo
+                ]
+        )
+
+    , insertAddresses = WrappedIO . mapM_
+        (\(payment, delegation) ->
+            insertRow @"addresses" conn
+                [ SQLBlob payment
+                , maybe SQLNull SQLBlob delegation
+                ]
+        )
+
+    , insertCheckpoint = \headerHash (toInteger -> slotNo) -> WrappedIO $ do
+        insertRow @"checkpoints" conn
+            [ SQLBlob headerHash
+            , SQLInteger (fromIntegral slotNo)
+            ]
+        deleteWhere @"checkpoints" conn "slot_no < ?"
+            [ SQLInteger (fromIntegral (slotNo - longestRollback))
+            ]
+
+    , runTransaction =
+        withTransaction conn . runIO
     }
 
 insertRow
@@ -97,7 +132,7 @@ insertRow
         ( KnownSymbol tableName
         )
     => Connection
-    -> Row tableName
+    -> [SQLData]
     -> IO ()
 insertRow conn r =
     let
@@ -107,15 +142,15 @@ insertRow conn r =
      in
         execute conn qry r
 
-deleteRow
+deleteWhere
     :: forall tableName.
         ( KnownSymbol tableName
         )
     => Connection
     -> Query
-    -> Row tableName
+    -> [SQLData]
     -> IO ()
-deleteRow conn condition r =
+deleteWhere conn condition r =
     let
         tableName = fromString (symbolVal (Proxy @tableName))
         qry = "DELETE FROM " <> tableName <> " WHERE " <> condition

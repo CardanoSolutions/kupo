@@ -18,7 +18,7 @@ import Kupo.App.Mailbox
 import Kupo.Configuration
     ( StandardCrypto )
 import Kupo.Control.MonadDatabase
-    ( Database (..), MonadDatabase (..), Row (..), SQLData (..) )
+    ( Database (..), MonadDatabase (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.ChainSync
@@ -65,58 +65,33 @@ consumer
 consumer mailbox patterns Database{..} = forever $ do
     blks <- atomically (flushMailbox mailbox)
     let lastKnownBlk = last blks
+    let lastKnownSlot = getSlotNo lastKnownBlk
     let (addresses, inputs) = unzip $ concatMap
             (matchBlock resultToRow patterns)
             blks
-    liftIO $ putStrLn $ "Last known slot: " <> show (getSlotNo lastKnownBlk)
-    let rollbackFrontier = getRollbackFrontier lastKnownBlk
+    liftIO $ putStrLn $ "Last known slot: " <> show lastKnownSlot
     runTransaction $ do
-        insertMany [blockToRow lastKnownBlk]
-        deleteWhere "slot_no < ?" (slotToRow rollbackFrontier)
-        insertMany inputs
-        insertMany addresses
-
- -- TODO: 43200 - k/f, we should pull k and f from the protocol params!
- -- Otherwise, this may start to be insufficient if the values of `k` or `f`
- -- would change in the future.
-getRollbackFrontier
-    :: Block StandardCrypto
-    -> SlotNo
-getRollbackFrontier blk =
-    getSlotNo blk - 43200
+        insertCheckpoint (getHeaderHash lastKnownBlk) (unSlotNo lastKnownSlot)
+        insertInputs inputs
+        insertAddresses addresses
 
 --
 -- SQL interface
 --
 
-blockToRow
-    :: Block StandardCrypto
-    -> Row "checkpoints"
-blockToRow blk =
-    let Row fields = slotToRow (getSlotNo blk)
-     in Row (SQLBlob (getHeaderHash blk) : fields)
-
-slotToRow
-    :: SlotNo
-    -> Row "checkpoints"
-slotToRow sl =
-    Row
-        [ SQLInteger (fromIntegral (unSlotNo sl))
-        ]
-
 resultToRow
     :: Result StandardCrypto
-    -> (Row "addresses", Row "inputs")
+    -> ( ( ByteString, Maybe ByteString )
+       , ( ByteString, ByteString, ByteString, Maybe ByteString, Word64 )
+       )
 resultToRow Result{..} =
-    ( Row
-        [ maybe (SQLBlob (addressToBytes address)) SQLBlob (getPaymentPartBytes address)
-        , maybe SQLNull SQLBlob (getDelegationPartBytes address)
-        ]
-    , Row
-        [ SQLBlob (serialize' reference)
-        , SQLBlob (addressToBytes address)
-        , SQLBlob (serialize' value)
-        , maybe SQLNull (SQLBlob . serialize') datumHash
-        , SQLInteger (fromIntegral (unSlotNo slotNo))
-        ]
+    ( ( fromMaybe (addressToBytes address) (getPaymentPartBytes address)
+      , getDelegationPartBytes address
+      )
+    , ( serialize' reference
+      , addressToBytes address
+      , serialize' value
+      , serialize' <$> datumHash
+      , unSlotNo slotNo
+      )
     )
