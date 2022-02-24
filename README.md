@@ -2,7 +2,7 @@
   <img src=".github/kupo.png" height=120 />
 </p>
 
-**Kupo** is a lightweight, configurable, **chain-index** for the Cardano blockchain. It synchronizes data with the blockchain according to **patterns** on addresses present in transaction outputs, to build a **lookup table** from matches to their associated **output references, values and datum hashes.**
+**Kupo** is a lightweight, configurable, **chain-index** for the Cardano blockchain. It synchronizes data from the blockchain according to **patterns** matching addresses present in transaction outputs, to build a **lookup table** from matches to their associated **output references, values and datum hashes.**
 
 # Getting Started
 
@@ -17,6 +17,10 @@ $ nix-build -A kupo.components.exes.kupo
 This produces a statically-linked executable that provides a command-line interface for passing options and commands.
 
 # Alternatives
+
+### cardano-db-sync
+
+### plutus-chain-index
 
 ---
 
