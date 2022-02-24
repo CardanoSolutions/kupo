@@ -5,23 +5,34 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App
-    ( startOrResume
+    ( -- * Application Startup
+      startOrResume
+
+      -- * Producer/Consumer
     , producer
     , consumer
+
+      -- * Tracers
+    , Tracers' (..)
+    , Tracers
     ) where
 
 import Kupo.Prelude
 
 import Kupo.App.ChainSync
-    ( ChainSyncHandler (..) )
+    ( ChainSyncHandler (..), TraceChainSync (..) )
 import Kupo.App.Mailbox
     ( Mailbox, flushMailbox, putMailbox )
 import Kupo.Configuration
-    ( StandardCrypto )
+    ( StandardCrypto, TraceConfiguration (..) )
 import Kupo.Control.MonadDatabase
-    ( Database (..), MonadDatabase (..) )
+    ( Database (..), MonadDatabase (..), TraceDatabase (..) )
+import Kupo.Control.MonadLog
+    ( MonadLog (..), Tracer, TracerDefinition (..), TracerHKD )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
+import Kupo.Control.MonadThrow
+    ( MonadThrow (..) )
 import Kupo.Data.ChainSync
     ( Block
     , Point
@@ -30,6 +41,7 @@ import Kupo.Data.ChainSync
     , getDelegationPartBytes
     , getHeaderHash
     , getPaymentPartBytes
+    , getPointSlotNo
     , getSlotNo
     , unsafeMkPoint
     )
@@ -42,27 +54,41 @@ import Kupo.Data.Pattern
 
 startOrResume
     :: forall m.
-        ( MonadFail m
-        , MonadIO m  -- TODO logger
+        ( MonadThrow m
+        , MonadLog m
         )
-    => Database m
+    => Tracers
+    -> Database m
     -> Maybe (Point (Block StandardCrypto))
     -> m [Point (Block StandardCrypto)]
-startOrResume Database{..} since = do
+startOrResume Tracers{tracerDatabase, tracerConfiguration} Database{..} since = do
     checkpoints <- runTransaction (listCheckpointsDesc unsafeMkPoint)
     case (since, checkpoints) of
-        (Nothing, []) ->
-            -- TODO: Use logging instead.
-            fail "No starting points provided and found no previous checkpoints!"
-        (Just{}, _:_) ->
-            -- TODO: Use logging instead.
-            fail "--since provided but found existing database checkpoints!"
+        (Nothing, []) -> do
+            logWith tracerConfiguration $ ConfigurationInvalidOrMissingOption
+                "No '--since' provided but no checkpoints were found in the \
+                \database. An explicit starting point (e.g. 'origin') is \
+                \required the first time launching the application."
+            throwIO NoStartingPointException
+        (Just{}, _:_) -> do
+            logWith tracerConfiguration $ ConfigurationInvalidOrMissingOption
+                "The option '--since' was provided but checkpoints were found \
+                \in the database. It is not possible to decide between these \
+                \two paths. Either remove the '--since' option, or point the \
+                \--workdir to a fresh location."
+            throwIO ConflictingOptionException
         (Nothing, pts) -> do
-            -- TODO: Use logging instead.
-            liftIO $ putStrLn $ "Found " <> show (length pts) <> " likely checkpoints."
+            let ws = unSlotNo . getPointSlotNo <$> checkpoints
+            logWith tracerDatabase (DatabaseFoundCheckpoints ws)
             pure pts
         (Just pt, []) ->
             pure [pt]
+
+data NoStartingPointException = NoStartingPointException deriving (Show)
+instance Exception NoStartingPointException
+
+data ConflictingOptionException = ConflictingOptionException  deriving (Show)
+instance Exception ConflictingOptionException
 
 --
 -- Producer / Consumer
@@ -71,14 +97,14 @@ startOrResume Database{..} since = do
 producer
     :: forall m.
         ( MonadSTM m
-        , MonadIO m -- FIXME, temporary for strawman logging until proper tracer.
+        , MonadLog m
         )
-    => Mailbox m (Block StandardCrypto)
+    => Tracers
+    -> Mailbox m (Block StandardCrypto)
     -> ChainSyncHandler m (Block StandardCrypto)
-producer mailbox = ChainSyncHandler
+producer Tracers{tracerChainSync} mailbox = ChainSyncHandler
     { onRollBackward = \pt -> do
-        -- FIXME: rollbacks should rewind the database.
-        liftIO $ putStrLn $ "RollBack to " <> show pt <> "; doing nothing about it."
+        logWith tracerChainSync (ChainSyncRollBackward (getPointSlotNo pt))
     , onRollForward =
         atomically . putMailbox mailbox
     }
@@ -86,21 +112,22 @@ producer mailbox = ChainSyncHandler
 consumer
     :: forall m.
         ( MonadSTM m
-        , MonadIO m
+        , MonadLog m
         , Monad (DBTransaction m)
         )
-    => Mailbox m (Block StandardCrypto)
+    => Tracers
+    -> Mailbox m (Block StandardCrypto)
     -> [Pattern StandardCrypto]
     -> Database m
     -> m ()
-consumer mailbox patterns Database{..} = forever $ do
+consumer Tracers{tracerChainSync} mailbox patterns Database{..} = forever $ do
     blks <- atomically (flushMailbox mailbox)
     let lastKnownBlk = last blks
     let lastKnownSlot = getSlotNo lastKnownBlk
     let (addresses, inputs) = unzip $ concatMap
             (matchBlock resultToRow patterns)
             blks
-    liftIO $ putStrLn $ "Last known slot: " <> show lastKnownSlot
+    logWith tracerChainSync (ChainSyncRollForward lastKnownSlot)
     runTransaction $ do
         insertCheckpoint (getHeaderHash lastKnownBlk) (unSlotNo lastKnownSlot)
         insertInputs inputs
@@ -126,3 +153,21 @@ resultToRow Result{..} =
       , unSlotNo slotNo
       )
     )
+
+--
+-- Tracers
+--
+
+type Tracers = Tracers' IO Concrete
+
+data Tracers' m (kind :: TracerDefinition) = Tracers
+    { tracerDatabase
+        :: TracerHKD kind (Tracer m TraceDatabase)
+    , tracerChainSync
+        :: TracerHKD kind (Tracer m TraceChainSync)
+    , tracerConfiguration
+        :: TracerHKD kind (Tracer m TraceConfiguration)
+    } deriving (Generic)
+
+deriving instance Show (Tracers' m MinSeverities)
+deriving instance Eq (Tracers' m MinSeverities)

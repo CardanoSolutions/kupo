@@ -5,6 +5,8 @@
 module Kupo.Prelude
     ( -- * relude
       module Relude
+    , FromJSON (..)
+    , ToJSON (..)
     , hijackSigTerm
     , view
     , (^.)
@@ -16,10 +18,13 @@ module Kupo.Prelude
     , encodeBase64
     , decodeBase64
     , serialize'
+    , defaultGenericToEncoding
     ) where
 
 import Cardano.Binary
     ( serialize' )
+import Data.Aeson
+    ( Encoding, FromJSON (..), GToJSON', ToJSON (..), Zero, genericToEncoding )
 import Data.ByteString.Base16
     ( decodeBase16, encodeBase16 )
 import Data.ByteString.Base64
@@ -28,6 +33,8 @@ import Data.Generics.Internal.VL.Lens
     ( view, (^.) )
 import Data.Profunctor.Unsafe
     ( ( #. ) )
+import GHC.Generics
+    ( Rep )
 import Relude hiding
     ( MVar
     , Nat
@@ -76,6 +83,7 @@ import System.Posix.Signals
     , softwareTermination
     )
 
+import qualified Data.Aeson as Json
 import qualified Data.ByteString.Base58 as Base58
 
 -- | Copied from: https://hackage.haskell.org/package/generic-lens-1.1.0.0/docs/src/Data.Generics.Internal.VL.Prism.html
@@ -107,3 +115,8 @@ decodeBase58 =
 encodeBase58 :: ByteString -> Text
 encodeBase58 =
     decodeUtf8. Base58.encodeBase58 Base58.bitcoinAlphabet
+
+-- | Generic JSON encoding, with pre-defined default options.
+defaultGenericToEncoding :: (Generic a, GToJSON' Encoding Zero (Rep a)) => a -> Encoding
+defaultGenericToEncoding =
+    genericToEncoding Json.defaultOptions

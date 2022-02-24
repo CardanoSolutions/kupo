@@ -2,24 +2,27 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE DuplicateRecordFields #-}
+
 module Kupo.App.ChainSync
     ( ChainSyncHandler (..)
     , mkChainSyncClient
     , IntersectionNotFoundException (..)
+    , TraceChainSync (..)
     ) where
 
 import Kupo.Prelude
 
+import Kupo.Control.MonadLog
+    ( HasSeverityAnnotation (..), Severity (..) )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.ChainSync
-    ( Point (..), SlotNo, Tip (..) )
+    ( Point (..), SlotNo (..), Tip (..), WithOrigin (..) )
 import Network.TypedProtocol.Pipelined
     ( Nat (..), natToInt )
 import Ouroboros.Network.Block
     ( getTipSlotNo, pointSlot )
-import Ouroboros.Network.Point
-    ( WithOrigin )
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     ( ChainSyncClientPipelined (..)
     , ClientPipelinedStIdle (..)
@@ -92,4 +95,33 @@ mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts =
 --
 -- TODO: Make this configurable as it depends on available machine's resources.
 maxInFlight :: Int
-maxInFlight = 75
+maxInFlight = 100
+
+--
+-- Tracer
+--
+
+data TraceChainSync where
+    ChainSyncRollBackward
+        :: { point :: SlotNo }
+        -> TraceChainSync
+    ChainSyncRollForward
+        :: { slotNo :: SlotNo }
+        -> TraceChainSync
+    ChainSyncIntersectionNotFound
+        :: { points :: [WithOrigin SlotNo] }
+        -> TraceChainSync
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceChainSync where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance HasSeverityAnnotation TraceChainSync where
+    getSeverityAnnotation = \case
+        ChainSyncRollForward{} ->
+            Debug
+        ChainSyncRollBackward{} ->
+            Notice
+        ChainSyncIntersectionNotFound{} ->
+            Error

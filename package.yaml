@@ -53,6 +53,7 @@ library:
     - cardano-slotting
     - containers
     - contra-tracer
+    - contra-tracers
     - file-embed
     - filepath
     - generic-lens
@@ -68,6 +69,7 @@ library:
     - ouroboros-network-framework
     - profunctors
     - relude
+    - safe
     - strict-containers
     - sqlite-simple
     - text

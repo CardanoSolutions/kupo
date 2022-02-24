@@ -41,6 +41,7 @@ library
       Kupo.Control.MonadCatch
       Kupo.Control.MonadDatabase
       Kupo.Control.MonadDelay
+      Kupo.Control.MonadLog
       Kupo.Control.MonadOuroboros
       Kupo.Control.MonadSTM
       Kupo.Control.MonadThrow
@@ -91,7 +92,7 @@ library
       TypeFamilies
       TypeSynonymInstances
       ViewPatterns
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -fno-warn-unticked-promoted-constructors
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -fno-warn-unticked-promoted-constructors -fno-warn-partial-fields
   build-depends:
       aeson
     , base >=4.7 && <5
@@ -112,6 +113,7 @@ library
     , cardano-slotting
     , containers
     , contra-tracer
+    , contra-tracers
     , file-embed
     , filepath
     , generic-lens
@@ -127,6 +129,7 @@ library
     , ouroboros-network-framework
     , profunctors
     , relude
+    , safe
     , sqlite-simple
     , strict-containers
     , text

@@ -40,6 +40,13 @@ packages:
   original:
     hackage: constraints-extras-0.3.1.0
 - completed:
+    hackage: contra-tracers-1.0.0@sha256:2655225416daee4609128c2bb238d89e8ce820cc1c23ef9286c72c27995a61dd,2202
+    pantry-tree:
+      size: 344
+      sha256: 658250236d8a778da893e9bd93404d5e3563a251c2621ef202d2abbc78d25d38
+  original:
+    hackage: contra-tracers-1.0.0
+- completed:
     hackage: dependent-map-0.4.0.0@sha256:ca2b131046f4340a1c35d138c5a003fe4a5be96b14efc26291ed35fd08c62221,1657
     pantry-tree:
       size: 551

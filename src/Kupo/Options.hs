@@ -23,14 +23,17 @@ module Kupo.Options
 
 import Kupo.Prelude hiding
     ( group )
+
 import Options.Applicative
 
 import Control.Monad.Trans.Except
     ( throwE, withExceptT )
-import Data.Aeson
-    ( FromJSON )
 import Data.Aeson.Lens
     ( key, _String )
+import Data.Char
+    ( toUpper )
+import Kupo.App
+    ( Tracers' (..) )
 import Kupo.Configuration
     ( Block
     , Configuration (..)
@@ -41,8 +44,12 @@ import Kupo.Configuration
     , patternFromText
     , pointFromText
     )
+import Kupo.Control.MonadLog
+    ( Severity (..), TracerDefinition (..), defaultTracers )
 import Options.Applicative.Help.Pretty
-    ( Doc, align, fillSep, hardline, indent, softbreak, text, vsep )
+    ( Doc, align, fillSep, hardline, indent, softbreak, string, text, vsep )
+import Safe
+    ( readMay )
 import System.FilePath.Posix
     ( replaceFileName )
 
@@ -50,7 +57,7 @@ import qualified Data.Aeson as Json
 import qualified Data.Yaml as Yaml
 
 data Command (f :: Type -> Type)
-    = Run (f NetworkParameters) Configuration
+    = Run (f NetworkParameters) Configuration (Tracers' IO MinSeverities)
     | Version
 
 deriving instance Eq (f NetworkParameters) => Eq (Command f)
@@ -60,9 +67,9 @@ parseOptions :: IO (Command Identity)
 parseOptions =
     customExecParser (prefs showHelpOnEmpty) parserInfo >>= \case
         Version -> pure Version
-        Run _ cfg@Configuration{nodeConfig} -> do
+        Run _ cfg@Configuration{nodeConfig} tracers -> do
             networkParameters <- parseNetworkParameters nodeConfig
-            pure $ Run (Identity networkParameters) cfg
+            pure $ Run (Identity networkParameters) cfg tracers
 
 parseOptionsPure :: [String] -> Either String (Command Proxy)
 parseOptionsPure args =
@@ -88,6 +95,11 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> serverPortOption
                     <*> optional sinceOption
                     <*> many patternOption
+                )
+            <*> (tracersOption <|> Tracers
+                    <$> fmap Const (logLevelOption "database")
+                    <*> fmap Const (logLevelOption "chain-sync")
+                    <*> fmap Const (logLevelOption "configuration")
                 )
         )
 
@@ -210,6 +222,36 @@ patternOption = option (maybeReader (patternFromText . toText)) $ mempty
     <> metavar "PATTERN"
     <> help "A pattern to match on. Can be provided multiple times (as a logical disjunction, i.e. 'or')"
 
+-- | [--log-level-{COMPONENT}=SEVERITY], default: Info
+logLevelOption :: Text -> Parser (Maybe Severity)
+logLevelOption component =
+    option readSeverityM $ mempty
+        <> long ("log-level-" <> toString component)
+        <> metavar "SEVERITY"
+        <> helpDoc (Just doc)
+        <> value (Just Info)
+        <> showDefaultWith (maybe "ø" show)
+        <> completer (listCompleter severities)
+  where
+    doc =
+        string $ "Minimal severity of " <> toString component <> " log messages."
+
+-- | [--log-level=SEVERITY]
+tracersOption :: Parser (Tracers' m MinSeverities)
+tracersOption = fmap defaultTracers $ option readSeverityM $ mempty
+    <> long "log-level"
+    <> metavar "SEVERITY"
+    <> helpDoc (Just doc)
+    <> completer (listCompleter severities)
+  where
+    doc =
+        vsep $ string <$> mconcat
+            [ [ "Minimal severity of all log messages." ]
+            , ("- " <>) <$> severities
+            , [ "Or alternatively, to turn a logger off:" ]
+            , [ "- Off" ]
+            ]
+
 -- | [--version|-v] | version
 versionOptionOrCommand :: Parser (Command f)
 versionOptionOrCommand =
@@ -262,3 +304,16 @@ parseNetworkParameters configFile = runOrDie $ do
 
 longline :: Text -> Doc
 longline = fillSep . fmap (text . toString) . words
+
+severities :: [String]
+severities =
+    show @_ @Severity <$> [minBound .. maxBound]
+
+readSeverityM :: ReadM (Maybe Severity)
+readSeverityM = maybeReader $ \case
+    [] -> Nothing
+    (toUpper -> h):q ->
+        if h:q == "Off" then
+            Just Nothing
+        else
+            Just <$> readMay (h:q)

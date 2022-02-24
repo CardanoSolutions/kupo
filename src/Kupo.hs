@@ -3,6 +3,7 @@
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -20,24 +21,32 @@ module Kupo
     -- * Command & Options
     , Command (..)
     , parseOptions
+
+    -- * Tracers
+    , withStdoutTracers
     ) where
 
 import Kupo.Prelude
 
 import Kupo.App
-    ( consumer, producer, startOrResume )
+    ( Tracers, Tracers' (..), consumer, producer, startOrResume )
 import Kupo.App.ChainSync
-    ( IntersectionNotFoundException (..), mkChainSyncClient )
+    ( IntersectionNotFoundException (..)
+    , TraceChainSync (..)
+    , mkChainSyncClient
+    )
 import Kupo.App.Mailbox
     ( newMailbox )
 import Kupo.Configuration
-    ( Configuration (..), NetworkParameters (..) )
+    ( Configuration (..), NetworkParameters (..), TraceConfiguration (..) )
 import Kupo.Control.MonadAsync
     ( MonadAsync (..) )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadDatabase
     ( MonadDatabase (..) )
+import Kupo.Control.MonadLog
+    ( MonadLog (..), withStdoutTracers )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..) )
 import Kupo.Control.MonadSTM
@@ -67,10 +76,9 @@ newtype Kupo a = Kupo
         )
 
 -- | Application entry point.
-kupo :: Kupo ()
-kupo = hijackSigTerm *> do
-    Env{
-        networkParameters = NetworkParameters
+kupo :: Tracers -> Kupo ()
+kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
+    Env { network = NetworkParameters
             { networkMagic
             , slotsPerEpoch
             }
@@ -100,8 +108,8 @@ kupo = hijackSigTerm *> do
      -- more is cheap.
     let longestRollback = 43200
 
-    liftIO $ withDatabase longestRollback (workDir </> "kupo.sqlite3") $ \db -> do
-        points <- startOrResume db since
+    liftIO $ withDatabase tracerDatabase longestRollback (workDir </> "kupo.sqlite3") $ \db -> do
+        checkpoints <- startOrResume tr db since
         -- TODO: Make the mailbox's size configurable? Larger sizes means larger
         -- memory usage at the benefits of slightly faster sync time... Though I
         -- am not sure it's worth enough to bother users with this. Between 100
@@ -109,14 +117,12 @@ kupo = hijackSigTerm *> do
         -- synchronization time decrease.
         mailbox <- atomically (newMailbox 100)
         concurrently_
-            (consumer mailbox patterns db)
-            (let client = mkChainSyncClient (producer mailbox) points
+            (consumer tr mailbox patterns db)
+            (let client = mkChainSyncClient (producer tr mailbox) checkpoints
               in withChainSyncServer [ NodeToClientV_12 ] networkMagic slotsPerEpoch nodeSocket client
             )
-            & handle (\IntersectionNotFoundException{} -> do
-                putStrLn "Couldn't resume the application; none of the database checkpoints is known of the node."
-                putStrLn ""
-                putStrLn "  (ノ ゜Д゜)ノ ︵ ┻━┻"
+            & handle (\IntersectionNotFoundException{points} -> do
+                logWith tracerChainSync ChainSyncIntersectionNotFound{points}
                 exitWith (ExitFailure 1)
               )
 
@@ -129,13 +135,15 @@ runWith :: forall a. Kupo a -> Env Kupo -> IO a
 runWith app = runReaderT (unKupo app)
 
 data Env (m :: Type -> Type) = Env
-    { networkParameters :: !NetworkParameters
+    { network :: !NetworkParameters
     , configuration :: !Configuration
     } deriving stock (Generic)
 
 newEnvironment
-    :: NetworkParameters
+    :: Tracers
+    -> NetworkParameters
     -> Configuration
     -> IO (Env Kupo)
-newEnvironment networkParameters configuration =
-    pure Env{networkParameters, configuration}
+newEnvironment Tracers{tracerConfiguration} network configuration = do
+    logWith tracerConfiguration (ConfigurationNetwork network)
+    pure Env{network, configuration}

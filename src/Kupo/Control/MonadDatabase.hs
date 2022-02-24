@@ -12,14 +12,21 @@ module Kupo.Control.MonadDatabase
       MonadDatabase (..)
     , Database (..)
     , LongestRollback (..)
+
+      -- * Tracer
+    , TraceDatabase (..)
     ) where
 
 import Kupo.Prelude
 
 import Control.Exception
     ( throwIO )
+import Control.Tracer
+    ( Tracer, traceWith )
 import Data.FileEmbed
     ( embedFile )
+import Data.Severity
+    ( HasSeverityAnnotation (..), Severity (..) )
 import Database.SQLite.Simple
     ( Connection
     , Only (..)
@@ -43,7 +50,8 @@ import qualified Data.Text as T
 class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) where
     type DBTransaction m :: (Type -> Type)
     withDatabase
-        :: LongestRollback
+        :: Tracer m TraceDatabase
+        -> LongestRollback
         -> FilePath
         -> (Database m -> m a)
         -> m a
@@ -95,9 +103,9 @@ newtype WrappedIO a = WrappedIO { runIO :: IO a }
 
 instance MonadDatabase IO where
     type DBTransaction IO = WrappedIO
-    withDatabase k filePath action =
+    withDatabase tr k filePath action =
         withConnection filePath $ \conn -> do
-            databaseVersion conn >>= runMigrations conn
+            databaseVersion conn >>= runMigrations tr conn
             action (mkDatabase k conn)
 
 mkDatabase :: LongestRollback -> Connection -> Database IO
@@ -179,13 +187,14 @@ databaseVersion conn =
             _ ->
                 throwIO UnexpectedUserVersion
 
-runMigrations :: Connection -> MigrationRevision -> IO ()
-runMigrations conn currentVersion = do
+runMigrations :: Tracer IO TraceDatabase -> Connection -> MigrationRevision -> IO ()
+runMigrations tr conn currentVersion = do
     let missingMigrations = drop currentVersion migrations
+    traceWith tr (DatabaseCurrentVersion currentVersion)
     if null missingMigrations then
-        putStrLn $ "No migration to run; version=" <> show currentVersion
+        traceWith tr DatabaseNoMigrationNeeded
     else do
-        putStrLn $ "Running " <> show (length missingMigrations) <> " migration(s) from version=" <> show currentVersion
+        traceWith tr $ DatabaseRunningMigration currentVersion (length missingMigrations)
         void $ withTransaction conn $
             traverse (traverse (execute_ conn)) missingMigrations
 
@@ -211,3 +220,32 @@ data UnexpectedUserVersionException
     = UnexpectedUserVersion
     deriving Show
 instance Exception UnexpectedUserVersionException
+
+--
+-- Tracer
+--
+
+data TraceDatabase where
+    DatabaseFoundCheckpoints
+        :: { checkpoints :: [Word64] }
+        -> TraceDatabase
+    DatabaseCurrentVersion
+        :: { currentVersion :: Int }
+        -> TraceDatabase
+    DatabaseNoMigrationNeeded
+        :: TraceDatabase
+    DatabaseRunningMigration
+        :: { from :: Int, to :: Int }
+        -> TraceDatabase
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceDatabase where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance HasSeverityAnnotation TraceDatabase where
+    getSeverityAnnotation = \case
+        DatabaseFoundCheckpoints{}  -> Info
+        DatabaseCurrentVersion{}    -> Info
+        DatabaseNoMigrationNeeded{} -> Debug
+        DatabaseRunningMigration{}  -> Notice

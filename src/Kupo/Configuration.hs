@@ -11,7 +11,7 @@
 module Kupo.Configuration
     (
     -- * Configuration
-    Configuration (..)
+      Configuration (..)
     , StandardCrypto
     , Point (..)
     , Block
@@ -29,6 +29,9 @@ module Kupo.Configuration
     , EpochSlots (..)
     , SystemStart (..)
     , mkSystemStart
+
+    -- * Tracer
+    , TraceConfiguration (..)
     ) where
 
 import Kupo.Prelude
@@ -38,11 +41,13 @@ import Cardano.Crypto.Hash
 import Cardano.Ledger.Crypto
     ( StandardCrypto )
 import Data.Aeson
-    ( FromJSON (..), ToJSON, (.:) )
+    ( (.:) )
 import Data.Time.Clock.POSIX
     ( posixSecondsToUTCTime )
 import Data.Time.Format.ISO8601
     ( iso8601ParseM )
+import Kupo.Control.MonadLog
+    ( HasSeverityAnnotation (..), Severity (..) )
 import Kupo.Control.MonadOuroboros
     ( EpochSlots (..), NetworkMagic (..) )
 import Kupo.Data.ChainSync
@@ -145,3 +150,25 @@ headerHashFromText
     -> Maybe (HeaderHash (Block crypto))
 headerHashFromText =
     fmap (OneEraHash . hashToBytesShort) . hashFromTextAsHex @Blake2b_256
+
+--
+-- Tracer
+--
+
+data TraceConfiguration where
+    ConfigurationNetwork
+        :: { networkParameters :: NetworkParameters }
+        -> TraceConfiguration
+    ConfigurationInvalidOrMissingOption
+        :: { hint :: Text }
+        -> TraceConfiguration
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceConfiguration where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance HasSeverityAnnotation TraceConfiguration where
+    getSeverityAnnotation = \case
+        ConfigurationNetwork{} -> Info
+        ConfigurationInvalidOrMissingOption{} -> Error

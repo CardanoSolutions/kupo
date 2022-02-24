@@ -5,6 +5,8 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE PatternSynonyms #-}
 
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Kupo.Data.ChainSync
     ( -- * Constraints
       Crypto
@@ -55,7 +57,9 @@ module Kupo.Data.ChainSync
     , HeaderHash
 
       -- * Point
+    , WithOrigin (..)
     , Point (..)
+    , getPointSlotNo
     , pattern GenesisPoint
     , pattern BlockPoint
     , unsafeMkPoint
@@ -113,7 +117,10 @@ import Ouroboros.Network.Block
     , HeaderHash
     , Point (..)
     , Tip (..)
+    , pointSlot
     )
+import Ouroboros.Network.Point
+    ( WithOrigin (..) )
 
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.Data as Ledger
@@ -389,6 +396,19 @@ unsafeMkPoint headerHash slotNo =
     proxy = Proxy @(ShelleyBlock (AlonzoEra crypto))
     fromShelleyHash (Ledger.unHashHeader . unShelleyHash -> UnsafeHash h) =
         coerce h
+
+getPointSlotNo
+    :: Point (Block crypto)
+    -> SlotNo
+getPointSlotNo pt =
+    case pointSlot pt of
+        Origin -> SlotNo 0
+        At st  -> st
+
+instance ToJSON (WithOrigin SlotNo) where
+    toEncoding = \case
+        Origin -> toEncoding ("origin" :: Text)
+        At sl -> toEncoding sl
 
 -- Hash
 
