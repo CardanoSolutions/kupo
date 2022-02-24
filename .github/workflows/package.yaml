@@ -1,0 +1,47 @@
+name: Package
+
+on:
+  pull_request:
+    branches: [ "master" ]
+  push:
+    branches: [ "master" ]
+    tags: [ "*.*.*" ]
+
+jobs:
+  nix:
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v2.3.3
+      with:
+        submodules: true
+
+    - name: ❄️  Install Nix
+      uses: cachix/install-nix-action@v13
+      with:
+        extra_nix_config: |
+          trusted-public-keys = iohk.cachix.org-1:DpRUyj7h7V830dp/i6Nti+NEO2/nhblbov/8MW7Rqoo= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+          substituters = https://hydra.iohk.io https://cache.nixos.org/
+
+    - name: 💾 Cache Build
+      uses: cachix/cachix-action@v10
+      with:
+        name: kupo
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+    - name: 🔨 Build
+      run: |
+        nix-build -A kupo.components.exes.kupo -o dist
+        cp -r dist/* . && chmod +w share
+        mkdir -p share/zsh/site-functions          && ./bin/kupo --zsh-completion-script  kupo > share/zsh/site-functions/_kupo
+        mkdir -p share/bash-completion/completions && ./bin/kupo --bash-completion-script kupo > share/bash-completion/completions/kupo
+        chmod -w share
+
+    - name: 📎 Upload Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: kupo-x86_64-linux
+        path: |
+          bin
+          share
