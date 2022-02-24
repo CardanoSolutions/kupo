@@ -172,6 +172,14 @@ source-repository-package
     stubs/plutus-ghc-stub
     word-array
 
+source-repository-package
+  type: git
+  location: https://github.com/CardanoSolutions/ogmios
+  tag: f7713461c052ac70ff2d410b5c50033bd0eccc76
+  --sha256: 07m8if0621jv4l2fc884gdj7l33dwin8n94bvyx5hk4ilnxs2814
+  subdir:
+    server/modules/contra-tracers
+
 constraints:
     hedgehog >= 1.0
   , bimap >= 0.4.0
