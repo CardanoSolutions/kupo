@@ -38,9 +38,7 @@ import Kupo.Data.ChainSync
     , Point
     , SlotNo (..)
     , addressToBytes
-    , getDelegationPartBytes
     , getHeaderHash
-    , getPaymentPartBytes
     , getPointSlotNo
     , getSlotNo
     , unsafeMkPoint
@@ -101,10 +99,12 @@ producer
         )
     => Tracers
     -> Mailbox m (Block StandardCrypto)
+    -> Database m
     -> ChainSyncHandler m (Block StandardCrypto)
-producer Tracers{tracerChainSync} mailbox = ChainSyncHandler
+producer Tracers{tracerChainSync} mailbox Database{..} = ChainSyncHandler
     { onRollBackward = \pt -> do
         logWith tracerChainSync (ChainSyncRollBackward (getPointSlotNo pt))
+        runTransaction $ rollbackTo (unSlotNo (getPointSlotNo pt))
     , onRollForward =
         atomically . putMailbox mailbox
     }
@@ -124,14 +124,11 @@ consumer Tracers{tracerChainSync} mailbox patterns Database{..} = forever $ do
     blks <- atomically (flushMailbox mailbox)
     let lastKnownBlk = last blks
     let lastKnownSlot = getSlotNo lastKnownBlk
-    let (addresses, inputs) = unzip $ concatMap
-            (matchBlock resultToRow patterns)
-            blks
-    logWith tracerChainSync (ChainSyncRollForward lastKnownSlot)
+    let inputs = concatMap (matchBlock resultToRow patterns) blks
+    logWith tracerChainSync (ChainSyncRollForward lastKnownSlot (length inputs))
     runTransaction $ do
         insertCheckpoint (getHeaderHash lastKnownBlk) (unSlotNo lastKnownSlot)
         insertInputs inputs
-        insertAddresses addresses
 
 --
 -- SQL interface
@@ -139,19 +136,13 @@ consumer Tracers{tracerChainSync} mailbox patterns Database{..} = forever $ do
 
 resultToRow
     :: Result StandardCrypto
-    -> ( ( ByteString, Maybe ByteString )
-       , ( ByteString, ByteString, ByteString, Maybe ByteString, Word64 )
-       )
+    -> ( ByteString, Text, ByteString, Maybe ByteString, Word64 )
 resultToRow Result{..} =
-    ( ( fromMaybe (addressToBytes address) (getPaymentPartBytes address)
-      , getDelegationPartBytes address
-      )
-    , ( serialize' reference
-      , addressToBytes address
-      , serialize' value
-      , serialize' <$> datumHash
-      , unSlotNo slotNo
-      )
+    ( serialize' reference
+    , encodeBase16 (addressToBytes address)
+    , serialize' value
+    , serialize' <$> datumHash
+    , unSlotNo slotNo
     )
 
 --

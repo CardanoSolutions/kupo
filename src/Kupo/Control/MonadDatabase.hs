@@ -63,17 +63,10 @@ newtype LongestRollback = LongestRollback
 data Database (m :: Type -> Type) = Database
     { insertInputs
         :: [ ( ByteString       -- output_reference
-             , ByteString       -- address
+             , Text             -- address
              , ByteString       -- value
              , Maybe ByteString -- datum_hash
              , Word64           -- slot_no
-             )
-           ]
-        -> DBTransaction m ()
-
-    , insertAddresses
-        :: [ ( ByteString       -- payment
-             , Maybe ByteString -- delegation
              )
            ]
         -> DBTransaction m ()
@@ -87,6 +80,10 @@ data Database (m :: Type -> Type) = Database
         :: forall checkpoint. ()
         => (ByteString -> Word64 -> checkpoint)
         -> DBTransaction m [checkpoint]
+
+    , rollbackTo
+        :: Word64  -- slot_no
+        -> DBTransaction m ()
 
     , runTransaction
         :: forall a. ()
@@ -114,18 +111,10 @@ mkDatabase (toInteger -> longestRollback) conn = Database
         (\(outputReference, address, value, datumHash, fromIntegral -> slotNo) ->
             insertRow @"inputs" conn
                 [ SQLBlob outputReference
-                , SQLBlob address
+                , SQLText address
                 , SQLBlob value
                 , maybe SQLNull SQLBlob datumHash
                 , SQLInteger slotNo
-                ]
-        )
-
-    , insertAddresses = WrappedIO . mapM_
-        (\(payment, delegation) ->
-            insertRow @"addresses" conn
-                [ SQLBlob payment
-                , maybe SQLNull SQLBlob delegation
                 ]
         )
 
@@ -143,6 +132,14 @@ mkDatabase (toInteger -> longestRollback) conn = Database
         -- reverses it,
         fold_ conn "SELECT * FROM checkpoints ORDER BY slot_no ASC" []
             $ \xs (headerHash, slotNo) -> pure ((mk headerHash slotNo) : xs)
+
+    , rollbackTo = \(fromIntegral -> slotNo) -> WrappedIO $ do
+        execute conn "DELETE FROM inputs WHERE slot_no > ?"
+            [ SQLInteger slotNo
+            ]
+        execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
+            [ SQLInteger slotNo
+            ]
 
     , runTransaction =
         withTransaction conn . runIO

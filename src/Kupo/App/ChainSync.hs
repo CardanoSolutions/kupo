@@ -106,7 +106,7 @@ data TraceChainSync where
         :: { point :: SlotNo }
         -> TraceChainSync
     ChainSyncRollForward
-        :: { slotNo :: SlotNo }
+        :: { slotNo :: SlotNo, matches :: Int }
         -> TraceChainSync
     ChainSyncIntersectionNotFound
         :: { points :: [WithOrigin SlotNo] }
