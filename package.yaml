@@ -57,6 +57,7 @@ library:
     - file-embed
     - filepath
     - generic-lens
+    - http-types
     - io-classes
     - lens-aeson
     - network-mux
@@ -78,6 +79,8 @@ library:
     - typed-protocols
     - unix
     - yaml
+    - wai
+    - warp
 
 tests:
   unit:

@@ -35,12 +35,14 @@ import Kupo.App.ChainSync
     , TraceChainSync (..)
     , mkChainSyncClient
     )
+import Kupo.App.Http
+    ( runServer )
 import Kupo.App.Mailbox
     ( newMailbox )
 import Kupo.Configuration
     ( Configuration (..), NetworkParameters (..), TraceConfiguration (..) )
 import Kupo.Control.MonadAsync
-    ( MonadAsync (..) )
+    ( concurrently3 )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadDatabase
@@ -84,6 +86,8 @@ kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
             }
         , configuration = Configuration
             { nodeSocket
+            , serverHost
+            , serverPort
             , workDir
             , since
             , patterns
@@ -116,15 +120,20 @@ kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
         -- and 1000, the heap increases from ~150MB to ~1GB, for a 5-10%
         -- synchronization time decrease.
         mailbox <- atomically (newMailbox 100)
-        concurrently_
-            (consumer tr mailbox patterns db)
-            (let client = mkChainSyncClient (producer tr mailbox db) checkpoints
-              in withChainSyncServer [ NodeToClientV_12 ] networkMagic slotsPerEpoch nodeSocket client
+        concurrently3
+            ( runServer serverHost serverPort )
+            ( consumer tr mailbox patterns db )
+            ( let client = mkChainSyncClient (producer tr mailbox db) checkpoints
+              in withChainSyncServer [ NodeToClientV_12 ]
+                    networkMagic
+                    slotsPerEpoch
+                    nodeSocket
+                    client
+                & handle (\IntersectionNotFoundException{points} -> do
+                    logWith tracerChainSync ChainSyncIntersectionNotFound{points}
+                    exitWith (ExitFailure 1)
+                  )
             )
-            & handle (\IntersectionNotFoundException{points} -> do
-                logWith tracerChainSync ChainSyncIntersectionNotFound{points}
-                exitWith (ExitFailure 1)
-              )
 
 --
 -- Environment
