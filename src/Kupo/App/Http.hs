@@ -87,18 +87,28 @@ handleGetMatches
     -> Maybe (Text, Maybe Text)
     -> Response
 handleGetMatches Database{..} query = do
-    let txt = maybe wildcard (\(a0, a1) -> a0 <> "/" <> fromMaybe wildcard a1) query
+    let txt = maybe wildcard (\(a0, a1) -> a0 <> maybe "" ("/" <>) a1) query
     case patternFromText @StandardCrypto txt of
         Nothing ->
             handleInvalidPattern
         Just p -> do
             responseStream status200 defaultHeaders $ \write flush -> do
-                let streamResult = write . Json.fromEncoding . resultToJson
                 runTransaction $ do
-                    foldInputsByAddress
+                    void $ foldInputsByAddress
                         (patternToQueryLike p)
-                        (\a0 a1 a2 a3 -> streamResult . unsafeMkResult @StandardCrypto a0 a1 a2 a3)
+                        True
+                        (\a0 a1 a2 a3 a4 isFirstResult -> do
+                            let result = unsafeMkResult @StandardCrypto a0 a1 a2 a3 a4
+                            let json   = Json.fromEncoding (resultToJson result)
+                            False <$ write (separator isFirstResult <> json)
+                        )
+                write closeBracket
                 flush
+  where
+    closeBracket = B.putCharUtf8 ']'
+    separator isFirstResult
+        | isFirstResult = B.putCharUtf8 '['
+        | otherwise     = B.putCharUtf8 ','
 
 handleInvalidPattern :: Response
 handleInvalidPattern = do

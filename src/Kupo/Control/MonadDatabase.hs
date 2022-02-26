@@ -17,8 +17,7 @@ module Kupo.Control.MonadDatabase
     , TraceDatabase (..)
     ) where
 
-import Kupo.Prelude hiding
-    ( fold )
+import Kupo.Prelude
 
 import Control.Exception
     ( throwIO )
@@ -36,7 +35,6 @@ import Database.SQLite.Simple
     , ToRow (..)
     , execute
     , execute_
-    , fold
     , fold_
     , nextRow
     , withConnection
@@ -73,15 +71,18 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m ()
 
     , foldInputsByAddress
-        :: Text  -- An address-like query
+        :: forall result. ()
+        => Text  -- An address-like query
+        -> result
         -> (  ByteString         -- output_reference
            -> Text               -- address
            -> ByteString         -- value
            -> Maybe ByteString   -- datum_hash
            -> Word64             -- slot_no
-           -> m ()
+           -> result
+           -> m result
            )
-        -> DBTransaction m ()
+        -> DBTransaction m result
 
     , insertCheckpoint
         :: ByteString -- header_hash
@@ -130,22 +131,21 @@ mkDatabase (toInteger -> longestRollback) conn = Database
                 ]
         )
 
-    , foldInputsByAddress = \addressLike yield -> WrappedIO $ do
+    , foldInputsByAddress = \addressLike result0 yield -> WrappedIO $ do
         let matchMaybeDatumHash = \case
                 SQLBlob datumHash -> Just datumHash
                 _ -> Nothing
         let qry = "SELECT output_reference, address, value, datum_hash, slot_no, LENGTH(address) as len \
                   \FROM inputs WHERE address " <> addressLike <> " ORDER BY slot_no DESC"
-        fold conn (Query qry) (Only addressLike) () $ \() -> \case
+        fold_ conn (Query qry) result0 $ \result -> \case
             [ SQLBlob outputReference
                 , SQLText address
                 , SQLBlob value
                 , matchMaybeDatumHash -> datumHash
                 , SQLInteger (fromIntegral -> slotNo)
                 , _ -- LENGTH(address)
-                ] -> yield outputReference address value datumHash slotNo
+                ] -> yield outputReference address value datumHash slotNo result
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike xs)
-
 
     , insertCheckpoint = \headerHash (toInteger -> slotNo) -> WrappedIO $ do
         insertRow @"checkpoints" conn
