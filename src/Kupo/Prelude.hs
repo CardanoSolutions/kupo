@@ -21,6 +21,7 @@ module Kupo.Prelude
     , serialize'
     , decodeFull'
     , unsafeDeserialize'
+    , byteStringToJson
     , defaultGenericToEncoding
     ) where
 
@@ -87,6 +88,7 @@ import System.Posix.Signals
     )
 
 import qualified Data.Aeson as Json
+import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString.Base58 as Base58
 
 -- | Copied from: https://hackage.haskell.org/package/generic-lens-1.1.0.0/docs/src/Data.Generics.Internal.VL.Prism.html
@@ -124,7 +126,12 @@ encodeBase58 :: ByteString -> Text
 encodeBase58 =
     decodeUtf8. Base58.encodeBase58 Base58.bitcoinAlphabet
 
+-- | Encode a ByteString to JSON as a base16 text
+byteStringToJson :: ByteString -> Json.Encoding
+byteStringToJson =
+    Json.text . encodeBase16
+
 -- | Generic JSON encoding, with pre-defined default options.
-defaultGenericToEncoding :: (Generic a, GToJSON' Encoding Zero (Rep a)) => a -> Encoding
+defaultGenericToEncoding :: (Generic a, GToJSON' Encoding Zero (Rep a)) => a -> Json.Encoding
 defaultGenericToEncoding =
     genericToEncoding Json.defaultOptions

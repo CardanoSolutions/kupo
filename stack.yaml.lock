@@ -75,6 +75,13 @@ packages:
   original:
     hackage: dom-lt-0.2.2.1
 - completed:
+    hackage: fast-bech32-1.0.0@sha256:3d92ae075d8121ea46527fb4a8b2076225d740a0b84ce28a00bfea3d9fa3d880,5063
+    pantry-tree:
+      size: 476
+      sha256: 53c28c182bf6b09368cd1fd53a066b90bbae6a3deba7d38799472f2d7fd05db8
+  original:
+    hackage: fast-bech32-1.0.0
+- completed:
     hackage: gray-code-0.3.1@sha256:2c8a4ed9c9ee37320305610604d6d93504e0813d7c9768949af418b53043185a,2388
     pantry-tree:
       size: 506

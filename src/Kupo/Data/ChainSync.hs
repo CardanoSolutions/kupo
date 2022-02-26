@@ -20,9 +20,17 @@ module Kupo.Data.ChainSync
 
       -- * Transaction
     , Transaction
+    , mapMaybeOutputs
+
+      -- * TransactionId
     , TransactionId
     , getTransactionId
-    , mapMaybeOutputs
+    , transactionIdToJson
+
+      -- * OutputIndex
+    , OutputIndex
+    , getOutputIndex
+    , outputIndexToJson
 
       -- * Input
     , Input
@@ -33,13 +41,16 @@ module Kupo.Data.ChainSync
     , getAddress
     , Value
     , getValue
+    , valueToJson
     , DatumHash
     , getDatumHash
+    , datumHashToJson
 
       -- * Address
     , Address
     , addressFromBytes
     , unsafeAddressFromBytes
+    , addressToJson
     , addressToBytes
     , isBootstrap
     , getPaymentPartBytes
@@ -47,6 +58,7 @@ module Kupo.Data.ChainSync
 
       -- * SlotNo
     , SlotNo (..)
+    , slotNoToJson
 
       -- * Hash
     , digest
@@ -74,6 +86,7 @@ import Kupo.Prelude
 import Cardano.Crypto.Hash
     ( Blake2b_224
     , Blake2b_256
+    , Hash
     , HashAlgorithm (..)
     , pattern UnsafeHash
     , sizeHash
@@ -96,6 +109,8 @@ import Cardano.Slotting.Slot
     ( SlotNo (..) )
 import Data.Binary.Put
     ( runPut )
+import Data.ByteString.Bech32
+    ( HumanReadablePart (..), encodeBech32 )
 import Data.Maybe.Strict
     ( StrictMaybe (..), strictMaybeToMaybe )
 import Data.Sequence.Strict
@@ -133,11 +148,15 @@ import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Credential as Ledger
 import qualified Cardano.Ledger.Era as Ledger.Era
 import qualified Cardano.Ledger.Mary.Value as Ledger
+import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Cardano.Ledger.Shelley.API as Ledger
 import qualified Cardano.Ledger.Shelley.BlockChain as Ledger.Shelley
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
 import qualified Cardano.Ledger.ShelleyMA.TxBody as Ledger.MaryAllegra
 import qualified Cardano.Ledger.TxIn as Ledger
+import qualified Data.Aeson.Encoding as Json
+import qualified Data.ByteString as BS
+import qualified Data.Map as Map
 
 -- Block
 
@@ -205,6 +224,33 @@ getHeaderHash = \case
         let proxy = Proxy @(ShelleyBlock (AlonzoEra crypto))
          in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
 
+-- TransactionId
+
+type TransactionId crypto =
+    Ledger.TxId crypto
+
+class HasTransactionId f where
+    getTransactionId
+        :: forall crypto. (Crypto crypto)
+        => f crypto
+        -> TransactionId crypto
+
+transactionIdToJson :: Crypto crypto => TransactionId crypto -> Json.Encoding
+transactionIdToJson =
+    hashToJson . Ledger.extractHash . Ledger._unTxId
+
+-- OutputIndex
+
+type OutputIndex = Natural
+
+getOutputIndex :: OutputReference crypto -> OutputIndex
+getOutputIndex (Ledger.TxIn _ ix) =
+    ix
+
+outputIndexToJson :: OutputIndex -> Json.Encoding
+outputIndexToJson =
+    Json.integer . toInteger
+
 -- Transaction
 
 data Transaction crypto
@@ -217,22 +263,20 @@ data Transaction crypto
     | TransactionAlonzo
         (Ledger.Alonzo.ValidatedTx (AlonzoEra crypto))
 
-type TransactionId crypto =
-    Ledger.TxId crypto
-
-getTransactionId
-    :: forall crypto. (Crypto crypto)
-    => Transaction crypto
-    -> TransactionId crypto
-getTransactionId = \case
-    TransactionShelley tx ->
-        Ledger.txid @(ShelleyEra crypto) (Ledger.Shelley.body tx)
-    TransactionAllegra tx ->
-        Ledger.txid @(AllegraEra crypto) (Ledger.Shelley.body tx)
-    TransactionMary tx ->
-        Ledger.txid @(MaryEra crypto)    (Ledger.Shelley.body tx)
-    TransactionAlonzo tx ->
-        Ledger.txid @(AlonzoEra crypto)  (Ledger.Alonzo.body tx)
+instance HasTransactionId Transaction where
+    getTransactionId
+        :: forall crypto. (Crypto crypto)
+        => Transaction crypto
+        -> TransactionId crypto
+    getTransactionId = \case
+        TransactionShelley tx ->
+            Ledger.txid @(ShelleyEra crypto) (Ledger.Shelley.body tx)
+        TransactionAllegra tx ->
+            Ledger.txid @(AllegraEra crypto) (Ledger.Shelley.body tx)
+        TransactionMary tx ->
+            Ledger.txid @(MaryEra crypto)    (Ledger.Shelley.body tx)
+        TransactionAlonzo tx ->
+            Ledger.txid @(AlonzoEra crypto)  (Ledger.Alonzo.body tx)
 
 mapMaybeOutputs
     :: forall a crypto. (Crypto crypto)
@@ -294,19 +338,31 @@ mapMaybeOutputs fn = \case
 type Input crypto =
     Ledger.TxIn crypto
 
+-- OutputReference
+
 type OutputReference crypto =
     Input crypto
+
+instance HasTransactionId Ledger.TxIn where
+    getTransactionId (Ledger.TxIn i _) = i
 
 -- Output
 
 type Output crypto =
     Ledger.Alonzo.TxOut (AlonzoEra crypto)
 
-type DatumHash crypto =
-    Ledger.DataHash crypto
-
-type Value crypto =
-    Ledger.Value crypto
+asAlonzoOutput
+    :: forall (era :: Type -> Type) crypto.
+        ( Ledger.Era.Era (era crypto)
+        , Ledger.Era.Crypto (era crypto) ~ crypto
+        , Ledger.Core.TxOut (era crypto) ~ Ledger.Shelley.TxOut (era crypto)
+        , Show (Ledger.Core.Value (era crypto))
+        )
+    => (Ledger.Core.Value (era crypto) -> Ledger.Value crypto)
+    -> Ledger.Core.TxOut (era crypto)
+    -> Ledger.Core.TxOut (AlonzoEra crypto)
+asAlonzoOutput liftValue (Ledger.Shelley.TxOut addr value) =
+    Ledger.Alonzo.TxOut addr (liftValue value) SNothing
 
 getAddress
     :: (Crypto crypto)
@@ -329,22 +385,64 @@ getDatumHash
 getDatumHash (Ledger.Alonzo.TxOut _address _value datumHash) =
     (strictMaybeToMaybe datumHash)
 
-asAlonzoOutput
-    :: forall (era :: Type -> Type) crypto.
-        ( Ledger.Era.Era (era crypto)
-        , Ledger.Era.Crypto (era crypto) ~ crypto
-        , Ledger.Core.TxOut (era crypto) ~ Ledger.Shelley.TxOut (era crypto)
-        , Show (Ledger.Core.Value (era crypto))
-        )
-    => (Ledger.Core.Value (era crypto) -> Ledger.Value crypto)
-    -> Ledger.Core.TxOut (era crypto)
-    -> Ledger.Core.TxOut (AlonzoEra crypto)
-asAlonzoOutput liftValue (Ledger.Shelley.TxOut addr value) =
-    Ledger.Alonzo.TxOut addr (liftValue value) SNothing
+-- DatumHash
+
+type DatumHash crypto =
+    Ledger.DataHash crypto
+
+datumHashToJson :: Crypto crypto => DatumHash crypto -> Json.Encoding
+datumHashToJson =
+    hashToJson . Ledger.extractHash
+
+-- Value
+
+type Value crypto =
+    Ledger.Value crypto
+
+valueToJson :: forall crypto. (Crypto crypto) => Value crypto -> Json.Encoding
+valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
+    [ Json.pair "coins"  (Json.integer coins)
+    , Json.pair "assets" (assetsToJson assets)
+    ]
+  where
+    assetsToJson :: Map (Ledger.PolicyID crypto) (Map Ledger.AssetName Integer) -> Json.Encoding
+    assetsToJson =
+        Json.pairs
+        .
+        Map.foldrWithKey
+            (\k v r -> Json.pair (assetIdToText k) (Json.integer v) <> r)
+            mempty
+        .
+        flatten
+
+    flatten :: (Ord k1, Ord k2) => Map k1 (Map k2 a) -> Map (k1, k2) a
+    flatten = Map.foldrWithKey
+        (\k inner -> Map.union (Map.mapKeys (k,) inner))
+        mempty
+
+    assetIdToText :: (Ledger.PolicyID crypto, Ledger.AssetName) -> Text
+    assetIdToText (Ledger.PolicyID (Ledger.ScriptHash (UnsafeHash pid)), Ledger.AssetName bytes)
+        | BS.null bytes = encodeBase16 (fromShort pid)
+        | otherwise     = encodeBase16 (fromShort pid) <> "." <> encodeBase16 bytes
 
 -- Address
 
 type Address crypto = Ledger.Addr crypto
+
+addressToJson :: Address crypto -> Json.Encoding
+addressToJson = \case
+    addr@Ledger.AddrBootstrap{} ->
+        (Json.text . encodeBase58 . addressToBytes) addr
+    addr@(Ledger.Addr network _ _) ->
+        (Json.text . encodeBech32 (hrp network) . addressToBytes) addr
+  where
+    hrp = \case
+        Ledger.Mainnet -> HumanReadablePart "addr"
+        Ledger.Testnet -> HumanReadablePart "addr_test"
+
+addressToBytes :: Address crypto -> ByteString
+addressToBytes = Ledger.serialiseAddr
+{-# INLINEABLE addressToBytes #-}
 
 addressFromBytes :: Crypto crypto => ByteString -> Maybe (Address crypto)
 addressFromBytes = Ledger.deserialiseAddr
@@ -354,28 +452,20 @@ unsafeAddressFromBytes :: (HasCallStack, Crypto crypto) => ByteString -> Address
 unsafeAddressFromBytes = fromMaybe (error "unsafeAddressFromBytes") . addressFromBytes
 {-# INLINEABLE unsafeAddressFromBytes #-}
 
-addressToBytes :: Address crypto -> ByteString
-addressToBytes = Ledger.serialiseAddr
-{-# INLINEABLE addressToBytes #-}
-
 isBootstrap :: Address crypto -> Bool
 isBootstrap = \case
     Ledger.AddrBootstrap{} -> True
     Ledger.Addr{} -> False
 {-# INLINEABLE isBootstrap #-}
 
-getPaymentPartBytes
-    :: Address crypto
-    -> Maybe ByteString
+getPaymentPartBytes :: Address crypto -> Maybe ByteString
 getPaymentPartBytes = \case
     Ledger.Addr _ payment _ ->
         Just $ toStrict $ runPut $ Ledger.putCredential payment
     Ledger.AddrBootstrap{} ->
         Nothing
 
-getDelegationPartBytes
-    :: Address crypto
-    -> Maybe ByteString
+getDelegationPartBytes :: Address crypto -> Maybe ByteString
 getDelegationPartBytes = \case
     Ledger.Addr _ _ (Ledger.StakeRefBase delegation) ->
         Just $ toStrict $ runPut $ Ledger.putCredential delegation
@@ -402,9 +492,13 @@ unsafeMkPoint headerHash slotNo =
     fromShelleyHash (Ledger.unHashHeader . unShelleyHash -> UnsafeHash h) =
         coerce h
 
-getPointSlotNo
-    :: Point (Block crypto)
-    -> SlotNo
+-- SlotNo
+
+slotNoToJson :: SlotNo -> Json.Encoding
+slotNoToJson =
+    Json.integer . toInteger . unSlotNo
+
+getPointSlotNo :: Point (Block crypto) -> SlotNo
 getPointSlotNo pt =
     case pointSlot pt of
         Origin -> SlotNo 0
@@ -416,6 +510,9 @@ instance ToJSON (WithOrigin SlotNo) where
         At sl -> toEncoding sl
 
 -- Hash
+
+hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding
+hashToJson (UnsafeHash h) = byteStringToJson (fromShort h)
 
 digestSize :: forall alg. HashAlgorithm alg => Int
 digestSize =

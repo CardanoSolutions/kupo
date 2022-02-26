@@ -22,7 +22,7 @@ module Kupo.Data.Pattern
       -- * Result
     , Result (..)
     , unsafeMkResult
-    , resultToEncoding
+    , resultToJson
     , resultToRow
     , matchBlock
     ) where
@@ -46,18 +46,27 @@ import Kupo.Data.ChainSync
     , Value
     , addressFromBytes
     , addressToBytes
+    , addressToJson
+    , datumHashToJson
     , digest
     , digestSize
     , foldBlock
     , getAddress
     , getDatumHash
     , getDelegationPartBytes
+    , getOutputIndex
     , getPaymentPartBytes
     , getSlotNo
+    , getTransactionId
     , getValue
     , isBootstrap
     , mapMaybeOutputs
+    , outputIndexToJson
+    , slotNoToJson
+    , transactionIdToJson
     , unsafeAddressFromBytes
+    , valueToJson
+    , valueToJson
     )
 
 import qualified Codec.Binary.Bech32 as Bech32
@@ -245,11 +254,18 @@ resultToRow Result{..} =
     , unSlotNo slotNo
     )
 
-resultToEncoding
-    :: Result crypto
+resultToJson
+    :: Crypto crypto
+    => Result crypto
     -> Json.Encoding
-resultToEncoding =
-    undefined
+resultToJson Result{..} = Json.pairs $ mconcat
+    [ Json.pair "tx_id" (transactionIdToJson (getTransactionId reference))
+    , Json.pair "output_index" (outputIndexToJson (getOutputIndex reference))
+    , Json.pair "address" (addressToJson address)
+    , Json.pair "value" (valueToJson value)
+    , Json.pair "datum_hash" (maybe Json.null_ datumHashToJson datumHash)
+    , Json.pair "slot_no" (slotNoToJson slotNo)
+    ]
 
 -- | Match all outputs in transactions from a block that match any of the given
 -- pattern.

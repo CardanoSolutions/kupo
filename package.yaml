@@ -54,6 +54,7 @@ library:
     - containers
     - contra-tracer
     - contra-tracers
+    - fast-bech32
     - file-embed
     - filepath
     - generic-lens
