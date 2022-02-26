@@ -37,14 +37,13 @@ import Kupo.Data.ChainSync
     ( Block
     , Point
     , SlotNo (..)
-    , addressToBytes
     , getHeaderHash
     , getPointSlotNo
     , getSlotNo
     , unsafeMkPoint
     )
 import Kupo.Data.Pattern
-    ( Pattern, Result (..), matchBlock, resultToRow )
+    ( Pattern, matchBlock, resultToRow )
 
 --
 -- Application Bootstrapping

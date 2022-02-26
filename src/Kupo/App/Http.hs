@@ -11,8 +11,6 @@ module Kupo.App.Http
 
 import Kupo.Prelude
 
-import Data.Aeson
-    ( ToJSON (..) )
 import Kupo.Configuration
     ( StandardCrypto )
 import Kupo.Control.MonadDatabase
@@ -20,7 +18,7 @@ import Kupo.Control.MonadDatabase
 import Kupo.Data.Pattern
     ( patternFromText
     , patternToQueryLike
-    , resultToEncoding
+    , resultToJson
     , unsafeMkResult
     , wildcard
     )
@@ -38,7 +36,6 @@ import Network.Wai
     )
 
 import qualified Data.Aeson as Json
-import qualified Data.Aeson.Encoding as Json
 import qualified Data.Binary.Builder as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Network.Wai.Handler.Warp as Warp
@@ -96,15 +93,11 @@ handleGetMatches Database{..} query = do
             handleInvalidPattern
         Just p -> do
             responseStream status200 defaultHeaders $ \write flush -> do
+                let streamResult = write . Json.fromEncoding . resultToJson
                 runTransaction $ do
                     foldInputsByAddress
                         (patternToQueryLike p)
-                        ()
-                        (\a0 a1 a2 a3 a4 () -> do
-                            let result = unsafeMkResult @StandardCrypto a0 a1 a2 a3 a4
-                            let chunk = Json.fromEncoding (resultToEncoding result)
-                            write chunk
-                        )
+                        (\a0 a1 a2 a3 -> streamResult . unsafeMkResult @StandardCrypto a0 a1 a2 a3)
                 flush
 
 handleInvalidPattern :: Response
