@@ -135,7 +135,7 @@ mkDatabase (toInteger -> longestRollback) conn = Database
                 SQLBlob datumHash -> Just datumHash
                 _ -> Nothing
         let qry = "SELECT output_reference, address, value, datum_hash, slot_no, LENGTH(address) as len \
-                  \FROM inputs WHERE address " <> addressLike
+                  \FROM inputs WHERE address " <> addressLike <> " ORDER BY slot_no DESC"
         fold conn (Query qry) (Only addressLike) () $ \() -> \case
             [ SQLBlob outputReference
                 , SQLText address
