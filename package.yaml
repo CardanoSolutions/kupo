@@ -96,6 +96,7 @@ tests:
     - io-classes
     - io-sim
     - relude
+    - sqlite-simple
     - QuickCheck
     build-tools:
     - hspec-discover

@@ -137,12 +137,15 @@ mkDatabase (toInteger -> longestRollback) conn = Database
         let matchMaybeDatumHash = \case
                 SQLBlob datumHash -> Just datumHash
                 _ -> Nothing
-        fold conn "SELECT * FROM inputs WHERE address LIKE ?" (Only addressLike) result0 $ \result -> \case
+        let qry = "SELECT output_reference, address, value, datum_hash, slot_no, LENGTH(address) as len \
+                  \FROM inputs WHERE address " <> addressLike
+        fold conn (Query qry) (Only addressLike) result0 $ \result -> \case
             [ SQLBlob outputReference
                 , SQLText address
                 , SQLBlob value
                 , matchMaybeDatumHash -> datumHash
                 , SQLInteger (fromIntegral -> slotNo)
+                , _ -- LENGTH(address)
                 ] -> yield outputReference address value datumHash slotNo result
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike xs)
 

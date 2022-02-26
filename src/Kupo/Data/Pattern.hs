@@ -9,8 +9,9 @@ module Kupo.Data.Pattern
       Pattern (..)
     , wildcard
     , patternFromText
-    , patternToQueryLike
     , matching
+      -- ** Query
+    , patternToQueryLike
 
       -- ** MatchBootstrap
     , MatchBootstrap
@@ -42,6 +43,7 @@ import Kupo.Data.ChainSync
     , Transaction
     , Value
     , addressFromBytes
+    , addressToBytes
     , digest
     , digestSize
     , foldBlock
@@ -72,7 +74,19 @@ wildcard :: Text
 wildcard = "*"
 
 patternToQueryLike :: Crypto crypto => Pattern crypto -> Text
-patternToQueryLike = undefined
+patternToQueryLike = \case
+    MatchAny (MatchBootstrap True) ->
+        "LIKE '%'"
+    MatchAny (MatchBootstrap False) ->
+        "NOT LIKE '8%'"
+    MatchExact addr ->
+        "= '" <> encodeBase16 (addressToBytes addr) <> "'"
+    MatchPayment payment ->
+        "LIKE '__" <> encodeBase16 payment <> "%'"
+    MatchDelegation delegation ->
+        "LIKE '%" <> encodeBase16 delegation <> "' AND len > 58"
+    MatchPaymentAndDelegation payment delegation ->
+        "LIKE '__" <> encodeBase16 payment <> encodeBase16 delegation <> "'"
 
 patternFromText :: Crypto crypto => Text -> Maybe (Pattern crypto)
 patternFromText txt =

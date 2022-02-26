@@ -257,4 +257,5 @@ test-suite unit
     , io-sim
     , kupo
     , relude
+    , sqlite-simple
   default-language: Haskell2010

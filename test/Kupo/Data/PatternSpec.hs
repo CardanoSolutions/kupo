@@ -10,25 +10,48 @@ import Kupo.Prelude
 
 import Data.List
     ( delete, (!!) )
+import Data.Maybe
+    ( fromJust )
+import Database.SQLite.Simple
+    ( Connection
+    , Only (..)
+    , Query (..)
+    , SQLData (..)
+    , executeMany
+    , execute_
+    , query_
+    , withConnection
+    , withTransaction
+    )
 import Kupo.Configuration
     ( StandardCrypto )
 import Kupo.Data.ChainSync
-    ( Address, addressFromBytes )
+    ( Address, addressFromBytes, addressToBytes )
 import Kupo.Data.Pattern
     ( Pattern (..)
     , includingBootstrap
     , matching
     , onlyShelley
     , patternFromText
+    , patternToQueryLike
     )
 import Test.Hspec
-    ( Spec, context, parallel, shouldBe, specify )
+    ( Spec, around, context, parallel, shouldBe, specify )
 
 spec :: Spec
 spec = parallel $ do
     context "patternFromText" $ forM_ patterns $ \(str, expectation, _) -> do
         specify (toString str) $ do
             patternFromText str `shouldBe` Just expectation
+
+    context "patternToQueryLike" $ around withFixtureDatabase $ do
+        forM_ patterns $ \(_, p, results) -> do
+            let like = patternToQueryLike p
+            specify (toString like) $ \conn -> do
+                rows <- query_ conn $ "SELECT address, LENGTH(address) as len \
+                                      \FROM addresses \
+                                      \WHERE address " <> Query like
+                sort (rowToAddress <$> rows) `shouldBe` sort results
 
     context "matching" $ forM_ patterns $ \(str, p, sort -> matches) -> do
         specify (toString str) $ do
@@ -41,6 +64,25 @@ spec = parallel $ do
 matchAll :: Pattern crypto -> [Address crypto] -> [Address crypto]
 matchAll p xs = do
     sort [ x | Just x <- (\x -> x <$ (x `matching` p)) <$> xs ]
+
+withFixtureDatabase :: (Connection -> IO ()) -> IO ()
+withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
+    withTransaction conn $ do
+        execute_ conn
+            "CREATE TABLE IF NOT EXISTS addresses (\
+            \  address TEXT NOT NULL\
+            \)"
+        executeMany conn
+            "INSERT INTO addresses VALUES (?)"
+            (Only . SQLText . encodeBase16 . addressToBytes <$> addresses)
+    action conn
+
+rowToAddress :: HasCallStack => [SQLData] -> Address StandardCrypto
+rowToAddress = \case
+    [SQLText txt, _] ->
+        fromJust (either error addressFromBytes (decodeBase16 (encodeUtf8 txt)))
+    _ ->
+        error "rowToAddress: not SQLText"
 
 --
 -- Test Vectors
