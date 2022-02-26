@@ -185,6 +185,7 @@ source-repository-package
   --sha256: 07m8if0621jv4l2fc884gdj7l33dwin8n94bvyx5hk4ilnxs2814
   subdir:
     server/modules/contra-tracers
+    server/modules/fast-bech32
 
 constraints:
     hedgehog >= 1.0
