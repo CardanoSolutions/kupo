@@ -93,6 +93,7 @@ handleGetMatches Database{..} query = do
             handleInvalidPattern
         Just p -> do
             responseStream status200 defaultHeaders $ \write flush -> do
+                write openBracket
                 runTransaction $ do
                     void $ foldInputsByAddress
                         (patternToQueryLike p)
@@ -105,9 +106,10 @@ handleGetMatches Database{..} query = do
                 write closeBracket
                 flush
   where
+    openBracket = B.putCharUtf8 '['
     closeBracket = B.putCharUtf8 ']'
     separator isFirstResult
-        | isFirstResult = B.putCharUtf8 '['
+        | isFirstResult = mempty
         | otherwise     = B.putCharUtf8 ','
 
 handleInvalidPattern :: Response
