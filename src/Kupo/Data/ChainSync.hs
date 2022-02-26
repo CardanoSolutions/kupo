@@ -68,10 +68,11 @@ module Kupo.Data.ChainSync
 
       -- * HeaderHash
     , HeaderHash
+    , headerHashToJson
 
       -- * Point
-    , WithOrigin (..)
     , Point (..)
+    , pointToJson
     , getPointSlotNo
     , pattern GenesisPoint
     , pattern BlockPoint
@@ -79,6 +80,9 @@ module Kupo.Data.ChainSync
 
       -- * Tip
     , Tip (..)
+
+      -- * WithOrigin
+    , WithOrigin (..)
     ) where
 
 import Kupo.Prelude
@@ -121,6 +125,8 @@ import Ouroboros.Consensus.Byron.Ledger.Block
     ( ByronBlock )
 import Ouroboros.Consensus.Cardano.Block
     ( CardanoBlock, HardForkBlock (..) )
+import Ouroboros.Consensus.Cardano.CanHardFork
+    ( CardanoHardForkConstraints )
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras
     ( OneEraHash (..) )
 import Ouroboros.Consensus.Shelley.Ledger.Block
@@ -474,7 +480,22 @@ getDelegationPartBytes = \case
     Ledger.AddrBootstrap{} ->
         Nothing
 
+-- HeaderHash
+
+headerHashToJson
+    :: forall crypto. (CardanoHardForkConstraints crypto)
+    => HeaderHash (Block crypto)
+    -> Json.Encoding
+headerHashToJson =
+    byteStringToJson . fromShort . toShortRawHash (Proxy @(Block crypto))
+
 -- Point
+
+getPointSlotNo :: Point (Block crypto) -> SlotNo
+getPointSlotNo pt =
+    case pointSlot pt of
+        Origin -> SlotNo 0
+        At st  -> st
 
 unsafeMkPoint
     :: forall crypto.
@@ -492,17 +513,24 @@ unsafeMkPoint headerHash slotNo =
     fromShelleyHash (Ledger.unHashHeader . unShelleyHash -> UnsafeHash h) =
         coerce h
 
+pointToJson
+    :: (CardanoHardForkConstraints crypto)
+    => Point (Block crypto)
+    -> Json.Encoding
+pointToJson = \case
+    GenesisPoint ->
+        Json.text "origin"
+    BlockPoint slotNo headerHash ->
+        Json.pairs $ mconcat
+            [ Json.pair "slot_no" (slotNoToJson slotNo)
+            , Json.pair "header_hash" (headerHashToJson headerHash)
+            ]
+
 -- SlotNo
 
 slotNoToJson :: SlotNo -> Json.Encoding
 slotNoToJson =
     Json.integer . toInteger . unSlotNo
-
-getPointSlotNo :: Point (Block crypto) -> SlotNo
-getPointSlotNo pt =
-    case pointSlot pt of
-        Origin -> SlotNo 0
-        At st  -> st
 
 instance ToJSON (WithOrigin SlotNo) where
     toEncoding = \case

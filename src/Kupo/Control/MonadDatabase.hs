@@ -86,18 +86,15 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m ()
 
     , foldInputsByAddress
-        :: forall result. ()
-        => Text  -- An address-like query
-        -> result
+        :: Text  -- An address-like query
         -> (  ByteString         -- output_reference
            -> Text               -- address
            -> ByteString         -- value
            -> Maybe ByteString   -- datum_hash
            -> Word64             -- slot_no
-           -> result
-           -> m result
+           -> m ()
            )
-        -> DBTransaction m result
+        -> DBTransaction m ()
 
     , insertCheckpoint
         :: ByteString -- header_hash
@@ -180,20 +177,20 @@ mkDatabase (toInteger -> longestRollback) bracketConnection = Database
         )
         inputs
 
-    , foldInputsByAddress = \addressLike result0 yield -> ReaderT $ \conn -> do
+    , foldInputsByAddress = \addressLike yield -> ReaderT $ \conn -> do
         let matchMaybeDatumHash = \case
                 SQLBlob datumHash -> Just datumHash
                 _ -> Nothing
         let qry = "SELECT output_reference, address, value, datum_hash, slot_no, LENGTH(address) as len \
                   \FROM inputs WHERE address " <> addressLike <> " ORDER BY slot_no DESC"
-        fold_ conn (Query qry) result0 $ \result -> \case
+        fold_ conn (Query qry) () $ \() -> \case
             [ SQLBlob outputReference
                 , SQLText address
                 , SQLBlob value
                 , matchMaybeDatumHash -> datumHash
                 , SQLInteger (fromIntegral -> slotNo)
                 , _ -- LENGTH(address)
-                ] -> yield outputReference address value datumHash slotNo result
+                ] -> yield outputReference address value datumHash slotNo
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike xs)
 
     , insertCheckpoint = \headerHash (toInteger -> slotNo) -> ReaderT $ \conn -> do

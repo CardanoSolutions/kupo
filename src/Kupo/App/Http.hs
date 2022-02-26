@@ -15,6 +15,8 @@ import Kupo.Configuration
     ( StandardCrypto )
 import Kupo.Control.MonadDatabase
     ( Database (..) )
+import Kupo.Data.ChainSync
+    ( pointToJson, unsafeMkPoint )
 import Kupo.Data.Pattern
     ( patternFromText
     , patternToQueryLike
@@ -63,6 +65,9 @@ runServer withDatabase host port =
 app :: (forall a. (Database IO -> IO a) -> IO a) -> Application
 app withDatabase req send = withDatabase $ \db ->
     case (requestMethod req, pathInfo req) of
+        ("GET", [ "v1", "checkpoints" ]) ->
+            send $ handleGetCheckpoints db
+
         ("GET", [ "v1", "matches" ]) ->
             send $ handleGetMatches db Nothing
 
@@ -82,6 +87,15 @@ app withDatabase req send = withDatabase $ \db ->
 -- Handlers
 --
 
+handleGetCheckpoints
+    :: Database IO
+    -> Response
+handleGetCheckpoints Database{..} = do
+    responseStreamJson (pointToJson @StandardCrypto) $ \yield done -> do
+        points <- runTransaction (listCheckpointsDesc unsafeMkPoint)
+        mapM_ yield points
+        done
+
 handleGetMatches
     :: Database IO
     -> Maybe (Text, Maybe Text)
@@ -92,25 +106,11 @@ handleGetMatches Database{..} query = do
         Nothing ->
             handleInvalidPattern
         Just p -> do
-            responseStream status200 defaultHeaders $ \write flush -> do
-                write openBracket
-                runTransaction $ do
-                    void $ foldInputsByAddress
-                        (patternToQueryLike p)
-                        True
-                        (\a0 a1 a2 a3 a4 isFirstResult -> do
-                            let result = unsafeMkResult @StandardCrypto a0 a1 a2 a3 a4
-                            let json   = Json.fromEncoding (resultToJson result)
-                            False <$ write (separator isFirstResult <> json)
-                        )
-                write closeBracket
-                flush
-  where
-    openBracket = B.putCharUtf8 '['
-    closeBracket = B.putCharUtf8 ']'
-    separator isFirstResult
-        | isFirstResult = mempty
-        | otherwise     = B.putCharUtf8 ','
+            responseStreamJson (resultToJson @StandardCrypto) $ \yield done -> do
+                runTransaction $ foldInputsByAddress
+                    (patternToQueryLike p)
+                    (\a0 a1 a2 a3 -> yield . unsafeMkResult a0 a1 a2 a3)
+                done
 
 handleInvalidPattern :: Response
 handleInvalidPattern = do
@@ -163,3 +163,25 @@ responseJson status headers a =
         contentLength = ( hContentLength, encodeUtf8 (show @Text len) )
      in
         responseLBS status (contentLength : headers) bytes
+
+responseStreamJson
+    :: (a -> Json.Encoding)
+    -> ((a -> IO ()) -> IO () -> IO ())
+    -> Response
+responseStreamJson encode callback = do
+    responseStream status200 defaultHeaders $ \write flush -> do
+        ref <- newIORef True
+        write openBracket
+        callback
+            (\a -> do
+                isFirstResult <- readIORef ref
+                write (separator isFirstResult <> Json.fromEncoding (encode a))
+                writeIORef ref False
+            )
+            (write closeBracket >> flush)
+  where
+    openBracket = B.putCharUtf8 '['
+    closeBracket = B.putCharUtf8 ']'
+    separator isFirstResult
+        | isFirstResult = mempty
+        | otherwise     = B.putCharUtf8 ','
