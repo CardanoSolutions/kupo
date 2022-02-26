@@ -44,7 +44,7 @@ import Kupo.Data.ChainSync
     , unsafeMkPoint
     )
 import Kupo.Data.Pattern
-    ( Pattern, Result (..), matchBlock )
+    ( Pattern, Result (..), matchBlock, resultToRow )
 
 --
 -- Application Bootstrapping
@@ -129,21 +129,6 @@ consumer Tracers{tracerChainSync} mailbox patterns Database{..} = forever $ do
     runTransaction $ do
         insertCheckpoint (getHeaderHash lastKnownBlk) (unSlotNo lastKnownSlot)
         insertInputs inputs
-
---
--- SQL interface
---
-
-resultToRow
-    :: Result StandardCrypto
-    -> ( ByteString, Text, ByteString, Maybe ByteString, Word64 )
-resultToRow Result{..} =
-    ( serialize' reference
-    , encodeBase16 (addressToBytes address)
-    , serialize' value
-    , serialize' <$> datumHash
-    , unSlotNo slotNo
-    )
 
 --
 -- Tracers

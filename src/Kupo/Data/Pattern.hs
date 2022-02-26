@@ -3,6 +3,7 @@
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Kupo.Data.Pattern
     ( -- * Pattern
@@ -22,6 +23,7 @@ module Kupo.Data.Pattern
     , Result (..)
     , unsafeMkResult
     , resultToEncoding
+    , resultToRow
     , matchBlock
     ) where
 
@@ -55,6 +57,7 @@ import Kupo.Data.ChainSync
     , getValue
     , isBootstrap
     , mapMaybeOutputs
+    , unsafeAddressFromBytes
     )
 
 import qualified Codec.Binary.Bech32 as Bech32
@@ -72,8 +75,9 @@ data Pattern crypto
 
 wildcard :: Text
 wildcard = "*"
+{-# INLINEABLE wildcard #-}
 
-patternToQueryLike :: Crypto crypto => Pattern crypto -> Text
+patternToQueryLike :: Pattern crypto -> Text
 patternToQueryLike = \case
     MatchAny (MatchBootstrap True) ->
         "LIKE '%'"
@@ -213,15 +217,33 @@ data Result crypto = Result
     }
 
 unsafeMkResult
-    :: Crypto crypto
+    :: (HasCallStack, Crypto crypto)
     => ByteString
     -> Text
     -> ByteString
     -> Maybe ByteString
     -> Word64
     -> Result crypto
-unsafeMkResult =
-    undefined
+unsafeMkResult
+    (unsafeDeserialize' -> reference)
+    ((unsafeAddressFromBytes . unsafeDecodeBase16) -> address)
+    (unsafeDeserialize' -> value)
+    (fmap unsafeDeserialize' -> datumHash)
+    (SlotNo -> slotNo)
+    =
+    Result{..}
+
+resultToRow
+    :: Crypto crypto
+    => Result crypto
+    -> (ByteString, Text, ByteString, Maybe ByteString, Word64)
+resultToRow Result{..} =
+    ( serialize' reference
+    , encodeBase16 (addressToBytes address)
+    , serialize' value
+    , serialize' <$> datumHash
+    , unSlotNo slotNo
+    )
 
 resultToEncoding
     :: Result crypto

@@ -39,6 +39,7 @@ module Kupo.Data.ChainSync
       -- * Address
     , Address
     , addressFromBytes
+    , unsafeAddressFromBytes
     , addressToBytes
     , isBootstrap
     , getPaymentPartBytes
@@ -348,6 +349,10 @@ type Address crypto = Ledger.Addr crypto
 addressFromBytes :: Crypto crypto => ByteString -> Maybe (Address crypto)
 addressFromBytes = Ledger.deserialiseAddr
 {-# INLINEABLE addressFromBytes #-}
+
+unsafeAddressFromBytes :: (HasCallStack, Crypto crypto) => ByteString -> Address crypto
+unsafeAddressFromBytes = fromMaybe (error "unsafeAddressFromBytes") . addressFromBytes
+{-# INLINEABLE unsafeAddressFromBytes #-}
 
 addressToBytes :: Address crypto -> ByteString
 addressToBytes = Ledger.serialiseAddr

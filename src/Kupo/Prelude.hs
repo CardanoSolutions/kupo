@@ -13,16 +13,19 @@ module Kupo.Prelude
     , (^?)
     , encodeBase16
     , decodeBase16
+    , unsafeDecodeBase16
     , encodeBase58
     , decodeBase58
     , encodeBase64
     , decodeBase64
     , serialize'
+    , decodeFull'
+    , unsafeDeserialize'
     , defaultGenericToEncoding
     ) where
 
 import Cardano.Binary
-    ( serialize' )
+    ( decodeFull', serialize', unsafeDeserialize' )
 import Data.Aeson
     ( Encoding, FromJSON (..), GToJSON', ToJSON (..), Zero, genericToEncoding )
 import Data.ByteString.Base16
@@ -102,6 +105,11 @@ hijackSigTerm =
     liftIO $ void (installHandler softwareTermination handler empty)
   where
     handler = CatchOnce (raiseSignal keyboardSignal)
+
+-- | An unsafe version of 'decodeBase16'. Use with caution.
+unsafeDecodeBase16 :: HasCallStack => Text -> ByteString
+unsafeDecodeBase16 =
+    either error identity . decodeBase16 . encodeUtf8
 
 -- | Decode a byte string from 'Base58', re-defining here to align interfaces
 -- with base16 & base64.

@@ -10,8 +10,6 @@ import Kupo.Prelude
 
 import Data.List
     ( delete, (!!) )
-import Data.Maybe
-    ( fromJust )
 import Database.SQLite.Simple
     ( Connection
     , Only (..)
@@ -26,7 +24,7 @@ import Database.SQLite.Simple
 import Kupo.Configuration
     ( StandardCrypto )
 import Kupo.Data.ChainSync
-    ( Address, addressFromBytes, addressToBytes )
+    ( Address, addressFromBytes, addressToBytes, unsafeAddressFromBytes )
 import Kupo.Data.Pattern
     ( Pattern (..)
     , includingBootstrap
@@ -80,7 +78,7 @@ withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
 rowToAddress :: HasCallStack => [SQLData] -> Address StandardCrypto
 rowToAddress = \case
     [SQLText txt, _] ->
-        fromJust (either error addressFromBytes (decodeBase16 (encodeUtf8 txt)))
+        unsafeAddressFromBytes (unsafeDecodeBase16 txt)
     _ ->
         error "rowToAddress: not SQLText"
 
@@ -159,7 +157,7 @@ patterns =
 addresses :: [Address StandardCrypto]
 addresses =
     [ addr
-    | Just addr <- either (const Nothing) addressFromBytes . decodeBase16 <$>
+    | Just addr <- addressFromBytes . unsafeDecodeBase16 <$>
         -- Payment address, from credentials#0
         [ "61adec17c2784d97ed403c011ab73aa32bdf74ee10ce44258bf72c256b"
 
