@@ -162,16 +162,11 @@ instance MonadDatabase IO where
                     (between conn)
 
                 Write -> bracket_
-                    (do
-                        n <- atomically $ do
-                            n <- readTVar readers
-                            when (n > 0) (writeTVar writer False)
-                            return n
-                        when (n > 0) $ atomically $ do
-                            readTVar readers >>= check . (== 0)
-                            writeTVar writer True
+                    (atomically $ do
+                        readTVar readers >>= check . (== 0)
+                        writeTVar writer True
                     )
-                    (pure ())
+                    (atomically $ writeTVar writer False)
                     (between conn)
 
 mkDatabase :: LongestRollback -> (forall a. (Connection -> IO a) -> IO a) -> Database IO
