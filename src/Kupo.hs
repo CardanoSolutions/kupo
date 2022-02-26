@@ -135,7 +135,7 @@ kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
 
             -- Chain-Sync client, fetching blocks from the network
             ( let client = mkChainSyncClient (producer tr mailbox db) checkpoints
-              in withChainSyncServer [ NodeToClientV_12 ]
+              in withChainSyncServer [ NodeToClientV_12 .. NodeToClientV_9 ]
                     networkMagic
                     slotsPerEpoch
                     nodeSocket
