@@ -79,7 +79,7 @@ newtype Kupo a = Kupo
 
 -- | Application entry point.
 kupo :: Tracers -> Kupo ()
-kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
+kupo tr@Tracers{tracerChainSync, tracerHttp, tracerDatabase} = hijackSigTerm *> do
     Env { network = NetworkParameters
             { networkMagic
             , slotsPerEpoch
@@ -125,6 +125,7 @@ kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
         concurrently3
             -- HTTP Server
             ( runServer
+                tracerHttp
                 (withDatabase nullTracer ReadOnly lock longestRollback dbFile)
                 serverHost
                 serverPort
@@ -135,7 +136,7 @@ kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
 
             -- Chain-Sync client, fetching blocks from the network
             ( let client = mkChainSyncClient (producer tr mailbox db) checkpoints
-              in withChainSyncServer [ NodeToClientV_12 .. NodeToClientV_9 ]
+              in withChainSyncServer [ NodeToClientV_9 .. NodeToClientV_12 ]
                     networkMagic
                     slotsPerEpoch
                     nodeSocket

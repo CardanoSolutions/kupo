@@ -21,6 +21,8 @@ import Kupo.Prelude
 
 import Kupo.App.ChainSync
     ( ChainSyncHandler (..), TraceChainSync (..) )
+import Kupo.App.Http
+    ( TraceHttpServer )
 import Kupo.App.Mailbox
     ( Mailbox, flushMailbox, putMailbox )
 import Kupo.Configuration
@@ -136,7 +138,9 @@ consumer Tracers{tracerChainSync} mailbox patterns Database{..} = forever $ do
 type Tracers = Tracers' IO Concrete
 
 data Tracers' m (kind :: TracerDefinition) = Tracers
-    { tracerDatabase
+    { tracerHttp
+        :: TracerHKD kind (Tracer m TraceHttpServer)
+    , tracerDatabase
         :: TracerHKD kind (Tracer m TraceDatabase)
     , tracerChainSync
         :: TracerHKD kind (Tracer m TraceChainSync)

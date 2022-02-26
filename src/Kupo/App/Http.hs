@@ -7,6 +7,7 @@
 
 module Kupo.App.Http
     ( runServer
+    , TraceHttpServer (..)
     ) where
 
 import Kupo.Prelude
@@ -15,6 +16,8 @@ import Kupo.Configuration
     ( StandardCrypto )
 import Kupo.Control.MonadDatabase
     ( Database (..) )
+import Kupo.Control.MonadLog
+    ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
 import Kupo.Data.ChainSync
     ( pointToJson, unsafeMkPoint )
 import Kupo.Data.Pattern
@@ -27,36 +30,42 @@ import Kupo.Data.Pattern
 import Network.HTTP.Types.Header
     ( Header, hContentLength, hContentType )
 import Network.HTTP.Types.Status
-    ( Status, status200, status400, status404, status406 )
+    ( status200, status400, status404, status406 )
 import Network.Wai
     ( Application
+    , Middleware
     , Response
     , pathInfo
     , requestMethod
     , responseLBS
+    , responseStatus
     , responseStream
     )
 
 import qualified Data.Aeson as Json
 import qualified Data.Binary.Builder as B
 import qualified Data.ByteString.Lazy as BL
+import qualified Network.HTTP.Types.Status as Http
 import qualified Network.Wai.Handler.Warp as Warp
 
 --
 -- Server
 --
 
-runServer :: (forall a. (Database IO -> IO a) -> IO a) -> String -> Int -> IO ()
-runServer withDatabase host port =
-    Warp.runSettings settings (app withDatabase)
+runServer
+    :: Tracer IO TraceHttpServer
+    -> (forall a. (Database IO -> IO a) -> IO a)
+    -> String
+    -> Int
+    -> IO ()
+runServer tr withDatabase host port =
+    Warp.runSettings settings $ tracerMiddleware tr (app withDatabase)
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
         & Warp.setHost (fromString host)
         & Warp.setServerName "kupo"
-        & Warp.setBeforeMainLoop (do
-            putStrLn $ "Server listening on " <> host <> ":" <> show port
-        )
+        & Warp.setBeforeMainLoop (logWith tr TraceServerListening{host,port})
 
 --
 -- Router
@@ -152,7 +161,7 @@ defaultHeaders =
 
 responseJson
     :: ToJSON a
-    => Status
+    => Http.Status
     -> [Header]
     -> a
     -> Response
@@ -185,3 +194,52 @@ responseStreamJson encode callback = do
     separator isFirstResult
         | isFirstResult = mempty
         | otherwise     = B.putCharUtf8 ','
+
+
+--
+-- Tracer
+--
+
+tracerMiddleware :: Tracer IO TraceHttpServer -> Middleware
+tracerMiddleware tr runApp req send = do
+    runApp req $ \res -> do
+        let status = mkStatus (responseStatus res)
+        logWith tr $ TraceRequest {method, path, status}
+        send res
+  where
+    method = decodeUtf8 (requestMethod req)
+    path = pathInfo req
+
+data TraceHttpServer where
+    TraceServerListening
+        :: { host :: String, port :: Int }
+        -> TraceHttpServer
+    TraceRequest
+        :: { method :: Text, path :: [Text], status :: Status }
+        -> TraceHttpServer
+    deriving stock (Generic)
+
+instance HasSeverityAnnotation TraceHttpServer where
+    getSeverityAnnotation = \case
+        TraceServerListening{} -> Notice
+        TraceRequest{} -> Info
+
+instance ToJSON TraceHttpServer where
+    toEncoding =
+        defaultGenericToEncoding
+
+--
+-- Status
+--
+
+data Status = Status
+    { statusCode :: Int
+    , statusMessage :: Text
+    } deriving stock (Generic)
+      deriving anyclass (ToJSON)
+
+mkStatus :: Http.Status -> Status
+mkStatus status = Status
+    { statusCode = Http.statusCode status
+    , statusMessage = decodeUtf8 (Http.statusMessage status)
+    }

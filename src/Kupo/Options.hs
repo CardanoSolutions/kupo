@@ -97,7 +97,8 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> many patternOption
                 )
             <*> (tracersOption <|> Tracers
-                    <$> fmap Const (logLevelOption "database")
+                    <$> fmap Const (logLevelOption "http-server")
+                    <*> fmap Const (logLevelOption "database")
                     <*> fmap Const (logLevelOption "chain-sync")
                     <*> fmap Const (logLevelOption "configuration")
                 )
