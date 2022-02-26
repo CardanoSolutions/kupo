@@ -46,9 +46,9 @@ import Kupo.Control.MonadAsync
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadDatabase
-    ( MonadDatabase (..) )
+    ( Mode (..), MonadDatabase (..) )
 import Kupo.Control.MonadLog
-    ( MonadLog (..), withStdoutTracers )
+    ( MonadLog (..), nullTracer, withStdoutTracers )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..) )
 import Kupo.Control.MonadSTM
@@ -113,7 +113,8 @@ kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
     let longestRollback = 43200
     let dbFile = (workDir </> "kupo.sqlite3")
 
-    liftIO $ withDatabase tracerDatabase longestRollback dbFile $ \db -> do
+    lock <- liftIO newLock
+    liftIO $ withDatabase tracerDatabase Write lock longestRollback dbFile $ \db -> do
         checkpoints <- startOrResume tr db since
         -- TODO: Make the mailbox's size configurable? Larger sizes means larger
         -- memory usage at the benefits of slightly faster sync time... Though I
@@ -122,8 +123,17 @@ kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
         -- synchronization time decrease.
         mailbox <- atomically (newMailbox 100)
         concurrently3
-            ( runServer (withDatabase tracerDatabase longestRollback dbFile) serverHost serverPort )
+            -- HTTP Server
+            ( runServer
+                (withDatabase nullTracer ReadOnly lock longestRollback dbFile)
+                serverHost
+                serverPort
+            )
+
+            -- Chain-Sync handler fueling the database
             ( consumer tr mailbox patterns db )
+
+            -- Chain-Sync client, fetching blocks from the network
             ( let client = mkChainSyncClient (producer tr mailbox db) checkpoints
               in withChainSyncServer [ NodeToClientV_12 ]
                     networkMagic

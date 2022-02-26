@@ -10,6 +10,7 @@
 module Kupo.Control.MonadDatabase
     ( -- * Database DSL
       MonadDatabase (..)
+    , Mode (..)
     , Database (..)
     , LongestRollback (..)
 
@@ -21,6 +22,10 @@ import Kupo.Prelude
 
 import Control.Exception
     ( throwIO )
+import Control.Monad.Class.MonadSTM
+    ( MonadSTM (..) )
+import Control.Monad.Class.MonadThrow
+    ( bracket_ )
 import Control.Tracer
     ( Tracer, traceWith )
 import Data.FileEmbed
@@ -48,12 +53,22 @@ import qualified Data.Text as T
 
 class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) where
     type DBTransaction m :: (Type -> Type)
+    data DBLock m :: Type
+
+    newLock
+        :: m (DBLock m)
+
     withDatabase
         :: Tracer m TraceDatabase
+        -> Mode
+        -> DBLock m
         -> LongestRollback
         -> FilePath
         -> (Database m -> m a)
         -> m a
+
+data Mode = Write | ReadOnly
+    deriving (Eq, Show)
 
 newtype LongestRollback = LongestRollback
     { getLongestRollback :: Word64
@@ -108,19 +123,52 @@ data Database (m :: Type -> Type) = Database
 -- IO
 --
 
-newtype WrappedIO a = WrappedIO { runIO :: IO a }
-    deriving newtype (Functor, Applicative, Monad)
-
 instance MonadDatabase IO where
-    type DBTransaction IO = WrappedIO
-    withDatabase tr k filePath action =
-        withConnection filePath $ \conn -> do
-            databaseVersion conn >>= runMigrations tr conn
-            action (mkDatabase k conn)
+    type DBTransaction IO = ReaderT Connection IO
+    data DBLock IO = DBLock (TVar IO Word) (TVar IO Bool)
 
-mkDatabase :: LongestRollback -> Connection -> Database IO
-mkDatabase (toInteger -> longestRollback) conn = Database
-    { insertInputs = WrappedIO . mapM_
+    newLock = DBLock <$> newTVarIO 0 <*> newTVarIO True
+
+    withDatabase tr mode (DBLock readers writer) k filePath action = do
+        withConnection filePath $ \conn -> do
+            when (mode == Write) (databaseVersion conn >>= runMigrations tr conn)
+            action (mkDatabase k (bracketConnection conn))
+      where
+        -- The heuristic below aims at favoring readers over writers. We assume
+        -- that there is only one writer and possibly many readers. The count of
+        -- readers is kept in a TVar and readers increment/decrement it around
+        -- each transactions.
+        -- The writer however will only attempt writing if there's currently no
+        -- reader. In case where there's at least one reader waiting, it'll let
+        -- them pass and wait until all readers are done.
+        bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
+        bracketConnection conn between =
+            case mode of
+                ReadOnly -> bracket_
+                    (do
+                        atomically (modifyTVar' readers succ)
+                        atomically (readTVar writer >>= check . not)
+                    )
+                    (atomically (modifyTVar' readers pred))
+                    (between conn)
+
+                Write -> bracket_
+                    (do
+                        n <- atomically $ do
+                            n <- readTVar readers
+                            when (n > 0) (writeTVar writer False)
+                            return n
+                        when (n > 0) $ atomically $ do
+                            readTVar readers >>= check . (== 0)
+                            writeTVar writer True
+                    )
+                    (pure ())
+                    (between conn)
+
+mkDatabase :: LongestRollback -> (forall a. (Connection -> IO a) -> IO a) -> Database IO
+mkDatabase (toInteger -> longestRollback) bracketConnection = Database
+    { insertInputs = \inputs -> ReaderT $ \conn ->
+        mapM_
         (\(outputReference, address, value, datumHash, fromIntegral -> slotNo) ->
             insertRow @"inputs" conn
                 [ SQLBlob outputReference
@@ -130,8 +178,9 @@ mkDatabase (toInteger -> longestRollback) conn = Database
                 , SQLInteger slotNo
                 ]
         )
+        inputs
 
-    , foldInputsByAddress = \addressLike result0 yield -> WrappedIO $ do
+    , foldInputsByAddress = \addressLike result0 yield -> ReaderT $ \conn -> do
         let matchMaybeDatumHash = \case
                 SQLBlob datumHash -> Just datumHash
                 _ -> Nothing
@@ -147,7 +196,7 @@ mkDatabase (toInteger -> longestRollback) conn = Database
                 ] -> yield outputReference address value datumHash slotNo result
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike xs)
 
-    , insertCheckpoint = \headerHash (toInteger -> slotNo) -> WrappedIO $ do
+    , insertCheckpoint = \headerHash (toInteger -> slotNo) -> ReaderT $ \conn -> do
         insertRow @"checkpoints" conn
             [ SQLBlob headerHash
             , SQLInteger (fromIntegral slotNo)
@@ -156,13 +205,13 @@ mkDatabase (toInteger -> longestRollback) conn = Database
             [ SQLInteger (fromIntegral (slotNo - longestRollback))
             ]
 
-    , listCheckpointsDesc = \mk -> WrappedIO $ do
+    , listCheckpointsDesc = \mk -> ReaderT $ \conn -> do
         -- NOTE: fetching in *ASC*ending order because the list construction
         -- reverses it,
         fold_ conn "SELECT * FROM checkpoints ORDER BY slot_no ASC" []
             $ \xs (headerHash, slotNo) -> pure ((mk headerHash slotNo) : xs)
 
-    , rollbackTo = \(fromIntegral -> slotNo) -> WrappedIO $ do
+    , rollbackTo = \(fromIntegral -> slotNo) -> ReaderT $ \conn -> do
         execute conn "DELETE FROM inputs WHERE slot_no > ?"
             [ SQLInteger slotNo
             ]
@@ -170,8 +219,8 @@ mkDatabase (toInteger -> longestRollback) conn = Database
             [ SQLInteger slotNo
             ]
 
-    , runTransaction =
-        withTransaction conn . runIO
+    , runTransaction = \r -> bracketConnection $ \conn ->
+        withTransaction conn (runReaderT r conn)
     }
 
 insertRow
