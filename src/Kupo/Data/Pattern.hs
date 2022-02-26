@@ -259,7 +259,7 @@ resultToJson
     => Result crypto
     -> Json.Encoding
 resultToJson Result{..} = Json.pairs $ mconcat
-    [ Json.pair "tx_id" (transactionIdToJson (getTransactionId reference))
+    [ Json.pair "transaction_id" (transactionIdToJson (getTransactionId reference))
     , Json.pair "output_index" (outputIndexToJson (getOutputIndex reference))
     , Json.pair "address" (addressToJson address)
     , Json.pair "value" (valueToJson value)
