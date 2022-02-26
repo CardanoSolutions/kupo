@@ -17,7 +17,8 @@ module Kupo.Control.MonadDatabase
     , TraceDatabase (..)
     ) where
 
-import Kupo.Prelude
+import Kupo.Prelude hiding
+    ( fold )
 
 import Control.Exception
     ( throwIO )
@@ -35,6 +36,7 @@ import Database.SQLite.Simple
     , ToRow (..)
     , execute
     , execute_
+    , fold
     , fold_
     , nextRow
     , withConnection
@@ -45,7 +47,6 @@ import GHC.TypeLits
     ( KnownSymbol, symbolVal )
 
 import qualified Data.Text as T
-
 
 class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) where
     type DBTransaction m :: (Type -> Type)
@@ -62,14 +63,28 @@ newtype LongestRollback = LongestRollback
 
 data Database (m :: Type -> Type) = Database
     { insertInputs
-        :: [ ( ByteString       -- output_reference
-             , Text             -- address
-             , ByteString       -- value
-             , Maybe ByteString -- datum_hash
-             , Word64           -- slot_no
+        :: [ ( ByteString        -- output_reference
+             , Text              -- address
+             , ByteString        -- value
+             , Maybe ByteString  -- datum_hash
+             , Word64            -- slot_no
              )
            ]
         -> DBTransaction m ()
+
+    , foldInputsByAddress
+        :: forall result. ()
+        => Text  -- An address-like query
+        -> result
+        -> (  ByteString         -- output_reference
+           -> Text               -- address
+           -> ByteString         -- value
+           -> Maybe ByteString   -- datum_hash
+           -> Word64             -- slot_no
+           -> result
+           -> m result
+           )
+        -> DBTransaction m result
 
     , insertCheckpoint
         :: ByteString -- header_hash
@@ -117,6 +132,20 @@ mkDatabase (toInteger -> longestRollback) conn = Database
                 , SQLInteger slotNo
                 ]
         )
+
+    , foldInputsByAddress = \addressLike result0 yield -> WrappedIO $ do
+        let matchMaybeDatumHash = \case
+                SQLBlob datumHash -> Just datumHash
+                _ -> Nothing
+        fold conn "SELECT * FROM inputs WHERE address LIKE ?" (Only addressLike) result0 $ \result -> \case
+            [ SQLBlob outputReference
+                , SQLText address
+                , SQLBlob value
+                , matchMaybeDatumHash -> datumHash
+                , SQLInteger (fromIntegral -> slotNo)
+                ] -> yield outputReference address value datumHash slotNo result
+            (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike xs)
+
 
     , insertCheckpoint = \headerHash (toInteger -> slotNo) -> WrappedIO $ do
         insertRow @"checkpoints" conn
@@ -217,6 +246,12 @@ data UnexpectedUserVersionException
     = UnexpectedUserVersion
     deriving Show
 instance Exception UnexpectedUserVersionException
+
+-- | Something went wrong when unmarshalling data from the database.
+data UnexpectedRowException
+    = UnexpectedRow Text [SQLData]
+    deriving Show
+instance Exception UnexpectedRowException
 
 --
 -- Tracer

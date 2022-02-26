@@ -111,8 +111,9 @@ kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
      -- re-establishing an intersection. Since checkpoints are small, storing
      -- more is cheap.
     let longestRollback = 43200
+    let dbFile = (workDir </> "kupo.sqlite3")
 
-    liftIO $ withDatabase tracerDatabase longestRollback (workDir </> "kupo.sqlite3") $ \db -> do
+    liftIO $ withDatabase tracerDatabase longestRollback dbFile $ \db -> do
         checkpoints <- startOrResume tr db since
         -- TODO: Make the mailbox's size configurable? Larger sizes means larger
         -- memory usage at the benefits of slightly faster sync time... Though I
@@ -121,7 +122,7 @@ kupo tr@Tracers{tracerChainSync, tracerDatabase} = hijackSigTerm *> do
         -- synchronization time decrease.
         mailbox <- atomically (newMailbox 100)
         concurrently3
-            ( runServer serverHost serverPort )
+            ( runServer (withDatabase tracerDatabase longestRollback dbFile) serverHost serverPort )
             ( consumer tr mailbox patterns db )
             ( let client = mkChainSyncClient (producer tr mailbox db) checkpoints
               in withChainSyncServer [ NodeToClientV_12 ]

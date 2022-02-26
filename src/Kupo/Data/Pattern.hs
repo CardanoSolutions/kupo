@@ -7,15 +7,21 @@
 module Kupo.Data.Pattern
     ( -- * Pattern
       Pattern (..)
+    , wildcard
     , patternFromText
+    , patternToQueryLike
     , matching
-    , Result (..)
-    , matchBlock
 
       -- ** MatchBootstrap
     , MatchBootstrap
     , onlyShelley
     , includingBootstrap
+
+      -- * Result
+    , Result (..)
+    , unsafeMkResult
+    , resultToEncoding
+    , matchBlock
     ) where
 
 import Kupo.Prelude
@@ -50,6 +56,7 @@ import Kupo.Data.ChainSync
     )
 
 import qualified Codec.Binary.Bech32 as Bech32
+import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
 
@@ -61,12 +68,16 @@ data Pattern crypto
     | MatchPaymentAndDelegation ByteString ByteString
     deriving (Generic, Eq, Show)
 
+wildcard :: Text
+wildcard = "*"
+
+patternToQueryLike :: Crypto crypto => Pattern crypto -> Text
+patternToQueryLike = undefined
+
 patternFromText :: Crypto crypto => Text -> Maybe (Pattern crypto)
 patternFromText txt =
     readerAny <|> readerExact <|> readerPaymentOrDelegation
   where
-    wildcard = "*"
-
     readerAny = MatchAny includingBootstrap
         <$ guard (txt == wildcard)
 
@@ -186,6 +197,23 @@ data Result crypto = Result
     , datumHash :: Maybe (DatumHash crypto)
     , slotNo :: SlotNo
     }
+
+unsafeMkResult
+    :: Crypto crypto
+    => ByteString
+    -> Text
+    -> ByteString
+    -> Maybe ByteString
+    -> Word64
+    -> Result crypto
+unsafeMkResult =
+    undefined
+
+resultToEncoding
+    :: Result crypto
+    -> Json.Encoding
+resultToEncoding =
+    undefined
 
 -- | Match all outputs in transactions from a block that match any of the given
 -- pattern.

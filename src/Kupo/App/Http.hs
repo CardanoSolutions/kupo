@@ -2,24 +2,54 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE RecordWildCards #-}
+
 module Kupo.App.Http
     ( runServer
     ) where
 
 import Kupo.Prelude
 
+import Data.Aeson
+    ( ToJSON (..) )
+import Kupo.Configuration
+    ( StandardCrypto )
+import Kupo.Control.MonadDatabase
+    ( Database (..) )
+import Kupo.Data.Pattern
+    ( patternFromText
+    , patternToQueryLike
+    , resultToEncoding
+    , unsafeMkResult
+    , wildcard
+    )
 import Network.HTTP.Types.Header
-    ( Header, hContentType )
+    ( Header, hContentLength, hContentType )
 import Network.HTTP.Types.Status
-    ( status200, status404, status406 )
+    ( Status, status200, status400, status404, status406 )
 import Network.Wai
-    ( Application, Response, pathInfo, requestMethod, responseLBS )
+    ( Application
+    , Response
+    , pathInfo
+    , requestMethod
+    , responseLBS
+    , responseStream
+    )
 
+import qualified Data.Aeson as Json
+import qualified Data.Aeson.Encoding as Json
+import qualified Data.Binary.Builder as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Network.Wai.Handler.Warp as Warp
 
-runServer :: String -> Int -> IO ()
-runServer host port =
-    Warp.runSettings settings app
+--
+-- Server
+--
+
+runServer :: (forall a. (Database IO -> IO a) -> IO a) -> String -> Int -> IO ()
+runServer withDatabase host port =
+    Warp.runSettings settings (app withDatabase)
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -29,42 +59,102 @@ runServer host port =
             putStrLn $ "Server listening on " <> host <> ":" <> show port
         )
 
-app :: Application
-app req send = do
+--
+-- Router
+--
+
+app :: (forall a. (Database IO -> IO a) -> IO a) -> Application
+app withDatabase req send = withDatabase $ \db ->
     case (requestMethod req, pathInfo req) of
         ("GET", [ "v1", "matches" ]) ->
-            send =<< handleGetMatches Nothing Nothing
+            send $ handleGetMatches db Nothing
 
         ("GET", [ "v1", "matches", arg0 ]) ->
-            send =<< handleGetMatches (Just arg0) Nothing
+            send $ handleGetMatches db (Just (arg0, Nothing))
 
         ("GET", [ "v1", "matches", arg0, arg1 ]) ->
-            send =<< handleGetMatches (Just arg0) (Just arg1)
+            send $ handleGetMatches db (Just (arg0, Just arg1))
 
         ("GET", _) ->
-            send =<< handleNotFound
+            send handleNotFound
 
         (_, _) ->
-            send =<< handleMethodNotAllowed
+            send handleMethodNotAllowed
+
+--
+-- Handlers
+--
 
 handleGetMatches
-    :: Maybe Text
-    -> Maybe Text
-    -> IO Response
-handleGetMatches arg0 arg1 = do
-    print arg0
-    print arg1
-    pure $ responseLBS status200 defaultHeaders "OK"
+    :: Database IO
+    -> Maybe (Text, Maybe Text)
+    -> Response
+handleGetMatches Database{..} query = do
+    let txt = maybe wildcard (\(a0, a1) -> a0 <> "/" <> fromMaybe wildcard a1) query
+    case patternFromText @StandardCrypto txt of
+        Nothing ->
+            handleInvalidPattern
+        Just p -> do
+            responseStream status200 defaultHeaders $ \write flush -> do
+                runTransaction $ do
+                    foldInputsByAddress
+                        (patternToQueryLike p)
+                        ()
+                        (\a0 a1 a2 a3 a4 () -> do
+                            let result = unsafeMkResult @StandardCrypto a0 a1 a2 a3 a4
+                            let chunk = Json.fromEncoding (resultToEncoding result)
+                            write chunk
+                        )
+                flush
 
-handleNotFound :: IO Response
+handleInvalidPattern :: Response
+handleInvalidPattern = do
+    responseJson status400 defaultHeaders $ HttpError
+        { hint = "Invalid pattern! To fetch matches, you may provide any valid \
+                 \pattern, including wildcards ('*') or full addresses. Make \
+                 \sure to double-check the documentation at: \
+                 \<https://cardanosolutions.github.io/kupo>!"
+        }
+
+handleNotFound :: Response
 handleNotFound =
-    pure $ responseLBS status404 defaultHeaders "Not found."
+    responseJson status404 defaultHeaders $ HttpError
+        { hint = "Endpoint not found. Make sure to double-check the \
+                 \documentation at: <https://cardanosolutions.github.io/kupo>!"
+        }
 
-handleMethodNotAllowed :: IO Response
+handleMethodNotAllowed :: Response
 handleMethodNotAllowed =
-    pure $ responseLBS status406 defaultHeaders "Method not allowed."
+    responseJson status406 defaultHeaders $ HttpError
+        { hint = "Unsupported method called on known endpoint. Make sure to \
+                 \double-check the documentation at: \
+                 \<https://cardanosolutions.github.io/kupo>!"
+        }
+
+--
+-- Helpers
+--
+
+data HttpError = HttpError
+    { hint :: Text }
+    deriving stock (Generic)
+    deriving anyclass (ToJSON)
 
 defaultHeaders :: [Header]
 defaultHeaders =
     [ ( hContentType, "application/json; charset=utf-8" )
     ]
+
+responseJson
+    :: ToJSON a
+    => Status
+    -> [Header]
+    -> a
+    -> Response
+responseJson status headers a =
+    let
+        bytes = B.toLazyByteString $ Json.fromEncoding (Json.toEncoding a)
+        len = BL.length bytes
+        contentLength = ( hContentLength, encodeUtf8 (show @Text len) )
+     in
+        responseLBS status (contentLength : headers) bytes
