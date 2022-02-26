@@ -12,6 +12,7 @@ module Kupo.Configuration
     (
     -- * Configuration
       Configuration (..)
+    , WorkDir (..)
     , StandardCrypto
     , Point (..)
     , Block
@@ -72,12 +73,17 @@ import qualified Data.Text.Read as T
 data Configuration = Configuration
     { nodeSocket :: !FilePath
     , nodeConfig :: !FilePath
-    , workDir :: !FilePath
+    , workDir :: !WorkDir
     , serverHost :: !String
     , serverPort :: !Int
     , since :: !(Maybe (Point (Block StandardCrypto)))
     , patterns :: ![Pattern StandardCrypto]
     } deriving (Generic, Eq, Show)
+
+data WorkDir
+    = Dir FilePath
+    | InMemory
+    deriving (Generic, Eq, Show)
 
 data NetworkParameters = NetworkParameters
     { networkMagic :: !NetworkMagic

@@ -122,14 +122,26 @@ data Database (m :: Type -> Type) = Database
 
 instance MonadDatabase IO where
     type DBTransaction IO = ReaderT Connection IO
-    data DBLock IO = DBLock (TVar IO Word) (TVar IO Bool)
+    data DBLock IO = DBLock (TVar IO Word) (TVar IO Bool) (TMVar IO Connection)
 
-    newLock = DBLock <$> newTVarIO 0 <*> newTVarIO True
+    newLock = DBLock <$> newTVarIO 0 <*> newTVarIO True <*> newEmptyTMVarIO
 
-    withDatabase tr mode (DBLock readers writer) k filePath action = do
-        withConnection filePath $ \conn -> do
-            when (mode == Write) (databaseVersion conn >>= runMigrations tr conn)
-            action (mkDatabase k (bracketConnection conn))
+    withDatabase tr mode (DBLock readers writer inMemory) k filePath action
+        | filePath == ":memory:" = do
+            traceWith tr DatabaseRunningInMemory
+            case mode of
+                Write -> do
+                    withConnection filePath $ \conn -> do
+                        databaseVersion conn >>= runMigrations tr conn
+                        atomically $ putTMVar inMemory conn
+                        action (mkDatabase k (bracketConnection conn))
+                ReadOnly -> do
+                    conn <- atomically $ readTMVar inMemory
+                    action (mkDatabase k (bracketConnection conn))
+        | otherwise = do
+            withConnection filePath $ \conn -> do
+                when (mode == Write) (databaseVersion conn >>= runMigrations tr conn)
+                action (mkDatabase k (bracketConnection conn))
       where
         -- The heuristic below aims at favoring readers over writers. We assume
         -- that there is only one writer and possibly many readers. The count of
@@ -315,6 +327,8 @@ data TraceDatabase where
     DatabaseRunningMigration
         :: { from :: Int, to :: Int }
         -> TraceDatabase
+    DatabaseRunningInMemory
+        :: TraceDatabase
     deriving stock (Generic, Show)
 
 instance ToJSON TraceDatabase where
@@ -327,3 +341,4 @@ instance HasSeverityAnnotation TraceDatabase where
         DatabaseCurrentVersion{}    -> Info
         DatabaseNoMigrationNeeded{} -> Debug
         DatabaseRunningMigration{}  -> Notice
+        DatabaseRunningInMemory{}   -> Warning

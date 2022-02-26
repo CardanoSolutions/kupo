@@ -40,7 +40,11 @@ import Kupo.App.Http
 import Kupo.App.Mailbox
     ( newMailbox )
 import Kupo.Configuration
-    ( Configuration (..), NetworkParameters (..), TraceConfiguration (..) )
+    ( Configuration (..)
+    , NetworkParameters (..)
+    , TraceConfiguration (..)
+    , WorkDir (..)
+    )
 import Kupo.Control.MonadAsync
     ( concurrently3 )
 import Kupo.Control.MonadCatch
@@ -111,7 +115,9 @@ kupo tr@Tracers{tracerChainSync, tracerHttp, tracerDatabase} = hijackSigTerm *> 
      -- re-establishing an intersection. Since checkpoints are small, storing
      -- more is cheap.
     let longestRollback = 43200
-    let dbFile = (workDir </> "kupo.sqlite3")
+    let dbFile = case workDir of
+            Dir dir  -> dir </> "kupo.sqlite3"
+            InMemory -> ":memory:"
 
     lock <- liftIO newLock
     liftIO $ withDatabase tracerDatabase Write lock longestRollback dbFile $ \db -> do
