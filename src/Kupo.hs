@@ -129,6 +129,11 @@ kupo tr@Tracers{tracerChainSync, tracerHttp, tracerDatabase} = hijackSigTerm *> 
             -- HTTP Server
             ( runServer
                 tracerHttp
+                -- NOTE: This should / could probably use a resource pool to
+                -- avoid re-creating a new connection on every requests. This is
+                -- however pretty cheap with SQLite anyway and the HTTP server
+                -- isn't meant to be a public-facing web server serving millions
+                -- of clients.
                 (withDatabase nullTracer ReadOnly lock longestRollback dbFile)
                 serverHost
                 serverPort
