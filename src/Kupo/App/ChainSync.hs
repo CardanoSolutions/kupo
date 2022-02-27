@@ -8,13 +8,10 @@ module Kupo.App.ChainSync
     ( ChainSyncHandler (..)
     , mkChainSyncClient
     , IntersectionNotFoundException (..)
-    , TraceChainSync (..)
     ) where
 
 import Kupo.Prelude
 
-import Kupo.Control.MonadLog
-    ( HasSeverityAnnotation (..), Severity (..) )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.ChainSync
@@ -96,32 +93,3 @@ mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts =
 -- TODO: Make this configurable as it depends on available machine's resources.
 maxInFlight :: Int
 maxInFlight = 100
-
---
--- Tracer
---
-
-data TraceChainSync where
-    ChainSyncRollBackward
-        :: { point :: SlotNo }
-        -> TraceChainSync
-    ChainSyncRollForward
-        :: { slotNo :: SlotNo, matches :: Int }
-        -> TraceChainSync
-    ChainSyncIntersectionNotFound
-        :: { points :: [WithOrigin SlotNo] }
-        -> TraceChainSync
-    deriving stock (Generic, Show)
-
-instance ToJSON TraceChainSync where
-    toEncoding =
-        defaultGenericToEncoding
-
-instance HasSeverityAnnotation TraceChainSync where
-    getSeverityAnnotation = \case
-        ChainSyncRollForward{} ->
-            Debug
-        ChainSyncRollBackward{} ->
-            Notice
-        ChainSyncIntersectionNotFound{} ->
-            Error

@@ -31,10 +31,7 @@ import Kupo.Prelude
 import Kupo.App
     ( Tracers, Tracers' (..), consumer, producer, startOrResume )
 import Kupo.App.ChainSync
-    ( IntersectionNotFoundException (..)
-    , TraceChainSync (..)
-    , mkChainSyncClient
-    )
+    ( IntersectionNotFoundException (..), mkChainSyncClient )
 import Kupo.App.Http
     ( runServer )
 import Kupo.App.Mailbox
@@ -54,7 +51,7 @@ import Kupo.Control.MonadDatabase
 import Kupo.Control.MonadLog
     ( MonadLog (..), nullTracer, withStdoutTracers )
 import Kupo.Control.MonadOuroboros
-    ( MonadOuroboros (..), NodeToClientVersion (..) )
+    ( MonadOuroboros (..), NodeToClientVersion (..), TraceChainSync (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Options
@@ -142,7 +139,8 @@ kupo tr@Tracers{tracerChainSync, tracerHttp, tracerDatabase} = hijackSigTerm *> 
 
             -- Chain-Sync client, fetching blocks from the network
             ( let client = mkChainSyncClient (producer tr mailbox db) checkpoints
-              in withChainSyncServer [ NodeToClientV_9 .. NodeToClientV_12 ]
+              in withChainSyncServer tracerChainSync
+                    [ NodeToClientV_9 .. NodeToClientV_12 ]
                     networkMagic
                     slotsPerEpoch
                     nodeSocket

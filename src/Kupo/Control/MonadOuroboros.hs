@@ -4,11 +4,14 @@
 
 {-# LANGUAGE TypeApplications #-}
 
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..)
     , NetworkMagic (..)
     , EpochSlots (..)
     , NodeToClientVersion (..)
+    , TraceChainSync (..)
     ) where
 
 import Kupo.Prelude
@@ -17,10 +20,26 @@ import Cardano.Chain.Slotting
     ( EpochSlots (..) )
 import Cardano.Ledger.Crypto
     ( StandardCrypto )
+import Cardano.Slotting.Slot
+    ( SlotNo )
+import Control.Exception.Safe
+    ( IOException, isAsyncException )
+import Control.Monad.Class.MonadThrow
+    ( MonadCatch (..), MonadThrow (..) )
+import Control.Monad.Class.MonadTimer
+    ( threadDelay )
+import Control.Tracer
+    ( Tracer, traceWith )
 import Control.Tracer
     ( nullTracer )
+import Data.List
+    ( isInfixOf )
 import Data.Map.Strict
     ( (!) )
+import Data.Severity
+    ( HasSeverityAnnotation (..), Severity (..) )
+import Data.Time.Clock
+    ( DiffTime )
 import Ouroboros.Consensus.Byron.Ledger.Config
     ( CodecConfig (..) )
 import Ouroboros.Consensus.Cardano
@@ -57,16 +76,21 @@ import Ouroboros.Network.NodeToClient
     , localSnocket
     , withIOManager
     )
+import Ouroboros.Network.Point
+    ( WithOrigin (..) )
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     ( ChainSyncClientPipelined (..), chainSyncClientPeerPipelined )
 import Ouroboros.Network.Protocol.Handshake.Version
     ( combineVersions, simpleSingletonVersions )
+import System.IO.Error
+    ( isDoesNotExistError )
 
 class MonadOuroboros (m :: Type -> Type) where
     type Block m :: Type
     withChainSyncServer
         :: IsBlock (Block m)
-        => [NodeToClientVersion]
+        => Tracer m TraceChainSync
+        -> [NodeToClientVersion]
         -> NetworkMagic
         -> EpochSlots
         -> FilePath
@@ -80,9 +104,11 @@ type IsBlock block =
 
 instance MonadOuroboros IO where
     type Block IO = CardanoBlock StandardCrypto
-    withChainSyncServer wantedVersions networkMagic slotsPerEpoch socket client =
+    withChainSyncServer tr wantedVersions networkMagic slotsPerEpoch socket client =
         withIOManager $ \iocp -> do
             connectTo (localSnocket iocp) tracers versions socket
+                & onExceptions
+                & foreverCalmly
       where
         tracers = NetworkConnectTracers
             { nctMuxTracer = nullTracer
@@ -108,16 +134,40 @@ instance MonadOuroboros IO where
                             let
                                 peer = chainSyncClientPeerPipelined client
                                 codec = cChainSyncCodec (codecs slotsPerEpoch version)
-                                tr = nullTracer
                              in
-                                runPipelinedPeer tr codec channel peer
+                                runPipelinedPeer nullTracer codec channel peer
                     }
                 ]
 
-instance MonadOuroboros (ReaderT r IO) where
-    type Block (ReaderT r IO) = Block IO
-    withChainSyncServer wantedVersions networkMagic slotsPerEpoch socket =
-        lift . withChainSyncServer wantedVersions networkMagic slotsPerEpoch socket
+        foreverCalmly a = do
+            let a' = a *> threadDelay 5 *> a' in a'
+
+        onExceptions
+            = handle onUnknownException
+            . handle onIOException
+
+        onIOException :: IOException -> IO ()
+        onIOException e
+            | isRetryable = do
+                traceWith tr $ ChainSyncFailedToConnect socket 5
+            | otherwise = do
+                traceWith tr $ ChainSyncUnknownException $ show (toException e)
+          where
+            isRetryable :: Bool
+            isRetryable = isResourceVanishedError e || isDoesNotExistError e || isTryAgainError e
+
+            isTryAgainError :: IOException -> Bool
+            isTryAgainError = isInfixOf "resource exhausted" . show
+
+            isResourceVanishedError :: IOException -> Bool
+            isResourceVanishedError = isInfixOf "resource vanished" . show
+
+        onUnknownException :: SomeException -> IO ()
+        onUnknownException e
+            | isAsyncException e = do
+                throwIO e
+            | otherwise =
+                traceWith tr $ ChainSyncUnknownException $ show e
 
 codecs
     :: EpochSlots
@@ -136,3 +186,47 @@ codecs epochSlots nodeToClientV =
         allegra = ShelleyCodecConfig
         mary    = ShelleyCodecConfig
         alonzo  = ShelleyCodecConfig
+
+--
+-- Tracer
+--
+
+data TraceChainSync where
+    ChainSyncRollBackward
+        :: { point :: SlotNo }
+        -> TraceChainSync
+    ChainSyncRollForward
+        :: { slotNo :: SlotNo, matches :: Int }
+        -> TraceChainSync
+    ChainSyncIntersectionNotFound
+        :: { points :: [WithOrigin SlotNo] }
+        -> TraceChainSync
+    ChainSyncFailedToConnect
+        :: { socket :: FilePath, retryingIn :: DiffTime }
+        -> TraceChainSync
+    ChainSyncUnknownException
+        :: { exception :: Text }
+        -> TraceChainSync
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceChainSync where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance ToJSON (WithOrigin SlotNo) where
+    toEncoding = \case
+        Origin -> toEncoding ("origin" :: Text)
+        At sl -> toEncoding sl
+
+instance HasSeverityAnnotation TraceChainSync where
+    getSeverityAnnotation = \case
+        ChainSyncRollForward{} ->
+            Debug
+        ChainSyncRollBackward{} ->
+            Notice
+        ChainSyncFailedToConnect{} ->
+            Warning
+        ChainSyncIntersectionNotFound{} ->
+            Error
+        ChainSyncUnknownException{} ->
+            Error

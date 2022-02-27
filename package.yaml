@@ -72,6 +72,7 @@ library:
     - profunctors
     - relude
     - safe
+    - safe-exceptions
     - strict-containers
     - sqlite-simple
     - text

@@ -532,11 +532,6 @@ slotNoToJson :: SlotNo -> Json.Encoding
 slotNoToJson =
     Json.integer . toInteger . unSlotNo
 
-instance ToJSON (WithOrigin SlotNo) where
-    toEncoding = \case
-        Origin -> toEncoding ("origin" :: Text)
-        At sl -> toEncoding sl
-
 -- Hash
 
 hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding

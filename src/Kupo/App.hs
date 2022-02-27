@@ -20,7 +20,7 @@ module Kupo.App
 import Kupo.Prelude
 
 import Kupo.App.ChainSync
-    ( ChainSyncHandler (..), TraceChainSync (..) )
+    ( ChainSyncHandler (..) )
 import Kupo.App.Http
     ( TraceHttpServer )
 import Kupo.App.Mailbox
@@ -31,6 +31,8 @@ import Kupo.Control.MonadDatabase
     ( Database (..), MonadDatabase (..), TraceDatabase (..) )
 import Kupo.Control.MonadLog
     ( MonadLog (..), Tracer, TracerDefinition (..), TracerHKD )
+import Kupo.Control.MonadOuroboros
+    ( TraceChainSync (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Control.MonadThrow
