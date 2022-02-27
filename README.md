@@ -13,7 +13,7 @@ See the [user-manual 🕮 ](https://cardanosolutions.github.io/kupo).
 | Category         | Value                               |
 | ---              | ---                                 |
 | Operating System | Linux 64-bit                        |
-| RAM              | 512MB                               |
+| RAM              | 256MB                               |
 | CPU              | 2 cores                             |
 | Disk Storage     | 0 GB (in memory) - 4GB (full index) |
 
