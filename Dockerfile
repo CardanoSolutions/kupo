@@ -34,6 +34,6 @@ LABEL description="A fast, lightweight & configurable chain-index for Cardano."
 COPY --from=build /app/kupo/bin/kupo /bin/kupo
 COPY --from=build /app/cardano-configurations/network/${NETWORK} /config
 
-EXPOSE 1337/tcp
+EXPOSE 1442/tcp
 STOPSIGNAL SIGINT
 ENTRYPOINT ["/bin/kupo"]
