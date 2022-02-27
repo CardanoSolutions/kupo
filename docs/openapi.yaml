@@ -18,7 +18,15 @@ info:
 
     ### From pre-compiled executables
 
-    Pre-compiled static binaries can be downloaded as build artifacts from [latest releases](https://github.com/CardanoSolutions/kupo/releases) or the continuous [`Package` Github workflow](https://github.com/CardanoSolutions/kupo/actions).
+    Pre-compiled static binaries can be downloaded as build artifacts from [latest releases](https://github.com/CardanoSolutions/kupo/releases) or the continuous [`Nix` Github workflow](https://github.com/CardanoSolutions/kupo/actions).
+
+    ### From Docker
+
+    Kupo is available as a standalone Docker image on [DockerHub](https://hub.docker.com/repository/docker/cardanosolutions/kupo).
+
+    ```console
+    $ docker pull cardanosolutions/kupo
+    ```
 
     ### From source
 
