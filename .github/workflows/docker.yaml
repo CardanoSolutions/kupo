@@ -1,4 +1,4 @@
-name: Package
+name: Docker
 
 on:
   pull_request:
@@ -10,12 +10,10 @@ on:
 jobs:
   build:
     strategy:
-    steps:
       matrix:
         os: [ ubuntu-20.04 ]
         target: [ kupo ]
         network: [ "mainnet", "testnet" ]
-
     runs-on: ${{ matrix.os }}
     steps:
     - name: 📥 Checkout repository
