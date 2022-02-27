@@ -64,23 +64,30 @@ startOrResume
     -> m [Point (Block StandardCrypto)]
 startOrResume Tracers{tracerDatabase, tracerConfiguration} Database{..} since = do
     checkpoints <- runTransaction (listCheckpointsDesc unsafeMkPoint)
+    unless (null checkpoints) $ do
+        let ws = unSlotNo . getPointSlotNo <$> checkpoints
+        logWith tracerDatabase (DatabaseFoundCheckpoints ws)
     case (since, checkpoints) of
         (Nothing, []) -> do
             logWith tracerConfiguration $ ConfigurationInvalidOrMissingOption
-                "No '--since' provided but no checkpoints were found in the \
+                "No '--since' provided and no checkpoints found in the \
                 \database. An explicit starting point (e.g. 'origin') is \
                 \required the first time launching the application."
             throwIO NoStartingPointException
-        (Just{}, _:_) -> do
-            logWith tracerConfiguration $ ConfigurationInvalidOrMissingOption
-                "The option '--since' was provided but checkpoints were found \
-                \in the database. It is not possible to decide between these \
-                \two paths. Either remove the '--since' option, or point the \
-                \--workdir to a fresh location."
-            throwIO ConflictingOptionException
+        (Just point, mostRecentCheckpoint:_) -> do
+            if getPointSlotNo point > getPointSlotNo mostRecentCheckpoint then do
+                logWith tracerConfiguration $ ConfigurationInvalidOrMissingOption
+                    "The point provided through '--since' is more recent than \
+                    \any of the known checkpoints and it isn't possible to make \
+                    \a choice for resuming the application: should synchronization \
+                    \restart from the latest checkpoint or from the provided \
+                    \--since point? Please dispel the confusion by either choosing \
+                    \a different starting point (or none at all) or by using a \
+                    \fresh new database."
+                throwIO ConflictingOptionException
+            else do
+                pure (sortOn (Down . getPointSlotNo) (point : checkpoints))
         (Nothing, pts) -> do
-            let ws = unSlotNo . getPointSlotNo <$> checkpoints
-            logWith tracerDatabase (DatabaseFoundCheckpoints ws)
             pure pts
         (Just pt, []) ->
             pure [pt]
