@@ -57,6 +57,26 @@ Key differences(s): the plutus-chain-index is the native component behind the PA
 </p>
 </details>
 
+## Sponsors :heart:
+
+<p align="center">
+  <a href="https://rraayy.com/"><img src="https://avatars.githubusercontent.com/u/65092852?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://sundaeswap.finance/"><img src="https://avatars.githubusercontent.com/u/83610786?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://github.com/savaki"><img src="https://avatars.githubusercontent.com/u/108710?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://blockfrost.io/"><img src="https://avatars.githubusercontent.com/u/70073210?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://github.com/jacoblambda"><img src="https://avatars.githubusercontent.com/u/9424043?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://ccvault.io/"><img src="https://avatars.githubusercontent.com/u/86010408?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://github.com/codybutz"><img src="https://avatars.githubusercontent.com/u/3670430?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://github.com/scarmuega"><img src="https://avatars.githubusercontent.com/u/653886?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://github.com/minswap"><img src="https://avatars.githubusercontent.com/u/80548193?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://github.com/mrbrinker"><img src="https://avatars.githubusercontent.com/u/41247403?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://github.com/artemwright"><img src="https://avatars.githubusercontent.com/u/83517471?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://github.com/kayandra"><img src="https://avatars.githubusercontent.com/u/5002506?s=55&v=4" width=55 height=55 /></a>
+  <a href="https://github.com/tapiocapool"><img src="https://avatars.githubusercontent.com/u/80033713?s=55&v=4" width=55 height=55 /></a>
+</p>
+
+<hr/>
+
 ---
 
 <p align="center">
