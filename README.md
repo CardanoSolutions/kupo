@@ -75,8 +75,6 @@ Key differences(s): the plutus-chain-index is the native component behind the PA
   <a href="https://github.com/tapiocapool"><img src="https://avatars.githubusercontent.com/u/80033713?s=55&v=4" width=55 height=55 /></a>
 </p>
 
-<hr/>
-
 ---
 
 <p align="center">
