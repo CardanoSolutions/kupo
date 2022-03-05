@@ -13,6 +13,7 @@ module Kupo
     , kupo
     , runWith
     , version
+    , healthCheck
 
     -- * Environment
     , Env (..)
@@ -35,7 +36,7 @@ import Kupo.App.ChainSync
 import Kupo.App.Health
     ( connectionStatusToggle, readHealth, recordCheckpoint )
 import Kupo.App.Http
-    ( runServer )
+    ( healthCheck, runServer )
 import Kupo.App.Mailbox
     ( newMailbox )
 import Kupo.Configuration

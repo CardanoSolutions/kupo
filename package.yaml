@@ -58,6 +58,7 @@ library:
     - file-embed
     - filepath
     - generic-lens
+    - http-client
     - http-types
     - io-classes
     - lens-aeson

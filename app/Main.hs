@@ -9,9 +9,11 @@ import Kupo.Prelude
 
 main :: IO ()
 main = parseOptions >>= \case
-    Version -> do
-        putTextLn version
     Run (Identity ntwrk) cfg tracers -> do
         withStdoutTracers version tracers $ \tr -> do
             env <- newEnvironment tr ntwrk cfg
             kupo tr `runWith` env
+    HealthCheck host port -> do
+        healthCheck host port
+    Version -> do
+        putTextLn version

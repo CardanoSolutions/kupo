@@ -6,7 +6,13 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App.Http
-    ( runServer
+    ( -- * Server
+      runServer
+
+      -- * Client
+    , healthCheck
+
+      -- * Tracer
     , TraceHttpServer (..)
     ) where
 
@@ -14,6 +20,8 @@ import Kupo.Prelude
 
 import Kupo.Configuration
     ( StandardCrypto )
+import Kupo.Control.MonadCatch
+    ( handle )
 import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Control.MonadLog
@@ -21,7 +29,7 @@ import Kupo.Control.MonadLog
 import Kupo.Data.ChainSync
     ( pointToJson, unsafeMkPoint )
 import Kupo.Data.Health
-    ( Health )
+    ( ConnectionStatus (..), Health )
 import Kupo.Data.Pattern
     ( patternFromText
     , patternToQueryLike
@@ -29,6 +37,8 @@ import Kupo.Data.Pattern
     , unsafeMkResult
     , wildcard
     )
+import Network.HTTP.Client
+    ( defaultManagerSettings, httpLbs, newManager, parseRequest, responseBody )
 import Network.HTTP.Types.Header
     ( Header, hContentLength, hContentType )
 import Network.HTTP.Types.Status
@@ -43,8 +53,13 @@ import Network.Wai
     , responseStatus
     , responseStream
     )
+import Relude.Extra
+    ( lookup )
+import System.Exit
+    ( ExitCode (..) )
 
 import qualified Data.Aeson as Json
+import qualified Data.Aeson.Encoding as Json
 import qualified Data.Binary.Builder as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Network.HTTP.Types.Status as Http
@@ -159,6 +174,28 @@ handleMethodNotAllowed =
                  \double-check the documentation at: \
                  \<https://cardanosolutions.github.io/kupo>!"
         }
+
+--
+-- Clients
+--
+
+-- | Performs a health check against a running server, this is a standalone
+-- program which exits immediately, either with a success or an error code.
+healthCheck :: String -> Int -> IO ()
+healthCheck host port = do
+    response <- handle onAnyException $ join $ httpLbs
+        <$> parseRequest ("http://" <> host <> ":" <> show port <> "/v1/health")
+        <*> newManager defaultManagerSettings
+    case Json.decode (responseBody response) >>= getConnectionStatus of
+        Just st | Json.value st == Json.toEncoding Connected ->
+            return ()
+        _ -> do
+            exitWith (ExitFailure 1)
+  where
+    onAnyException (_ :: SomeException) =
+        exitWith (ExitFailure 1)
+    getConnectionStatus =
+        lookup @(Map String Json.Value) "connection_status"
 
 --
 -- Helpers
