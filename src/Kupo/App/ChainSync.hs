@@ -40,8 +40,8 @@ instance Exception IntersectionNotFoundException
 -- | A message handler for the chain-sync client. Messages are guaranteed (by
 -- the protocol) to arrive in order.
 data ChainSyncHandler m block = ChainSyncHandler
-    { onRollBackward :: Point block -> m ()
-    , onRollForward :: block -> m ()
+    { onRollBackward :: Tip block -> Point block -> m ()
+    , onRollForward :: Tip block -> block -> m ()
     }
 
 -- | A simple pipeline chain-sync clients which offers maximum pipelining and
@@ -81,10 +81,10 @@ mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts =
         -> ClientStNext n block (Point block) (Tip block) m ()
     clientStNext n =
         ClientStNext
-            { recvMsgRollForward = \block _tip ->
-                onRollForward block $> clientStIdle n
-            , recvMsgRollBackward = \point _tip ->
-                onRollBackward point $> clientStIdle n
+            { recvMsgRollForward = \block tip ->
+                onRollForward tip block $> clientStIdle n
+            , recvMsgRollBackward = \point tip ->
+                onRollBackward tip point $> clientStIdle n
             }
 
 -- | Maximum pipelining at any given time. No need to go too high here, it only

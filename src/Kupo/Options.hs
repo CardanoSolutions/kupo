@@ -16,6 +16,7 @@ module Kupo.Options
     , serverHostOption
     , serverPortOption
     , versionOptionOrCommand
+    , healthCheckCommand
 
       -- * Types
     , parseNetworkParameters
@@ -59,6 +60,7 @@ import qualified Data.Yaml as Yaml
 
 data Command (f :: Type -> Type)
     = Run (f NetworkParameters) Configuration (Tracers' IO MinSeverities)
+    | HealthCheck String Int
     | Version
 
 deriving instance Eq (f NetworkParameters) => Eq (Command f)
@@ -68,6 +70,7 @@ parseOptions :: IO (Command Identity)
 parseOptions =
     customExecParser (prefs showHelpOnEmpty) parserInfo >>= \case
         Version -> pure Version
+        HealthCheck host port -> pure (HealthCheck host port)
         Run _ cfg@Configuration{nodeConfig} tracers -> do
             networkParameters <- parseNetworkParameters nodeConfig
             pure $ Run (Identity networkParameters) cfg tracers
@@ -86,6 +89,8 @@ parserInfo = info (helper <*> parser) $ mempty
   where
     parser =
         versionOptionOrCommand
+        <|>
+        healthCheckCommand
         <|>
         ( Run Proxy
             <$> ( Configuration
@@ -276,6 +281,26 @@ versionOptionOrCommand =
         ])
   where
     helpText = "Show the software current version."
+
+-- | health-check
+healthCheckCommand :: Parser (Command f)
+healthCheckCommand =
+    subparser $ command "health-check" $ info (helper <*> parser) $ mempty
+        <> progDesc helpText
+        <> headerDoc (Just $ vsep
+            [ string $ toString $ unwords
+                [ "Handy command to check whether a Kupo daemon is up-and-running,"
+                , "and correctly connected to a network / cardano-node."
+                ]
+            , mempty
+            , string $ toString $ unwords
+                [ "This can, for example, be wired to Docker's HEALTHCHECK"
+                , "feature easily."
+                ]
+            ])
+  where
+    parser = HealthCheck <$> serverHostOption <*> serverPortOption
+    helpText = "Performs a health check against a running daemon."
 
 --
 -- Environment

@@ -2,15 +2,23 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Kupo.Control.MonadOuroboros
-    ( MonadOuroboros (..)
+    ( -- * MonadOuroboros
+      MonadOuroboros (..)
+
+      -- * Health Reporting
+    , ConnectionStatusToggle (..)
+
+      -- * Types
     , NetworkMagic (..)
     , EpochSlots (..)
     , NodeToClientVersion (..)
+
+      -- * Tracer
     , TraceChainSync (..)
     ) where
 
@@ -82,6 +90,8 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     ( ChainSyncClientPipelined (..), chainSyncClientPeerPipelined )
 import Ouroboros.Network.Protocol.Handshake.Version
     ( combineVersions, simpleSingletonVersions )
+import Ouroboros.Network.Snocket
+    ( Snocket (..) )
 import System.IO.Error
     ( isDoesNotExistError )
 
@@ -90,12 +100,18 @@ class MonadOuroboros (m :: Type -> Type) where
     withChainSyncServer
         :: IsBlock (Block m)
         => Tracer m TraceChainSync
+        -> ConnectionStatusToggle m
         -> [NodeToClientVersion]
         -> NetworkMagic
         -> EpochSlots
         -> FilePath
         -> ChainSyncClientPipelined (Block m) (Point (Block m)) (Tip (Block m)) IO ()
         -> m ()
+
+data ConnectionStatusToggle m = ConnectionStatusToggle
+    { toggleConnected :: m ()
+    , toggleDisconnected :: m ()
+    }
 
 type IsBlock block =
     ( StandardHash block
@@ -104,9 +120,9 @@ type IsBlock block =
 
 instance MonadOuroboros IO where
     type Block IO = CardanoBlock StandardCrypto
-    withChainSyncServer tr wantedVersions networkMagic slotsPerEpoch socket client =
+    withChainSyncServer tr ConnectionStatusToggle{..} wantedVersions networkMagic slotsPerEpoch socket client =
         withIOManager $ \iocp -> do
-            connectTo (localSnocket iocp) tracers versions socket
+            connectTo (mkLocalSnocket iocp) tracers versions socket
                 & onExceptions
                 & foreverCalmly
       where
@@ -114,6 +130,14 @@ instance MonadOuroboros IO where
             { nctMuxTracer = nullTracer
             , nctHandshakeTracer = nullTracer
             }
+
+        mkLocalSnocket iocp =
+            let snocket = localSnocket iocp
+             in snocket
+                    { toBearer = \time trMux fd -> do
+                        bearer <- toBearer snocket time trMux fd
+                        toggleConnected $> bearer
+                    }
 
         versions = combineVersions
             [ simpleSingletonVersions v vData (mkOuroborosApplication v)
@@ -145,6 +169,7 @@ instance MonadOuroboros IO where
         onExceptions
             = handle onUnknownException
             . handle onIOException
+            . (`onException` toggleDisconnected)
 
         onIOException :: IOException -> IO ()
         onIOException e

@@ -41,6 +41,7 @@ import Kupo.Data.ChainSync
     ( Block
     , Point
     , SlotNo (..)
+    , Tip
     , getHeaderHash
     , getPointSlotNo
     , getSlotNo
@@ -103,39 +104,45 @@ instance Exception ConflictingOptionException
 --
 
 producer
-    :: forall m.
+    :: forall m block.
         ( MonadSTM m
         , MonadLog m
+        , block ~ Block StandardCrypto
         )
-    => Tracers
-    -> Mailbox m (Block StandardCrypto)
+    => Tracer IO TraceChainSync
+    -> (Tip block -> Maybe SlotNo -> m ())
+    -> Mailbox m (Tip block, block)
     -> Database m
     -> ChainSyncHandler m (Block StandardCrypto)
-producer Tracers{tracerChainSync} mailbox Database{..} = ChainSyncHandler
-    { onRollBackward = \pt -> do
-        logWith tracerChainSync (ChainSyncRollBackward (getPointSlotNo pt))
-        runTransaction $ rollbackTo (unSlotNo (getPointSlotNo pt))
-    , onRollForward =
-        atomically . putMailbox mailbox
+producer tr notifyTip mailbox Database{..} = ChainSyncHandler
+    { onRollBackward = \tip pt -> do
+        logWith tr (ChainSyncRollBackward (getPointSlotNo pt))
+        lastKnownSlot <- runTransaction $ rollbackTo (unSlotNo (getPointSlotNo pt))
+        notifyTip tip (SlotNo <$> lastKnownSlot)
+    , onRollForward = \tip blk ->
+        atomically (putMailbox mailbox (tip, blk))
     }
 
 consumer
-    :: forall m.
+    :: forall m block.
         ( MonadSTM m
         , MonadLog m
         , Monad (DBTransaction m)
+        , block ~ Block StandardCrypto
         )
-    => Tracers
-    -> Mailbox m (Block StandardCrypto)
+    => Tracer IO TraceChainSync
+    -> (Tip block -> Maybe SlotNo -> m ())
+    -> Mailbox m (Tip block, block)
     -> [Pattern StandardCrypto]
     -> Database m
     -> m ()
-consumer Tracers{tracerChainSync} mailbox patterns Database{..} = forever $ do
+consumer tr notifyTip mailbox patterns Database{..} = forever $ do
     blks <- atomically (flushMailbox mailbox)
-    let lastKnownBlk = last blks
+    let (lastKnownTip, lastKnownBlk) = last blks
     let lastKnownSlot = getSlotNo lastKnownBlk
-    let inputs = concatMap (matchBlock resultToRow patterns) blks
-    logWith tracerChainSync (ChainSyncRollForward lastKnownSlot (length inputs))
+    let inputs = concatMap (matchBlock resultToRow patterns . snd) blks
+    logWith tr (ChainSyncRollForward lastKnownSlot (length inputs))
+    notifyTip lastKnownTip (Just lastKnownSlot)
     runTransaction $ do
         insertCheckpoint (getHeaderHash lastKnownBlk) (unSlotNo lastKnownSlot)
         insertInputs inputs

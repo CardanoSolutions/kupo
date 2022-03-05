@@ -6,7 +6,13 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App.Http
-    ( runServer
+    ( -- * Server
+      runServer
+
+      -- * Client
+    , healthCheck
+
+      -- * Tracer
     , TraceHttpServer (..)
     ) where
 
@@ -14,12 +20,16 @@ import Kupo.Prelude
 
 import Kupo.Configuration
     ( StandardCrypto )
+import Kupo.Control.MonadCatch
+    ( handle )
 import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
 import Kupo.Data.ChainSync
     ( pointToJson, unsafeMkPoint )
+import Kupo.Data.Health
+    ( ConnectionStatus (..), Health )
 import Kupo.Data.Pattern
     ( patternFromText
     , patternToQueryLike
@@ -27,6 +37,8 @@ import Kupo.Data.Pattern
     , unsafeMkResult
     , wildcard
     )
+import Network.HTTP.Client
+    ( defaultManagerSettings, httpLbs, newManager, parseRequest, responseBody )
 import Network.HTTP.Types.Header
     ( Header, hContentLength, hContentType )
 import Network.HTTP.Types.Status
@@ -41,8 +53,13 @@ import Network.Wai
     , responseStatus
     , responseStream
     )
+import Relude.Extra
+    ( lookup )
+import System.Exit
+    ( ExitCode (..) )
 
 import qualified Data.Aeson as Json
+import qualified Data.Aeson.Encoding as Json
 import qualified Data.Binary.Builder as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Network.HTTP.Types.Status as Http
@@ -55,11 +72,12 @@ import qualified Network.Wai.Handler.Warp as Warp
 runServer
     :: Tracer IO TraceHttpServer
     -> (forall a. (Database IO -> IO a) -> IO a)
+    -> IO Health
     -> String
     -> Int
     -> IO ()
-runServer tr withDatabase host port =
-    Warp.runSettings settings $ tracerMiddleware tr (app withDatabase)
+runServer tr withDatabase readHealth host port =
+    Warp.runSettings settings $ tracerMiddleware tr (app withDatabase readHealth)
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -71,20 +89,26 @@ runServer tr withDatabase host port =
 -- Router
 --
 
-app :: (forall a. (Database IO -> IO a) -> IO a) -> Application
-app withDatabase req send = withDatabase $ \db ->
+app
+    :: (forall a. (Database IO -> IO a) -> IO a)
+    -> IO Health
+    -> Application
+app withDatabase readHealth req send =
     case (requestMethod req, pathInfo req) of
+        ("GET", [ "v1", "health" ]) ->
+            send =<< (handleGetHealth <$> readHealth)
+
         ("GET", [ "v1", "checkpoints" ]) ->
-            send $ handleGetCheckpoints db
+            withDatabase (send . handleGetCheckpoints)
 
         ("GET", [ "v1", "matches" ]) ->
-            send $ handleGetMatches db Nothing
+            withDatabase (send . handleGetMatches Nothing)
 
         ("GET", [ "v1", "matches", arg0 ]) ->
-            send $ handleGetMatches db (Just (arg0, Nothing))
+            withDatabase (send . handleGetMatches (Just (arg0, Nothing)))
 
         ("GET", [ "v1", "matches", arg0, arg1 ]) ->
-            send $ handleGetMatches db (Just (arg0, Just arg1))
+            withDatabase (send . handleGetMatches (Just (arg0, Just arg1)))
 
         ("GET", _) ->
             send handleNotFound
@@ -96,6 +120,12 @@ app withDatabase req send = withDatabase $ \db ->
 -- Handlers
 --
 
+handleGetHealth
+    :: Health
+    -> Response
+handleGetHealth =
+    responseJson status200 defaultHeaders
+
 handleGetCheckpoints
     :: Database IO
     -> Response
@@ -106,10 +136,10 @@ handleGetCheckpoints Database{..} = do
         done
 
 handleGetMatches
-    :: Database IO
-    -> Maybe (Text, Maybe Text)
+    :: Maybe (Text, Maybe Text)
+    -> Database IO
     -> Response
-handleGetMatches Database{..} query = do
+handleGetMatches query Database{..} = do
     let txt = maybe wildcard (\(a0, a1) -> a0 <> maybe "" ("/" <>) a1) query
     case patternFromText @StandardCrypto txt of
         Nothing ->
@@ -144,6 +174,28 @@ handleMethodNotAllowed =
                  \double-check the documentation at: \
                  \<https://cardanosolutions.github.io/kupo>!"
         }
+
+--
+-- Clients
+--
+
+-- | Performs a health check against a running server, this is a standalone
+-- program which exits immediately, either with a success or an error code.
+healthCheck :: String -> Int -> IO ()
+healthCheck host port = do
+    response <- handle onAnyException $ join $ httpLbs
+        <$> parseRequest ("http://" <> host <> ":" <> show port <> "/v1/health")
+        <*> newManager defaultManagerSettings
+    case Json.decode (responseBody response) >>= getConnectionStatus of
+        Just st | Json.value st == Json.toEncoding Connected ->
+            return ()
+        _ -> do
+            exitWith (ExitFailure 1)
+  where
+    onAnyException (_ :: SomeException) =
+        exitWith (ExitFailure 1)
+    getConnectionStatus =
+        lookup @(Map String Json.Value) "connection_status"
 
 --
 -- Helpers
