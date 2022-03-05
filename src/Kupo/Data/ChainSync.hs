@@ -80,6 +80,7 @@ module Kupo.Data.ChainSync
 
       -- * Tip
     , Tip (..)
+    , getTipSlotNo
 
       -- * WithOrigin
     , WithOrigin (..)
@@ -163,6 +164,7 @@ import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString as BS
 import qualified Data.Map as Map
+import qualified Ouroboros.Network.Block as Ouroboros
 
 -- Block
 
@@ -489,13 +491,21 @@ headerHashToJson
 headerHashToJson =
     byteStringToJson . fromShort . toShortRawHash (Proxy @(Block crypto))
 
+-- Tip
+
+getTipSlotNo :: Tip (Block crypto) -> SlotNo
+getTipSlotNo tip =
+    case Ouroboros.getTipSlotNo tip of
+        Origin -> SlotNo 0
+        At sl  -> sl
+
 -- Point
 
 getPointSlotNo :: Point (Block crypto) -> SlotNo
 getPointSlotNo pt =
     case pointSlot pt of
         Origin -> SlotNo 0
-        At st  -> st
+        At sl  -> sl
 
 unsafeMkPoint
     :: forall crypto.

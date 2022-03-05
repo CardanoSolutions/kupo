@@ -32,6 +32,8 @@ import Kupo.App
     ( Tracers, Tracers' (..), consumer, producer, startOrResume )
 import Kupo.App.ChainSync
     ( IntersectionNotFoundException (..), mkChainSyncClient )
+import Kupo.App.Health
+    ( connectionStatusToggle, readHealth, recordCheckpoint )
 import Kupo.App.Http
     ( runServer )
 import Kupo.App.Mailbox
@@ -54,6 +56,8 @@ import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..), TraceChainSync (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
+import Kupo.Data.Health
+    ( Health, emptyHealth )
 import Kupo.Options
     ( Command (..), parseOptions )
 import Kupo.Version
@@ -93,6 +97,7 @@ kupo tr@Tracers{tracerChainSync, tracerHttp, tracerDatabase} = hijackSigTerm *> 
             , since
             , patterns
             }
+        , health
         } <- ask
 
      -- 43200 slots = k/f slots
@@ -135,25 +140,38 @@ kupo tr@Tracers{tracerChainSync, tracerHttp, tracerDatabase} = hijackSigTerm *> 
                 -- isn't meant to be a public-facing web server serving millions
                 -- of clients.
                 (withDatabase nullTracer ReadOnly lock longestRollback dbFile)
+                (readHealth health)
                 serverHost
                 serverPort
             )
 
             -- Chain-Sync handler fueling the database
-            ( consumer tr mailbox patterns db )
+            ( consumer
+                tracerChainSync
+                (recordCheckpoint health)
+                mailbox
+                patterns
+                db
+            )
 
             -- Chain-Sync client, fetching blocks from the network
-            ( let client = mkChainSyncClient (producer tr mailbox db) checkpoints
-              in withChainSyncServer tracerChainSync
+            ( let producer' = producer
+                    tracerChainSync
+                    (recordCheckpoint health)
+                    mailbox
+                    db
+              in withChainSyncServer
+                    tracerChainSync
+                    (connectionStatusToggle health)
                     [ NodeToClientV_9 .. NodeToClientV_12 ]
                     networkMagic
                     slotsPerEpoch
                     nodeSocket
-                    client
-                & handle (\IntersectionNotFoundException{points} -> do
-                    logWith tracerChainSync ChainSyncIntersectionNotFound{points}
-                    exitWith (ExitFailure 1)
-                  )
+                    (mkChainSyncClient producer' checkpoints)
+                    & handle (\IntersectionNotFoundException{points} -> do
+                        logWith tracerChainSync ChainSyncIntersectionNotFound{points}
+                        exitWith (ExitFailure 1)
+                      )
             )
 
 --
@@ -167,6 +185,7 @@ runWith app = runReaderT (unKupo app)
 data Env (m :: Type -> Type) = Env
     { network :: !NetworkParameters
     , configuration :: !Configuration
+    , health :: !(TVar IO Health)
     } deriving stock (Generic)
 
 newEnvironment
@@ -176,4 +195,5 @@ newEnvironment
     -> IO (Env Kupo)
 newEnvironment Tracers{tracerConfiguration} network configuration = do
     logWith tracerConfiguration (ConfigurationNetwork network)
-    pure Env{network, configuration}
+    health <- newTVarIO emptyHealth
+    pure Env{network, configuration, health}

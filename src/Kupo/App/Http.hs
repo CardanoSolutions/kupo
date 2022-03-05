@@ -20,6 +20,8 @@ import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
 import Kupo.Data.ChainSync
     ( pointToJson, unsafeMkPoint )
+import Kupo.Data.Health
+    ( Health )
 import Kupo.Data.Pattern
     ( patternFromText
     , patternToQueryLike
@@ -55,11 +57,12 @@ import qualified Network.Wai.Handler.Warp as Warp
 runServer
     :: Tracer IO TraceHttpServer
     -> (forall a. (Database IO -> IO a) -> IO a)
+    -> IO Health
     -> String
     -> Int
     -> IO ()
-runServer tr withDatabase host port =
-    Warp.runSettings settings $ tracerMiddleware tr (app withDatabase)
+runServer tr withDatabase readHealth host port =
+    Warp.runSettings settings $ tracerMiddleware tr (app withDatabase readHealth)
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -71,20 +74,26 @@ runServer tr withDatabase host port =
 -- Router
 --
 
-app :: (forall a. (Database IO -> IO a) -> IO a) -> Application
-app withDatabase req send = withDatabase $ \db ->
+app
+    :: (forall a. (Database IO -> IO a) -> IO a)
+    -> IO Health
+    -> Application
+app withDatabase readHealth req send =
     case (requestMethod req, pathInfo req) of
+        ("GET", [ "v1", "health" ]) ->
+            send =<< (handleGetHealth <$> readHealth)
+
         ("GET", [ "v1", "checkpoints" ]) ->
-            send $ handleGetCheckpoints db
+            withDatabase (send . handleGetCheckpoints)
 
         ("GET", [ "v1", "matches" ]) ->
-            send $ handleGetMatches db Nothing
+            withDatabase (send . handleGetMatches Nothing)
 
         ("GET", [ "v1", "matches", arg0 ]) ->
-            send $ handleGetMatches db (Just (arg0, Nothing))
+            withDatabase (send . handleGetMatches (Just (arg0, Nothing)))
 
         ("GET", [ "v1", "matches", arg0, arg1 ]) ->
-            send $ handleGetMatches db (Just (arg0, Just arg1))
+            withDatabase (send . handleGetMatches (Just (arg0, Just arg1)))
 
         ("GET", _) ->
             send handleNotFound
@@ -96,6 +105,12 @@ app withDatabase req send = withDatabase $ \db ->
 -- Handlers
 --
 
+handleGetHealth
+    :: Health
+    -> Response
+handleGetHealth =
+    responseJson status200 defaultHeaders
+
 handleGetCheckpoints
     :: Database IO
     -> Response
@@ -106,10 +121,10 @@ handleGetCheckpoints Database{..} = do
         done
 
 handleGetMatches
-    :: Database IO
-    -> Maybe (Text, Maybe Text)
+    :: Maybe (Text, Maybe Text)
+    -> Database IO
     -> Response
-handleGetMatches Database{..} query = do
+handleGetMatches query Database{..} = do
     let txt = maybe wildcard (\(a0, a1) -> a0 <> maybe "" ("/" <>) a1) query
     case patternFromText @StandardCrypto txt of
         Nothing ->

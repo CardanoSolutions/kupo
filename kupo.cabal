@@ -35,6 +35,7 @@ library
       Kupo
       Kupo.App
       Kupo.App.ChainSync
+      Kupo.App.Health
       Kupo.App.Http
       Kupo.App.Mailbox
       Kupo.Configuration
@@ -48,6 +49,7 @@ library
       Kupo.Control.MonadThrow
       Kupo.Control.MonadTime
       Kupo.Data.ChainSync
+      Kupo.Data.Health
       Kupo.Data.Pattern
       Kupo.Options
       Kupo.Prelude

@@ -42,6 +42,7 @@ import Database.SQLite.Simple
     , execute_
     , fold_
     , nextRow
+    , query_
     , withConnection
     , withStatement
     , withTransaction
@@ -108,7 +109,7 @@ data Database (m :: Type -> Type) = Database
 
     , rollbackTo
         :: Word64  -- slot_no
-        -> DBTransaction m ()
+        -> DBTransaction m (Maybe Word64)
 
     , runTransaction
         :: forall a. ()
@@ -198,7 +199,7 @@ mkDatabase (toInteger -> longestRollback) bracketConnection = Database
                 , SQLInteger (fromIntegral -> slotNo)
                 , _ -- LENGTH(address)
                 ] -> yield outputReference address value datumHash slotNo
-            (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike xs)
+            (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
 
     , insertCheckpoint = \headerHash (toInteger -> slotNo) -> ReaderT $ \conn -> do
         insertRow @"checkpoints" conn
@@ -222,6 +223,13 @@ mkDatabase (toInteger -> longestRollback) bracketConnection = Database
         execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
             [ SQLInteger slotNo
             ]
+        query_ conn "SELECT MAX(slot_no) FROM checkpoints" >>= \case
+            [[SQLInteger slotNo']] ->
+                return $ Just (fromIntegral slotNo')
+            [[SQLNull]] ->
+                return Nothing
+            xs ->
+                throwIO $ UnexpectedRow ("MAX(" <> show slotNo <> ")") xs
 
     , runTransaction = \r -> bracketConnection $ \conn ->
         withTransaction conn (runReaderT r conn)
@@ -302,7 +310,7 @@ instance Exception UnexpectedUserVersionException
 
 -- | Something went wrong when unmarshalling data from the database.
 data UnexpectedRowException
-    = UnexpectedRow Text [SQLData]
+    = UnexpectedRow Text [[SQLData]]
     deriving Show
 instance Exception UnexpectedRowException
 
