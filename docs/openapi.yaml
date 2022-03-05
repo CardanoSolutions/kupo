@@ -317,7 +317,7 @@ definitions:
     minimum: 0
     example: 2
 
-  SlotNo:
+  SlotNo: &slotNo
     type: integer
     description: An absolut slot number.
     minimum: 0
@@ -362,6 +362,28 @@ definitions:
     type: string
     title: wildcard
     enum: ["*"]
+
+  Health:
+    type: object
+    description: An overview of the server & connection status. Note that, when `most_recent_checkpoint` and `most_recent_node_tip` are equal, the index is fully synchronized.
+    additionalProperties: false
+    required:
+      - connection_status
+      - most_recent_checkpoint
+      - most_recent_node_tip
+    properties:
+      connection_status:
+        type: string
+        description: Condition of the connection with the underlying node.
+        enum:
+          - connected
+          - disconnected
+      most_recent_checkpoint:
+        <<: *slotNo
+        description: Absolute slot number of the most recent database checkpoint.
+      most_recent_node_tip:
+        <<: *slotNo
+        description: Absolute slot number of the current tip of the node.
 
 paths:
   /v1/matches:
@@ -460,3 +482,17 @@ paths:
               schema:
                 type: array
                 items: { "$ref": "#/definitions/Checkpoint" }
+
+  /v1/health:
+    get:
+      operationId: getHealth
+      tags: ["Health"]
+      summary: Get Health
+      description: |
+        Retrieve Kupo's application health status. Note that this call is cheap and does not halt the various concurrent tasks performed by the Kupo.
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema: { "$ref": "#/definitions/Health" }
