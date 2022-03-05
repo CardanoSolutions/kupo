@@ -36,4 +36,5 @@ COPY --from=build /app/cardano-configurations/network/${NETWORK} /config
 
 EXPOSE 1442/tcp
 STOPSIGNAL SIGINT
+HEALTHCHECK --interval=10s --timeout=5s --retries=1 CMD /bin/kupo health-check
 ENTRYPOINT ["/bin/kupo"]
