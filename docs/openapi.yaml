@@ -9,6 +9,10 @@ info:
   license:
     name: MPL-2.0
     url: https://raw.githubusercontent.com/cardanosolutions/kupo/master/LICENSE
+  x-logo:
+    url: ./kupo.png
+    altText: Kupo!
+
   description: |
     # Overview
 

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <title>Kupo</title>
+  <title>🐹 Kupo - API Reference</title>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Kupo: a lightweight & configurable chain-index for Cardano; API Reference & Documentation." />
@@ -16,7 +16,17 @@
   </style>
 </head>
 <body>
-  <redoc spec-url="./openapi.yaml"></redoc>
-  <script src="https://cdn.jsdelivr.net/npm/redoc@2.0.0-rc.63/bundles/redoc.standalone.js" async defer></script>
+  <redoc id="redoc-container"></redoc>
+  <script src="https://cdn.jsdelivr.net/npm/redoc@2.0.0-rc.63/bundles/redoc.standalone.js"></script>
+  <script>
+    Redoc.init('./openapi.yaml', {
+      expandResponses: 'all',
+      theme: {
+        logo: {
+          gutter: '2rem',
+        }
+      }
+    }, document.getElementById('redoc-container'))
+  </script>
 </body>
 </html>
