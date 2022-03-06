@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/kupo.png" height=300 />
+  <img src="./docs/kupo.png" height=300 width=456 />
   <hr/>
   <p align="center">
   <a href="https://hub.docker.com/r/cardanosolutions/kupo"><img src="https://img.shields.io/github/workflow/status/cardanosolutions/kupo/Docker?style=for-the-badge&label=&logo=Docker&logoColor=FFFFFF" /></a> <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/nix.yaml"><img src="https://img.shields.io/github/workflow/status/cardanosolutions/kupo/Nix?style=for-the-badge&label=&logo=NixOS&logoColor=FFFFFF" /></a>
