@@ -1,10 +1,8 @@
 <p align="center">
   <img src="./docs/kupo.png" height=210 width=320 />
-  <hr/>
-  <p align="center">
-  <a href="https://hub.docker.com/r/cardanosolutions/kupo"><img src="https://img.shields.io/github/workflow/status/cardanosolutions/kupo/Docker?style=for-the-badge&label=&logo=Docker&logoColor=FFFFFF" /></a> <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/nix.yaml"><img src="https://img.shields.io/github/workflow/status/cardanosolutions/kupo/Nix?style=for-the-badge&label=&logo=NixOS&logoColor=FFFFFF" /></a>
-  </p>
 </p>
+
+<hr/>
 
 **Kupo** is fast, lightweight and configurable **chain-index** for the Cardano blockchain. It synchronizes data from the blockchain according to **patterns** matching addresses present in transaction outputs and builds a **lookup table** from **matches** to their associated **output references**, **values** and **datum hashes**.
 
@@ -20,6 +18,13 @@ See the [user-manual 📖](https://cardanosolutions.github.io/kupo).
 | RAM              | 256MB                                      |
 | CPU              | 2 cores                                    |
 | Disk Storage     | Variable, up to 40GB (full index, mainnet) |
+
+# Continuous Integration
+
+| Status | Description | 
+| --- | --- | 
+| <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/docker.yaml"><img src="https://img.shields.io/github/workflow/status/cardanosolutions/kupo/Docker?style=for-the-badge&label=&logo=Docker&logoColor=000000&color=f9dd24" /></a> | Docker build, shipping images to [Dockerhub](https://hub.docker.com/r/cardanosolutions/kupo) |
+| <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/nix.yaml"><img src="https://img.shields.io/github/workflow/status/cardanosolutions/kupo/Nix?style=for-the-badge&label=&logo=NixOS&logoColor=000000&color=f9dd24" /></a> | Nix build, providing static binary executables as artifacts. | 
 
 # Alternatives
 
