@@ -22,7 +22,7 @@ module Kupo.Control.MonadLog
     , TracerDefinition(..)
     , TracerHKD
     , defaultTracers
-    , withStdoutTracers
+    , withTracers
     ) where
 
 import Kupo.Prelude
@@ -73,18 +73,20 @@ type AppVersion = Text
 -- implementation and does not perform any caching or hardcore optimizations;
 -- For example timestamps are computed on-the-fly for every log messages.
 --
-withStdoutTracers
+withTracers
     :: forall tracers. (IsRecordOfTracers tracers IO)
-    => AppVersion
+    => Handle
+        -- ^ Handle to which forward logs
+    -> AppVersion
         -- ^ Extra information to embed in the logging envelope.
     -> tracers IO 'MinSeverities
         -- ^ A configuration of tracers.
     -> (tracers IO 'Concrete -> IO ())
         -- ^ Callback with acquired and configured tracers.
     -> IO ()
-withStdoutTracers version tracers action = do
-    hSetBuffering stdout LineBuffering
-    hSetEncoding stdout utf8
+withTracers h version tracers action = do
+    hSetBuffering h LineBuffering
+    hSetEncoding h utf8
     lock <- newTMVarIO ()
     action (configureTracers tracers (tracer lock))
   where
@@ -92,7 +94,7 @@ withStdoutTracers version tracers action = do
         let severity = getSeverityAnnotation msg
         when (severity >= minSeverity) $ liftIO $ withTMVar lock $ \() -> do
             mkEnvelop msg severity tracerName >>=
-                liftIO . BL8.putStrLn . encodingToLazyByteString
+                liftIO . BL8.hPutStrLn h . encodingToLazyByteString
 
     mkEnvelop
         :: forall m msg.
