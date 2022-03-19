@@ -307,6 +307,7 @@ definitions:
       - value
       - datum_hash
       - slot_no
+      - header_hash
     properties:
       transaction_id: { "$ref": "#/definitions/TransactionId" }
       output_index: { "$ref": "#/definitions/OutputIndex" }
@@ -314,6 +315,7 @@ definitions:
       value: { "$ref": "#/definitions/Value" }
       datum_hash: { "$ref": "#/definitions/DatumHash" }
       slot_no: { "$ref": "#/definitions/SlotNo" }
+      header_hash: { "$ref": "#/definitions/HeaderHash" }
 
   OutputIndex:
     type: integer
