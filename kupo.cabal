@@ -21,6 +21,8 @@ build-type:     Simple
 extra-source-files:
     db/001.sql
     db/002.sql
+data-files:
+    docs/openapi.yaml
 
 source-repository head
   type: git
@@ -126,6 +128,7 @@ library
     , http-client
     , http-types
     , io-classes
+    , lens
     , lens-aeson
     , network-mux
     , optparse-applicative
@@ -135,7 +138,6 @@ library
     , ouroboros-consensus-shelley
     , ouroboros-network
     , ouroboros-network-framework
-    , profunctors
     , relude
     , safe
     , safe-exceptions
@@ -208,6 +210,7 @@ test-suite unit
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Kupo.App.HttpSpec
       Kupo.App.MailboxSpec
       Kupo.Data.ConfigurationSpec
       Kupo.Data.DatabaseSpec
@@ -259,12 +262,19 @@ test-suite unit
       hspec-discover:hspec-discover
   build-depends:
       QuickCheck
+    , aeson
     , base
     , bytestring
     , hspec
+    , http-media
+    , http-types
     , io-classes
     , io-sim
     , kupo
+    , openapi3
     , relude
     , sqlite-simple
+    , wai
+    , wai-extra
+    , yaml
   default-language: Haskell2010

@@ -13,6 +13,7 @@ module Kupo.Control.MonadDatabase
     , Mode (..)
     , Database (..)
     , LongestRollback (..)
+    , Connection
 
       -- * Database Entities
     , Input (..)

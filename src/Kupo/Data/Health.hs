@@ -54,7 +54,7 @@ emptyHealth = Health
 data ConnectionStatus
     = Connected
     | Disconnected
-    deriving stock (Generic, Eq, Show)
+    deriving stock (Generic, Eq, Show, Enum, Bounded)
 
 instance ToJSON ConnectionStatus where
     toEncoding = \case

@@ -32,11 +32,14 @@ import Kupo.Data.ChainSync
     , unsafeTransactionIdFromBytes
     , unsafeValueFromList
     )
+import Kupo.Data.Health
+    ( ConnectionStatus (..), Health (..) )
 import Kupo.Data.Pattern
     ( Result (..) )
 import Test.QuickCheck
     ( Arbitrary (..)
     , Gen
+    , arbitraryBoundedEnum
     , choose
     , elements
     , frequency
@@ -62,6 +65,10 @@ genAssetName = elements $
              | seed <- [ 0 .. 10 ]
              ]
 
+genConnectionStatus :: Gen ConnectionStatus
+genConnectionStatus =
+    arbitraryBoundedEnum
+
 genDatumHash :: Gen (DatumHash StandardCrypto)
 genDatumHash =
     unsafeDatumHashFromBytes . BS.pack <$> vector (digestSize @Blake2b_256)
@@ -69,6 +76,12 @@ genDatumHash =
 genHeaderHash :: Gen (HeaderHash (Block StandardCrypto))
 genHeaderHash = do
     unsafeHeaderHashFromBytes . BS.pack <$> vector (digestSize @Blake2b_256)
+
+genHealth :: Gen Health
+genHealth = Health
+    <$> genConnectionStatus
+    <*> frequency [(1, pure Nothing), (5, Just <$> genSlotNo)]
+    <*> frequency [(1, pure Nothing), (5, Just <$> genSlotNo)]
 
 genNonGenesisPoint :: Gen (Point (Block StandardCrypto))
 genNonGenesisPoint = do

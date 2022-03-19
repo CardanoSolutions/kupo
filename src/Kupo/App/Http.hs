@@ -8,6 +8,7 @@
 module Kupo.App.Http
     ( -- * Server
       runServer
+    , app
 
       -- * Client
     , healthCheck
@@ -205,7 +206,7 @@ data HttpError = HttpError
 
 defaultHeaders :: [Header]
 defaultHeaders =
-    [ ( hContentType, "application/json; charset=utf-8" )
+    [ ( hContentType, "application/json;charset=utf-8" )
     ]
 
 responseJson

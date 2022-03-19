@@ -5,12 +5,22 @@
 module Kupo.Prelude
     ( -- * relude
       module Relude
+
+      -- * JSON
     , FromJSON (..)
     , ToJSON (..)
-    , hijackSigTerm
+    , byteStringToJson
+    , defaultGenericToEncoding
+
+      -- * Lenses
+    , Lens'
     , view
     , (^.)
     , (^?)
+    , (^?!)
+    , at
+
+      -- Encoding
     , encodeBase16
     , decodeBase16
     , unsafeDecodeBase16
@@ -18,15 +28,20 @@ module Kupo.Prelude
     , decodeBase58
     , encodeBase64
     , decodeBase64
+
+      -- * Serialization
     , serialize'
     , decodeFull'
     , unsafeDeserialize'
-    , byteStringToJson
-    , defaultGenericToEncoding
+
+      -- * System
+    , hijackSigTerm
     ) where
 
 import Cardano.Binary
     ( decodeFull', serialize', unsafeDeserialize' )
+import Control.Lens
+    ( Lens', at, (^?), (^?!) )
 import Data.Aeson
     ( Encoding, FromJSON (..), GToJSON', ToJSON (..), Zero, genericToEncoding )
 import Data.ByteString.Base16
@@ -35,8 +50,6 @@ import Data.ByteString.Base64
     ( decodeBase64, encodeBase64 )
 import Data.Generics.Internal.VL.Lens
     ( view, (^.) )
-import Data.Profunctor.Unsafe
-    ( ( #. ) )
 import GHC.Generics
     ( Rep )
 import Relude hiding
@@ -90,12 +103,6 @@ import System.Posix.Signals
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString.Base58 as Base58
-
--- | Copied from: https://hackage.haskell.org/package/generic-lens-1.1.0.0/docs/src/Data.Generics.Internal.VL.Prism.html
-infixl 8 ^?
-(^?) :: s -> ((a -> Const (First a) a) -> s -> Const (First a) s) -> Maybe a
-s ^? l = getFirst (fmof l (First #. Just) s)
-  where fmof l' f = getConst #. l' (Const #. f)
 
 -- | The runtime does not let the application terminate gracefully when a
 -- SIGTERM is received. It does however for SIGINT which allows the application
