@@ -10,12 +10,15 @@ module Kupo.Control.MonadTime
     , diffTime
     , secondsToTime
     , secondsToDiffTime
+    , timeout
     ) where
 
 import Kupo.Prelude
 
 import Control.Monad.Class.MonadTime
     ( MonadTime (..), Time (..), addTime, diffTime )
+import Control.Monad.Class.MonadTimer
+    ( timeout )
 import Data.Time.Clock
     ( DiffTime, secondsToDiffTime )
 

@@ -217,6 +217,7 @@ test-suite unit
       Kupo.Data.Generators
       Kupo.Data.Pattern.Fixture
       Kupo.Data.PatternSpec
+      KupoSpec
       Paths_kupo
   hs-source-dirs:
       test
@@ -266,14 +267,17 @@ test-suite unit
     , base
     , bytestring
     , hspec
+    , http-client
     , http-media
     , http-types
     , io-classes
     , io-sim
     , kupo
+    , lens-aeson
     , openapi3
     , relude
     , sqlite-simple
+    , temporary
     , wai
     , wai-extra
     , yaml

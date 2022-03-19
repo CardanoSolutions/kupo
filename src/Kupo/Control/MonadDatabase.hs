@@ -196,7 +196,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         let matchMaybeDatumHash = \case
                 SQLBlob datumHash -> Just datumHash
                 _ -> Nothing
-        let qry = "SELECT output_reference, address, value, datum_hash, slot_no, LENGTH(address) as len \
+        let qry = "SELECT output_reference, address, value, datum_hash, header_hash, slot_no, LENGTH(address) as len \
                   \FROM inputs WHERE address " <> addressLike <> " ORDER BY slot_no DESC"
         fold_ conn (Query qry) () $ \() -> \case
             [ SQLBlob outputReference

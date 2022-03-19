@@ -98,15 +98,18 @@ tests:
     - base
     - bytestring
     - hspec
+    - http-client
     - http-media
     - http-types
     - io-classes
     - io-sim
     - kupo
+    - lens-aeson
     - openapi3
     - QuickCheck
     - relude
     - sqlite-simple
+    - temporary
     - wai
     - wai-extra
     - yaml
