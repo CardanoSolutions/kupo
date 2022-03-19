@@ -210,6 +210,9 @@ test-suite unit
   other-modules:
       Kupo.App.MailboxSpec
       Kupo.Data.ConfigurationSpec
+      Kupo.Data.DatabaseSpec
+      Kupo.Data.Generators
+      Kupo.Data.Pattern.Fixture
       Kupo.Data.PatternSpec
       Paths_kupo
   hs-source-dirs:

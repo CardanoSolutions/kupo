@@ -86,12 +86,12 @@ data Input = Input
     , datumHash :: Maybe ByteString
     , headerHash :: ByteString
     , slotNo :: Word64
-    }
+    } deriving (Show)
 
 data Checkpoint = Checkpoint
     { checkpointHeaderHash :: ByteString
     , checkpointSlotNo :: Word64
-    }
+    } deriving (Show)
 
 data Database (m :: Type -> Type) = Database
     { insertInputs

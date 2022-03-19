@@ -25,6 +25,7 @@ module Kupo.Data.ChainSync
 
       -- * TransactionId
     , TransactionId
+    , unsafeTransactionIdFromBytes
     , getTransactionId
     , transactionIdToJson
 
@@ -36,15 +37,23 @@ module Kupo.Data.ChainSync
       -- * Input
     , Input
     , OutputReference
+    , mkOutputReference
 
       -- * Output
     , Output
     , getAddress
-    , Value
-    , getValue
-    , valueToJson
-    , DatumHash
     , getDatumHash
+    , getValue
+
+    -- * Value
+    , Value
+    , unsafeValueFromList
+    , valueToJson
+    , assetNameMaxLength
+
+    -- * DatumHash
+    , DatumHash
+    , unsafeDatumHashFromBytes
     , datumHashToJson
 
       -- * Address
@@ -69,6 +78,7 @@ module Kupo.Data.ChainSync
       -- * HeaderHash
     , HeaderHash
     , headerHashToJson
+    , unsafeHeaderHashFromBytes
 
       -- * Point
     , Point (Point)
@@ -202,6 +212,20 @@ getPoint =
 type TransactionId crypto =
     Ledger.TxId crypto
 
+unsafeTransactionIdFromBytes
+    :: forall crypto.
+        ( HasCallStack
+        , Crypto crypto
+        )
+    => ByteString
+    -> TransactionId crypto
+unsafeTransactionIdFromBytes =
+    Ledger.TxId
+    . Ledger.unsafeMakeSafeHash
+    . UnsafeHash
+    . toShort
+    . sizeInvariant (== (digestSize @Blake2b_256))
+
 class HasTransactionId f where
     getTransactionId
         :: forall crypto. (Crypto crypto)
@@ -316,6 +340,13 @@ type Input crypto =
 type OutputReference crypto =
     Input crypto
 
+mkOutputReference
+    :: TransactionId crypto
+    -> OutputIndex
+    -> OutputReference crypto
+mkOutputReference =
+    Ledger.TxIn
+
 instance HasTransactionId Ledger.TxIn where
     getTransactionId (Ledger.TxIn i _) = i
 
@@ -363,6 +394,19 @@ getDatumHash (Ledger.Alonzo.TxOut _address _value datumHash) =
 type DatumHash crypto =
     Ledger.DataHash crypto
 
+unsafeDatumHashFromBytes
+    :: forall crypto.
+        ( HasCallStack
+        , Crypto crypto
+        )
+    => ByteString
+    -> DatumHash crypto
+unsafeDatumHashFromBytes =
+    Ledger.unsafeMakeSafeHash
+    . UnsafeHash
+    . toShort
+    . sizeInvariant (== (digestSize @Blake2b_256))
+
 datumHashToJson :: Crypto crypto => DatumHash crypto -> Json.Encoding
 datumHashToJson =
     hashToJson . Ledger.extractHash
@@ -371,6 +415,35 @@ datumHashToJson =
 
 type Value crypto =
     Ledger.Value crypto
+
+assetNameMaxLength :: Int
+assetNameMaxLength = 32
+
+unsafeValueFromList
+    :: forall crypto.
+        ( HasCallStack
+        , Crypto crypto
+        )
+    => Integer
+    -> [(ByteString, ByteString, Integer)]
+    -> Value crypto
+unsafeValueFromList ada assets =
+    Ledger.valueFromList
+        ada
+        [ ( unsafePolicyId pid, unsafeAssetName name, q)
+        | (pid, name, q) <- assets
+        ]
+  where
+    unsafePolicyId =
+        Ledger.PolicyID
+        . Ledger.ScriptHash
+        . UnsafeHash
+        . toShort
+        . sizeInvariant (== (digestSize @Blake2b_224))
+
+    unsafeAssetName =
+        Ledger.AssetName
+        . sizeInvariant (<= assetNameMaxLength)
 
 valueToJson :: forall crypto. (Crypto crypto) => Value crypto -> Json.Encoding
 valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
@@ -446,11 +519,22 @@ getDelegationPartBytes = \case
 -- HeaderHash
 
 headerHashToJson
-    :: forall crypto. (CardanoHardForkConstraints crypto)
+    :: forall crypto.
+        ( CardanoHardForkConstraints crypto
+        )
     => HeaderHash (Block crypto)
     -> Json.Encoding
 headerHashToJson =
     byteStringToJson . fromShort . toShortRawHash (Proxy @(Block crypto))
+
+unsafeHeaderHashFromBytes
+    :: forall crypto.
+        ( CardanoHardForkConstraints crypto
+        )
+    => ByteString
+    -> HeaderHash (Block crypto)
+unsafeHeaderHashFromBytes =
+    fromRawHash (Proxy @(Block crypto))
 
 -- Tip
 
@@ -501,6 +585,18 @@ slotNoToJson =
 hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding
 hashToJson (UnsafeHash h) = byteStringToJson (fromShort h)
 
+-- Digest
+
 digestSize :: forall alg. HashAlgorithm alg => Int
 digestSize =
     fromIntegral (sizeHash (Proxy @alg))
+
+-- Helper
+
+sizeInvariant :: HasCallStack => (Int -> Bool) -> ByteString -> ByteString
+sizeInvariant predicate bytes
+    | predicate (BS.length bytes) =
+        bytes
+    | otherwise =
+        error ("predicate failed for bytes: " <> show bytes)
+

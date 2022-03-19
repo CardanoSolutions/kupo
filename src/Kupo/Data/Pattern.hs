@@ -5,6 +5,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Kupo.Data.Pattern
     ( -- * Pattern
@@ -213,6 +214,13 @@ data Result crypto = Result
     , datumHash :: Maybe (DatumHash crypto)
     , point :: Point (Block crypto)
     }
+deriving instance
+    ( Show (Point (Block crypto))
+    ) => Show (Result crypto)
+deriving instance
+    ( Eq (Point (Block crypto))
+    , Crypto crypto
+    ) => Eq (Result crypto)
 
 resultToJson
     :: forall crypto.
