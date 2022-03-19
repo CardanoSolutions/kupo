@@ -12,13 +12,6 @@ packages:
   original:
     hackage: async-timer-0.2.0.0
 - completed:
-    hackage: base16-bytestring-1.0.1.0@sha256:33b9d57afa334d06485033e930c6b13fc760baf88fd8f715ae2f9a4b46e19a54,2641
-    pantry-tree:
-      size: 595
-      sha256: 24661ef9b1089d468227300f8ceb89194b5cce68b9f6ed8109b01f63c07f54e3
-  original:
-    hackage: base16-bytestring-1.0.1.0
-- completed:
     hackage: canonical-json-0.6.0.0@sha256:9021f435ccb884a3b4c55bcc6b50eb19d5fc3cc3f29d5fcbdef016f5bbae23a2,3488
     pantry-tree:
       size: 646
@@ -47,33 +40,12 @@ packages:
   original:
     hackage: contra-tracers-1.0.0
 - completed:
-    hackage: dependent-map-0.4.0.0@sha256:ca2b131046f4340a1c35d138c5a003fe4a5be96b14efc26291ed35fd08c62221,1657
+    hackage: dom-lt-0.2.3@sha256:89f17bbeb0d23f5a46fe7099b81cc9b4b5df32aadb5080fc171c874aafc802c0,1850
     pantry-tree:
-      size: 551
-      sha256: 5defa30010904d2ad05a036f3eaf83793506717c93cbeb599f40db1a3632cfc5
+      size: 442
+      sha256: 7daf5082515248f0d0d0b7d164d079f970318e26d39f1ffd15519bd22bbe559a
   original:
-    hackage: dependent-map-0.4.0.0
-- completed:
-    hackage: dependent-sum-0.7.1.0@sha256:0e419237f5b86da3659772afff9cab355c0f8d5b3fdb15a5b30e673d8dc83941,2147
-    pantry-tree:
-      size: 290
-      sha256: 009601e5d33e835c7a384e240c5c6ad12643bce9c54b2a0b07201daee3380e51
-  original:
-    hackage: dependent-sum-0.7.1.0
-- completed:
-    hackage: dependent-sum-template-0.1.0.3@sha256:0bbbacdfbd3abf2a15aaf0cf2c27e5bdd159b519441fec39e1e6f2f54424adde,1682
-    pantry-tree:
-      size: 436
-      sha256: 32eeadeb991a290a1da41ce7e995dee7d38ebba3bd3e53ea8074c32c086701fd
-  original:
-    hackage: dependent-sum-template-0.1.0.3
-- completed:
-    hackage: dom-lt-0.2.2.1@sha256:6b005b64f10a0f73f716898e0f4b4d93a02c31dc8abb155c14afd870e3abf9ac,1778
-    pantry-tree:
-      size: 441
-      sha256: b495c6fd847c5e10506d952a6051feb9f3ff03666aa917b04dc6bb559b83a58c
-  original:
-    hackage: dom-lt-0.2.2.1
+    hackage: dom-lt-0.2.3
 - completed:
     hackage: fast-bech32-1.0.0@sha256:3d92ae075d8121ea46527fb4a8b2076225d740a0b84ce28a00bfea3d9fa3d880,5063
     pantry-tree:
@@ -89,26 +61,12 @@ packages:
   original:
     hackage: gray-code-0.3.1
 - completed:
-    hackage: indexed-traversable-instances-0.1@sha256:3aaf97040001bbe583e29c2b9c7d41660df265e6565a0d2ac09a3ed5b8bc21be,2874
-    pantry-tree:
-      size: 427
-      sha256: d69630ba4b548b72eed15553586ce7b1e574cd8e4cc5b30d506ab3a697b26502
-  original:
-    hackage: indexed-traversable-instances-0.1
-- completed:
     hackage: lazy-search-0.1.2.1@sha256:c942a01e4a64881f89c72eaef5e3a78eba8750759cd66996c6746a2a7cabe703,1199
     pantry-tree:
       size: 279
       sha256: 824505340a62d82742882c1fa57a0532e0ae3c69cbb7947fe758ce47b93af2dd
   original:
     hackage: lazy-search-0.1.2.1
-- completed:
-    hackage: lazysmallcheck-0.6@sha256:dac7a1e4877681f1260309e863e896674dd6efc1159897b7945893e693f2a6bc,1696
-    pantry-tree:
-      size: 2008
-      sha256: aea6b83dd91703fd130d98ecfed88b8f16841b22990c837c8fde89f9f6cca809
-  original:
-    hackage: lazysmallcheck-0.6
 - completed:
     hackage: markov-chain-usage-model-0.0.0@sha256:1afa95faeb9213c4d960a669190078b41b89169462b8edd910472980671ba8c0,2112
     pantry-tree:
@@ -117,12 +75,12 @@ packages:
   original:
     hackage: markov-chain-usage-model-0.0.0
 - completed:
-    hackage: monoidal-containers-0.6.0.1@sha256:f56ea8fe91ff93da140e38b8dab4b94437b901818c13ba72fc7fc802290323ee,2583
+    hackage: monoidal-containers-0.6.2.0@sha256:124941d70df5e2928b4c6db605a1d0464e68c2c6b02e426db24a40194d43821d,2219
     pantry-tree:
       size: 569
-      sha256: 3a43dbbb1839521aae37a2baa3fb3ad0cc61a0a8fc4e3aec1f7dda15b92a0279
+      sha256: 07ceac751866bad09af45df7d0ae97420d659221e8a0d85407705dcda1f6e89b
   original:
-    hackage: monoidal-containers-0.6.0.1
+    hackage: monoidal-containers-0.6.2.0
 - completed:
     hackage: moo-1.2@sha256:0c4be1a01548db785dcbbe6b8c98579dbf03c5b3b536e0420dce3ba6a61337cb,5951
     pantry-tree:
@@ -152,19 +110,12 @@ packages:
   original:
     hackage: partial-order-0.2.0.0
 - completed:
-    hackage: quickcheck-state-machine-0.7.0@sha256:4fc4467380e35b88aab72c278856aacebbf95688059d8ad70eb82fe048df476b,4958
+    hackage: quickcheck-state-machine-0.7.1@sha256:575f16ece44b20f204730b7b5d77a1ed91b33f4a961a4e70932fc8d602082b10,6153
     pantry-tree:
       size: 3022
-      sha256: 045794fff983e385560b321ff5576f6ec5c2821748c3042053f72daaca7beba8
+      sha256: edb32e2c7ac3be15e0d110b762990192d993326779f440984e56de0be5e0f714
   original:
-    hackage: quickcheck-state-machine-0.7.0
-- completed:
-    hackage: random-1.2.1@sha256:8bee24dc0c985a90ee78d94c61f8aed21c49633686f0f1c14c5078d818ee43a2,6598
-    pantry-tree:
-      size: 1528
-      sha256: 8bdc994ce41f43624ab42302a881fe5a0f81d965f5d238841e24943664681a06
-  original:
-    hackage: random-1.2.1
+    hackage: quickcheck-state-machine-0.7.1
 - completed:
     hackage: size-based-0.1.2.0@sha256:1b33da89d270189661dbbda49a88b0c21d2fc2f7a407e7a2b1933e2faf0f5d4d,1258
     pantry-tree:
@@ -179,13 +130,6 @@ packages:
       sha256: 8d1978a6497e4fd9c66b0c5f24ea659aa9714f5b7e8b1dcfce7fb7bb8d4dee0e
   original:
     hackage: statistics-linreg-0.3
-- completed:
-    hackage: Stream-0.4.7.2@sha256:ed78165aa34c4e23dc53c9072f8715d414a585037f2145ea0eb2b38300354c53,1009
-    pantry-tree:
-      size: 207
-      sha256: 009fe33c4779bd1705a26f9b036f0996e9fc85df06418aec3dda967554e6ef83
-  original:
-    hackage: Stream-0.4.7.2
 - completed:
     hackage: streaming-binary-0.2.2.0@sha256:09b9a9b0291199c5808e88dcf9c93e7b336e740c71efeafd7c835b59794a8c90,1034
     pantry-tree:
@@ -207,20 +151,6 @@ packages:
       sha256: eb62502b1de8adee91f0feb104a36f87a21a9367f95295d4f12c73183a9b1e54
   original:
     hackage: Unique-0.4.7.9
-- completed:
-    hackage: vector-0.12.3.1@sha256:672884b271c15501f1398dc1755c435d3659cf9aa77144c0316d055b5fbdfa82,7932
-    pantry-tree:
-      size: 3842
-      sha256: 7201fd69d4558190fa28b3cc0a5e21a47453647c5ccb23d949a63ba07f0ef8b9
-  original:
-    hackage: vector-0.12.3.1
-- completed:
-    hackage: witherable-0.4.1@sha256:f20d96ffda91597b08b233661f81022785f5a89f31e8453114879fa5d87a820a,2322
-    pantry-tree:
-      size: 384
-      sha256: 1f36845a128aaf5e7e8836b71a216b572790626f175e66b315ec576fc14360c0
-  original:
-    hackage: witherable-0.4.1
 - completed:
     subdir: base-deriving-via
     name: base-deriving-via
@@ -638,16 +568,16 @@ packages:
 - completed:
     subdir: cardano-api
     name: cardano-api
-    version: 1.33.0
+    version: 1.34.1
     git: https://github.com/input-output-hk/cardano-node
     pantry-tree:
-      size: 6384
-      sha256: d32378e84c04aa9a645880af914fd54effa90455288530e3bfc8879ca86f44bf
-    commit: 814df2c146f5d56f8c35a681fe75e85b905aed5d
+      size: 6241
+      sha256: aaca2e05d922e6fb2fd83ecd79935e43c453e6e0da0e3ef6e4e72c2d5f915587
+    commit: 73f9a746362695dc2cb63ba757fbcabb81733d23
   original:
     subdir: cardano-api
     git: https://github.com/input-output-hk/cardano-node
-    commit: 814df2c146f5d56f8c35a681fe75e85b905aed5d
+    commit: 73f9a746362695dc2cb63ba757fbcabb81733d23
 - completed:
     subdir: cardano-prelude
     name: cardano-prelude
@@ -819,11 +749,11 @@ packages:
     pantry-tree:
       size: 1068
       sha256: 0c2a0a7f16b6093b10ce27512c6681ae6472f1ba8fa1af00fcb5715f5a7acfa7
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: io-classes
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: io-sim
     name: io-sim
@@ -831,12 +761,12 @@ packages:
     git: https://github.com/input-output-hk/ouroboros-network
     pantry-tree:
       size: 628
-      sha256: 8a19d8bb03566addfebe32fa78125af3f1c553d4ea42e6b6ace0fddad33420d9
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+      sha256: 037c360386bcb539e4dfde5b7fb4389a24f28e4f59945b303e5355d88bd28e50
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: io-sim
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: monoidal-synchronisation
     name: monoidal-synchronisation
@@ -845,11 +775,11 @@ packages:
     pantry-tree:
       size: 428
       sha256: a536fc342bc1ad478679657281ed3822e1a998ada9db84899e0ccfe16901e0c8
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: monoidal-synchronisation
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: network-mux
     name: network-mux
@@ -858,11 +788,11 @@ packages:
     pantry-tree:
       size: 2141
       sha256: bc7f083b97bcdd7d3581224810251766bc8c9f3750b44a235671943b54008b86
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: network-mux
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-consensus
     name: ouroboros-consensus
@@ -870,12 +800,12 @@ packages:
     git: https://github.com/input-output-hk/ouroboros-network
     pantry-tree:
       size: 23477
-      sha256: f08cc04c4788cba34a510edc16bfb28c50d554c42daf1810a44ca0defd88a26b
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+      sha256: 2a61e138e60225d74f3383068b45af8216e6f3b08c58c60a4ad1bb191535a416
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-consensus
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-consensus-test
     name: ouroboros-consensus-test
@@ -884,11 +814,11 @@ packages:
     pantry-tree:
       size: 8105
       sha256: f145c9cd7a15e63349002f7a9269f55d8bafcd890cb35f69a71729b0aaf1a255
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-consensus-test
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-consensus-byron
     name: ouroboros-consensus-byron
@@ -897,11 +827,11 @@ packages:
     pantry-tree:
       size: 2005
       sha256: e531106dd363b1537ed3465a7a41947a80fa6dd49d12b145eeb7261fb3b93fc3
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-consensus-byron
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-consensus-byronspec
     name: ouroboros-consensus-byronspec
@@ -910,11 +840,11 @@ packages:
     pantry-tree:
       size: 1219
       sha256: a6da8da5df74d1f2d812e2ff4daebbae30b7cc4c8bea0792dafab73ef0c61398
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-consensus-byronspec
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-consensus-byron-test
     name: ouroboros-consensus-byron-test
@@ -923,11 +853,11 @@ packages:
     pantry-tree:
       size: 3697
       sha256: 8d222c112b737c601b4098f74b6773db9fac3c7340721c149447b27d739bfe6d
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-consensus-byron-test
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-consensus-protocol
     name: ouroboros-consensus-protocol
@@ -936,11 +866,11 @@ packages:
     pantry-tree:
       size: 390
       sha256: 86273510071bfe2915f0c74dae3f27cc9b66ac3ace6ca2decae857b786b38cc1
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-consensus-protocol
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-consensus-shelley
     name: ouroboros-consensus-shelley
@@ -949,11 +879,11 @@ packages:
     pantry-tree:
       size: 1784
       sha256: 9d3658bcc9604d768d986da58e4b8f58a8400c6041e45dcaea570a3ff388210b
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-consensus-shelley
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-consensus-shelley-test
     name: ouroboros-consensus-shelley-test
@@ -961,12 +891,12 @@ packages:
     git: https://github.com/input-output-hk/ouroboros-network
     pantry-tree:
       size: 10698
-      sha256: 910c8385dd292c8c1afa16ddec420f32c08103a6e2cdca69cd11f5e94475cbb4
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+      sha256: 69e8ff81cdeeec14f6b7bc38923423c1188421df4ad6f7c881030a21c69a1b28
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-consensus-shelley-test
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-consensus-cardano
     name: ouroboros-consensus-cardano
@@ -974,12 +904,12 @@ packages:
     git: https://github.com/input-output-hk/ouroboros-network
     pantry-tree:
       size: 1429
-      sha256: 9d51ea12450f5eee6b09187e346cd52b0af31b5db9fe1a83c7d5cbf11104f258
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+      sha256: 1ceaa0e52484825bf3f862d9c36a2d9239a6b32790f8d15066362efe80a88825
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-consensus-cardano
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-consensus-cardano-test
     name: ouroboros-consensus-cardano-test
@@ -988,11 +918,11 @@ packages:
     pantry-tree:
       size: 129952
       sha256: 81351f30cf37bba8ad56e0129eb843971aca42ca949a064955242b069fcdd324
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-consensus-cardano-test
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-network
     name: ouroboros-network
@@ -1000,12 +930,12 @@ packages:
     git: https://github.com/input-output-hk/ouroboros-network
     pantry-tree:
       size: 14806
-      sha256: ad7bca4745f2c1ab18d52b0a9abe2926a1427388359859d3ec30a5e5284ea32e
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+      sha256: 4dbdfd3e927655e0c267aee4017e1fb3117d1f8d601c916595299daff2938c66
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-network
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-network-framework
     name: ouroboros-network-framework
@@ -1013,12 +943,12 @@ packages:
     git: https://github.com/input-output-hk/ouroboros-network
     pantry-tree:
       size: 4673
-      sha256: cff5ca199917c2a45cc72565aba017a0adf0278ed626df0bc567d8e6087ab7d9
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+      sha256: abffdba81345741c89390e9f96caf6acf44da4e08b12a368fa5fdf8a05c06987
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-network-framework
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: ouroboros-network-testing
     name: ouroboros-network-testing
@@ -1027,11 +957,11 @@ packages:
     pantry-tree:
       size: 878
       sha256: 8530b50c3bdc560bae6f782f8ac655369e2c71c41ecefd46975e25bcc0d48a5e
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: ouroboros-network-testing
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: strict-stm
     name: strict-stm
@@ -1040,11 +970,11 @@ packages:
     pantry-tree:
       size: 286
       sha256: 8cbb5453a0f1de76228e12da87fc2df78a15cd118ad27efc49edab88e291866c
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: strict-stm
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: typed-protocols
     name: typed-protocols
@@ -1053,11 +983,11 @@ packages:
     pantry-tree:
       size: 612
       sha256: 9cfa00b980e73c512e49d72dda4c27c625c35bad59d33af562db17f75b918ead
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: typed-protocols
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: typed-protocols-cborg
     name: typed-protocols-cborg
@@ -1066,11 +996,11 @@ packages:
     pantry-tree:
       size: 345
       sha256: c84f5cba5aecbfc2bd10de1892ce0fbfb513965e45a87b4cfb78d56b7f214fb7
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: typed-protocols-cborg
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: typed-protocols-examples
     name: typed-protocols-examples
@@ -1079,102 +1009,115 @@ packages:
     pantry-tree:
       size: 1570
       sha256: f1a2e13433a4e9efa90342c21feca3e29172247854999e2c2226cfba7127208d
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
   original:
     subdir: typed-protocols-examples
     git: https://github.com/input-output-hk/ouroboros-network
-    commit: 32af91686b86dac7454eee8b8a8d6e97a80638da
-- completed:
-    subdir: freer-extras
-    name: freer-extras
-    version: 0.1.0.0
-    git: https://github.com/input-output-hk/plutus
-    pantry-tree:
-      size: 595
-      sha256: e93d41422b136652bbb8c8e568d36c4714920deb63c16cc4bba8cc18ef8c0fa8
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
-  original:
-    subdir: freer-extras
-    git: https://github.com/input-output-hk/plutus
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+    commit: 4fac197b6f0d2ff60dc3486c593b68dc00969fbf
 - completed:
     subdir: plutus-core
     name: plutus-core
     version: 0.1.0.0
-    git: https://github.com/input-output-hk/plutus
+    git: https://github.com/CardanoSolutions/plutus
     pantry-tree:
-      size: 75238
-      sha256: 401f1905b7d1bd19d71e9f3d4df7d9184b2c848e022302781c84cc2ce687fdad
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+      size: 20605
+      sha256: 9d4e5d287cd108b19aab815a8f39c66057f33e6d2c7c01413f23fc58a0ce5c63
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
   original:
     subdir: plutus-core
-    git: https://github.com/input-output-hk/plutus
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+    git: https://github.com/CardanoSolutions/plutus
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
+- completed:
+    subdir: plutus-core-testlib
+    name: plutus-core-testlib
+    version: 1.0.0.0
+    git: https://github.com/CardanoSolutions/plutus
+    pantry-tree:
+      size: 64402
+      sha256: 80d0231b6a3b0144eb8bcb3e6e909cb73a0937b727e19bd7f9bebe69435c31d9
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
+  original:
+    subdir: plutus-core-testlib
+    git: https://github.com/CardanoSolutions/plutus
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
 - completed:
     subdir: plutus-ledger-api
     name: plutus-ledger-api
     version: 0.1.0.0
-    git: https://github.com/input-output-hk/plutus
+    git: https://github.com/CardanoSolutions/plutus
     pantry-tree:
-      size: 1888
-      sha256: 74930f7df4392fd51bc2b34b724e2ae9775c1e9eaeeb6ff72fec0eb63252253b
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+      size: 1935
+      sha256: a7c7073750ad5bc56e3f156a78ec63741bced3a8354638eab2f0a96dcc682cb5
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
   original:
     subdir: plutus-ledger-api
-    git: https://github.com/input-output-hk/plutus
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+    git: https://github.com/CardanoSolutions/plutus
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
 - completed:
     subdir: plutus-tx
     name: plutus-tx
     version: 0.1.0.0
-    git: https://github.com/input-output-hk/plutus
+    git: https://github.com/CardanoSolutions/plutus
     pantry-tree:
-      size: 3076
-      sha256: 9a5fb8793a43df3759a3b07db8d0ad05d5c316e2784695999f36197602e36c81
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+      size: 3631
+      sha256: a1c00cdacc780ddff8983fda2aaebeb2486c7dd58f7752937af6da6b7e418882
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
   original:
     subdir: plutus-tx
-    git: https://github.com/input-output-hk/plutus
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+    git: https://github.com/CardanoSolutions/plutus
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
+- completed:
+    subdir: plutus-tx-testlib
+    name: plutus-tx-testlib
+    version: 1.0.0.0
+    git: https://github.com/CardanoSolutions/plutus
+    pantry-tree:
+      size: 225
+      sha256: 8aa9643bdc5d1b34194df72d3708562f31f91715ee94b8fe3517710cfbda6181
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
+  original:
+    subdir: plutus-tx-testlib
+    git: https://github.com/CardanoSolutions/plutus
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
 - completed:
     subdir: prettyprinter-configurable
     name: prettyprinter-configurable
     version: 0.1.0.0
-    git: https://github.com/input-output-hk/plutus
+    git: https://github.com/CardanoSolutions/plutus
     pantry-tree:
       size: 1191
-      sha256: 9eb538807b44b439f2c23fcb64eddb99fdd18793f935dd9e7567d4019f4aded3
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+      sha256: 4a33ab458656ea7bb5d3639f57423c4f5656c76b9e95643037c62cc8831cca1a
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
   original:
     subdir: prettyprinter-configurable
-    git: https://github.com/input-output-hk/plutus
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+    git: https://github.com/CardanoSolutions/plutus
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
 - completed:
     subdir: stubs/plutus-ghc-stub
     name: plutus-ghc-stub
     version: 8.6.5
-    git: https://github.com/input-output-hk/plutus
+    git: https://github.com/CardanoSolutions/plutus
     pantry-tree:
       size: 1120
-      sha256: 0af4d1f17aa534d2b11c348fee84a8937662d1adc43f6513dfdb39a8229a9920
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+      sha256: f11b3a618b6a7d3bd47cd8e4991a5d0e03fcdda41afb2a35c75364a2448bbaa8
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
   original:
     subdir: stubs/plutus-ghc-stub
-    git: https://github.com/input-output-hk/plutus
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+    git: https://github.com/CardanoSolutions/plutus
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
 - completed:
     subdir: word-array
     name: word-array
     version: 0.1.0.0
-    git: https://github.com/input-output-hk/plutus
+    git: https://github.com/CardanoSolutions/plutus
     pantry-tree:
-      size: 330
-      sha256: 628f8e4ff2dc03cc45414910d63241fcab3726ed05ff8bf5e4a6299fd287a310
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+      size: 329
+      sha256: 7af11a3d2c2cd77d24faed2d38bd8425d3dc24b304aa773706767b8f8434646b
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
   original:
     subdir: word-array
-    git: https://github.com/input-output-hk/plutus
-    commit: 1efbb276ef1a10ca6961d0fd32e6141e9798bd11
+    git: https://github.com/CardanoSolutions/plutus
+    commit: ce0ab0ae72e0995ba23f29247e97c1beeb466905
 - completed:
     name: Win32-network
     version: 0.1.0.0
@@ -1188,7 +1131,7 @@ packages:
     commit: 3825d3abf75f83f406c1f7161883c438dac7277d
 snapshots:
 - completed:
-    size: 565712
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/17/6.yaml
-    sha256: 4e5e581a709c88e3fe26a9ce8bf331435729bead762fb5c190064c6c5bb1b835
-  original: lts-17.6
+    size: 590102
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/27.yaml
+    sha256: 79a786674930a89301b0e908fad2822a48882f3d01486117693c377b8edffdbe
+  original: lts-18.27
