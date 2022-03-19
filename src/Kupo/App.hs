@@ -139,8 +139,6 @@ consumer tr notifyTip mailbox patterns Database{..} = forever $ do
     logWith tr (ChainSyncRollForward lastKnownSlot (length inputs))
     notifyTip lastKnownTip (Just lastKnownSlot)
     runTransaction $ do
-        -- TODO: inserting checkpoints could / should actually be done by
-        -- 'insertInputs', instead of leaking here in the application logic.
         insertCheckpoint (pointToRow lastKnownPoint)
         insertInputs inputs
 
