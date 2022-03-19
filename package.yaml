@@ -15,6 +15,9 @@ category:            Web
 extra-source-files:
 - db/*.sql
 
+data-files:
+- docs/openapi.yaml
+
 dependencies:
 - base >= 4.7 && < 5
 
@@ -61,6 +64,7 @@ library:
     - http-client
     - http-types
     - io-classes
+    - lens
     - lens-aeson
     - network-mux
     - optparse-applicative
@@ -70,7 +74,6 @@ library:
     - ouroboros-consensus-shelley
     - ouroboros-network
     - ouroboros-network-framework
-    - profunctors
     - relude
     - safe
     - safe-exceptions
@@ -91,16 +94,25 @@ tests:
     source-dirs: test
     ghc-options: *ghc-options-test
     dependencies:
+    - aeson
     - base
     - bytestring
-    - containers
     - hspec
-    - kupo
+    - http-client
+    - http-media
+    - http-types
     - io-classes
     - io-sim
+    - kupo
+    - lens-aeson
+    - openapi3
+    - QuickCheck
     - relude
     - sqlite-simple
-    - QuickCheck
+    - temporary
+    - wai
+    - wai-extra
+    - yaml
     build-tools:
     - hspec-discover
 

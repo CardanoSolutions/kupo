@@ -11,12 +11,13 @@ module Kupo.Data.ChainSync
     ( -- * Constraints
       Crypto
     , PraosCrypto
+    , HasHeader
+    , CardanoHardForkConstraints
 
       -- * Block
     , Block
     , foldBlock
-    , getSlotNo
-    , getHeaderHash
+    , getPoint
 
       -- * Transaction
     , Transaction
@@ -24,6 +25,7 @@ module Kupo.Data.ChainSync
 
       -- * TransactionId
     , TransactionId
+    , unsafeTransactionIdFromBytes
     , getTransactionId
     , transactionIdToJson
 
@@ -35,21 +37,28 @@ module Kupo.Data.ChainSync
       -- * Input
     , Input
     , OutputReference
+    , mkOutputReference
 
       -- * Output
     , Output
     , getAddress
-    , Value
-    , getValue
-    , valueToJson
-    , DatumHash
     , getDatumHash
+    , getValue
+
+    -- * Value
+    , Value
+    , unsafeValueFromList
+    , valueToJson
+    , assetNameMaxLength
+
+    -- * DatumHash
+    , DatumHash
+    , unsafeDatumHashFromBytes
     , datumHashToJson
 
       -- * Address
     , Address
     , addressFromBytes
-    , unsafeAddressFromBytes
     , addressToJson
     , addressToBytes
     , isBootstrap
@@ -69,14 +78,16 @@ module Kupo.Data.ChainSync
       -- * HeaderHash
     , HeaderHash
     , headerHashToJson
+    , unsafeHeaderHashFromBytes
 
       -- * Point
-    , Point (..)
+    , Point (Point)
     , pointToJson
     , getPointSlotNo
+    , getPointHeaderHash
+    , unsafeGetPointHeaderHash
     , pattern GenesisPoint
     , pattern BlockPoint
-    , unsafeMkPoint
 
       -- * Tip
     , Tip (..)
@@ -122,24 +133,20 @@ import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
 import Ouroboros.Consensus.Block
     ( ConvertRawHash (..) )
-import Ouroboros.Consensus.Byron.Ledger.Block
-    ( ByronBlock )
 import Ouroboros.Consensus.Cardano.Block
     ( CardanoBlock, HardForkBlock (..) )
 import Ouroboros.Consensus.Cardano.CanHardFork
     ( CardanoHardForkConstraints )
-import Ouroboros.Consensus.HardFork.Combinator.AcrossEras
-    ( OneEraHash (..) )
 import Ouroboros.Consensus.Shelley.Ledger.Block
-    ( ShelleyBlock (..), ShelleyHash (..) )
+    ( ShelleyBlock (..) )
 import Ouroboros.Network.Block
     ( pattern BlockPoint
     , pattern GenesisPoint
     , HasHeader (..)
-    , HeaderFields (..)
     , HeaderHash
-    , Point (..)
+    , Point (Point)
     , Tip (..)
+    , blockPoint
     , pointSlot
     )
 import Ouroboros.Network.Point
@@ -191,51 +198,33 @@ foldBlock fn b = \case
     BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
         foldr (fn . TransactionAlonzo) b (Ledger.Alonzo.txSeqTxns txs)
 
-getSlotNo
+getPoint
     :: forall crypto.
-        ( PraosCrypto crypto
+        ( HasHeader (Block crypto)
         )
     => Block crypto
-    -> SlotNo
-getSlotNo = \case
-    BlockByron blk ->
-        headerFieldSlot (getHeaderFields blk)
-    BlockShelley blk ->
-        headerFieldSlot (getHeaderFields blk)
-    BlockAllegra blk ->
-        headerFieldSlot (getHeaderFields blk)
-    BlockMary blk ->
-        headerFieldSlot (getHeaderFields blk)
-    BlockAlonzo blk ->
-        headerFieldSlot (getHeaderFields blk)
-
-getHeaderHash
-    :: forall crypto.
-        ( PraosCrypto crypto
-        )
-    => Block crypto
-    -> ByteString
-getHeaderHash = \case
-    BlockByron blk ->
-        let proxy = Proxy @ByronBlock
-         in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
-    BlockShelley blk ->
-        let proxy = Proxy @(ShelleyBlock (ShelleyEra crypto))
-         in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
-    BlockAllegra blk ->
-        let proxy = Proxy @(ShelleyBlock (AllegraEra crypto))
-         in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
-    BlockMary blk ->
-        let proxy = Proxy @(ShelleyBlock (MaryEra crypto))
-         in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
-    BlockAlonzo blk ->
-        let proxy = Proxy @(ShelleyBlock (AlonzoEra crypto))
-         in fromShort $ toShortRawHash proxy $ headerFieldHash (getHeaderFields blk)
+    -> Point (Block crypto)
+getPoint =
+    blockPoint
 
 -- TransactionId
 
 type TransactionId crypto =
     Ledger.TxId crypto
+
+unsafeTransactionIdFromBytes
+    :: forall crypto.
+        ( HasCallStack
+        , Crypto crypto
+        )
+    => ByteString
+    -> TransactionId crypto
+unsafeTransactionIdFromBytes =
+    Ledger.TxId
+    . Ledger.unsafeMakeSafeHash
+    . UnsafeHash
+    . toShort
+    . sizeInvariant (== (digestSize @Blake2b_256))
 
 class HasTransactionId f where
     getTransactionId
@@ -351,6 +340,13 @@ type Input crypto =
 type OutputReference crypto =
     Input crypto
 
+mkOutputReference
+    :: TransactionId crypto
+    -> OutputIndex
+    -> OutputReference crypto
+mkOutputReference =
+    Ledger.TxIn
+
 instance HasTransactionId Ledger.TxIn where
     getTransactionId (Ledger.TxIn i _) = i
 
@@ -398,6 +394,19 @@ getDatumHash (Ledger.Alonzo.TxOut _address _value datumHash) =
 type DatumHash crypto =
     Ledger.DataHash crypto
 
+unsafeDatumHashFromBytes
+    :: forall crypto.
+        ( HasCallStack
+        , Crypto crypto
+        )
+    => ByteString
+    -> DatumHash crypto
+unsafeDatumHashFromBytes =
+    Ledger.unsafeMakeSafeHash
+    . UnsafeHash
+    . toShort
+    . sizeInvariant (== (digestSize @Blake2b_256))
+
 datumHashToJson :: Crypto crypto => DatumHash crypto -> Json.Encoding
 datumHashToJson =
     hashToJson . Ledger.extractHash
@@ -406,6 +415,35 @@ datumHashToJson =
 
 type Value crypto =
     Ledger.Value crypto
+
+assetNameMaxLength :: Int
+assetNameMaxLength = 32
+
+unsafeValueFromList
+    :: forall crypto.
+        ( HasCallStack
+        , Crypto crypto
+        )
+    => Integer
+    -> [(ByteString, ByteString, Integer)]
+    -> Value crypto
+unsafeValueFromList ada assets =
+    Ledger.valueFromList
+        ada
+        [ ( unsafePolicyId pid, unsafeAssetName name, q)
+        | (pid, name, q) <- assets
+        ]
+  where
+    unsafePolicyId =
+        Ledger.PolicyID
+        . Ledger.ScriptHash
+        . UnsafeHash
+        . toShort
+        . sizeInvariant (== (digestSize @Blake2b_224))
+
+    unsafeAssetName =
+        Ledger.AssetName
+        . sizeInvariant (<= assetNameMaxLength)
 
 valueToJson :: forall crypto. (Crypto crypto) => Value crypto -> Json.Encoding
 valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
@@ -456,10 +494,6 @@ addressFromBytes :: Crypto crypto => ByteString -> Maybe (Address crypto)
 addressFromBytes = Ledger.deserialiseAddr
 {-# INLINEABLE addressFromBytes #-}
 
-unsafeAddressFromBytes :: (HasCallStack, Crypto crypto) => ByteString -> Address crypto
-unsafeAddressFromBytes = fromMaybe (error "unsafeAddressFromBytes") . addressFromBytes
-{-# INLINEABLE unsafeAddressFromBytes #-}
-
 isBootstrap :: Address crypto -> Bool
 isBootstrap = \case
     Ledger.AddrBootstrap{} -> True
@@ -485,11 +519,22 @@ getDelegationPartBytes = \case
 -- HeaderHash
 
 headerHashToJson
-    :: forall crypto. (CardanoHardForkConstraints crypto)
+    :: forall crypto.
+        ( CardanoHardForkConstraints crypto
+        )
     => HeaderHash (Block crypto)
     -> Json.Encoding
 headerHashToJson =
     byteStringToJson . fromShort . toShortRawHash (Proxy @(Block crypto))
+
+unsafeHeaderHashFromBytes
+    :: forall crypto.
+        ( CardanoHardForkConstraints crypto
+        )
+    => ByteString
+    -> HeaderHash (Block crypto)
+unsafeHeaderHashFromBytes =
+    fromRawHash (Proxy @(Block crypto))
 
 -- Tip
 
@@ -507,21 +552,14 @@ getPointSlotNo pt =
         Origin -> SlotNo 0
         At sl  -> sl
 
-unsafeMkPoint
-    :: forall crypto.
-        ( PraosCrypto crypto
-        )
-    => ByteString
-    -> Word64
-    -> Point (Block crypto)
-unsafeMkPoint headerHash slotNo =
-    BlockPoint
-        (SlotNo slotNo)
-        (fromShelleyHash $ fromShortRawHash proxy $ toShort headerHash)
-  where
-    proxy = Proxy @(ShelleyBlock (AlonzoEra crypto))
-    fromShelleyHash (Ledger.unHashHeader . unShelleyHash -> UnsafeHash h) =
-        coerce h
+getPointHeaderHash :: Point (Block crypto) -> Maybe (HeaderHash (Block crypto))
+getPointHeaderHash = \case
+    GenesisPoint -> Nothing
+    BlockPoint _ h -> Just h
+
+unsafeGetPointHeaderHash :: HasCallStack => Point (Block crypto) -> HeaderHash (Block crypto)
+unsafeGetPointHeaderHash =
+    fromMaybe (error "Point is 'Origin'") . getPointHeaderHash
 
 pointToJson
     :: (CardanoHardForkConstraints crypto)
@@ -547,6 +585,18 @@ slotNoToJson =
 hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding
 hashToJson (UnsafeHash h) = byteStringToJson (fromShort h)
 
+-- Digest
+
 digestSize :: forall alg. HashAlgorithm alg => Int
 digestSize =
     fromIntegral (sizeHash (Proxy @alg))
+
+-- Helper
+
+sizeInvariant :: HasCallStack => (Int -> Bool) -> ByteString -> ByteString
+sizeInvariant predicate bytes
+    | predicate (BS.length bytes) =
+        bytes
+    | otherwise =
+        error ("predicate failed for bytes: " <> show bytes)
+

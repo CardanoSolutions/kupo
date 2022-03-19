@@ -24,7 +24,7 @@ module Kupo
     , parseOptions
 
     -- * Tracers
-    , withStdoutTracers
+    , withTracers
     ) where
 
 import Kupo.Prelude
@@ -52,7 +52,7 @@ import Kupo.Control.MonadCatch
 import Kupo.Control.MonadDatabase
     ( Mode (..), MonadDatabase (..) )
 import Kupo.Control.MonadLog
-    ( MonadLog (..), nullTracer, withStdoutTracers )
+    ( MonadLog (..), nullTracer, withTracers )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..), TraceChainSync (..) )
 import Kupo.Control.MonadSTM

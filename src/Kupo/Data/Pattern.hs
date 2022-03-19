@@ -2,8 +2,10 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Kupo.Data.Pattern
     ( -- * Pattern
@@ -11,19 +13,13 @@ module Kupo.Data.Pattern
     , wildcard
     , patternFromText
     , matching
-      -- ** Query
-    , patternToQueryLike
 
       -- ** MatchBootstrap
-    , MatchBootstrap
-    , onlyShelley
-    , includingBootstrap
+    , MatchBootstrap (OnlyShelley, IncludingBootstrap)
 
       -- * Result
     , Result (..)
-    , unsafeMkResult
     , resultToJson
-    , resultToRow
     , matchBlock
     ) where
 
@@ -36,16 +32,17 @@ import Kupo.Data.ChainSync
     , Blake2b_224
     , Blake2b_256
     , Block
+    , CardanoHardForkConstraints
     , Crypto
     , DatumHash
+    , HasHeader
     , Output
     , OutputReference
+    , Point
     , PraosCrypto
-    , SlotNo (..)
     , Transaction
     , Value
     , addressFromBytes
-    , addressToBytes
     , addressToJson
     , datumHashToJson
     , digest
@@ -56,15 +53,17 @@ import Kupo.Data.ChainSync
     , getDelegationPartBytes
     , getOutputIndex
     , getPaymentPartBytes
-    , getSlotNo
+    , getPoint
+    , getPointSlotNo
     , getTransactionId
     , getValue
+    , headerHashToJson
     , isBootstrap
     , mapMaybeOutputs
     , outputIndexToJson
     , slotNoToJson
     , transactionIdToJson
-    , unsafeAddressFromBytes
+    , unsafeGetPointHeaderHash
     , valueToJson
     , valueToJson
     )
@@ -86,26 +85,11 @@ wildcard :: Text
 wildcard = "*"
 {-# INLINEABLE wildcard #-}
 
-patternToQueryLike :: Pattern crypto -> Text
-patternToQueryLike = \case
-    MatchAny (MatchBootstrap True) ->
-        "LIKE '%'"
-    MatchAny (MatchBootstrap False) ->
-        "NOT LIKE '8%'"
-    MatchExact addr ->
-        "= '" <> encodeBase16 (addressToBytes addr) <> "'"
-    MatchPayment payment ->
-        "LIKE '__" <> encodeBase16 payment <> "%'"
-    MatchDelegation delegation ->
-        "LIKE '%" <> encodeBase16 delegation <> "' AND len > 58"
-    MatchPaymentAndDelegation payment delegation ->
-        "LIKE '__" <> encodeBase16 payment <> encodeBase16 delegation <> "'"
-
 patternFromText :: Crypto crypto => Text -> Maybe (Pattern crypto)
 patternFromText txt =
     readerAny <|> readerExact <|> readerPaymentOrDelegation
   where
-    readerAny = MatchAny includingBootstrap
+    readerAny = MatchAny IncludingBootstrap
         <$ guard (txt == wildcard)
 
     readerExact =
@@ -133,7 +117,7 @@ patternFromText txt =
         case T.splitOn "/" txt of
             [payment, delegation] -> do
                 if  | payment == wildcard && delegation == wildcard ->
-                        pure (MatchAny onlyShelley)
+                        pure (MatchAny OnlyShelley)
                     | payment == wildcard ->
                         MatchDelegation
                             <$> readerCredential delegation
@@ -211,60 +195,54 @@ data MatchBootstrap
     = MatchBootstrap Bool
     deriving (Generic, Eq, Show)
 
-includingBootstrap :: MatchBootstrap
-includingBootstrap = MatchBootstrap True
+pattern IncludingBootstrap :: MatchBootstrap
+pattern IncludingBootstrap <- MatchBootstrap True
+  where
+    IncludingBootstrap = MatchBootstrap True
 
-onlyShelley :: MatchBootstrap
-onlyShelley = MatchBootstrap False
+pattern OnlyShelley :: MatchBootstrap
+pattern OnlyShelley <- MatchBootstrap False
+  where
+    OnlyShelley = MatchBootstrap False
+
+{-# COMPLETE OnlyShelley, IncludingBootstrap #-}
 
 data Result crypto = Result
-    { reference :: OutputReference crypto
+    { outputReference :: OutputReference crypto
     , address :: Address crypto
     , value :: Value crypto
     , datumHash :: Maybe (DatumHash crypto)
-    , slotNo :: SlotNo
+    , point :: Point (Block crypto)
     }
-
-unsafeMkResult
-    :: (HasCallStack, Crypto crypto)
-    => ByteString
-    -> Text
-    -> ByteString
-    -> Maybe ByteString
-    -> Word64
-    -> Result crypto
-unsafeMkResult
-    (unsafeDeserialize' -> reference)
-    ((unsafeAddressFromBytes . unsafeDecodeBase16) -> address)
-    (unsafeDeserialize' -> value)
-    (fmap unsafeDeserialize' -> datumHash)
-    (SlotNo -> slotNo)
-    =
-    Result{..}
-
-resultToRow
-    :: Crypto crypto
-    => Result crypto
-    -> (ByteString, Text, ByteString, Maybe ByteString, Word64)
-resultToRow Result{..} =
-    ( serialize' reference
-    , encodeBase16 (addressToBytes address)
-    , serialize' value
-    , serialize' <$> datumHash
-    , unSlotNo slotNo
-    )
+deriving instance
+    ( Show (Point (Block crypto))
+    ) => Show (Result crypto)
+deriving instance
+    ( Eq (Point (Block crypto))
+    , Crypto crypto
+    ) => Eq (Result crypto)
 
 resultToJson
-    :: Crypto crypto
+    :: forall crypto.
+        ( CardanoHardForkConstraints crypto
+        )
     => Result crypto
     -> Json.Encoding
 resultToJson Result{..} = Json.pairs $ mconcat
-    [ Json.pair "transaction_id" (transactionIdToJson (getTransactionId reference))
-    , Json.pair "output_index" (outputIndexToJson (getOutputIndex reference))
-    , Json.pair "address" (addressToJson address)
-    , Json.pair "value" (valueToJson value)
-    , Json.pair "datum_hash" (maybe Json.null_ datumHashToJson datumHash)
-    , Json.pair "slot_no" (slotNoToJson slotNo)
+    [ Json.pair "transaction_id"
+        (transactionIdToJson (getTransactionId outputReference))
+    , Json.pair "output_index"
+        (outputIndexToJson (getOutputIndex outputReference))
+    , Json.pair "address"
+        (addressToJson address)
+    , Json.pair "value"
+        (valueToJson value)
+    , Json.pair "datum_hash"
+        (maybe Json.null_ datumHashToJson datumHash)
+    , Json.pair "slot_no"
+        (slotNoToJson (getPointSlotNo point))
+    , Json.pair "header_hash"
+        (headerHashToJson (unsafeGetPointHeaderHash point))
     ]
 
 -- | Match all outputs in transactions from a block that match any of the given
@@ -274,30 +252,33 @@ resultToJson Result{..} = Json.pairs $ mconcat
 -- multiple patterns. This is to facilitate building an index of matches to
 -- results.
 matchBlock
-    :: forall crypto result. (PraosCrypto crypto)
+    :: forall crypto result.
+        ( PraosCrypto crypto
+        , HasHeader (Block crypto)
+        )
     => (Result crypto -> result)
     -> [Pattern crypto]
     -> Block crypto
     -> [result]
 matchBlock transform ms blk =
-    let sl = getSlotNo blk in foldBlock (fn sl) [] blk
+    let pt = getPoint blk in foldBlock (fn pt) [] blk
   where
-    fn :: SlotNo -> Transaction crypto -> [result] -> [result]
-    fn sl tx results =
-        concatMap (flip mapMaybeOutputs tx . match sl) ms ++ results
+    fn :: Point (Block crypto) -> Transaction crypto -> [result] -> [result]
+    fn pt tx results =
+        concatMap (flip mapMaybeOutputs tx . match pt) ms ++ results
 
     match
-        :: SlotNo
+        :: Point (Block crypto)
         -> Pattern crypto
         -> OutputReference crypto
         -> Output crypto
         -> Maybe result
-    match slotNo m reference out = do
+    match pt m outputReference out = do
         getAddress out `matching` m
         pure $ transform Result
-            { reference
+            { outputReference
             , address = getAddress out
             , value = getValue out
             , datumHash = getDatumHash out
-            , slotNo
+            , point = pt
             }

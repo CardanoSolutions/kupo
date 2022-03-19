@@ -189,205 +189,212 @@ info:
     （✿ ͡◕ ᴗ◕ )つ━━✫ ✧･ﾟ* enjoy *:･ﾟ✧*:･ﾟ💖
     </p>
 
-definitions:
-  Address_Shelley: &Address_Shelley
-    title: Shelley+
-    type: string
-    contentEncoding: bech32
-    example: addr1vy3qpx09uscywhpp0ekg9zwmq2yj5vp08husfq6qyh2mpps865j6t
+components:
+  schemas:
+    Address_Shelley: &Address_Shelley
+      title: Shelley+
+      type: string
+      contentEncoding: bech32
+      example: addr1vy3qpx09uscywhpp0ekg9zwmq2yj5vp08husfq6qyh2mpps865j6t
 
-  Address_Stake: &Address_Stake
-    title: Stake
-    type: string
-    contentEncoding: bech32
-    example: stake1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgydsx9n
+    Address_Stake: &Address_Stake
+      title: Stake
+      type: string
+      contentEncoding: bech32
+      example: stake1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgydsx9n
 
-  Address_Bootstrap: &Address_Bootstrap
-    title: Bootstrap
-    type: String
-    contentEncoding: base58
-    example: DdzFFzCqrhsnWCKDVxHipmLW7acroB11zWxe1BGP1gCh7EqmgjVPe2qes6HrsQs
+    Address_Bootstrap: &Address_Bootstrap
+      title: Bootstrap
+      type: string
+      contentEncoding: base58
+      example: DdzFFzCqrhsnWCKDVxHipmLW7acroB11zWxe1BGP1gCh7EqmgjVPe2qes6HrsQs
 
-  Address_Base16: &Address_Base16
-    title: Base16
-    type: string
-    contentEncoding: base16
-    example: 7a5e61936081db3b2117cbf59bd2123748f58ac96786567067f3314661
+    Address_Base16: &Address_Base16
+      title: Base16
+      type: string
+      contentEncoding: base16
+      example: 7a5e61936081db3b2117cbf59bd2123748f58ac96786567067f3314661
 
-  Address:
-    description: A Cardano address.
-    oneOf:
-      - <<: *Address_Shelley
-      - <<: *Address_Bootstrap
+    Address:
+      description: A Cardano address.
+      anyOf:
+        - <<: *Address_Shelley
+        - <<: *Address_Bootstrap
 
-  AddressParameter:
-    title: Address
-    description: A Cardano address or stake address.
-    oneOf:
-      - <<: *Address_Shelley
-      - <<: *Address_Stake
-      - <<: *Address_Bootstrap
-      - <<: *Address_Base16
+    AddressParameter:
+      title: Address
+      description: A Cardano address or stake address.
+      anyOf:
+        - <<: *Address_Shelley
+        - <<: *Address_Stake
+        - <<: *Address_Bootstrap
+        - <<: *Address_Base16
 
-  BadRequest:
-    type: object
-    additionalProperties: false
-    properties:
-      hint:
-        type: string
-        description: Some hint about what went wrong.
-
-  Checkpoint:
-    type: object
-    additionalProperties: false
-    required:
-      - slot_no
-      - header_hash
-    properties:
-      slot_no: { "$ref": "#/definitions/SlotNo" }
-      header_hash: { "$ref": "#/definitions/HeaderHash" }
-
-  Credential:
-    oneOf:
-      - title: Bech32
-        type: string
-        description: |
-          A blake2b-224 hash digest of some credential or pre-image of those credentials.
-          Supported bech32 prefixes are:
-          - vk
-          - vkh
-          - addr_vk
-          - addr_vkh
-          - stake_vk
-          - stake_vkh
-          - script
-
-      - title: Base16 (digest)
-        type: string
-        description: A blake2b-224 hash digest of some credential (verification key hash or script hash).
-        contentEncoding: base16
-        minLength: 56
-        maxLength: 56
-
-      - title: Base16 (pre-image)
-        type: string
-        description: A blake2b-224 hash pre-image of some credential (verification key or script)
-        contentEncoding: base16
-        minLength: 56
-        maxLength: 56
-
-  DatumHash:
-    oneOf:
-      - title: Digest
-        type: string
-        description: A blake2b-256 hash digest of a Plutus' datum.
-        contentEncoding: base16
-        example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
-        minLength: 64
-        maxLength: 64
-
-      - title: Nothing
-        type: "null"
-
-  HeaderHash:
-    type: string
-    description: A blake2b-256 hash digest of a block header.
-    contentEncoding: base16
-    example: 9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e0935d8340cd6a5d31bf
-    minLength: 64
-    maxLength: 64
-
-  Match:
-    type: object
-    additionalProperties: false
-    required:
-      - transaction_id
-      - output_index
-      - address
-      - value
-      - datum_hash
-      - slot_no
-    properties:
-      transaction_id: { "$ref": "#/definitions/TransactionId" }
-      output_index: { "$ref": "#/definitions/OutputIndex" }
-      address: { "$ref": "#/definitions/Address" }
-      value: { "$ref": "#/definitions/Value" }
-      datum_hash: { "$ref": "#/definitions/DatumHash" }
-      slot_no: { "$ref": "#/definitions/SlotNo" }
-
-  OutputIndex:
-    type: integer
-    description: An index of an output within a transaction.
-    minimum: 0
-    example: 2
-
-  SlotNo: &slotNo
-    type: integer
-    description: An absolut slot number.
-    minimum: 0
-    example: 51540727
-
-  TransactionId:
-    type: string
-    description: A blake2b-256 hash digest of a transaction body.
-    contentEncoding: base16
-    example: 35d8340cd6a5d31bf9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e09
-    minLength: 64
-    maxLength: 64
-
-  Value:
-    type: object
-    description: A (multi-asset) value of a transaction's output.
-    additionalProperties: false
-    required:
-      - coins
-    properties:
-      coins:
-        type: integer
-        description: A quantity of Lovelace.
-        minimum: 1
-        example: 42
-      assets:
-        type: object
-        description:
-        propertyNames:
+    BadRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        hint:
           type: string
-          pattern: ^[a-f0-9]{64}(.[a-f0-9]{64})?$
-        additionalProperties:
-          x-additionalPropertiesName: "{policy_id}.{asset_name}"
+          description: Some hint about what went wrong.
+
+    Checkpoint:
+      type: object
+      additionalProperties: false
+      required:
+        - slot_no
+        - header_hash
+      properties:
+        slot_no: { "$ref": "#/components/schemas/SlotNo" }
+        header_hash: { "$ref": "#/components/schemas/HeaderHash" }
+
+    Credential:
+      oneOf:
+        - title: Bech32
+          type: string
+          description: |
+            A blake2b-224 hash digest of some credential or pre-image of those credentials.
+            Supported bech32 prefixes are:
+            - vk
+            - vkh
+            - addr_vk
+            - addr_vkh
+            - stake_vk
+            - stake_vkh
+            - script
+
+        - title: Base16 (digest)
+          type: string
+          description: A blake2b-224 hash digest of some credential (verification key hash or script hash).
+          contentEncoding: base16
+          minLength: 56
+          maxLength: 56
+
+        - title: Base16 (pre-image)
+          type: string
+          description: A blake2b-224 hash pre-image of some credential (verification key or script)
+          contentEncoding: base16
+          minLength: 56
+          maxLength: 56
+
+    DatumHash:
+      oneOf:
+        - title: Digest
+          type: string
+          description: A blake2b-256 hash digest of a Plutus' datum.
+          contentEncoding: base16
+          example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
+          minLength: 64
+          maxLength: 64
+
+        - title: Nothing
+          type: "null"
+
+    HeaderHash:
+      type: string
+      description: A blake2b-256 hash digest of a block header.
+      contentEncoding: base16
+      example: 9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e0935d8340cd6a5d31bf
+      minLength: 64
+      maxLength: 64
+
+    Match:
+      type: object
+      additionalProperties: false
+      required:
+        - transaction_id
+        - output_index
+        - address
+        - value
+        - datum_hash
+        - slot_no
+        - header_hash
+      properties:
+        transaction_id: { "$ref": "#/components/schemas/TransactionId" }
+        output_index: { "$ref": "#/components/schemas/OutputIndex" }
+        address: { "$ref": "#/components/schemas/Address" }
+        value: { "$ref": "#/components/schemas/Value" }
+        datum_hash: { "$ref": "#/components/schemas/DatumHash" }
+        slot_no: { "$ref": "#/components/schemas/SlotNo" }
+        header_hash: { "$ref": "#/components/schemas/HeaderHash" }
+
+    OutputIndex:
+      type: integer
+      description: An index of an output within a transaction.
+      minimum: 0
+      example: 2
+
+    SlotNo: &slotNo
+      type: integer
+      description: An absolut slot number.
+      minimum: 0
+      example: 51540727
+
+    TransactionId:
+      type: string
+      description: A blake2b-256 hash digest of a transaction body.
+      contentEncoding: base16
+      example: 35d8340cd6a5d31bf9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e09
+      minLength: 64
+      maxLength: 64
+
+    Value:
+      type: object
+      description: A (multi-asset) value of a transaction's output.
+      additionalProperties: false
+      required:
+        - coins
+      properties:
+        coins:
           type: integer
-          description: A quantity of some asset.
-          minimum: 1
-        example:
-          5d5b08661220099e5e430475c219518179efc7e6c8289db028904834025d5b086: 231
-          efc7e6c8289db028904834025d5b085d5b08661220099e5e430475c2195181796.08661220099e: 1
+          description: A quantity of Lovelace.
+          example: 42
+        assets:
+          type: object
+          description:
+          propertyNames:
+            type: string
+            pattern: ^[a-f0-9]{64}(.[a-f0-9]{64})?$
+          additionalProperties:
+            x-additionalPropertiesName: "{policy_id}.{asset_name}"
+            type: integer
+            description: A quantity of some asset.
+          example:
+            5d5b08661220099e5e430475c219518179efc7e6c8289db028904834025d5b086: 231
+            efc7e6c8289db028904834025d5b085d5b08661220099e5e430475c2195181796.08661220099e: 1
 
-  Wildcard:
-    type: string
-    title: wildcard
-    enum: ["*"]
+    Wildcard:
+      type: string
+      title: wildcard
+      enum: ["*"]
 
-  Health:
-    type: object
-    description: An overview of the server & connection status. Note that, when `most_recent_checkpoint` and `most_recent_node_tip` are equal, the index is fully synchronized.
-    additionalProperties: false
-    required:
-      - connection_status
-      - most_recent_checkpoint
-      - most_recent_node_tip
-    properties:
-      connection_status:
-        type: string
-        description: Condition of the connection with the underlying node.
-        enum:
-          - connected
-          - disconnected
-      most_recent_checkpoint:
-        <<: *slotNo
-        description: Absolute slot number of the most recent database checkpoint.
-      most_recent_node_tip:
-        <<: *slotNo
-        description: Absolute slot number of the current tip of the node.
+    Health:
+      type: object
+      description: An overview of the server & connection status. Note that, when `most_recent_checkpoint` and `most_recent_node_tip` are equal, the index is fully synchronized.
+      additionalProperties: false
+      required:
+        - connection_status
+        - most_recent_checkpoint
+        - most_recent_node_tip
+      properties:
+        connection_status:
+          type: string
+          description: Condition of the connection with the underlying node.
+          enum:
+            - connected
+            - disconnected
+        most_recent_checkpoint:
+          oneOf:
+            - <<: *slotNo
+              description: Absolute slot number of the most recent database checkpoint.
+            - type: "null"
+              description: Absolute slot number of the most recent database checkpoint.
+        most_recent_node_tip:
+          oneOf:
+            - <<: *slotNo
+              description: Absolute slot number of the current tip of the node.
+            - type: "null"
+              description: Absolute slot number of the current tip of the node.
 
 paths:
   /v1/matches:
@@ -402,10 +409,10 @@ paths:
         200:
           description: OK
           content:
-            application/json:
+            "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/definitions/Match" }
+                items: { "$ref": "#/components/schemas/Match" }
 
   /v1/matches/{pattern-fragment}:
     get:
@@ -421,22 +428,22 @@ paths:
           required: true
           schema:
             oneOf:
-              - { "$ref": "#/definitions/Wildcard" }
-              - { "$ref": "#/definitions/AddressParameter" }
-              - { "$ref": "#/definitions/Credential" }
+              - { "$ref": "#/components/schemas/Wildcard" }
+              - { "$ref": "#/components/schemas/AddressParameter" }
+              - { "$ref": "#/components/schemas/Credential" }
       responses:
         200:
           description: OK
           content:
-            application/json:
+            "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/definitions/Match" }
+                items: { "$ref": "#/components/schemas/Match" }
         400:
           description: Bad Request
           content:
-            application/json:
-              schema: { "$ref": "#/definitions/BadRequest" }
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/BadRequest" }
 
   /v1/matches/{pattern-fragment}/{pattern-fragment}:
     get:
@@ -452,22 +459,22 @@ paths:
           required: true
           schema:
             oneOf:
-              - { "$ref": "#/definitions/Wildcard" }
-              - { "$ref": "#/definitions/AddressParameter" }
-              - { "$ref": "#/definitions/Credential" }
+              - { "$ref": "#/components/schemas/Wildcard" }
+              - { "$ref": "#/components/schemas/AddressParameter" }
+              - { "$ref": "#/components/schemas/Credential" }
       responses:
         200:
           description: OK
           content:
-            application/json:
+            "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/definitions/Match" }
+                items: { "$ref": "#/components/schemas/Match" }
         400:
           description: Bad Request
           content:
-            application/json:
-              schema: { "$ref": "#/definitions/BadRequest" }
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/BadRequest" }
 
   /v1/checkpoints:
     get:
@@ -482,10 +489,10 @@ paths:
         200:
           description: OK
           content:
-            application/json:
+            "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/definitions/Checkpoint" }
+                items: { "$ref": "#/components/schemas/Checkpoint" }
 
   /v1/health:
     get:
@@ -498,5 +505,5 @@ paths:
         200:
           description: OK
           content:
-            application/json:
-              schema: { "$ref": "#/definitions/Health" }
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/Health" }
