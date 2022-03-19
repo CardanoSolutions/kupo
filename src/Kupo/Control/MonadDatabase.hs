@@ -14,6 +14,10 @@ module Kupo.Control.MonadDatabase
     , Database (..)
     , LongestRollback (..)
 
+      -- * Database Entities
+    , Input (..)
+    , Checkpoint (..)
+
       -- * Tracer
     , TraceDatabase (..)
     ) where
@@ -75,36 +79,37 @@ newtype LongestRollback = LongestRollback
     { getLongestRollback :: Word64
     } deriving newtype (Integral, Real, Num, Enum, Ord, Eq)
 
+data Input = Input
+    { outputReference :: ByteString
+    , address :: Text
+    , value :: ByteString
+    , datumHash :: Maybe ByteString
+    , headerHash :: ByteString
+    , slotNo :: Word64
+    }
+
+data Checkpoint = Checkpoint
+    { checkpointHeaderHash :: ByteString
+    , checkpointSlotNo :: Word64
+    }
+
 data Database (m :: Type -> Type) = Database
     { insertInputs
-        :: [ ( ByteString        -- output_reference
-             , Text              -- address
-             , ByteString        -- value
-             , Maybe ByteString  -- datum_hash
-             , Word64            -- slot_no
-             )
-           ]
+        :: [Input]
         -> DBTransaction m ()
 
     , foldInputsByAddress
         :: Text  -- An address-like query
-        -> (  ByteString         -- output_reference
-           -> Text               -- address
-           -> ByteString         -- value
-           -> Maybe ByteString   -- datum_hash
-           -> Word64             -- slot_no
-           -> m ()
-           )
+        -> (Input -> m ())
         -> DBTransaction m ()
 
     , insertCheckpoint
-        :: ByteString -- header_hash
-        -> Word64     -- slot_no
+        :: Checkpoint
         -> DBTransaction m ()
 
     , listCheckpointsDesc
         :: forall checkpoint. ()
-        => (ByteString -> Word64 -> checkpoint)
+        => (Checkpoint -> checkpoint)
         -> DBTransaction m [checkpoint]
 
     , rollbackTo
@@ -171,16 +176,17 @@ instance MonadDatabase IO where
                     (between conn)
 
 mkDatabase :: LongestRollback -> (forall a. (Connection -> IO a) -> IO a) -> Database IO
-mkDatabase (toInteger -> longestRollback) bracketConnection = Database
+mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
     { insertInputs = \inputs -> ReaderT $ \conn ->
         mapM_
-        (\(outputReference, address, value, datumHash, fromIntegral -> slotNo) ->
+        (\Input{..} ->
             insertRow @"inputs" conn
                 [ SQLBlob outputReference
                 , SQLText address
                 , SQLBlob value
                 , maybe SQLNull SQLBlob datumHash
-                , SQLInteger slotNo
+                , SQLBlob headerHash
+                , SQLInteger (fromIntegral slotNo)
                 ]
         )
         inputs
@@ -196,32 +202,34 @@ mkDatabase (toInteger -> longestRollback) bracketConnection = Database
                 , SQLText address
                 , SQLBlob value
                 , matchMaybeDatumHash -> datumHash
+                , SQLBlob headerHash
                 , SQLInteger (fromIntegral -> slotNo)
                 , _ -- LENGTH(address)
-                ] -> yield outputReference address value datumHash slotNo
+                ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
 
-    , insertCheckpoint = \headerHash (toInteger -> slotNo) -> ReaderT $ \conn -> do
+    , insertCheckpoint = \Checkpoint{..} -> ReaderT $ \conn -> do
         insertRow @"checkpoints" conn
-            [ SQLBlob headerHash
-            , SQLInteger (fromIntegral slotNo)
+            [ SQLBlob checkpointHeaderHash
+            , SQLInteger (fromIntegral checkpointSlotNo)
             ]
         execute conn "DELETE FROM checkpoints WHERE slot_no < ?"
-            [ SQLInteger (fromIntegral (slotNo - longestRollback))
+            [ SQLInteger (fromIntegral checkpointSlotNo - longestRollback)
             ]
 
     , listCheckpointsDesc = \mk -> ReaderT $ \conn -> do
         -- NOTE: fetching in *ASC*ending order because the list construction
         -- reverses it,
         fold_ conn "SELECT * FROM checkpoints ORDER BY slot_no ASC" []
-            $ \xs (headerHash, slotNo) -> pure ((mk headerHash slotNo) : xs)
+            $ \xs (checkpointHeaderHash, checkpointSlotNo) ->
+                pure ((mk Checkpoint{..}) : xs)
 
-    , rollbackTo = \(fromIntegral -> slotNo) -> ReaderT $ \conn -> do
+    , rollbackTo = \slotNo -> ReaderT $ \conn -> do
         execute conn "DELETE FROM inputs WHERE slot_no > ?"
-            [ SQLInteger slotNo
+            [ SQLInteger (fromIntegral slotNo)
             ]
         execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
-            [ SQLInteger slotNo
+            [ SQLInteger (fromIntegral slotNo)
             ]
         query_ conn "SELECT MAX(slot_no) FROM checkpoints" >>= \case
             [[SQLInteger slotNo']] ->
@@ -290,6 +298,7 @@ migrations =
     [ mkMigration (decodeUtf8 m)
     | m <-
         [ $(embedFile "db/001.sql")
+        , $(embedFile "db/002.sql")
         ]
     ]
   where
