@@ -20,6 +20,7 @@ license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     db/001.sql
+    db/002.sql
 
 source-repository head
   type: git
@@ -49,6 +50,7 @@ library
       Kupo.Control.MonadThrow
       Kupo.Control.MonadTime
       Kupo.Data.ChainSync
+      Kupo.Data.Database
       Kupo.Data.Health
       Kupo.Data.Pattern
       Kupo.Options
@@ -256,7 +258,6 @@ test-suite unit
       QuickCheck
     , base
     , bytestring
-    , containers
     , hspec
     , io-classes
     , io-sim

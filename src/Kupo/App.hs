@@ -38,17 +38,11 @@ import Kupo.Control.MonadSTM
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.ChainSync
-    ( Block
-    , Point
-    , SlotNo (..)
-    , Tip
-    , getHeaderHash
-    , getPointSlotNo
-    , getSlotNo
-    , unsafeMkPoint
-    )
+    ( Block, Point, SlotNo (..), Tip, getPoint, getPointSlotNo )
+import Kupo.Data.Database
+    ( pointFromRow, pointToRow, resultToRow )
 import Kupo.Data.Pattern
-    ( Pattern, matchBlock, resultToRow )
+    ( Pattern, matchBlock )
 
 --
 -- Application Bootstrapping
@@ -64,7 +58,7 @@ startOrResume
     -> Maybe (Point (Block StandardCrypto))
     -> m [Point (Block StandardCrypto)]
 startOrResume Tracers{tracerDatabase, tracerConfiguration} Database{..} since = do
-    checkpoints <- runTransaction (listCheckpointsDesc unsafeMkPoint)
+    checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
     unless (null checkpoints) $ do
         let ws = unSlotNo . getPointSlotNo <$> checkpoints
         logWith tracerDatabase (DatabaseFoundCheckpoints ws)
@@ -139,12 +133,15 @@ consumer
 consumer tr notifyTip mailbox patterns Database{..} = forever $ do
     blks <- atomically (flushMailbox mailbox)
     let (lastKnownTip, lastKnownBlk) = last blks
-    let lastKnownSlot = getSlotNo lastKnownBlk
+    let lastKnownPoint = getPoint lastKnownBlk
+    let lastKnownSlot = getPointSlotNo lastKnownPoint
     let inputs = concatMap (matchBlock resultToRow patterns . snd) blks
     logWith tr (ChainSyncRollForward lastKnownSlot (length inputs))
     notifyTip lastKnownTip (Just lastKnownSlot)
     runTransaction $ do
-        insertCheckpoint (getHeaderHash lastKnownBlk) (unSlotNo lastKnownSlot)
+        -- TODO: inserting checkpoints could / should actually be done by
+        -- 'insertInputs', instead of leaking here in the application logic.
+        insertCheckpoint (pointToRow lastKnownPoint)
         insertInputs inputs
 
 --

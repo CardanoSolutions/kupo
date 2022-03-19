@@ -10,6 +10,8 @@ import Kupo.Prelude
 
 import Data.List
     ( delete, (!!) )
+import Data.Maybe
+    ( fromJust )
 import Database.SQLite.Simple
     ( Connection
     , Only (..)
@@ -24,15 +26,11 @@ import Database.SQLite.Simple
 import Kupo.Configuration
     ( StandardCrypto )
 import Kupo.Data.ChainSync
-    ( Address, addressFromBytes, addressToBytes, unsafeAddressFromBytes )
+    ( Address, addressFromBytes, addressToBytes )
+import Kupo.Data.Database
+    ( patternToQueryLike )
 import Kupo.Data.Pattern
-    ( Pattern (..)
-    , includingBootstrap
-    , matching
-    , onlyShelley
-    , patternFromText
-    , patternToQueryLike
-    )
+    ( MatchBootstrap (..), Pattern (..), matching, patternFromText )
 import Test.Hspec
     ( Spec, around, context, parallel, shouldBe, specify )
 
@@ -78,7 +76,7 @@ withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
 rowToAddress :: HasCallStack => [SQLData] -> Address StandardCrypto
 rowToAddress = \case
     [SQLText txt, _] ->
-        unsafeAddressFromBytes (unsafeDecodeBase16 txt)
+        fromJust (addressFromBytes (unsafeDecodeBase16 txt))
     _ ->
         error "rowToAddress: not SQLText"
 
@@ -89,12 +87,12 @@ rowToAddress = \case
 patterns :: [(Text, Pattern StandardCrypto, [Address StandardCrypto])]
 patterns =
     [ ( "*"
-      , MatchAny includingBootstrap
+      , MatchAny IncludingBootstrap
       , addresses
       )
 
     , ( "*/*"
-      , MatchAny onlyShelley
+      , MatchAny OnlyShelley
       , delete (addresses !! 4) addresses
       )
 

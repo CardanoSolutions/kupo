@@ -27,16 +27,13 @@ import Kupo.Control.MonadDatabase
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
 import Kupo.Data.ChainSync
-    ( pointToJson, unsafeMkPoint )
+    ( pointToJson )
+import Kupo.Data.Database
+    ( patternToQueryLike, pointFromRow, resultFromRow )
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health )
 import Kupo.Data.Pattern
-    ( patternFromText
-    , patternToQueryLike
-    , resultToJson
-    , unsafeMkResult
-    , wildcard
-    )
+    ( patternFromText, resultToJson, wildcard )
 import Network.HTTP.Client
     ( defaultManagerSettings, httpLbs, newManager, parseRequest, responseBody )
 import Network.HTTP.Types.Header
@@ -131,7 +128,7 @@ handleGetCheckpoints
     -> Response
 handleGetCheckpoints Database{..} = do
     responseStreamJson (pointToJson @StandardCrypto) $ \yield done -> do
-        points <- runTransaction (listCheckpointsDesc unsafeMkPoint)
+        points <- runTransaction (listCheckpointsDesc pointFromRow)
         mapM_ yield points
         done
 
@@ -148,7 +145,7 @@ handleGetMatches query Database{..} = do
             responseStreamJson (resultToJson @StandardCrypto) $ \yield done -> do
                 runTransaction $ foldInputsByAddress
                     (patternToQueryLike p)
-                    (\a0 a1 a2 a3 -> yield . unsafeMkResult a0 a1 a2 a3)
+                    (yield . resultFromRow)
                 done
 
 handleInvalidPattern :: Response

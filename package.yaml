@@ -93,7 +93,6 @@ tests:
     dependencies:
     - base
     - bytestring
-    - containers
     - hspec
     - kupo
     - io-classes
