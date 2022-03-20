@@ -56,6 +56,7 @@ library
       Kupo.Data.ChainSync
       Kupo.Data.Database
       Kupo.Data.Health
+      Kupo.Data.Ogmios
       Kupo.Data.Pattern
       Kupo.Options
       Kupo.Prelude
