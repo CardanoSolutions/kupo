@@ -37,7 +37,7 @@ library
   exposed-modules:
       Kupo
       Kupo.App
-      Kupo.App.ChainSync
+      Kupo.App.ChainSync.Direct
       Kupo.App.Health
       Kupo.App.Http
       Kupo.App.Mailbox
@@ -52,6 +52,7 @@ library
       Kupo.Control.MonadThrow
       Kupo.Control.MonadTime
       Kupo.Data.Cardano
+      Kupo.Data.ChainSync
       Kupo.Data.Database
       Kupo.Data.Health
       Kupo.Data.Pattern

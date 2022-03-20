@@ -22,8 +22,6 @@ import Kupo
     ( kupo, newEnvironment, runWith, version, withTracers )
 import Kupo.App
     ( ConflictingOptionException, NoStartingPointException, Tracers )
-import Kupo.App.ChainSync
-    ( IntersectionNotFoundException )
 import Kupo.App.Http
     ( healthCheck )
 import Kupo.Configuration
@@ -34,6 +32,8 @@ import Kupo.Control.MonadDelay
     ( threadDelay )
 import Kupo.Control.MonadLog
     ( Severity (..), defaultTracers )
+import Kupo.Control.MonadOuroboros
+    ( IntersectionNotFoundException )
 import Kupo.Control.MonadTime
     ( DiffTime, timeout )
 import Kupo.Data.Cardano

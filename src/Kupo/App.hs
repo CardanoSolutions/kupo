@@ -21,8 +21,6 @@ module Kupo.App
 
 import Kupo.Prelude
 
-import Kupo.App.ChainSync
-    ( ChainSyncHandler (..) )
 import Kupo.App.Http
     ( TraceHttpServer )
 import Kupo.App.Mailbox
@@ -41,6 +39,8 @@ import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
     ( Block, IsBlock, Point, SlotNo (..), Tip, getPoint, getPointSlotNo )
+import Kupo.Data.ChainSync
+    ( ChainSyncHandler (..) )
 import Kupo.Data.Database
     ( pointFromRow, pointToRow, resultToRow )
 import Kupo.Data.Pattern

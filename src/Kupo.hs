@@ -31,8 +31,6 @@ import Kupo.Prelude
 
 import Kupo.App
     ( Tracers, Tracers' (..), consumer, producer, startOrResume )
-import Kupo.App.ChainSync
-    ( IntersectionNotFoundException (..), mkChainSyncClient )
 import Kupo.App.Health
     ( connectionStatusToggle, readHealth, recordCheckpoint )
 import Kupo.App.Http
@@ -54,7 +52,11 @@ import Kupo.Control.MonadDatabase
 import Kupo.Control.MonadLog
     ( MonadLog (..), nullTracer, withTracers )
 import Kupo.Control.MonadOuroboros
-    ( MonadOuroboros (..), NodeToClientVersion (..), TraceChainSync (..) )
+    ( IntersectionNotFoundException (..)
+    , MonadOuroboros (..)
+    , NodeToClientVersion (..)
+    , TraceChainSync (..)
+    )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Control.MonadThrow
@@ -67,6 +69,8 @@ import Kupo.Version
     ( version )
 import System.FilePath
     ( (</>) )
+
+import qualified Kupo.App.ChainSync.Direct as Direct
 
 --
 -- Environment
@@ -168,7 +172,7 @@ kupo tr@Tracers{tracerChainSync, tracerHttp, tracerDatabase} = hijackSigTerm *> 
                     networkMagic
                     slotsPerEpoch
                     nodeSocket
-                    (mkChainSyncClient producer' checkpoints)
+                    (Direct.mkChainSyncClient producer' checkpoints)
                     & handle (\e@IntersectionNotFoundException{requestedPoints = points} -> do
                         logWith tracerChainSync ChainSyncIntersectionNotFound{points}
                         throwIO e

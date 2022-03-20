@@ -4,10 +4,8 @@
 
 {-# LANGUAGE DuplicateRecordFields #-}
 
-module Kupo.App.ChainSync
-    ( ChainSyncHandler (..)
-    , mkChainSyncClient
-    , IntersectionNotFoundException (..)
+module Kupo.App.ChainSync.Direct
+    ( mkChainSyncClient
     ) where
 
 import Kupo.Prelude
@@ -18,6 +16,8 @@ import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
     ( Point (..), Tip (..) )
+import Kupo.Data.ChainSync
+    ( ChainSyncHandler (..) )
 import Network.TypedProtocol.Pipelined
     ( Nat (..), natToInt )
 import Ouroboros.Network.Block
@@ -28,13 +28,6 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     , ClientPipelinedStIntersect (..)
     , ClientStNext (..)
     )
-
--- | A message handler for the chain-sync client. Messages are guaranteed (by
--- the protocol) to arrive in order.
-data ChainSyncHandler m tip point block = ChainSyncHandler
-    { onRollBackward :: tip -> point -> m ()
-    , onRollForward :: tip -> block -> m ()
-    }
 
 -- | A simple pipeline chain-sync clients which offers maximum pipelining and
 -- defer handling of requests to callbacks.
