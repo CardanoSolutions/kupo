@@ -63,6 +63,9 @@ module Kupo.Data.Cardano
     , getPaymentPartBytes
     , getDelegationPartBytes
 
+      -- * BlockNo
+    , BlockNo(..)
+
       -- * SlotNo
     , SlotNo (..)
     , slotNoToJson
@@ -117,6 +120,8 @@ import Cardano.Ledger.Shelley
     ( ShelleyEra )
 import Cardano.Ledger.Val
     ( Val (inject) )
+import Cardano.Slotting.Block
+    ( BlockNo (..) )
 import Cardano.Slotting.Slot
     ( SlotNo (..) )
 import Data.Binary.Put
