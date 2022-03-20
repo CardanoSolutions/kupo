@@ -33,30 +33,26 @@ import Kupo.Data.Cardano
     , Blake2b_256
     , Block
     , DatumHash
-    , IsBlock
+    , IsBlock (..)
     , Output
     , OutputReference
     , Point
-    , Transaction
     , Value
     , addressFromBytes
     , addressToJson
     , datumHashToJson
     , digest
     , digestSize
-    , foldBlock
     , getAddress
     , getDatumHash
     , getDelegationPartBytes
     , getOutputIndex
     , getPaymentPartBytes
-    , getPoint
     , getPointSlotNo
     , getTransactionId
     , getValue
     , headerHashToJson
     , isBootstrap
-    , mapMaybeOutputs
     , outputIndexToJson
     , slotNoToJson
     , transactionIdToJson
@@ -249,9 +245,9 @@ matchBlock
 matchBlock transform ms blk =
     let pt = getPoint blk in foldBlock (fn pt) [] blk
   where
-    fn :: Point Block -> Transaction -> [result] -> [result]
+    fn :: Point Block -> BlockBody block -> [result] -> [result]
     fn pt tx results =
-        concatMap (flip mapMaybeOutputs tx . match pt) ms ++ results
+        concatMap (flip (mapMaybeOutputs @block) tx . match pt) ms ++ results
 
     match
         :: Point Block

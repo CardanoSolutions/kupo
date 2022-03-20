@@ -2,8 +2,6 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-
-
 -- Used to partially pattern match result of parsing default arguments. Okay-ish
 -- because it's test code and, having it fail would be instantly caught.
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
@@ -19,7 +17,8 @@ import Data.List
 import Kupo.App
     ( Tracers' (..) )
 import Kupo.Configuration
-    ( Configuration (..)
+    ( ChainProducer (..)
+    , Configuration (..)
     , EpochSlots (..)
     , NetworkMagic (..)
     , NetworkParameters (..)
@@ -87,8 +86,10 @@ spec = parallel $ do
           )
         , ( defaultArgs
           , shouldParseAppConfiguration $ defaultConfiguration
-            { nodeSocket = "./node.socket"
-            , nodeConfig = "./node.config"
+            { chainProducer = CardanoNode
+                { nodeSocket = "./node.socket"
+                , nodeConfig = "./node.config"
+                }
             , workDir = InMemory
             }
           )
@@ -189,7 +190,7 @@ spec = parallel $ do
 
 defaultConfiguration :: Configuration
 defaultConfiguration = parseOptionsPure defaultArgs
-    & either (error . toText) (\(Run _ cfg _) -> cfg)
+    & either (error . toText) (\(Run cfg _) -> cfg)
 
 defaultTracersOff :: Tracers' IO 'MinSeverities
 defaultTracersOff = defaultTracers Nothing
@@ -218,17 +219,17 @@ defaultArgs =
 
 shouldParseAppConfiguration
     :: Configuration
-    -> (Either String (Command Proxy) -> Expectation)
+    -> (Either String Command-> Expectation)
 shouldParseAppConfiguration cfg =
-    flip shouldBe (Right (Run Proxy cfg defaultTracersInfo))
+    flip shouldBe (Right (Run cfg defaultTracersInfo))
 
 shouldParseTracersConfiguration
     :: Tracers' IO 'MinSeverities
-    -> (Either String (Command Proxy) -> Expectation)
+    -> (Either String Command -> Expectation)
 shouldParseTracersConfiguration tracers =
-    flip shouldBe (Right (Run Proxy defaultConfiguration tracers))
+    flip shouldBe (Right (Run defaultConfiguration tracers))
 
-shouldFail :: (Either String (Command Proxy)) -> Expectation
+shouldFail :: (Either String Command) -> Expectation
 shouldFail = flip shouldSatisfy isLeft
 
 isLeftWith :: (err -> Bool) -> Either err result -> Bool

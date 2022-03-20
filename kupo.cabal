@@ -105,7 +105,6 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -fno-warn-unticked-promoted-constructors -fno-warn-partial-fields
   build-depends:
       aeson
-    , attoparsec
     , base >=4.7 && <5
     , base16
     , base58-bytestring

@@ -19,7 +19,6 @@ module Kupo.Data.Cardano
 
       -- * Transaction
     , Transaction
-    , mapMaybeOutputs
 
       -- * TransactionId
     , TransactionId
@@ -133,9 +132,7 @@ import Data.Binary.Put
 import Data.ByteString.Bech32
     ( HumanReadablePart (..), encodeBech32 )
 import Data.Maybe.Strict
-    ( maybeToStrictMaybe )
-import Data.Maybe.Strict
-    ( StrictMaybe (..), strictMaybeToMaybe )
+    ( StrictMaybe (..), maybeToStrictMaybe, strictMaybeToMaybe )
 import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
 import Ouroboros.Consensus.Block
@@ -189,15 +186,23 @@ import qualified Ouroboros.Network.Block as Ouroboros
 
 -- IsBlock
 
-class IsBlock (blk :: Type) where
+class IsBlock (block :: Type) where
+    type BlockBody block :: Type
+
     getPoint
-        :: blk
+        :: block
         -> Point Block
+
     foldBlock
-        :: (Transaction -> result -> result)
+        :: (BlockBody block -> result -> result)
         -> result
-        -> blk
+        -> block
         -> result
+
+    mapMaybeOutputs
+        :: (OutputReference -> Output -> Maybe result)
+        -> BlockBody block
+        -> [result]
 
 -- Block
 
@@ -207,26 +212,117 @@ type Block =
 type Block' crypto =
     CardanoBlock crypto
 
-instance IsBlock (CardanoBlock StandardCrypto) where
+instance IsBlock Block where
+    type BlockBody Block = Transaction
+
+    getPoint
+        :: Block
+        -> Point Block
     getPoint =
         blockPoint
 
-    foldBlock fn b = \case
+    foldBlock
+        :: (Transaction -> result -> result)
+        -> result
+        -> Block
+        -> result
+    foldBlock fn result = \case
         BlockByron blk ->
             let ignoreProtocolTxs = \case
                     ByronTx txId (Ledger.Byron.taTx -> tx) ->
                         fn (TransactionByron tx txId)
                     _ ->
                         identity
-             in foldr ignoreProtocolTxs b (extractTxs blk)
+             in foldr ignoreProtocolTxs result (extractTxs blk)
         BlockShelley (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldr (fn . TransactionShelley) b (Ledger.Shelley.txSeqTxns' txs)
+            foldr (fn . TransactionShelley) result (Ledger.Shelley.txSeqTxns' txs)
         BlockAllegra (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldr (fn . TransactionAllegra) b (Ledger.Shelley.txSeqTxns' txs)
+            foldr (fn . TransactionAllegra) result (Ledger.Shelley.txSeqTxns' txs)
         BlockMary (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldr (fn . TransactionMary) b (Ledger.Shelley.txSeqTxns' txs)
+            foldr (fn . TransactionMary) result (Ledger.Shelley.txSeqTxns' txs)
         BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldr (fn . TransactionAlonzo) b (Ledger.Alonzo.txSeqTxns txs)
+            foldr (fn . TransactionAlonzo) result (Ledger.Alonzo.txSeqTxns txs)
+
+    mapMaybeOutputs
+        :: forall result. ()
+        => (OutputReference -> Output -> Maybe result)
+        -> Transaction
+        -> [result]
+    mapMaybeOutputs fn = \case
+        TransactionByron tx (Ledger.Byron.hashToBytes -> bytes) ->
+            let
+                txId = Ledger.TxId $ Ledger.unsafeMakeSafeHash $ UnsafeHash $ toShort bytes
+                out :| outs = Ledger.Byron.txOutputs tx
+             in
+                traverseAndTransformByron fromByronOutput txId 0 (out : outs)
+        TransactionShelley tx ->
+            let
+                body = Ledger.Shelley.body tx
+                txId = Ledger.txid @(ShelleyEra StandardCrypto) body
+                outs = Ledger.Shelley._outputs body
+             in
+                traverseAndTransform (fromShelleyOutput inject) txId 0 outs
+        TransactionAllegra tx ->
+            let
+                body = Ledger.Shelley.body tx
+                txId = Ledger.txid @(AllegraEra StandardCrypto) body
+                outs = Ledger.MaryAllegra.outputs' body
+             in
+                traverseAndTransform (fromShelleyOutput inject) txId 0 outs
+        TransactionMary tx ->
+            let
+                body = Ledger.Shelley.body tx
+                txId = Ledger.txid @(MaryEra StandardCrypto) body
+                outs = Ledger.MaryAllegra.outputs' body
+             in
+                traverseAndTransform (fromShelleyOutput identity) txId 0 outs
+        TransactionAlonzo tx ->
+            let
+                body = Ledger.Alonzo.body tx
+                txId = Ledger.txid @(AlonzoEra StandardCrypto) body
+                outs = Ledger.Alonzo.outputs' body
+             in
+                traverseAndTransform identity txId 0 outs
+      where
+        traverseAndTransformByron
+            :: forall output. ()
+            => (output -> Output)
+            -> TransactionId
+            -> Natural
+            -> [output]
+            -> [result]
+        traverseAndTransformByron transform txId ix = \case
+            [] -> []
+            (out:rest) ->
+                let
+                    outputRef = Ledger.TxIn txId ix
+                    results   = traverseAndTransformByron transform txId (succ ix) rest
+                 in
+                    case fn outputRef (transform out) of
+                        Nothing ->
+                            results
+                        Just result ->
+                            result : results
+
+        traverseAndTransform
+            :: forall output. ()
+            => (output -> Output)
+            -> TransactionId
+            -> Natural
+            -> StrictSeq output
+            -> [result]
+        traverseAndTransform transform txId ix = \case
+            Empty -> []
+            output :<| rest ->
+                let
+                    outputRef = Ledger.TxIn txId ix
+                    results   = traverseAndTransform transform txId (succ ix) rest
+                 in
+                    case fn outputRef (transform output) of
+                        Nothing ->
+                            results
+                        Just result ->
+                            result : results
 
 -- TransactionId
 
@@ -237,8 +333,7 @@ type TransactionId' crypto =
     Ledger.TxId crypto
 
 transactionIdFromHash
-    :: HasCallStack
-    => Hash Blake2b_256 Ledger.EraIndependentTxBody
+    :: Hash Blake2b_256 Ledger.EraIndependentTxBody
     -> TransactionId
 transactionIdFromHash =
     Ledger.TxId . Ledger.unsafeMakeSafeHash
@@ -291,87 +386,6 @@ data Transaction' crypto
         (Ledger.Shelley.Tx (MaryEra crypto))
     | TransactionAlonzo
         (Ledger.Alonzo.ValidatedTx (AlonzoEra crypto))
-
-mapMaybeOutputs
-    :: forall result. ()
-    => (OutputReference -> Output -> Maybe result)
-    -> Transaction
-    -> [result]
-mapMaybeOutputs fn = \case
-    TransactionByron tx (Ledger.Byron.hashToBytes -> bytes) ->
-        let
-            txId = Ledger.TxId $ Ledger.unsafeMakeSafeHash $ UnsafeHash $ toShort bytes
-            out :| outs = Ledger.Byron.txOutputs tx
-         in
-            traverseAndTransformByron fromByronOutput txId 0 (out : outs)
-    TransactionShelley tx ->
-        let
-            body = Ledger.Shelley.body tx
-            txId = Ledger.txid @(ShelleyEra StandardCrypto) body
-            outs = Ledger.Shelley._outputs body
-         in
-            traverseAndTransform (fromShelleyOutput inject) txId 0 outs
-    TransactionAllegra tx ->
-        let
-            body = Ledger.Shelley.body tx
-            txId = Ledger.txid @(AllegraEra StandardCrypto) body
-            outs = Ledger.MaryAllegra.outputs' body
-         in
-            traverseAndTransform (fromShelleyOutput inject) txId 0 outs
-    TransactionMary tx ->
-        let
-            body = Ledger.Shelley.body tx
-            txId = Ledger.txid @(MaryEra StandardCrypto) body
-            outs = Ledger.MaryAllegra.outputs' body
-         in
-            traverseAndTransform (fromShelleyOutput identity) txId 0 outs
-    TransactionAlonzo tx ->
-        let
-            body = Ledger.Alonzo.body tx
-            txId = Ledger.txid @(AlonzoEra StandardCrypto) body
-            outs = Ledger.Alonzo.outputs' body
-         in
-            traverseAndTransform identity txId 0 outs
-  where
-    traverseAndTransformByron
-        :: forall output. ()
-        => (output -> Output)
-        -> TransactionId
-        -> Natural
-        -> [output]
-        -> [result]
-    traverseAndTransformByron transform txId ix = \case
-        [] -> []
-        (out:rest) ->
-            let
-                outputRef = Ledger.TxIn txId ix
-                results   = traverseAndTransformByron transform txId (succ ix) rest
-             in
-                case fn outputRef (transform out) of
-                    Nothing ->
-                        results
-                    Just result ->
-                        result : results
-
-    traverseAndTransform
-        :: forall output. ()
-        => (output -> Output)
-        -> TransactionId
-        -> Natural
-        -> StrictSeq output
-        -> [result]
-    traverseAndTransform transform txId ix = \case
-        Empty -> []
-        output :<| rest ->
-            let
-                outputRef = Ledger.TxIn txId ix
-                results   = traverseAndTransform transform txId (succ ix) rest
-             in
-                case fn outputRef (transform output) of
-                    Nothing ->
-                        results
-                    Just result ->
-                        result : results
 
 -- Input
 

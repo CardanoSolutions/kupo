@@ -39,7 +39,6 @@ library:
     - -O2
   dependencies:
     - aeson
-    - attoparsec
     - base16
     - base58-bytestring
     - base64

@@ -32,6 +32,7 @@ import Kupo.Data.Cardano
     , BlockNo (..)
     , pattern BlockPoint
     , pattern GenesisPoint
+    , IsBlock (..)
     , Output
     , OutputReference
     , Point (..)
@@ -41,8 +42,9 @@ import Kupo.Data.Cardano
     , TransactionId
     , Value
     , WithOrigin (..)
+    , headerHashToJson
     , mkOutput
-    , pointToJson
+    , slotNoToJson
     , transactionIdFromHash
     , transactionIdFromHash
     , unsafeMakeSafeHash
@@ -65,11 +67,24 @@ import qualified Data.Text as Text
 
 -- PartialBlock / PartialTransaction
 
-newtype PartialBlock = PartialBlock
+data PartialBlock = PartialBlock
+    (Point Block)
     [ PartialTransaction ]
 
 newtype PartialTransaction = PartialTransaction
     [ (OutputReference, Output) ]
+
+instance IsBlock PartialBlock where
+    type BlockBody PartialBlock = PartialTransaction
+
+    getPoint (PartialBlock pt _) =
+        pt
+
+    foldBlock fn result (PartialBlock _ txs) =
+        foldr fn result txs
+
+    mapMaybeOutputs fn (PartialTransaction outs) =
+        mapMaybe (uncurry fn) outs
 
 -- RequestNextResponse
 
@@ -90,11 +105,21 @@ beginWspRequest = mconcat
 encodeFindIntersect :: [Point Block] -> Json.Encoding
 encodeFindIntersect pts = Json.pairs $ beginWspRequest
     <> Json.pair "methodname" (Json.text "FindIntersect")
-    <> Json.pair "args" (Json.pairs $ Json.pair "points" (Json.list pointToJson pts))
+    <> Json.pair "args" (Json.pairs $ Json.pair "points" (Json.list encodePoint pts))
 
 encodeRequestNext :: Json.Encoding
 encodeRequestNext = Json.pairs $ beginWspRequest
     <> Json.pair "methodname" (Json.text "RequestNext")
+
+encodePoint :: Point Block -> Json.Encoding
+encodePoint = \case
+    GenesisPoint ->
+        Json.text "origin"
+    BlockPoint slotNo headerHash ->
+        Json.pairs $ mconcat
+            [ Json.pair "slot" (slotNoToJson slotNo)
+            , Json.pair "hash" (headerHashToJson headerHash)
+            ]
 
 -- Decoders
 
@@ -142,42 +167,56 @@ decodeByronBlock
     -> Json.Parser PartialBlock
 decodeByronBlock = Json.withObject "Block[Byron]" $ \o -> do
     block <- o .: "byron"
-    decodeStandardBlock block <|> decodeEpochBoundaryBlock
+    decodeStandardBlock block <|> decodeEpochBoundaryBlock block
   where
     decodeStandardBlock = Json.withObject "Block[Byron~Standard]" $ \o -> do
         txs <- o .: "body" >>= (.: "txPayload")
-        PartialBlock <$> traverse decodePartialTransaction txs
+        slot <- o .: "header" >>= (.: "slot")
+        headerHash <- o .: "hash" >>= decodeOneEraHash
+        let point = BlockPoint (SlotNo slot) headerHash
+        PartialBlock point <$> traverse decodePartialTransaction txs
 
-    decodeEpochBoundaryBlock =
-        pure (PartialBlock [])
+    decodeEpochBoundaryBlock = Json.withObject "Block[Byron~Standard]" $ \o -> do
+        slot <- o .: "header" >>= (.: "blockHeight")
+        headerHash <- o .: "hash" >>= decodeOneEraHash
+        let point = BlockPoint (SlotNo slot) headerHash
+        pure (PartialBlock point [])
 
 decodeShelleyBlock
     :: Json.Value
     -> Json.Parser PartialBlock
 decodeShelleyBlock = Json.withObject "ShelleyBlock" $ \o -> do
-    txs <- o .: "shelley" >>= (.: "body")
-    PartialBlock <$> traverse decodePartialTransaction txs
+    shelley <- o .: "shelley"
+    txs <- shelley .: "body"
+    point <- decodeBlockPoint shelley
+    PartialBlock point <$> traverse decodePartialTransaction txs
 
 decodeAllegraBlock
     :: Json.Value
     -> Json.Parser PartialBlock
 decodeAllegraBlock = Json.withObject "AllegraBlock" $ \o -> do
-    txs <- o .: "allegra" >>= (.: "body")
-    PartialBlock <$> traverse decodePartialTransaction txs
+    allegra <- o .: "allegra"
+    txs <- allegra .: "body"
+    point <- decodeBlockPoint allegra
+    PartialBlock point <$> traverse decodePartialTransaction txs
 
 decodeMaryBlock
     :: Json.Value
     -> Json.Parser PartialBlock
 decodeMaryBlock = Json.withObject "MaryBlock" $ \o -> do
-    txs <- o .: "mary" >>= (.: "body")
-    PartialBlock <$> traverse decodePartialTransaction txs
+    mary <- o .: "mary"
+    txs <- mary .: "body"
+    point <- decodeBlockPoint mary
+    PartialBlock point <$> traverse decodePartialTransaction txs
 
 decodeAlonzoBlock
     :: Json.Value
     -> Json.Parser PartialBlock
 decodeAlonzoBlock = Json.withObject "AlonzoBlock" $ \o -> do
-    txs <- o .: "alonzo" >>= (.: "body")
-    PartialBlock <$> traverse decodePartialTransaction txs
+    alonzo <- o .: "alonzo"
+    txs <- alonzo .: "body"
+    point <- decodeBlockPoint alonzo
+    PartialBlock point <$> traverse decodePartialTransaction txs
 
 decodeAddress
     :: Text
@@ -188,6 +227,14 @@ decodeAddress txt =
             pure addr
         _ ->
             empty
+
+decodeBlockPoint
+    :: Json.Object
+    -> Json.Parser (Point Block)
+decodeBlockPoint o = do
+    headerHash <- o .: "headerHash" >>= decodeOneEraHash
+    slot <- o .: "header" >>= (.: "slot")
+    pure (BlockPoint (SlotNo slot) headerHash)
 
 decodeHash
     :: HashAlgorithm alg
@@ -228,9 +275,9 @@ decodePointOrOrigin json =
     decodeOrigin = Json.withText "PointOrigin" $ \case
         txt | txt == "origin" -> pure GenesisPoint
         _ -> empty
-    decodePoint = Json.withObject "PointOrOrigin" $ \obj -> do
-        slot <- obj .: "slot"
-        hash <- obj .: "hash" >>= decodeOneEraHash
+    decodePoint = Json.withObject "PointOrOrigin" $ \o -> do
+        slot <- o .: "slot"
+        hash <- o .: "hash" >>= decodeOneEraHash
         return $ BlockPoint (SlotNo slot) hash
 
 decodeSlotNoOrOrigin
@@ -242,8 +289,8 @@ decodeSlotNoOrOrigin json =
     decodeOrigin = Json.withText "SlotNoOrOrigin" $ \case
         txt | txt == "origin" -> pure Origin
         _ -> empty
-    decodeSlotNo = Json.withObject "SlotNoOrOrigin" $ \obj -> do
-        At . SlotNo <$> (obj .: "slot")
+    decodeSlotNo = Json.withObject "SlotNoOrOrigin" $ \o -> do
+        At . SlotNo <$> (o .: "slot")
 
 decodeTipOrOrigin
     :: Json.Value
@@ -254,10 +301,10 @@ decodeTipOrOrigin json =
     decodeOrigin = Json.withText "TipOrOrigin" $ \case
         txt | txt == "origin" -> pure TipGenesis
         _ -> empty
-    decodeTip = Json.withObject "TipOrOrigin" $ \obj -> do
-        slot <- obj .: "slot"
-        hash <- obj .: "hash" >>= decodeOneEraHash
-        blockNo <- obj .: "blockNo"
+    decodeTip = Json.withObject "TipOrOrigin" $ \o -> do
+        slot <- o .: "slot"
+        hash <- o .: "hash" >>= decodeOneEraHash
+        blockNo <- o .: "blockNo"
         pure $ Tip (SlotNo slot) hash (BlockNo blockNo)
 
 decodeTransactionId
@@ -287,4 +334,3 @@ decodeValue = Json.withObject "Value" $ \o -> do
                 pure (policyId, mempty, quantity)
             _ ->
                 empty
-

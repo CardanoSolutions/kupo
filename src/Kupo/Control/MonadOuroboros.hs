@@ -38,9 +38,7 @@ import Control.Monad.Class.MonadThrow
 import Control.Monad.Class.MonadTimer
     ( threadDelay )
 import Control.Tracer
-    ( Tracer, traceWith )
-import Control.Tracer
-    ( nullTracer )
+    ( Tracer, nullTracer, traceWith )
 import Data.List
     ( isInfixOf )
 import Data.Map.Strict
@@ -97,27 +95,22 @@ import System.IO.Error
     ( isDoesNotExistError )
 
 class MonadOuroboros (m :: Type -> Type) where
-    type Block m :: Type
+    type BlockT m :: Type
     withChainSyncServer
-        :: IsBlock (Block m)
+        :: (StandardHash (BlockT m), Typeable (BlockT m))
         => Tracer m TraceChainSync
         -> ConnectionStatusToggle m
         -> [NodeToClientVersion]
         -> NetworkMagic
         -> EpochSlots
         -> FilePath
-        -> ChainSyncClientPipelined (Block m) (Point (Block m)) (Tip (Block m)) IO ()
+        -> ChainSyncClientPipelined (BlockT m) (Point (BlockT m)) (Tip (BlockT m)) IO ()
         -> m ()
 
 data ConnectionStatusToggle m = ConnectionStatusToggle
     { toggleConnected :: m ()
     , toggleDisconnected :: m ()
     }
-
-type IsBlock block =
-    ( StandardHash block
-    , Typeable block
-    )
 
 -- | Exception thrown when creating a chain-sync client from an invalid list of
 -- points.
@@ -130,7 +123,7 @@ data IntersectionNotFoundException = IntersectionNotFoundException
 instance Exception IntersectionNotFoundException
 
 instance MonadOuroboros IO where
-    type Block IO = CardanoBlock StandardCrypto
+    type BlockT IO = CardanoBlock StandardCrypto
     withChainSyncServer tr ConnectionStatusToggle{..} wantedVersions networkMagic slotsPerEpoch socket client =
         withIOManager $ \iocp -> do
             connectTo (mkLocalSnocket iocp) tracers versions socket
@@ -211,12 +204,12 @@ instance MonadOuroboros IO where
 codecs
     :: EpochSlots
     -> NodeToClientVersion
-    -> ClientCodecs (Block IO) IO
+    -> ClientCodecs (BlockT IO) IO
 codecs epochSlots nodeToClientV =
     clientCodecs cfg (supportedVersions ! nodeToClientV) nodeToClientV
   where
     supportedVersions =
-        supportedNodeToClientVersions (Proxy @(Block IO))
+        supportedNodeToClientVersions (Proxy @(BlockT IO))
     cfg =
         CardanoCodecConfig byron shelley allegra mary alonzo
       where

@@ -36,9 +36,10 @@ import Kupo.App.Health
 import Kupo.App.Http
     ( healthCheck, runServer )
 import Kupo.App.Mailbox
-    ( newMailbox )
+    ( Mailbox, newMailbox )
 import Kupo.Configuration
-    ( Configuration (..)
+    ( ChainProducer (..)
+    , Configuration (..)
     , NetworkParameters (..)
     , TraceConfiguration (..)
     , WorkDir (..)
@@ -48,7 +49,7 @@ import Kupo.Control.MonadAsync
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadDatabase
-    ( Mode (..), MonadDatabase (..) )
+    ( Database, Mode (..), MonadDatabase (..) )
 import Kupo.Control.MonadLog
     ( MonadLog (..), nullTracer, withTracers )
 import Kupo.Control.MonadOuroboros
@@ -61,16 +62,19 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
+import Kupo.Data.Cardano
+    ( Block, IsBlock, Point, Tip )
 import Kupo.Data.Health
     ( Health, emptyHealth )
 import Kupo.Options
-    ( Command (..), parseOptions )
+    ( Command (..), parseNetworkParameters, parseOptions )
 import Kupo.Version
     ( version )
 import System.FilePath
     ( (</>) )
 
 import qualified Kupo.App.ChainSync.Direct as Direct
+import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 
 --
 -- Environment
@@ -90,19 +94,14 @@ newtype Kupo a = Kupo
 -- | Application entry point.
 kupo :: Tracers -> Kupo ()
 kupo tr@Tracers{tracerChainSync, tracerHttp, tracerDatabase} = hijackSigTerm *> do
-    Env { network = NetworkParameters
-            { networkMagic
-            , slotsPerEpoch
-            }
+    env@Env { health
         , configuration = Configuration
-            { nodeSocket
-            , serverHost
+            { serverHost
             , serverPort
             , workDir
             , since
             , patterns
             }
-        , health
         } <- ask
 
      -- 43200 slots = k/f slots
@@ -129,55 +128,84 @@ kupo tr@Tracers{tracerChainSync, tracerHttp, tracerDatabase} = hijackSigTerm *> 
     lock <- liftIO newLock
     liftIO $ withDatabase tracerDatabase Write lock longestRollback dbFile $ \db -> do
         checkpoints <- startOrResume tr db since
-        -- TODO: Make the mailbox's size configurable? Larger sizes means larger
-        -- memory usage at the benefits of slightly faster sync time... Though I
-        -- am not sure it's worth enough to bother users with this. Between 100
-        -- and 1000, the heap increases from ~150MB to ~1GB, for a 5-10%
-        -- synchronization time decrease.
-        mailbox <- atomically (newMailbox 100)
-        concurrently3
-            -- HTTP Server
-            ( runServer
-                tracerHttp
-                -- NOTE: This should / could probably use a resource pool to
-                -- avoid re-creating a new connection on every requests. This is
-                -- however pretty cheap with SQLite anyway and the HTTP server
-                -- isn't meant to be a public-facing web server serving millions
-                -- of clients.
-                (withDatabase nullTracer ReadOnly lock longestRollback dbFile)
-                (readHealth health)
-                serverHost
-                serverPort
-            )
+        withChainProducer tr env db $ \mailbox runChainSyncClient -> do
+            concurrently3
+                -- HTTP Server
+                ( runServer
+                    tracerHttp
+                    -- NOTE: This should / could probably use a resource pool to
+                    -- avoid re-creating a new connection on every requests. This is
+                    -- however pretty cheap with SQLite anyway and the HTTP server
+                    -- isn't meant to be a public-facing web server serving millions
+                    -- of clients.
+                    (withDatabase nullTracer ReadOnly lock longestRollback dbFile)
+                    (readHealth health)
+                    serverHost
+                    serverPort
+                )
 
-            -- Chain-Sync handler fueling the database
-            ( consumer
-                tracerChainSync
-                (recordCheckpoint health)
-                mailbox
-                patterns
-                db
-            )
-
-            -- Chain-Sync client, fetching blocks from the network
-            ( let producer' = producer
+                -- Block consumer fueling the database
+                ( consumer
                     tracerChainSync
                     (recordCheckpoint health)
                     mailbox
+                    patterns
                     db
-              in withChainSyncServer
-                    tracerChainSync
-                    (connectionStatusToggle health)
-                    [ NodeToClientV_9 .. NodeToClientV_12 ]
-                    networkMagic
-                    slotsPerEpoch
-                    nodeSocket
-                    (Direct.mkChainSyncClient producer' checkpoints)
-                    & handle (\e@IntersectionNotFoundException{requestedPoints = points} -> do
-                        logWith tracerChainSync ChainSyncIntersectionNotFound{points}
-                        throwIO e
-                      )
-            )
+                )
+
+                -- Chain-sync client, fetching blocks from the network
+                ( runChainSyncClient
+                    checkpoints
+                )
+
+
+-- TODO: Make the mailbox's size configurable? Larger sizes means larger
+-- memory usage at the benefits of slightly faster sync time... Though I
+-- am not sure it's worth enough to bother users with this. Between 100
+-- and 1000, the heap increases from ~150MB to ~1GB, for a 5-10%
+-- synchronization time decrease.
+withChainProducer
+    :: Tracers
+    -> Env Kupo
+    -> Database IO
+    -> (forall block. IsBlock block => Mailbox IO (Tip Block, block) -> ([Point Block] -> IO ()) -> IO ())
+    -> IO ()
+withChainProducer Tracers{tracerChainSync, tracerConfiguration} env db callback = do
+    case chainProducer of
+        Ogmios{ogmiosHost, ogmiosPort} -> do
+            logWith tracerConfiguration ConfigurationOgmios{ogmiosHost, ogmiosPort}
+            mailbox <- atomically (newMailbox 100)
+            let chainSyncHandler = producer tracerChainSync (recordCheckpoint health) mailbox db
+            callback mailbox $ \checkpoints ->
+                Ogmios.connect ogmiosHost ogmiosPort $
+                    Ogmios.runChainSyncClient chainSyncHandler checkpoints
+
+        CardanoNode{nodeSocket, nodeConfig} -> do
+            logWith tracerConfiguration ConfigurationCardanoNode{nodeSocket,nodeConfig}
+            mailbox <- atomically (newMailbox 100)
+            let chainSyncHandler = producer tracerChainSync (recordCheckpoint health) mailbox db
+            network@NetworkParameters
+                { networkMagic
+                , slotsPerEpoch
+                } <- parseNetworkParameters nodeConfig
+            logWith tracerConfiguration (ConfigurationNetwork network)
+            callback mailbox $ \checkpoints ->
+                withChainSyncServer
+                  tracerChainSync
+                  (connectionStatusToggle health)
+                  [ NodeToClientV_9 .. NodeToClientV_12 ]
+                  networkMagic
+                  slotsPerEpoch
+                  nodeSocket
+                  (Direct.mkChainSyncClient chainSyncHandler checkpoints)
+                  & handle (\e@IntersectionNotFoundException{requestedPoints = points} -> do
+                      logWith tracerChainSync ChainSyncIntersectionNotFound{points}
+                      throwIO e
+                    )
+  where
+    Env { health
+        , configuration = Configuration { chainProducer }
+        } = env
 
 --
 -- Environment
@@ -188,17 +216,13 @@ runWith :: forall a. Kupo a -> Env Kupo -> IO a
 runWith app = runReaderT (unKupo app)
 
 data Env (m :: Type -> Type) = Env
-    { network :: !NetworkParameters
-    , configuration :: !Configuration
+    { configuration :: !Configuration
     , health :: !(TVar IO Health)
     } deriving stock (Generic)
 
 newEnvironment
-    :: Tracers
-    -> NetworkParameters
-    -> Configuration
+    :: Configuration
     -> IO (Env Kupo)
-newEnvironment Tracers{tracerConfiguration} network configuration = do
-    logWith tracerConfiguration (ConfigurationNetwork network)
+newEnvironment configuration = do
     health <- newTVarIO emptyHealth
-    pure Env{network, configuration, health}
+    pure Env{configuration, health}
