@@ -221,6 +221,7 @@ test-suite unit
       Test.Kupo.Data.ConfigurationSpec
       Test.Kupo.Data.DatabaseSpec
       Test.Kupo.Data.Generators
+      Test.Kupo.Data.OgmiosSpec
       Test.Kupo.Data.Pattern.Fixture
       Test.Kupo.Data.PatternSpec
       Test.Kupo.Fixture
@@ -274,6 +275,8 @@ test-suite unit
     , aeson
     , base
     , bytestring
+    , directory
+    , filepath
     , hspec
     , http-client
     , http-media
