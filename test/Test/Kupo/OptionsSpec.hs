@@ -84,11 +84,26 @@ spec = parallel $ do
         , ( [ "--node-config", "./node.config" ]
           , shouldFail
           )
+        , ( [ "--ogmios-host", "localhost" ]
+          , shouldFail
+          )
+        , ( [ "--ogmios-port", "1337" ]
+          , shouldFail
+          )
         , ( defaultArgs
           , shouldParseAppConfiguration $ defaultConfiguration
             { chainProducer = CardanoNode
                 { nodeSocket = "./node.socket"
                 , nodeConfig = "./node.config"
+                }
+            , workDir = InMemory
+            }
+          )
+        , ( defaultArgs'
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { chainProducer = Ogmios
+                { ogmiosHost = "localhost"
+                , ogmiosPort = 1337
                 }
             , workDir = InMemory
             }
@@ -214,6 +229,13 @@ defaultArgs :: [String]
 defaultArgs =
     [ "--node-socket", "./node.socket"
     , "--node-config", "./node.config"
+    , "--in-memory"
+    ]
+
+defaultArgs' :: [String]
+defaultArgs' =
+    [ "--ogmios-host", "localhost"
+    , "--ogmios-port", "1337"
     , "--in-memory"
     ]
 
