@@ -39,8 +39,6 @@ import Control.Monad.Class.MonadTimer
     ( threadDelay )
 import Control.Tracer
     ( Tracer, nullTracer, traceWith )
-import Data.List
-    ( isInfixOf )
 import Data.Map.Strict
     ( (!) )
 import Data.Severity
@@ -91,8 +89,6 @@ import Ouroboros.Network.Protocol.Handshake.Version
     ( combineVersions, simpleSingletonVersions )
 import Ouroboros.Network.Snocket
     ( Snocket (..) )
-import System.IO.Error
-    ( isDoesNotExistError )
 
 class MonadOuroboros (m :: Type -> Type) where
     type BlockT m :: Type
@@ -106,11 +102,6 @@ class MonadOuroboros (m :: Type -> Type) where
         -> FilePath
         -> ChainSyncClientPipelined (BlockT m) (Point (BlockT m)) (Tip (BlockT m)) IO ()
         -> m ()
-
-data ConnectionStatusToggle m = ConnectionStatusToggle
-    { toggleConnected :: m ()
-    , toggleDisconnected :: m ()
-    }
 
 -- | Exception thrown when creating a chain-sync client from an invalid list of
 -- points.
@@ -177,19 +168,10 @@ instance MonadOuroboros IO where
 
         onIOException :: IOException -> IO ()
         onIOException e
-            | isRetryable = do
+            | isRetryableIOException e = do
                 traceWith tr $ ChainSyncFailedToConnect socket 5
             | otherwise = do
                 traceWith tr $ ChainSyncUnknownException $ show (toException e)
-          where
-            isRetryable :: Bool
-            isRetryable = isResourceVanishedError e || isDoesNotExistError e || isTryAgainError e
-
-            isTryAgainError :: IOException -> Bool
-            isTryAgainError = isInfixOf "resource exhausted" . show
-
-            isResourceVanishedError :: IOException -> Bool
-            isResourceVanishedError = isInfixOf "resource vanished" . show
 
         onUnknownException :: SomeException -> IO ()
         onUnknownException e

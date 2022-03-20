@@ -9,8 +9,6 @@ module Kupo.App.ChainSync.Ogmios
 
 import Kupo.Prelude
 
-import Control.Exception
-    ( IOException )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadDelay
@@ -64,16 +62,21 @@ runChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts ws = do
 -- Connection
 
 connect
-    :: String
+    :: ConnectionStatusToggle IO
+    -> String
     -> Int
     -> (WS.Connection -> IO ())
     -> IO ()
-connect host port =
-    retry . WS.runClient host port "/"
+connect ConnectionStatusToggle{toggleConnected, toggleDisconnected} host port action =
+    retry $ WS.runClient host port "/" (\ws -> toggleConnected >> action ws)
   where
-    retry io = io `catch` (\(_ :: IOException) -> do
-        threadDelay 0.5
-        retry io)
+    retry io = catch io $ \e ->
+        if isRetryableIOException e then do
+            toggleDisconnected
+            threadDelay 0.5
+            retry io
+        else
+            throwIO e
 
 data CannotResolveAddressException = CannotResolveAddress
     { host :: String

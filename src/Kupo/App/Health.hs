@@ -11,8 +11,6 @@ module Kupo.App.Health
 
 import Kupo.Prelude
 
-import Kupo.Control.MonadOuroboros
-    ( ConnectionStatusToggle (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano

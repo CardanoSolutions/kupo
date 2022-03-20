@@ -177,7 +177,7 @@ withChainProducer Tracers{tracerChainSync, tracerConfiguration} env db callback 
             mailbox <- atomically (newMailbox 100)
             let chainSyncHandler = producer tracerChainSync (recordCheckpoint health) mailbox db
             callback mailbox $ \checkpoints ->
-                Ogmios.connect ogmiosHost ogmiosPort $
+                Ogmios.connect (connectionStatusToggle health) ogmiosHost ogmiosPort $
                     Ogmios.runChainSyncClient chainSyncHandler checkpoints
 
         CardanoNode{nodeSocket, nodeConfig} -> do
