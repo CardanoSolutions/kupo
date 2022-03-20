@@ -17,7 +17,7 @@ import Kupo.Prelude
 import Data.List
     ( isInfixOf )
 import Kupo.App
-    ( Tracers, Tracers' (..) )
+    ( Tracers' (..) )
 import Kupo.Configuration
     ( Configuration (..)
     , EpochSlots (..)
@@ -33,9 +33,7 @@ import Kupo.Data.Pattern
 import Kupo.Fixture
     ( somePoint )
 import Kupo.Options
-    ( Command (..), parseNetworkParameters, parseOptions, parseOptionsPure )
-import System.Environment
-    ( withArgs )
+    ( Command (..), parseNetworkParameters, parseOptionsPure )
 import Test.Hspec
     ( Expectation
     , Spec
@@ -53,6 +51,29 @@ spec = parallel $ do
         forM_ matrix $ \(args, expect) -> do
             let title = toString $ unwords $ toText <$> args
             specify title $ expect (parseOptionsPure args)
+
+        specify "invalid" $ do
+            case parseOptionsPure ["--nope"] of
+                Right{} -> expectationFailure "Expected error but got success."
+                Left e -> e `shouldSatisfy` isInfixOf "Invalid option"
+
+        specify "test completion" $ do
+            case parseOptionsPure ["--node-so\t"] of
+                Right{} -> expectationFailure "Expected error but got success."
+                Left e -> e `shouldSatisfy` isInfixOf "Invalid option"
+
+    context "parseNetworkParameters" $ do
+        specify "mainnet" $ do
+            params <- parseNetworkParameters "./config/network/mainnet/cardano-node/config.json"
+            networkMagic  params `shouldBe` NetworkMagic 764824073
+            systemStart   params `shouldBe` mkSystemStart 1506203091
+            slotsPerEpoch params `shouldBe` EpochSlots 21600
+
+        specify "testnet" $ do
+            params <- parseNetworkParameters "./config/network/testnet/cardano-node/config.json"
+            networkMagic  params `shouldBe` NetworkMagic 1097911063
+            systemStart   params `shouldBe` mkSystemStart 1563999616
+            slotsPerEpoch params `shouldBe` EpochSlots 21600
   where
     matrix =
         [ ( []
