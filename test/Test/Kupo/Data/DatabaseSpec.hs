@@ -21,8 +21,6 @@ import Database.SQLite.Simple
     , withConnection
     , withTransaction
     )
-import Kupo.Configuration
-    ( StandardCrypto )
 import Kupo.Data.Cardano
     ( Address, addressFromBytes, addressToBytes )
 import Kupo.Data.Database
@@ -97,7 +95,7 @@ withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
             (Only . SQLText . encodeBase16 . addressToBytes <$> addresses)
     action conn
 
-rowToAddress :: HasCallStack => [SQLData] -> Address StandardCrypto
+rowToAddress :: HasCallStack => [SQLData] -> Address
 rowToAddress = \case
     [SQLText txt, _] ->
         fromJust (addressFromBytes (unsafeDecodeBase16 txt))

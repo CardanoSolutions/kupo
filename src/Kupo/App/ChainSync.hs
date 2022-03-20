@@ -31,9 +31,9 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
 
 -- | A message handler for the chain-sync client. Messages are guaranteed (by
 -- the protocol) to arrive in order.
-data ChainSyncHandler m block = ChainSyncHandler
-    { onRollBackward :: Tip block -> Point block -> m ()
-    , onRollForward :: Tip block -> block -> m ()
+data ChainSyncHandler m tip point block = ChainSyncHandler
+    { onRollBackward :: tip -> point -> m ()
+    , onRollForward :: tip -> block -> m ()
     }
 
 -- | A simple pipeline chain-sync clients which offers maximum pipelining and
@@ -42,7 +42,7 @@ mkChainSyncClient
     :: forall m block.
         ( MonadThrow m
         )
-    => ChainSyncHandler m block
+    => ChainSyncHandler m (Tip block) (Point block) block
     -> [Point block]
     -> ChainSyncClientPipelined block (Point block) (Tip block) m ()
 mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts =

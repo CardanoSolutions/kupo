@@ -85,7 +85,7 @@ pointToRow = \case
 resultFromRow
     :: HasCallStack
     => DB.Input
-    -> Result StandardCrypto
+    -> Result
 resultFromRow row = Result
     { outputReference = unsafeDeserialize' (DB.outputReference row)
     , address = (unsafeAddressFromBytes . unsafeDecodeBase16)  (DB.address row)
@@ -98,7 +98,7 @@ resultFromRow row = Result
         fromMaybe (error "unsafeAddressFromBytes") . Ledger.deserialiseAddr
 
 resultToRow
-    :: Result StandardCrypto
+    :: Result
     -> DB.Input
 resultToRow Result{..} = DB.Input
     { DB.outputReference = serialize' outputReference
@@ -118,7 +118,7 @@ resultToRow Result{..} = DB.Input
 -- Pattern
 --
 
-patternToQueryLike :: Pattern crypto -> Text
+patternToQueryLike :: Pattern -> Text
 patternToQueryLike = \case
     MatchAny IncludingBootstrap ->
         "LIKE '%'"

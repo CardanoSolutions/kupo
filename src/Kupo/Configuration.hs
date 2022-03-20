@@ -13,7 +13,6 @@ module Kupo.Configuration
     -- * Configuration
       Configuration (..)
     , WorkDir (..)
-    , StandardCrypto
     , Point (..)
     , Block
     , Pattern (..)
@@ -39,8 +38,6 @@ import Kupo.Prelude
 
 import Cardano.Crypto.Hash
     ( Blake2b_256, hashFromTextAsHex, hashToBytesShort )
-import Cardano.Ledger.Crypto
-    ( StandardCrypto )
 import Data.Aeson
     ( (.:) )
 import Data.Time.Clock.POSIX
@@ -76,8 +73,8 @@ data Configuration = Configuration
     , workDir :: !WorkDir
     , serverHost :: !String
     , serverPort :: !Int
-    , since :: !(Maybe (Point (Block StandardCrypto)))
-    , patterns :: ![Pattern StandardCrypto]
+    , since :: !(Maybe (Point Block))
+    , patterns :: ![Pattern]
     } deriving (Generic, Eq, Show)
 
 data WorkDir
@@ -130,7 +127,7 @@ mkSystemStart =
 --                     refers to a specific point on chain identified by this
 --                     slot number and header hash.
 --
-pointFromText :: Text -> Maybe (Point (Block crypto))
+pointFromText :: Text -> Maybe (Point Block)
 pointFromText txt =
     genesisPointFromText <|> blockPointFromText
   where
@@ -153,7 +150,7 @@ slotNoFromText txt = do
 -- | Deserialise a 'HeaderHash' from a base16-encoded text string.
 headerHashFromText
     :: Text
-    -> Maybe (HeaderHash (Block crypto))
+    -> Maybe (HeaderHash Block)
 headerHashFromText =
     fmap (OneEraHash . hashToBytesShort) . hashFromTextAsHex @Blake2b_256
 

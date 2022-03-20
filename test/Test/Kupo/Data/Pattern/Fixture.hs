@@ -12,14 +12,12 @@ import Kupo.Prelude
 
 import Data.List
     ( delete, (!!) )
-import Kupo.Configuration
-    ( StandardCrypto )
 import Kupo.Data.Cardano
     ( Address, addressFromBytes )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
 
-patterns :: [(Text, Pattern StandardCrypto, [Address StandardCrypto])]
+patterns :: [(Text, Pattern, [Address])]
 patterns =
     [ ( "*"
       , MatchAny IncludingBootstrap
@@ -100,7 +98,7 @@ patterns =
       )
     ]
 
-addresses :: [Address StandardCrypto]
+addresses :: [Address]
 addresses =
     [ addr
     | Just addr <- addressFromBytes . unsafeDecodeBase16 <$>

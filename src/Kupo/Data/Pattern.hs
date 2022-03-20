@@ -32,14 +32,11 @@ import Kupo.Data.Cardano
     , Blake2b_224
     , Blake2b_256
     , Block
-    , CardanoHardForkConstraints
-    , Crypto
     , DatumHash
-    , HasHeader
+    , IsBlock
     , Output
     , OutputReference
     , Point
-    , PraosCrypto
     , Transaction
     , Value
     , addressFromBytes
@@ -73,9 +70,9 @@ import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
 
-data Pattern crypto
+data Pattern
     = MatchAny MatchBootstrap
-    | MatchExact (Address crypto)
+    | MatchExact Address
     | MatchPayment ByteString
     | MatchDelegation ByteString
     | MatchPaymentAndDelegation ByteString ByteString
@@ -85,7 +82,7 @@ wildcard :: Text
 wildcard = "*"
 {-# INLINEABLE wildcard #-}
 
-patternFromText :: Crypto crypto => Text -> Maybe (Pattern crypto)
+patternFromText :: Text -> Maybe Pattern
 patternFromText txt =
     readerAny <|> readerExact <|> readerPaymentOrDelegation
   where
@@ -177,7 +174,7 @@ patternFromText txt =
         bytes <- Bech32.dataPartToBytes dataPart
         action bytes hrp
 
-matching :: (Monad f, Alternative f) => Address crypto -> Pattern crypto -> f ()
+matching :: (Monad f, Alternative f) => Address -> Pattern -> f ()
 matching addr = \case
     MatchAny (MatchBootstrap matchBootstrap) ->
         guard (not (isBootstrap addr) || matchBootstrap)
@@ -207,26 +204,16 @@ pattern OnlyShelley <- MatchBootstrap False
 
 {-# COMPLETE OnlyShelley, IncludingBootstrap #-}
 
-data Result crypto = Result
-    { outputReference :: OutputReference crypto
-    , address :: Address crypto
-    , value :: Value crypto
-    , datumHash :: Maybe (DatumHash crypto)
-    , point :: Point (Block crypto)
-    }
-deriving instance
-    ( Show (Point (Block crypto))
-    ) => Show (Result crypto)
-deriving instance
-    ( Eq (Point (Block crypto))
-    , Crypto crypto
-    ) => Eq (Result crypto)
+data Result = Result
+    { outputReference :: OutputReference
+    , address :: Address
+    , value :: Value
+    , datumHash :: Maybe DatumHash
+    , point :: Point Block
+    } deriving (Show, Eq)
 
 resultToJson
-    :: forall crypto.
-        ( CardanoHardForkConstraints crypto
-        )
-    => Result crypto
+    :: Result
     -> Json.Encoding
 resultToJson Result{..} = Json.pairs $ mconcat
     [ Json.pair "transaction_id"
@@ -252,26 +239,25 @@ resultToJson Result{..} = Json.pairs $ mconcat
 -- multiple patterns. This is to facilitate building an index of matches to
 -- results.
 matchBlock
-    :: forall crypto result.
-        ( PraosCrypto crypto
-        , HasHeader (Block crypto)
+    :: forall block result.
+        ( IsBlock block
         )
-    => (Result crypto -> result)
-    -> [Pattern crypto]
-    -> Block crypto
+    => (Result -> result)
+    -> [Pattern]
+    -> block
     -> [result]
 matchBlock transform ms blk =
     let pt = getPoint blk in foldBlock (fn pt) [] blk
   where
-    fn :: Point (Block crypto) -> Transaction crypto -> [result] -> [result]
+    fn :: Point Block -> Transaction -> [result] -> [result]
     fn pt tx results =
         concatMap (flip mapMaybeOutputs tx . match pt) ms ++ results
 
     match
-        :: Point (Block crypto)
-        -> Pattern crypto
-        -> OutputReference crypto
-        -> Output crypto
+        :: Point Block
+        -> Pattern
+        -> OutputReference
+        -> Output
         -> Maybe result
     match pt m outputReference out = do
         getAddress out `matching` m

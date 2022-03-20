@@ -28,7 +28,7 @@ import Kupo.App.Http
 import Kupo.App.Mailbox
     ( Mailbox, flushMailbox, putMailbox )
 import Kupo.Configuration
-    ( StandardCrypto, TraceConfiguration (..) )
+    ( TraceConfiguration (..) )
 import Kupo.Control.MonadDatabase
     ( Database (..), MonadDatabase (..), TraceDatabase (..) )
 import Kupo.Control.MonadLog
@@ -40,7 +40,7 @@ import Kupo.Control.MonadSTM
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
-    ( Block, Point, SlotNo (..), Tip, getPoint, getPointSlotNo )
+    ( Block, IsBlock, Point, SlotNo (..), Tip, getPoint, getPointSlotNo )
 import Kupo.Data.Database
     ( pointFromRow, pointToRow, resultToRow )
 import Kupo.Data.Pattern
@@ -57,8 +57,8 @@ startOrResume
         )
     => Tracers
     -> Database m
-    -> Maybe (Point (Block StandardCrypto))
-    -> m [Point (Block StandardCrypto)]
+    -> Maybe (Point Block)
+    -> m [Point Block]
 startOrResume Tracers{tracerDatabase, tracerConfiguration} Database{..} since = do
     checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
     unless (null checkpoints) $ do
@@ -103,13 +103,12 @@ producer
     :: forall m block.
         ( MonadSTM m
         , MonadLog m
-        , block ~ Block StandardCrypto
         )
     => Tracer IO TraceChainSync
-    -> (Tip block -> Maybe SlotNo -> m ())
-    -> Mailbox m (Tip block, block)
+    -> (Tip Block -> Maybe SlotNo -> m ())
+    -> Mailbox m (Tip Block, block)
     -> Database m
-    -> ChainSyncHandler m (Block StandardCrypto)
+    -> ChainSyncHandler m (Tip Block) (Point Block) block
 producer tr notifyTip mailbox Database{..} = ChainSyncHandler
     { onRollBackward = \tip pt -> do
         logWith tr (ChainSyncRollBackward (getPointSlotNo pt))
@@ -124,12 +123,12 @@ consumer
         ( MonadSTM m
         , MonadLog m
         , Monad (DBTransaction m)
-        , block ~ Block StandardCrypto
+        , IsBlock block
         )
     => Tracer IO TraceChainSync
-    -> (Tip block -> Maybe SlotNo -> m ())
-    -> Mailbox m (Tip block, block)
-    -> [Pattern StandardCrypto]
+    -> (Tip Block -> Maybe SlotNo -> m ())
+    -> Mailbox m (Tip Block, block)
+    -> [Pattern]
     -> Database m
     -> m ()
 consumer tr notifyTip mailbox patterns Database{..} = forever $ do

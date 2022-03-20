@@ -11,7 +11,7 @@ module Test.Kupo.Data.ConfigurationSpec
 import Kupo.Prelude
 
 import Kupo.Configuration
-    ( StandardCrypto, headerHashFromText, pointFromText, slotNoFromText )
+    ( headerHashFromText, pointFromText, slotNoFromText )
 import Kupo.Data.Cardano
     ( pattern GenesisPoint, SlotNo (..) )
 
@@ -28,11 +28,11 @@ spec :: Spec
 spec = parallel $ do
     context "pointFromText" $ do
         specify "origin" $ do
-            pointFromText @StandardCrypto "origin" `shouldBe` Just GenesisPoint
+            pointFromText "origin" `shouldBe` Just GenesisPoint
 
         prop "{slotNo}.{blockHeaderHash}" $ \(s :: Word64) -> forAll (genBytes 32) $ \bytes ->
             let txt = show s <> "." <> encodeBase16 bytes
-             in case pointFromText @StandardCrypto txt of
+             in case pointFromText txt of
                     Just{}  -> property True
                     Nothing -> property False
 

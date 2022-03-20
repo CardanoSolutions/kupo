@@ -41,7 +41,6 @@ import Kupo.Configuration
     , NetworkParameters (..)
     , Pattern (..)
     , Point (..)
-    , StandardCrypto
     , WorkDir (..)
     , patternFromText
     , pointFromText
@@ -211,7 +210,7 @@ serverPortOption = option auto $ mempty
     <> showDefault
 
 -- | [--since=POINT]
-sinceOption :: Parser (Point (Block StandardCrypto))
+sinceOption :: Parser (Point Block)
 sinceOption = option (maybeReader rdr) $ mempty
     <> long "since"
     <> metavar "POINT"
@@ -226,11 +225,11 @@ sinceOption = option (maybeReader rdr) $ mempty
             ]
         ])
   where
-    rdr :: String -> Maybe (Point (Block StandardCrypto))
+    rdr :: String -> Maybe (Point Block)
     rdr = pointFromText . toText
 
 -- | [--match=PATTERN]
-patternOption :: Parser (Pattern StandardCrypto)
+patternOption :: Parser Pattern
 patternOption = option (maybeReader (patternFromText . toText)) $ mempty
     <> long "match"
     <> metavar "PATTERN"
