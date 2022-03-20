@@ -24,7 +24,7 @@ import Kupo.App
 import Kupo.App.Http
     ( healthCheck )
 import Kupo.Configuration
-    ( Configuration (..), NetworkParameters, StandardCrypto, WorkDir (..) )
+    ( Configuration (..), NetworkParameters, WorkDir (..) )
 import Kupo.Control.MonadAsync
     ( race_ )
 import Kupo.Control.MonadDelay
@@ -33,8 +33,8 @@ import Kupo.Control.MonadLog
     ( Severity (..), defaultTracers )
 import Kupo.Control.MonadTime
     ( DiffTime, timeout )
-import Kupo.Data.ChainSync
-    ( Block, Point, SlotNo (..), getPointSlotNo )
+import Kupo.Data.Cardano
+    ( SlotNo (..), getPointSlotNo )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
 import Kupo.Fixture
@@ -68,7 +68,6 @@ import Test.Hspec
     )
 
 import qualified Data.Aeson as Json
-import qualified Kupo.Control.MonadDatabase as DB
 
 spec :: Spec
 spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> do

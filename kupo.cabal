@@ -51,7 +51,7 @@ library
       Kupo.Control.MonadSTM
       Kupo.Control.MonadThrow
       Kupo.Control.MonadTime
-      Kupo.Data.ChainSync
+      Kupo.Data.Cardano
       Kupo.Data.Database
       Kupo.Data.Health
       Kupo.Data.Pattern

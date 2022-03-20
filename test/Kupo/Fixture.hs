@@ -10,7 +10,7 @@ import Kupo.Configuration
     ( StandardCrypto )
 import Kupo.Control.MonadDatabase
     ( Checkpoint (..) )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( Block, Point )
 import Kupo.Data.Database
     ( pointFromRow )

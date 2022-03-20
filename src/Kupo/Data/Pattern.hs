@@ -27,7 +27,7 @@ import Kupo.Prelude
 
 import Codec.Binary.Bech32.TH
     ( humanReadablePart )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( Address
     , Blake2b_224
     , Blake2b_256

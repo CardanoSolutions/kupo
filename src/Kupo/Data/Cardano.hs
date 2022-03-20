@@ -7,7 +7,7 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Kupo.Data.ChainSync
+module Kupo.Data.Cardano
     ( -- * Constraints
       Crypto
     , PraosCrypto

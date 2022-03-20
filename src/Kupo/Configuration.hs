@@ -51,7 +51,7 @@ import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), Severity (..) )
 import Kupo.Control.MonadOuroboros
     ( EpochSlots (..), NetworkMagic (..) )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( Block
     , pattern BlockPoint
     , pattern GenesisPoint

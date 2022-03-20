@@ -10,7 +10,7 @@ import Kupo.Prelude
 
 import Kupo.Configuration
     ( StandardCrypto )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( Address
     , Blake2b_224
     , Blake2b_256

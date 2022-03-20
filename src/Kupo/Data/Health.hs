@@ -15,7 +15,7 @@ module Kupo.Data.Health
 
 import Kupo.Prelude
 
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( SlotNo, slotNoToJson )
 
 import qualified Data.Aeson.Encoding as Json

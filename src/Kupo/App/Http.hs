@@ -27,7 +27,7 @@ import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( pointToJson )
 import Kupo.Data.Database
     ( patternToQueryLike, pointFromRow, resultFromRow )

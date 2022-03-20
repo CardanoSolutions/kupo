@@ -23,7 +23,7 @@ import Database.SQLite.Simple
     )
 import Kupo.Configuration
     ( StandardCrypto )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( Address, addressFromBytes, addressToBytes )
 import Kupo.Data.Database
     ( patternToQueryLike

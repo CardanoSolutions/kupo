@@ -15,7 +15,7 @@ import Kupo.Control.MonadOuroboros
     ( ConnectionStatusToggle (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( Block, SlotNo (..), Tip (..), getTipSlotNo )
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health (..) )

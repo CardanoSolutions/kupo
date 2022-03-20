@@ -14,7 +14,7 @@ import Data.List
     ( delete, (!!) )
 import Kupo.Configuration
     ( StandardCrypto )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( Address, addressFromBytes )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )

@@ -39,7 +39,7 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( Block, Point, SlotNo (..), Tip, getPoint, getPointSlotNo )
 import Kupo.Data.Database
     ( pointFromRow, pointToRow, resultToRow )

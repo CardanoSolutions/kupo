@@ -12,7 +12,7 @@ import Kupo.Prelude
 
 import Kupo.Configuration
     ( StandardCrypto, headerHashFromText, pointFromText, slotNoFromText )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( pattern GenesisPoint, SlotNo (..) )
 
 import Test.Hspec

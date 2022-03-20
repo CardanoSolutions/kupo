@@ -14,7 +14,7 @@ import Kupo.Prelude
 
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
-import Kupo.Data.ChainSync
+import Kupo.Data.Cardano
     ( Point (..), SlotNo (..), Tip (..), WithOrigin (..) )
 import Network.TypedProtocol.Pipelined
     ( Nat (..), natToInt )
