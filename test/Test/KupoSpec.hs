@@ -5,7 +5,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module KupoSpec
+module Test.KupoSpec
     ( spec
     ) where
 
@@ -37,8 +37,6 @@ import Kupo.Data.Cardano
     ( SlotNo (..), getPointSlotNo )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
-import Kupo.Fixture
-    ( someOtherPoint, somePoint )
 import Kupo.Options
     ( parseNetworkParameters )
 import Network.HTTP.Client
@@ -66,6 +64,8 @@ import Test.Hspec
     , specify
     , xcontext
     )
+import Test.Kupo.Fixture
+    ( someOtherPoint, somePoint )
 
 import qualified Data.Aeson as Json
 

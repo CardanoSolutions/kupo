@@ -4,7 +4,7 @@
 
 {-# LANGUAGE PatternSynonyms #-}
 
-module Kupo.Data.ConfigurationSpec
+module Test.Kupo.Data.ConfigurationSpec
     ( spec
     ) where
 

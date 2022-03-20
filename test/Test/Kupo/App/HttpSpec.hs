@@ -2,7 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-module Kupo.App.HttpSpec
+module Test.Kupo.App.HttpSpec
     ( spec
     ) where
 
@@ -31,8 +31,6 @@ import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Data.Database
     ( pointToRow, resultToRow )
-import Kupo.Data.Generators
-    ( genHealth, genNonGenesisPoint, genResult )
 import Kupo.Data.Health
     ( Health )
 import Network.HTTP.Media.MediaType
@@ -41,12 +39,12 @@ import Network.HTTP.Media.RenderHeader
     ( renderHeader )
 import Network.Wai
     ( Application )
-import Paths_kupo
-    ( getDataFileName )
 import Test.Hspec
     ( Spec, parallel, runIO, specify )
 import Test.Hspec.QuickCheck
     ( prop )
+import Test.Kupo.Data.Generators
+    ( genHealth, genNonGenesisPoint, genResult )
 import Test.QuickCheck
     ( counterexample, generate, listOf1 )
 import Test.QuickCheck.Monadic
@@ -63,8 +61,7 @@ import qualified Network.Wai.Test as Wai
 spec :: Spec
 spec = do
     specification <- runIO $ do
-        filepath <- getDataFileName "docs/openapi.yaml"
-        Yaml.decodeFileThrow @IO @OpenApi filepath
+        Yaml.decodeFileThrow @IO @OpenApi "./docs/openapi.yaml"
 
     parallel $ do
         session specification "/v1/health" $ \assertJson endpoint -> do

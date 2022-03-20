@@ -2,7 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-module Kupo.Data.DatabaseSpec
+module Test.Kupo.Data.DatabaseSpec
     ( spec
     ) where
 
@@ -32,14 +32,14 @@ import Kupo.Data.Database
     , resultFromRow
     , resultToRow
     )
-import Kupo.Data.Generators
-    ( genNonGenesisPoint, genResult )
-import Kupo.Data.Pattern.Fixture
-    ( addresses, patterns )
 import Test.Hspec
     ( Spec, around, context, parallel, shouldBe, specify )
 import Test.Hspec.QuickCheck
     ( prop )
+import Test.Kupo.Data.Generators
+    ( genNonGenesisPoint, genResult )
+import Test.Kupo.Data.Pattern.Fixture
+    ( addresses, patterns )
 import Test.QuickCheck
     ( Gen, Property, counterexample, forAllBlind )
 

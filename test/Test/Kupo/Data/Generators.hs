@@ -4,7 +4,7 @@
 
 {-# LANGUAGE PatternSynonyms #-}
 
-module Kupo.Data.Generators where
+module Test.Kupo.Data.Generators where
 
 import Kupo.Prelude
 
@@ -53,7 +53,7 @@ import Test.QuickCheck.Random
     ( mkQCGen )
 
 import qualified Data.ByteString as BS
-import qualified Kupo.Data.Pattern.Fixture as Fixture
+import qualified Test.Kupo.Data.Pattern.Fixture as Fixture
 
 genAddress :: Gen (Address StandardCrypto)
 genAddress =

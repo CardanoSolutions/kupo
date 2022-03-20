@@ -8,7 +8,7 @@
 -- because it's test code and, having it fail would be instantly caught.
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
-module Kupo.OptionsSpec
+module Test.Kupo.OptionsSpec
     ( spec
     ) where
 
@@ -30,8 +30,6 @@ import Kupo.Control.MonadLog
     ( Severity (..), TracerDefinition (..), defaultTracers )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
-import Kupo.Fixture
-    ( somePoint )
 import Kupo.Options
     ( Command (..), parseNetworkParameters, parseOptionsPure )
 import Test.Hspec
@@ -44,6 +42,8 @@ import Test.Hspec
     , shouldSatisfy
     , specify
     )
+import Test.Kupo.Fixture
+    ( somePoint )
 
 spec :: Spec
 spec = parallel $ do

@@ -210,16 +210,16 @@ test-suite unit
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Kupo.App.HttpSpec
-      Kupo.App.MailboxSpec
-      Kupo.Data.ConfigurationSpec
-      Kupo.Data.DatabaseSpec
-      Kupo.Data.Generators
-      Kupo.Data.Pattern.Fixture
-      Kupo.Data.PatternSpec
-      Kupo.Fixture
-      Kupo.OptionsSpec
-      KupoSpec
+      Test.Kupo.App.HttpSpec
+      Test.Kupo.App.MailboxSpec
+      Test.Kupo.Data.ConfigurationSpec
+      Test.Kupo.Data.DatabaseSpec
+      Test.Kupo.Data.Generators
+      Test.Kupo.Data.Pattern.Fixture
+      Test.Kupo.Data.PatternSpec
+      Test.Kupo.Fixture
+      Test.Kupo.OptionsSpec
+      Test.KupoSpec
       Paths_kupo
   hs-source-dirs:
       test

@@ -4,7 +4,7 @@
 
 {-# LANGUAGE PatternSynonyms #-}
 
-module Kupo.App.MailboxSpec
+module Test.Kupo.App.MailboxSpec
     ( spec
     ) where
 
