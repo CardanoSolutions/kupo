@@ -1,4 +1,3 @@
-PRAGMA user_version = 1;
 PRAGMA journal_mode = WAL;
 
 CREATE TABLE IF NOT EXISTS inputs (

@@ -296,16 +296,18 @@ runMigrations tr conn currentVersion = do
 
 migrations :: [Migration]
 migrations =
-    [ mkMigration (decodeUtf8 m)
-    | m <-
+    [ mkMigration ix (decodeUtf8 m)
+    | (ix, m) <- zip
+        [1..]
         [ $(embedFile "db/001.sql")
         , $(embedFile "db/002.sql")
         ]
     ]
   where
-    mkMigration :: Text -> [Query]
-    mkMigration =
-        fmap Query . filter (not . T.null . T.strip) . T.splitOn ";"
+    mkMigration :: Int -> Text -> [Query]
+    mkMigration i sql =
+        ("PRAGMA user_version = " <> show i <> ";")
+        : (fmap Query . filter (not . T.null . T.strip) . T.splitOn ";") sql
 
 --
 -- Exceptions
