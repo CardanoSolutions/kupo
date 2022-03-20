@@ -2,6 +2,8 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE RecordWildCards #-}
+
 module KupoSpec
     ( spec
     ) where
@@ -16,10 +18,12 @@ import Data.List
     ( maximum )
 import Kupo
     ( kupo, newEnvironment, runWith, version, withTracers )
+import Kupo.App
+    ( Tracers )
 import Kupo.App.Http
     ( healthCheck )
 import Kupo.Configuration
-    ( Configuration (..), StandardCrypto, WorkDir (..) )
+    ( Configuration (..), NetworkParameters, StandardCrypto, WorkDir (..) )
 import Kupo.Control.MonadAsync
     ( race_ )
 import Kupo.Control.MonadDelay
@@ -49,47 +53,67 @@ import Network.HTTP.Client
 import System.Environment
     ( lookupEnv )
 import System.IO.Temp
-    ( withSystemTempFile )
+    ( withSystemTempDirectory, withTempFile )
 import Test.Hspec
-    ( Spec, context, runIO, shouldSatisfy, specify, xcontext )
+    ( Spec
+    , SpecWith
+    , around
+    , context
+    , parallel
+    , runIO
+    , shouldSatisfy
+    , specify
+    , xcontext
+    )
 
 import qualified Data.Aeson as Json
 import qualified Kupo.Control.MonadDatabase as DB
 
 spec :: Spec
-spec = do
-    skippableContext "End to end" $ \nodeSocket nodeConfig -> do
-        specify "in memory, only shelley" $ do
-            let cfg = Configuration
+spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> do
+    specify "in memory, only shelley" $ \(_, tr) -> do
+        let serverPort = defaultPort
+        env <- newEnvironment tr ntwrk $ defaultCfg
+            { workDir = InMemory
+            , since = Just somePoint
+            , patterns = [MatchAny OnlyShelley]
+            , serverPort
+            }
+        let HttpClient{..} = newHttpClient manager serverPort
+        res <- timeout 5 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitForServer
+                waitUntil (> (getPointSlotNo somePoint + 100_000))
+                matches <- getAllMatches
+                length matches `shouldSatisfy` (> 12_000)
+                healthCheck defaultHost serverPort
+            )
+        res `shouldSatisfy` isJust
+
+type EndToEndSpec
+    =  Manager
+    -> NetworkParameters
+    -> Configuration
+    -> SpecWith (FilePath, Tracers)
+
+skippableContext :: String -> EndToEndSpec -> Spec
+skippableContext title skippableSpec = do
+    runIO ((,) <$> lookupEnv varSocket <*> lookupEnv varConfig) >>= \case
+        (Just nodeSocket, Just nodeConfig) -> do
+            ntwrk <- runIO $ parseNetworkParameters nodeConfig
+            manager <- runIO $ newManager defaultManagerSettings
+            let defaultCfg = Configuration
                     { nodeSocket
                     , nodeConfig
                     , workDir = InMemory
                     , serverHost = defaultHost
                     , serverPort = defaultPort
-                    , since = Just somePoint
-                    , patterns = [MatchAny OnlyShelley]
+                    , since = Nothing
+                    , patterns = []
                     }
-            ntwrk <- parseNetworkParameters nodeConfig
-            manager <- newManager defaultManagerSettings
-            withSystemTempFile "kupo-end-to-end" $ \_ h -> do
-                withTracers h version (defaultTracers (Just Info)) $ \tr -> do
-                    env <- newEnvironment tr ntwrk cfg
-                    res <- timeout 5 $ race_
-                        (kupo tr `runWith` env)
-                        (do
-                            waitForServer manager
-                            waitUntil manager (> (getPointSlotNo somePoint + 100_000))
-                            matches <- getAllMatches manager
-                            length matches `shouldSatisfy` (> 12_000)
-                            healthCheck defaultHost defaultPort
-                        )
-                    res `shouldSatisfy` isJust
-
-skippableContext :: String -> (FilePath -> FilePath -> Spec) -> Spec
-skippableContext title skippableSpec = do
-    runIO ((,) <$> lookupEnv varSocket <*> lookupEnv varConfig) >>= \case
-        (Just nodeSocket, Just nodeConfig) -> do
-            context title (skippableSpec nodeSocket nodeConfig)
+            context title $ around withTempDirectory $
+                skippableSpec manager ntwrk defaultCfg
         _ ->
             xcontext title (pure ())
   where
@@ -99,45 +123,69 @@ skippableContext title skippableSpec = do
     varConfig :: String
     varConfig = "CARDANO_NODE_CONFIG"
 
+    withTempDirectory :: ((FilePath, Tracers) -> IO ()) -> IO ()
+    withTempDirectory action = withSystemTempDirectory "kupo-end-to-end" $ \dir -> do
+        withTempFile dir "traces" $ \_ h ->
+            withTracers h version (defaultTracers (Just Info)) $ \tr ->
+                action (dir, tr)
+
 --
 -- Strawman HTTP DSL
 --
 
-waitForServer :: Manager -> IO ()
-waitForServer manager = do
-    req <- parseRequest ("http://" <> defaultHost <> ":" <> show defaultPort <> "/v1/health")
-    void (httpNoBody req manager) `catch` (\(_ :: HttpException) -> do
-        threadDelay 0.1
-        waitForServer manager)
+data HttpClient (m :: Type -> Type) = HttpClient
+    { waitForServer :: m ()
+    , waitUntil :: (SlotNo -> Bool) -> m ()
+    , listCheckpoints :: m [SlotNo]
+    , getAllMatches :: m [Json.Value]
+    }
 
-waitUntil :: Manager -> (SlotNo -> Bool) -> IO ()
-waitUntil manager predicate = do
-    checkpoints <- listCheckpoints manager
-    unless (predicate (maximum checkpoints)) $ do
-        threadDelay 0.1
-        waitUntil manager predicate
+newHttpClient :: Manager -> Int -> HttpClient IO
+newHttpClient manager port = HttpClient
+    { waitForServer
+    , waitUntil
+    , listCheckpoints
+    , getAllMatches
+    }
+  where
+    baseUrl :: String
+    baseUrl = "http://" <> defaultHost <> ":" <> show port
 
-listCheckpoints :: Manager -> IO [SlotNo]
-listCheckpoints manager = do
-    req <- parseRequest ("http://" <> defaultHost <> ":" <> show defaultPort <> "/v1/checkpoints")
-    res <- httpLbs req manager
-    let body = responseBody res
-    case Json.eitherDecode' body of
-        Left e ->
-            fail (show e)
-        Right (xs :: [Json.Value]) -> do
-            pure $ SlotNo . maybe 0 fromIntegral . (\x -> x ^? key "slot_no" . _Integer) <$> xs
+    waitForServer :: IO ()
+    waitForServer = do
+        req <- parseRequest (baseUrl <> "/v1/health")
+        void (httpNoBody req manager) `catch` (\(_ :: HttpException) -> do
+            threadDelay 0.1
+            waitForServer)
 
-getAllMatches :: Manager -> IO [Json.Value]
-getAllMatches manager = do
-    req <- parseRequest ("http://" <> defaultHost <> ":" <> show defaultPort <> "/v1/matches")
-    res <- httpLbs req manager
-    let body = responseBody res
-    case Json.eitherDecode' body of
-        Left e ->
-            fail (show e)
-        Right xs ->
-            pure xs
+    waitUntil :: (SlotNo -> Bool) -> IO ()
+    waitUntil predicate = do
+        checkpoints <- listCheckpoints
+        unless (predicate (maximum checkpoints)) $ do
+            threadDelay 0.1
+            waitUntil predicate
+
+    listCheckpoints :: IO [SlotNo]
+    listCheckpoints = do
+        req <- parseRequest (baseUrl <> "/v1/checkpoints")
+        res <- httpLbs req manager
+        let body = responseBody res
+        case Json.eitherDecode' body of
+            Left e ->
+                fail (show e)
+            Right (xs :: [Json.Value]) -> do
+                pure $ SlotNo . maybe 0 fromIntegral . (\x -> x ^? key "slot_no" . _Integer) <$> xs
+
+    getAllMatches :: IO [Json.Value]
+    getAllMatches = do
+        req <- parseRequest (baseUrl <> "/v1/matches")
+        res <- httpLbs req manager
+        let body = responseBody res
+        case Json.eitherDecode' body of
+            Left e ->
+                fail (show e)
+            Right xs ->
+                pure xs
 
 --
 -- Fixture / Defaults
