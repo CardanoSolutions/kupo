@@ -23,6 +23,7 @@ module Kupo.Data.Cardano
 
       -- * TransactionId
     , TransactionId
+    , transactionIdFromHash
     , unsafeTransactionIdFromBytes
     , getTransactionId
     , transactionIdToJson
@@ -36,9 +37,11 @@ module Kupo.Data.Cardano
     , Input
     , OutputReference
     , mkOutputReference
+    , withReferences
 
       -- * Output
     , Output
+    , mkOutput
     , getAddress
     , getDatumHash
     , getValue
@@ -75,6 +78,7 @@ module Kupo.Data.Cardano
     , digestSize
     , Blake2b_224
     , Blake2b_256
+    , Ledger.unsafeMakeSafeHash
 
       -- * HeaderHash
     , HeaderHash
@@ -129,6 +133,8 @@ import Data.Binary.Put
 import Data.ByteString.Bech32
     ( HumanReadablePart (..), encodeBech32 )
 import Data.Maybe.Strict
+    ( maybeToStrictMaybe )
+import Data.Maybe.Strict
     ( StrictMaybe (..), strictMaybeToMaybe )
 import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
@@ -168,6 +174,7 @@ import qualified Cardano.Ledger.Block as Ledger
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Credential as Ledger
 import qualified Cardano.Ledger.Era as Ledger.Era
+import qualified Cardano.Ledger.Hashes as Ledger
 import qualified Cardano.Ledger.Mary.Value as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Cardano.Ledger.Shelley.API as Ledger
@@ -229,16 +236,19 @@ type TransactionId =
 type TransactionId' crypto =
     Ledger.TxId crypto
 
+transactionIdFromHash
+    :: HasCallStack
+    => Hash Blake2b_256 Ledger.EraIndependentTxBody
+    -> TransactionId
+transactionIdFromHash =
+    Ledger.TxId . Ledger.unsafeMakeSafeHash
+
 unsafeTransactionIdFromBytes
-    :: forall crypto.
-        ( HasCallStack
-        , Crypto crypto
-        )
+    :: HasCallStack
     => ByteString
-    -> TransactionId' crypto
+    -> TransactionId
 unsafeTransactionIdFromBytes =
-    Ledger.TxId
-    . Ledger.unsafeMakeSafeHash
+    transactionIdFromHash
     . UnsafeHash
     . toShort
     . sizeInvariant (== (digestSize @Blake2b_256))
@@ -380,11 +390,25 @@ type OutputReference' crypto =
     Input' crypto
 
 mkOutputReference
-    :: TransactionId' crypto
+    :: TransactionId
     -> OutputIndex
-    -> OutputReference' crypto
+    -> OutputReference
 mkOutputReference =
     Ledger.TxIn
+
+withReferences
+    :: TransactionId
+    -> [Output]
+    -> [(OutputReference, Output)]
+withReferences txId = loop 0
+  where
+    loop ix = \case
+        [] -> []
+        out:rest ->
+            let
+                results = loop (succ ix) rest
+             in
+                (mkOutputReference txId ix, out) : results
 
 instance HasTransactionId Ledger.TxIn where
     getTransactionId (Ledger.TxIn i _) = i
@@ -396,6 +420,14 @@ type Output =
 
 type Output' crypto =
     Ledger.Alonzo.TxOut (AlonzoEra crypto)
+
+mkOutput
+    :: Address
+    -> Value
+    -> Maybe DatumHash
+    -> Output
+mkOutput address value =
+    Ledger.Alonzo.TxOut address value . maybeToStrictMaybe
 
 fromShelleyOutput
     :: forall (era :: Type -> Type) crypto.
