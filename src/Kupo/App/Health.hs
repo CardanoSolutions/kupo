@@ -11,8 +11,6 @@ module Kupo.App.Health
 
 import Kupo.Prelude
 
-import Kupo.Control.MonadOuroboros
-    ( ConnectionStatusToggle (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
@@ -28,7 +26,7 @@ readHealth
     => TVar m Health
     -> m Health
 readHealth =
-    atomically . readTVar
+    readTVarIO
 
 -- | Creates an isolated effectful function to toggle a health connection status.
 connectionStatusToggle
@@ -48,11 +46,11 @@ connectionStatusToggle health =
 
 -- | A safe setter for the most recent tip and checkpoint.
 recordCheckpoint
-    :: forall m crypto.
+    :: forall m.
         ( MonadSTM m
         )
     => TVar m Health
-    -> Tip (Block crypto)
+    -> Tip Block
     -> Maybe SlotNo
     -> m ()
 recordCheckpoint health (Just . getTipSlotNo -> mostRecentNodeTip) mostRecentCheckpoint =

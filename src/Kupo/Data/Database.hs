@@ -31,16 +31,14 @@ import Cardano.Crypto.Hash
     ( pattern UnsafeHash )
 import Cardano.Ledger.Alonzo
     ( AlonzoEra )
-import Cardano.Ledger.Shelley.API
-    ( PraosCrypto )
+import Cardano.Ledger.Crypto
+    ( StandardCrypto )
 import Cardano.Slotting.Slot
     ( SlotNo (..) )
 import Ouroboros.Consensus.Block
     ( ConvertRawHash (..) )
 import Ouroboros.Consensus.Cardano.Block
     ( CardanoBlock )
-import Ouroboros.Consensus.Cardano.CanHardFork
-    ( CardanoHardForkConstraints )
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras
     ( OneEraHash (..) )
 import Ouroboros.Consensus.Shelley.Ledger.Block
@@ -57,25 +55,19 @@ import qualified Kupo.Control.MonadDatabase as DB
 --
 
 pointFromRow
-    :: forall crypto.
-        ( PraosCrypto crypto
-        )
-    => DB.Checkpoint
-    -> Point (CardanoBlock crypto)
+    :: DB.Checkpoint
+    -> Point (CardanoBlock StandardCrypto)
 pointFromRow row = BlockPoint
     (SlotNo (DB.checkpointSlotNo row))
     (fromShelleyHash $ fromShortRawHash proxy $ toShort $ DB.checkpointHeaderHash row)
   where
-    proxy = Proxy @(ShelleyBlock (AlonzoEra crypto))
+    proxy = Proxy @(ShelleyBlock (AlonzoEra StandardCrypto))
     fromShelleyHash (Ledger.unHashHeader . unShelleyHash -> UnsafeHash h) =
         coerce h
 
 pointToRow
-    :: forall crypto.
-        ( HasCallStack
-        , CardanoHardForkConstraints crypto
-        )
-    => Point (CardanoBlock crypto)
+    :: HasCallStack
+    => Point (CardanoBlock StandardCrypto)
     -> DB.Checkpoint
 pointToRow = \case
     GenesisPoint -> error "pointToRow: genesis point."
@@ -84,19 +76,16 @@ pointToRow = \case
         , DB.checkpointSlotNo = unSlotNo slotNo
         }
   where
-    proxy = Proxy @(CardanoBlock crypto)
+    proxy = Proxy @(CardanoBlock StandardCrypto)
 
 --
 -- Result
 --
 
 resultFromRow
-    :: forall crypto.
-        ( HasCallStack
-        , PraosCrypto crypto
-        )
+    :: HasCallStack
     => DB.Input
-    -> Result crypto
+    -> Result
 resultFromRow row = Result
     { outputReference = unsafeDeserialize' (DB.outputReference row)
     , address = (unsafeAddressFromBytes . unsafeDecodeBase16)  (DB.address row)
@@ -109,11 +98,7 @@ resultFromRow row = Result
         fromMaybe (error "unsafeAddressFromBytes") . Ledger.deserialiseAddr
 
 resultToRow
-    :: forall crypto.
-        ( PraosCrypto crypto
-        , CardanoHardForkConstraints crypto
-        )
-    => Result crypto
+    :: Result
     -> DB.Input
 resultToRow Result{..} = DB.Input
     { DB.outputReference = serialize' outputReference
@@ -133,7 +118,7 @@ resultToRow Result{..} = DB.Input
 -- Pattern
 --
 
-patternToQueryLike :: Pattern crypto -> Text
+patternToQueryLike :: Pattern -> Text
 patternToQueryLike = \case
     MatchAny IncludingBootstrap ->
         "LIKE '%'"

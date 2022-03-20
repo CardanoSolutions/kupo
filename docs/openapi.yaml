@@ -105,6 +105,22 @@ info:
     Kupo can accept one or more matching patterns using the `--match` option. In case multiple patterns are provided, they'll ALL be used when looking for addresses. This allows for example to build an index for a list of payment keys known of a wallet. The syntax for patterns
     is explained in greater details in the [Pattern](#section/Pattern) section below.
 
+    #### --ogmios-host / --ogmios-port
+
+    So far, we've connected Kupo to a local cardano-node, using a unix domain socket as a communication channel. However, Kupo can also connect through [Ogmios](https://github.com/CardanoSolutions/ogmios#readme); and this works for either a local or remote instance of Ogmios! To do so,
+    simply swap the `--node-socket` and `--node-config` options for `--ogmios-host` and `--ogmios-port`. For instance:
+
+    ```
+    $ kupo \
+      --ogmios-host my-ogmios-server.io \
+      --ogmios-port 443 \
+      --since 16588737.4e9bbbb67e3ae262133d94c3da5bffce7b1127fc436e7433b87668dba34c354a \
+      --match "*/stake_vkh14hkp0sncfkt76spuqydtww4r900hfmsseezztzlh9sjkkjx6d7q" \
+      --workdir ./db
+    ```
+
+    Kupo will synchronize data directly from Ogmios! Neat isn't it?
+
     #### --help
 
     In case you're lost, don't forget that a summary of this manual is available by running:

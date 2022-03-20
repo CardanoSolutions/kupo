@@ -31,6 +31,6 @@ spec = parallel $ do
 -- Helper
 --
 
-matchAll :: Pattern crypto -> [Address crypto] -> [Address crypto]
+matchAll :: Pattern -> [Address] -> [Address]
 matchAll p xs = do
     sort [ x | Just x <- (\x -> x <$ (x `matching` p)) <$> xs ]

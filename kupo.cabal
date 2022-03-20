@@ -37,7 +37,8 @@ library
   exposed-modules:
       Kupo
       Kupo.App
-      Kupo.App.ChainSync
+      Kupo.App.ChainSync.Direct
+      Kupo.App.ChainSync.Ogmios
       Kupo.App.Health
       Kupo.App.Http
       Kupo.App.Mailbox
@@ -52,8 +53,10 @@ library
       Kupo.Control.MonadThrow
       Kupo.Control.MonadTime
       Kupo.Data.Cardano
+      Kupo.Data.ChainSync
       Kupo.Data.Database
       Kupo.Data.Health
+      Kupo.Data.Ogmios
       Kupo.Data.Pattern
       Kupo.Options
       Kupo.Prelude
@@ -112,6 +115,7 @@ library
     , bytestring
     , cardano-binary
     , cardano-crypto-class
+    , cardano-crypto-wrapper
     , cardano-ledger-alonzo
     , cardano-ledger-byron
     , cardano-ledger-core
@@ -150,6 +154,7 @@ library
     , unix
     , wai
     , warp
+    , websockets
     , yaml
   if flag(production)
     ghc-options: -Werror -O2
@@ -215,6 +220,7 @@ test-suite unit
       Test.Kupo.Data.ConfigurationSpec
       Test.Kupo.Data.DatabaseSpec
       Test.Kupo.Data.Generators
+      Test.Kupo.Data.OgmiosSpec
       Test.Kupo.Data.Pattern.Fixture
       Test.Kupo.Data.PatternSpec
       Test.Kupo.Fixture
@@ -268,6 +274,8 @@ test-suite unit
     , aeson
     , base
     , bytestring
+    , directory
+    , filepath
     , hspec
     , http-client
     , http-media

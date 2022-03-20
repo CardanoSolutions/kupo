@@ -19,8 +19,6 @@ module Kupo.App.Http
 
 import Kupo.Prelude
 
-import Kupo.Configuration
-    ( StandardCrypto )
 import Kupo.Control.MonadCatch
     ( handle )
 import Kupo.Control.MonadDatabase
@@ -94,7 +92,7 @@ app
 app withDatabase readHealth req send =
     case (requestMethod req, pathInfo req) of
         ("GET", [ "v1", "health" ]) ->
-            send =<< (handleGetHealth <$> readHealth)
+            send . handleGetHealth =<< readHealth
 
         ("GET", [ "v1", "checkpoints" ]) ->
             withDatabase (send . handleGetCheckpoints)
@@ -128,7 +126,7 @@ handleGetCheckpoints
     :: Database IO
     -> Response
 handleGetCheckpoints Database{..} = do
-    responseStreamJson (pointToJson @StandardCrypto) $ \yield done -> do
+    responseStreamJson pointToJson $ \yield done -> do
         points <- runTransaction (listCheckpointsDesc pointFromRow)
         mapM_ yield points
         done
@@ -139,11 +137,11 @@ handleGetMatches
     -> Response
 handleGetMatches query Database{..} = do
     let txt = maybe wildcard (\(a0, a1) -> a0 <> maybe "" ("/" <>) a1) query
-    case patternFromText @StandardCrypto txt of
+    case patternFromText txt of
         Nothing ->
             handleInvalidPattern
         Just p -> do
-            responseStreamJson (resultToJson @StandardCrypto) $ \yield done -> do
+            responseStreamJson resultToJson $ \yield done -> do
                 runTransaction $ foldInputsByAddress
                     (patternToQueryLike p)
                     (yield . resultFromRow)

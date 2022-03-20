@@ -8,8 +8,6 @@ module Test.Kupo.Data.Generators where
 
 import Kupo.Prelude
 
-import Kupo.Configuration
-    ( StandardCrypto )
 import Kupo.Data.Cardano
     ( Address
     , Blake2b_224
@@ -55,7 +53,7 @@ import Test.QuickCheck.Random
 import qualified Data.ByteString as BS
 import qualified Test.Kupo.Data.Pattern.Fixture as Fixture
 
-genAddress :: Gen (Address StandardCrypto)
+genAddress :: Gen Address
 genAddress =
     elements Fixture.addresses
 
@@ -69,11 +67,11 @@ genConnectionStatus :: Gen ConnectionStatus
 genConnectionStatus =
     arbitraryBoundedEnum
 
-genDatumHash :: Gen (DatumHash StandardCrypto)
+genDatumHash :: Gen DatumHash
 genDatumHash =
     unsafeDatumHashFromBytes . BS.pack <$> vector (digestSize @Blake2b_256)
 
-genHeaderHash :: Gen (HeaderHash (Block StandardCrypto))
+genHeaderHash :: Gen (HeaderHash Block)
 genHeaderHash = do
     unsafeHeaderHashFromBytes . BS.pack <$> vector (digestSize @Blake2b_256)
 
@@ -83,7 +81,7 @@ genHealth = Health
     <*> frequency [(1, pure Nothing), (5, Just <$> genSlotNo)]
     <*> frequency [(1, pure Nothing), (5, Just <$> genSlotNo)]
 
-genNonGenesisPoint :: Gen (Point (Block StandardCrypto))
+genNonGenesisPoint :: Gen (Point Block)
 genNonGenesisPoint = do
     BlockPoint <$> genSlotNo <*> genHeaderHash
 
@@ -91,7 +89,7 @@ genOutputIndex :: Gen OutputIndex
 genOutputIndex =
     fromIntegral <$> choose (0 :: Int, 255)
 
-genOutputReference :: Gen (OutputReference StandardCrypto)
+genOutputReference :: Gen OutputReference
 genOutputReference =
     mkOutputReference <$> genTransactionId <*> genOutputIndex
 
@@ -101,7 +99,7 @@ genPolicyId = elements
     | seed <- [ 0 .. 10 ]
     ]
 
-genResult :: Gen (Result StandardCrypto)
+genResult :: Gen Result
 genResult = Result
     <$> genOutputReference
     <*> genAddress
@@ -113,11 +111,11 @@ genSlotNo :: Gen SlotNo
 genSlotNo = do
     SlotNo <$> arbitrary
 
-genTransactionId :: Gen (TransactionId StandardCrypto)
+genTransactionId :: Gen TransactionId
 genTransactionId =
     unsafeTransactionIdFromBytes . BS.pack <$> vector (digestSize @Blake2b_256)
 
-genValue :: Gen (Value StandardCrypto)
+genValue :: Gen Value
 genValue = do
     ada <- arbitrary `suchThat` (> 0)
     nPolicy <- choose (0, 3)

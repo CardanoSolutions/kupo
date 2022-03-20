@@ -4,27 +4,25 @@
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Kupo.Data.Cardano
     ( -- * Constraints
       Crypto
-    , PraosCrypto
-    , HasHeader
-    , CardanoHardForkConstraints
+    , StandardCrypto
 
       -- * Block
+    , IsBlock (..)
     , Block
-    , foldBlock
-    , getPoint
 
       -- * Transaction
     , Transaction
-    , mapMaybeOutputs
 
       -- * TransactionId
     , TransactionId
+    , transactionIdFromHash
     , unsafeTransactionIdFromBytes
     , getTransactionId
     , transactionIdToJson
@@ -38,9 +36,11 @@ module Kupo.Data.Cardano
     , Input
     , OutputReference
     , mkOutputReference
+    , withReferences
 
       -- * Output
     , Output
+    , mkOutput
     , getAddress
     , getDatumHash
     , getValue
@@ -65,6 +65,9 @@ module Kupo.Data.Cardano
     , getPaymentPartBytes
     , getDelegationPartBytes
 
+      -- * BlockNo
+    , BlockNo(..)
+
       -- * SlotNo
     , SlotNo (..)
     , slotNoToJson
@@ -74,6 +77,7 @@ module Kupo.Data.Cardano
     , digestSize
     , Blake2b_224
     , Blake2b_256
+    , Ledger.unsafeMakeSafeHash
 
       -- * HeaderHash
     , HeaderHash
@@ -112,15 +116,15 @@ import Cardano.Ledger.Allegra
 import Cardano.Ledger.Alonzo
     ( AlonzoEra )
 import Cardano.Ledger.Crypto
-    ( Crypto )
+    ( Crypto, StandardCrypto )
 import Cardano.Ledger.Mary
     ( MaryEra )
 import Cardano.Ledger.Shelley
     ( ShelleyEra )
-import Cardano.Ledger.Shelley.API
-    ( PraosCrypto )
 import Cardano.Ledger.Val
     ( Val (inject) )
+import Cardano.Slotting.Block
+    ( BlockNo (..) )
 import Cardano.Slotting.Slot
     ( SlotNo (..) )
 import Data.Binary.Put
@@ -128,21 +132,24 @@ import Data.Binary.Put
 import Data.ByteString.Bech32
     ( HumanReadablePart (..), encodeBech32 )
 import Data.Maybe.Strict
-    ( StrictMaybe (..), strictMaybeToMaybe )
+    ( StrictMaybe (..), maybeToStrictMaybe, strictMaybeToMaybe )
 import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
 import Ouroboros.Consensus.Block
     ( ConvertRawHash (..) )
+import Ouroboros.Consensus.Byron.Ledger.Mempool
+    ( GenTx (..) )
 import Ouroboros.Consensus.Cardano.Block
     ( CardanoBlock, HardForkBlock (..) )
 import Ouroboros.Consensus.Cardano.CanHardFork
-    ( CardanoHardForkConstraints )
+    ()
+import Ouroboros.Consensus.Ledger.SupportsMempool
+    ( HasTxs (extractTxs) )
 import Ouroboros.Consensus.Shelley.Ledger.Block
     ( ShelleyBlock (..) )
 import Ouroboros.Network.Block
     ( pattern BlockPoint
     , pattern GenesisPoint
-    , HasHeader (..)
     , HeaderHash
     , Point (Point)
     , Tip (..)
@@ -152,6 +159,9 @@ import Ouroboros.Network.Block
 import Ouroboros.Network.Point
     ( WithOrigin (..) )
 
+import qualified Cardano.Chain.Common as Ledger.Byron
+import qualified Cardano.Chain.UTxO as Ledger.Byron
+import qualified Cardano.Crypto as Ledger.Byron
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.Data as Ledger
 import qualified Cardano.Ledger.Alonzo.Tx as Ledger.Alonzo
@@ -161,6 +171,7 @@ import qualified Cardano.Ledger.Block as Ledger
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Credential as Ledger
 import qualified Cardano.Ledger.Era as Ledger.Era
+import qualified Cardano.Ledger.Hashes as Ledger
 import qualified Cardano.Ledger.Mary.Value as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Cardano.Ledger.Shelley.API as Ledger
@@ -173,55 +184,166 @@ import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import qualified Ouroboros.Network.Block as Ouroboros
 
+-- IsBlock
+
+class IsBlock (block :: Type) where
+    type BlockBody block :: Type
+
+    getPoint
+        :: block
+        -> Point Block
+
+    foldBlock
+        :: (BlockBody block -> result -> result)
+        -> result
+        -> block
+        -> result
+
+    mapMaybeOutputs
+        :: (OutputReference -> Output -> Maybe result)
+        -> BlockBody block
+        -> [result]
+
 -- Block
 
-type Block crypto =
+type Block =
+    Block' StandardCrypto
+
+type Block' crypto =
     CardanoBlock crypto
 
-foldBlock
-    :: forall crypto b.
-        ( Crypto crypto
-        )
-    => (Transaction crypto -> b -> b)
-    -> b
-    -> Block crypto
-    -> b
-foldBlock fn b = \case
-    BlockByron{} ->
-        b
-    BlockShelley (ShelleyBlock (Ledger.Block _ txs) _) ->
-        foldr (fn . TransactionShelley) b (Ledger.Shelley.txSeqTxns' txs)
-    BlockAllegra (ShelleyBlock (Ledger.Block _ txs) _) ->
-        foldr (fn . TransactionAllegra) b (Ledger.Shelley.txSeqTxns' txs)
-    BlockMary (ShelleyBlock (Ledger.Block _ txs) _) ->
-        foldr (fn . TransactionMary) b (Ledger.Shelley.txSeqTxns' txs)
-    BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
-        foldr (fn . TransactionAlonzo) b (Ledger.Alonzo.txSeqTxns txs)
+instance IsBlock Block where
+    type BlockBody Block = Transaction
 
-getPoint
-    :: forall crypto.
-        ( HasHeader (Block crypto)
-        )
-    => Block crypto
-    -> Point (Block crypto)
-getPoint =
-    blockPoint
+    getPoint
+        :: Block
+        -> Point Block
+    getPoint =
+        blockPoint
+
+    foldBlock
+        :: (Transaction -> result -> result)
+        -> result
+        -> Block
+        -> result
+    foldBlock fn result = \case
+        BlockByron blk ->
+            let ignoreProtocolTxs = \case
+                    ByronTx txId (Ledger.Byron.taTx -> tx) ->
+                        fn (TransactionByron tx txId)
+                    _ ->
+                        identity
+             in foldr ignoreProtocolTxs result (extractTxs blk)
+        BlockShelley (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldr (fn . TransactionShelley) result (Ledger.Shelley.txSeqTxns' txs)
+        BlockAllegra (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldr (fn . TransactionAllegra) result (Ledger.Shelley.txSeqTxns' txs)
+        BlockMary (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldr (fn . TransactionMary) result (Ledger.Shelley.txSeqTxns' txs)
+        BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldr (fn . TransactionAlonzo) result (Ledger.Alonzo.txSeqTxns txs)
+
+    mapMaybeOutputs
+        :: forall result. ()
+        => (OutputReference -> Output -> Maybe result)
+        -> Transaction
+        -> [result]
+    mapMaybeOutputs fn = \case
+        TransactionByron tx (Ledger.Byron.hashToBytes -> bytes) ->
+            let
+                txId = Ledger.TxId $ Ledger.unsafeMakeSafeHash $ UnsafeHash $ toShort bytes
+                out :| outs = Ledger.Byron.txOutputs tx
+             in
+                traverseAndTransformByron fromByronOutput txId 0 (out : outs)
+        TransactionShelley tx ->
+            let
+                body = Ledger.Shelley.body tx
+                txId = Ledger.txid @(ShelleyEra StandardCrypto) body
+                outs = Ledger.Shelley._outputs body
+             in
+                traverseAndTransform (fromShelleyOutput inject) txId 0 outs
+        TransactionAllegra tx ->
+            let
+                body = Ledger.Shelley.body tx
+                txId = Ledger.txid @(AllegraEra StandardCrypto) body
+                outs = Ledger.MaryAllegra.outputs' body
+             in
+                traverseAndTransform (fromShelleyOutput inject) txId 0 outs
+        TransactionMary tx ->
+            let
+                body = Ledger.Shelley.body tx
+                txId = Ledger.txid @(MaryEra StandardCrypto) body
+                outs = Ledger.MaryAllegra.outputs' body
+             in
+                traverseAndTransform (fromShelleyOutput identity) txId 0 outs
+        TransactionAlonzo tx ->
+            let
+                body = Ledger.Alonzo.body tx
+                txId = Ledger.txid @(AlonzoEra StandardCrypto) body
+                outs = Ledger.Alonzo.outputs' body
+             in
+                traverseAndTransform identity txId 0 outs
+      where
+        traverseAndTransformByron
+            :: forall output. ()
+            => (output -> Output)
+            -> TransactionId
+            -> Natural
+            -> [output]
+            -> [result]
+        traverseAndTransformByron transform txId ix = \case
+            [] -> []
+            (out:rest) ->
+                let
+                    outputRef = Ledger.TxIn txId ix
+                    results   = traverseAndTransformByron transform txId (succ ix) rest
+                 in
+                    case fn outputRef (transform out) of
+                        Nothing ->
+                            results
+                        Just result ->
+                            result : results
+
+        traverseAndTransform
+            :: forall output. ()
+            => (output -> Output)
+            -> TransactionId
+            -> Natural
+            -> StrictSeq output
+            -> [result]
+        traverseAndTransform transform txId ix = \case
+            Empty -> []
+            output :<| rest ->
+                let
+                    outputRef = Ledger.TxIn txId ix
+                    results   = traverseAndTransform transform txId (succ ix) rest
+                 in
+                    case fn outputRef (transform output) of
+                        Nothing ->
+                            results
+                        Just result ->
+                            result : results
 
 -- TransactionId
 
-type TransactionId crypto =
+type TransactionId =
+    TransactionId' StandardCrypto
+
+type TransactionId' crypto =
     Ledger.TxId crypto
 
+transactionIdFromHash
+    :: Hash Blake2b_256 Ledger.EraIndependentTxBody
+    -> TransactionId
+transactionIdFromHash =
+    Ledger.TxId . Ledger.unsafeMakeSafeHash
+
 unsafeTransactionIdFromBytes
-    :: forall crypto.
-        ( HasCallStack
-        , Crypto crypto
-        )
+    :: HasCallStack
     => ByteString
-    -> TransactionId crypto
+    -> TransactionId
 unsafeTransactionIdFromBytes =
-    Ledger.TxId
-    . Ledger.unsafeMakeSafeHash
+    transactionIdFromHash
     . UnsafeHash
     . toShort
     . sizeInvariant (== (digestSize @Blake2b_256))
@@ -230,9 +352,9 @@ class HasTransactionId f where
     getTransactionId
         :: forall crypto. (Crypto crypto)
         => f crypto
-        -> TransactionId crypto
+        -> TransactionId' crypto
 
-transactionIdToJson :: Crypto crypto => TransactionId crypto -> Json.Encoding
+transactionIdToJson :: TransactionId -> Json.Encoding
 transactionIdToJson =
     hashToJson . Ledger.extractHash . Ledger._unTxId
 
@@ -240,7 +362,7 @@ transactionIdToJson =
 
 type OutputIndex = Natural
 
-getOutputIndex :: OutputReference crypto -> OutputIndex
+getOutputIndex :: OutputReference' crypto -> OutputIndex
 getOutputIndex (Ledger.TxIn _ ix) =
     ix
 
@@ -250,8 +372,13 @@ outputIndexToJson =
 
 -- Transaction
 
-data Transaction crypto
-    = TransactionShelley
+type Transaction = Transaction' StandardCrypto
+
+data Transaction' crypto
+    = TransactionByron
+        Ledger.Byron.Tx
+        Ledger.Byron.TxId
+    | TransactionShelley
         (Ledger.Shelley.Tx (ShelleyEra crypto))
     | TransactionAllegra
         (Ledger.Shelley.Tx (AllegraEra crypto))
@@ -260,87 +387,63 @@ data Transaction crypto
     | TransactionAlonzo
         (Ledger.Alonzo.ValidatedTx (AlonzoEra crypto))
 
-mapMaybeOutputs
-    :: forall a crypto. (Crypto crypto)
-    => (OutputReference crypto -> Output crypto -> Maybe a)
-    -> Transaction crypto
-    -> [a]
-mapMaybeOutputs fn = \case
-    TransactionShelley tx ->
-        let
-            body = Ledger.Shelley.body tx
-            txId = Ledger.txid @(ShelleyEra crypto) body
-            outs = Ledger.Shelley._outputs body
-         in
-            traverseAndTransform (asAlonzoOutput inject) txId 0 outs
-    TransactionAllegra tx ->
-        let
-            body = Ledger.Shelley.body tx
-            txId = Ledger.txid @(AllegraEra crypto) body
-            outs = Ledger.MaryAllegra.outputs' body
-         in
-            traverseAndTransform (asAlonzoOutput inject) txId 0 outs
-    TransactionMary tx ->
-        let
-            body = Ledger.Shelley.body tx
-            txId = Ledger.txid @(MaryEra crypto) body
-            outs = Ledger.MaryAllegra.outputs' body
-         in
-            traverseAndTransform (asAlonzoOutput identity) txId 0 outs
-    TransactionAlonzo tx ->
-        let
-            body = Ledger.Alonzo.body tx
-            txId = Ledger.txid @(AlonzoEra crypto) body
-            outs = Ledger.Alonzo.outputs' body
-         in
-            traverseAndTransform identity txId 0 outs
-  where
-    traverseAndTransform
-        :: forall output. ()
-        => (output -> Output crypto)
-        -> TransactionId crypto
-        -> Natural
-        -> StrictSeq output
-        -> [a]
-    traverseAndTransform transform txId ix = \case
-        Empty -> []
-        output :<| rest ->
-            let
-                outputRef = Ledger.TxIn txId ix
-                results   = traverseAndTransform transform txId (succ ix) rest
-             in
-                case fn outputRef (transform output) of
-                    Nothing ->
-                        results
-                    Just result ->
-                        result : results
-
 -- Input
 
-type Input crypto =
+type Input =
+    Input' StandardCrypto
+
+type Input' crypto =
     Ledger.TxIn crypto
 
 -- OutputReference
 
-type OutputReference crypto =
-    Input crypto
+type OutputReference =
+    OutputReference' StandardCrypto
+
+type OutputReference' crypto =
+    Input' crypto
 
 mkOutputReference
-    :: TransactionId crypto
+    :: TransactionId
     -> OutputIndex
-    -> OutputReference crypto
+    -> OutputReference
 mkOutputReference =
     Ledger.TxIn
+
+withReferences
+    :: TransactionId
+    -> [Output]
+    -> [(OutputReference, Output)]
+withReferences txId = loop 0
+  where
+    loop ix = \case
+        [] -> []
+        out:rest ->
+            let
+                results = loop (succ ix) rest
+             in
+                (mkOutputReference txId ix, out) : results
 
 instance HasTransactionId Ledger.TxIn where
     getTransactionId (Ledger.TxIn i _) = i
 
 -- Output
 
-type Output crypto =
+type Output =
+    Output' StandardCrypto
+
+type Output' crypto =
     Ledger.Alonzo.TxOut (AlonzoEra crypto)
 
-asAlonzoOutput
+mkOutput
+    :: Address
+    -> Value
+    -> Maybe DatumHash
+    -> Output
+mkOutput address value =
+    Ledger.Alonzo.TxOut address value . maybeToStrictMaybe
+
+fromShelleyOutput
     :: forall (era :: Type -> Type) crypto.
         ( Ledger.Era.Era (era crypto)
         , Ledger.Era.Crypto (era crypto) ~ crypto
@@ -350,33 +453,45 @@ asAlonzoOutput
     => (Ledger.Core.Value (era crypto) -> Ledger.Value crypto)
     -> Ledger.Core.TxOut (era crypto)
     -> Ledger.Core.TxOut (AlonzoEra crypto)
-asAlonzoOutput liftValue (Ledger.Shelley.TxOut addr value) =
+fromShelleyOutput liftValue (Ledger.Shelley.TxOut addr value) =
     Ledger.Alonzo.TxOut addr (liftValue value) SNothing
 
+fromByronOutput
+    :: forall crypto.
+        ( Crypto crypto
+        )
+    => Ledger.Byron.TxOut
+    -> Ledger.Core.TxOut (AlonzoEra crypto)
+fromByronOutput (Ledger.Byron.TxOut address value) =
+    Ledger.Alonzo.TxOut
+        (Ledger.AddrBootstrap (Ledger.BootstrapAddress address))
+        (inject $ Ledger.Coin $ toInteger $ Ledger.Byron.unsafeGetLovelace value)
+        SNothing
+
 getAddress
-    :: (Crypto crypto)
-    => Output crypto
-    -> Address crypto
+    :: Output
+    -> Address
 getAddress (Ledger.Alonzo.TxOut address _value _datumHash) =
     address
 
 getValue
-    :: (Crypto crypto)
-    => Output crypto
-    -> Value crypto
+    :: Output
+    -> Value
 getValue (Ledger.Alonzo.TxOut _address value _datumHash) =
     value
 
 getDatumHash
-    :: (Crypto crypto)
-    => Output crypto
-    -> Maybe (DatumHash crypto)
+    :: Output
+    -> Maybe DatumHash
 getDatumHash (Ledger.Alonzo.TxOut _address _value datumHash) =
     (strictMaybeToMaybe datumHash)
 
 -- DatumHash
 
-type DatumHash crypto =
+type DatumHash =
+    DatumHash' StandardCrypto
+
+type DatumHash' crypto =
     Ledger.DataHash crypto
 
 unsafeDatumHashFromBytes
@@ -385,33 +500,34 @@ unsafeDatumHashFromBytes
         , Crypto crypto
         )
     => ByteString
-    -> DatumHash crypto
+    -> DatumHash' crypto
 unsafeDatumHashFromBytes =
     Ledger.unsafeMakeSafeHash
     . UnsafeHash
     . toShort
     . sizeInvariant (== (digestSize @Blake2b_256))
 
-datumHashToJson :: Crypto crypto => DatumHash crypto -> Json.Encoding
+datumHashToJson
+    :: DatumHash
+    -> Json.Encoding
 datumHashToJson =
     hashToJson . Ledger.extractHash
 
 -- Value
 
-type Value crypto =
+type Value =
+    Value' StandardCrypto
+
+type Value' crypto =
     Ledger.Value crypto
 
 assetNameMaxLength :: Int
 assetNameMaxLength = 32
 
 unsafeValueFromList
-    :: forall crypto.
-        ( HasCallStack
-        , Crypto crypto
-        )
-    => Integer
+    :: Integer
     -> [(ByteString, ByteString, Integer)]
-    -> Value crypto
+    -> Value
 unsafeValueFromList ada assets =
     Ledger.valueFromList
         ada
@@ -430,13 +546,13 @@ unsafeValueFromList ada assets =
         Ledger.AssetName
         . sizeInvariant (<= assetNameMaxLength)
 
-valueToJson :: forall crypto. (Crypto crypto) => Value crypto -> Json.Encoding
+valueToJson :: Value -> Json.Encoding
 valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
     [ Json.pair "coins"  (Json.integer coins)
     , Json.pair "assets" (assetsToJson assets)
     ]
   where
-    assetsToJson :: Map (Ledger.PolicyID crypto) (Map Ledger.AssetName Integer) -> Json.Encoding
+    assetsToJson :: Map (Ledger.PolicyID StandardCrypto) (Map Ledger.AssetName Integer) -> Json.Encoding
     assetsToJson =
         Json.pairs
         .
@@ -451,16 +567,20 @@ valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
         (\k inner -> Map.union (Map.mapKeys (k,) inner))
         mempty
 
-    assetIdToText :: (Ledger.PolicyID crypto, Ledger.AssetName) -> Text
+    assetIdToText :: (Ledger.PolicyID StandardCrypto, Ledger.AssetName) -> Text
     assetIdToText (Ledger.PolicyID (Ledger.ScriptHash (UnsafeHash pid)), Ledger.AssetName bytes)
         | BS.null bytes = encodeBase16 (fromShort pid)
         | otherwise     = encodeBase16 (fromShort pid) <> "." <> encodeBase16 bytes
 
 -- Address
 
-type Address crypto = Ledger.Addr crypto
+type Address =
+    Address' StandardCrypto
 
-addressToJson :: Address crypto -> Json.Encoding
+type Address' crypto =
+    Ledger.Addr crypto
+
+addressToJson :: Address -> Json.Encoding
 addressToJson = \case
     addr@Ledger.AddrBootstrap{} ->
         (Json.text . encodeBase58 . addressToBytes) addr
@@ -471,28 +591,28 @@ addressToJson = \case
         Ledger.Mainnet -> HumanReadablePart "addr"
         Ledger.Testnet -> HumanReadablePart "addr_test"
 
-addressToBytes :: Address crypto -> ByteString
+addressToBytes :: Address -> ByteString
 addressToBytes = Ledger.serialiseAddr
 {-# INLINEABLE addressToBytes #-}
 
-addressFromBytes :: Crypto crypto => ByteString -> Maybe (Address crypto)
+addressFromBytes :: ByteString -> Maybe Address
 addressFromBytes = Ledger.deserialiseAddr
 {-# INLINEABLE addressFromBytes #-}
 
-isBootstrap :: Address crypto -> Bool
+isBootstrap :: Address -> Bool
 isBootstrap = \case
     Ledger.AddrBootstrap{} -> True
     Ledger.Addr{} -> False
 {-# INLINEABLE isBootstrap #-}
 
-getPaymentPartBytes :: Address crypto -> Maybe ByteString
+getPaymentPartBytes :: Address -> Maybe ByteString
 getPaymentPartBytes = \case
     Ledger.Addr _ payment _ ->
         Just $ toStrict $ runPut $ Ledger.putCredential payment
     Ledger.AddrBootstrap{} ->
         Nothing
 
-getDelegationPartBytes :: Address crypto -> Maybe ByteString
+getDelegationPartBytes :: Address -> Maybe ByteString
 getDelegationPartBytes = \case
     Ledger.Addr _ _ (Ledger.StakeRefBase delegation) ->
         Just $ toStrict $ runPut $ Ledger.putCredential delegation
@@ -504,26 +624,20 @@ getDelegationPartBytes = \case
 -- HeaderHash
 
 headerHashToJson
-    :: forall crypto.
-        ( CardanoHardForkConstraints crypto
-        )
-    => HeaderHash (Block crypto)
+    :: HeaderHash Block
     -> Json.Encoding
 headerHashToJson =
-    byteStringToJson . fromShort . toShortRawHash (Proxy @(Block crypto))
+    byteStringToJson . fromShort . toShortRawHash (Proxy @Block)
 
 unsafeHeaderHashFromBytes
-    :: forall crypto.
-        ( CardanoHardForkConstraints crypto
-        )
-    => ByteString
-    -> HeaderHash (Block crypto)
+    :: ByteString
+    -> HeaderHash Block
 unsafeHeaderHashFromBytes =
-    fromRawHash (Proxy @(Block crypto))
+    fromRawHash (Proxy @Block)
 
 -- Tip
 
-getTipSlotNo :: Tip (Block crypto) -> SlotNo
+getTipSlotNo :: Tip Block -> SlotNo
 getTipSlotNo tip =
     case Ouroboros.getTipSlotNo tip of
         Origin -> SlotNo 0
@@ -531,24 +645,23 @@ getTipSlotNo tip =
 
 -- Point
 
-getPointSlotNo :: Point (Block crypto) -> SlotNo
+getPointSlotNo :: Point Block -> SlotNo
 getPointSlotNo pt =
     case pointSlot pt of
         Origin -> SlotNo 0
         At sl  -> sl
 
-getPointHeaderHash :: Point (Block crypto) -> Maybe (HeaderHash (Block crypto))
+getPointHeaderHash :: Point Block -> Maybe (HeaderHash Block)
 getPointHeaderHash = \case
     GenesisPoint -> Nothing
     BlockPoint _ h -> Just h
 
-unsafeGetPointHeaderHash :: HasCallStack => Point (Block crypto) -> HeaderHash (Block crypto)
+unsafeGetPointHeaderHash :: HasCallStack => Point Block -> HeaderHash Block
 unsafeGetPointHeaderHash =
     fromMaybe (error "Point is 'Origin'") . getPointHeaderHash
 
 pointToJson
-    :: (CardanoHardForkConstraints crypto)
-    => Point (Block crypto)
+    :: Point Block
     -> Json.Encoding
 pointToJson = \case
     GenesisPoint ->
@@ -584,4 +697,5 @@ sizeInvariant predicate bytes
         bytes
     | otherwise =
         error ("predicate failed for bytes: " <> show bytes)
+
 

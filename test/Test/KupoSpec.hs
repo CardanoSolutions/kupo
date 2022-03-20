@@ -22,26 +22,24 @@ import Kupo
     ( kupo, newEnvironment, runWith, version, withTracers )
 import Kupo.App
     ( ConflictingOptionException, NoStartingPointException, Tracers )
-import Kupo.App.ChainSync
-    ( IntersectionNotFoundException )
 import Kupo.App.Http
     ( healthCheck )
 import Kupo.Configuration
-    ( Configuration (..), NetworkParameters, WorkDir (..) )
+    ( ChainProducer (..), Configuration (..), WorkDir (..) )
 import Kupo.Control.MonadAsync
     ( race_ )
 import Kupo.Control.MonadDelay
     ( threadDelay )
 import Kupo.Control.MonadLog
     ( Severity (..), defaultTracers )
+import Kupo.Control.MonadOuroboros
+    ( IntersectionNotFoundException )
 import Kupo.Control.MonadTime
     ( DiffTime, timeout )
 import Kupo.Data.Cardano
     ( pattern GenesisPoint, SlotNo (..), getPointSlotNo )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
-import Kupo.Options
-    ( parseNetworkParameters )
 import Network.HTTP.Client
     ( HttpException
     , Manager
@@ -61,7 +59,6 @@ import Test.Hspec
     , SpecWith
     , around
     , context
-    , parallel
     , runIO
     , shouldBe
     , shouldSatisfy
@@ -74,40 +71,39 @@ import Type.Reflection
     ( tyConName, typeRep, typeRepTyCon )
 
 import qualified Data.Aeson as Json
+import qualified Prelude
 
 spec :: Spec
-spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> do
-    specify "in memory" $ \(_, tr) -> do
-        let serverPort = defaultPort + 0
-        env <- newEnvironment tr ntwrk $ defaultCfg
+spec = skippableContext "End-to-end" $ \manager -> do
+    specify "in memory" $ \(_, tr, cfg) -> do
+        env <- newEnvironment $ cfg
             { workDir = InMemory
             , since = Just somePoint
             , patterns = [MatchAny OnlyShelley]
-            , serverPort
             }
-        let HttpClient{..} = newHttpClient manager serverPort
-        timeoutOrThrow 5 $ race_
+        let HttpClient{..} = newHttpClient manager cfg
+        let timeLimit = case chainProducer cfg of
+                CardanoNode{} -> 5
+                Ogmios{} -> 10
+        timeoutOrThrow timeLimit $ race_
             (kupo tr `runWith` env)
             (do
                 waitForServer
                 waitUntil (> (getPointSlotNo somePoint + 100_000))
                 matches <- getAllMatches
                 length matches `shouldSatisfy` (> 12_000)
-                healthCheck defaultHost serverPort
+                healthCheck (serverHost cfg) (serverPort cfg)
             )
 
-    specify "on disk (start → restart)" $ \(tmp, tr) -> do
-        let serverPort = defaultPort + 1
-        let HttpClient{..} = newHttpClient manager serverPort
-        let cfg = defaultCfg
+    specify "on disk (start → restart)" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClient manager cfg
+
+        ( do -- Can start the server on a fresh new db
+            env <- newEnvironment $ cfg
                 { workDir = Dir tmp
                 , since = Just somePoint
                 , patterns = [MatchAny IncludingBootstrap]
-                , serverPort
                 }
-
-        ( do -- Can start the server on a fresh new db
-            env <- newEnvironment tr ntwrk cfg
             timeoutOrThrow 5 $ race_
                 (kupo tr `runWith` env)
                 (do
@@ -117,7 +113,11 @@ spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> d
           )
 
         ( do -- Can restart the server
-            env <- newEnvironment tr ntwrk cfg
+            env <- newEnvironment $ cfg
+                { workDir = Dir tmp
+                , since = Just somePoint
+                , patterns = [MatchAny IncludingBootstrap]
+                }
             timeoutOrThrow 5 $ race_
                 (kupo tr `runWith` env)
                 (do
@@ -128,29 +128,40 @@ spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> d
           )
 
         ( do -- Can't restart with different, too recent, --since target on same db
-            env <- newEnvironment tr ntwrk $ cfg { since = Just someOtherPoint }
+            env <- newEnvironment $ cfg
+                { workDir = Dir tmp
+                , since = Just someOtherPoint
+                , patterns = [MatchAny IncludingBootstrap]
+                }
             shouldThrowTimeout @ConflictingOptionException 1 (kupo tr `runWith` env)
           )
 
-    specify "Can't start the server on a fresh new db without explicit point" $ \(tmp, tr) -> do
-        let serverPort = defaultPort + 2
-        env <- newEnvironment tr ntwrk $ defaultCfg
+    specify "Can't start the server on a fresh new db without explicit point" $ \(tmp, tr, cfg) -> do
+        env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Nothing
             , patterns = []
-            , serverPort
             }
         shouldThrowTimeout @NoStartingPointException 1 (kupo tr `runWith` env)
 
-    specify "Retry and wait when node isn't available" $ \(tmp, tr) -> do
-        let serverPort = defaultPort + 3
-        let HttpClient{..} = newHttpClient manager serverPort
-        env <- newEnvironment tr ntwrk $ defaultCfg
+    specify "Retry and wait when node isn't available" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClient manager cfg
+        env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just GenesisPoint
             , patterns = []
-            , nodeSocket = "/dev/null"
-            , serverPort
+            , chainProducer =
+                case chainProducer cfg of
+                    CardanoNode{nodeConfig} ->
+                        CardanoNode
+                            { nodeSocket = "/dev/null"
+                            , nodeConfig
+                            }
+                    Ogmios{ogmiosPort} ->
+                        Ogmios
+                            { ogmiosHost = "/dev/null"
+                            , ogmiosPort
+                            }
             }
         timeoutOrThrow 5 $ race_
             (kupo tr `runWith` env)
@@ -162,53 +173,78 @@ spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> d
                 cps `shouldBe` cps'
             )
 
-    specify "Crashes when no intersection is found" $ \(tmp, tr) -> do
-        let serverPort = defaultPort + 4
-        env <- newEnvironment tr ntwrk $ defaultCfg
+    specify "Crashes when no intersection is found" $ \(tmp, tr, cfg) -> do
+        env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just someNonExistingPoint
             , patterns = []
-            , serverPort
             }
         shouldThrowTimeout @IntersectionNotFoundException 1 (kupo tr `runWith` env)
 
 type EndToEndSpec
     =  Manager
-    -> NetworkParameters
-    -> Configuration
-    -> SpecWith (FilePath, Tracers)
+    -> SpecWith (FilePath, Tracers, Configuration)
 
 skippableContext :: String -> EndToEndSpec -> Spec
-skippableContext title skippableSpec = do
-    runIO ((,) <$> lookupEnv varSocket <*> lookupEnv varConfig) >>= \case
+skippableContext prefix skippableSpec = do
+    ref <- runIO $ newIORef 1442
+    let cardanoNode = prefix <> " (cardano-node)"
+    runIO ((,) <$> lookupEnv varCardanoNodeSocket <*> lookupEnv varCardanoNodeConfig) >>= \case
         (Just nodeSocket, Just nodeConfig) -> do
-            ntwrk <- runIO $ parseNetworkParameters nodeConfig
             manager <- runIO $ newManager defaultManagerSettings
             let defaultCfg = Configuration
-                    { nodeSocket
-                    , nodeConfig
+                    { chainProducer = CardanoNode { nodeSocket, nodeConfig }
                     , workDir = InMemory
-                    , serverHost = defaultHost
-                    , serverPort = defaultPort
+                    , serverHost = "127.0.0.1"
+                    , serverPort = 0
                     , since = Nothing
                     , patterns = []
                     }
-            context title $ around withTempDirectory $
-                skippableSpec manager ntwrk defaultCfg
+            context cardanoNode $ around (withTempDirectory ref defaultCfg) $
+                skippableSpec manager
         _ ->
-            xcontext title (pure ())
+            xcontext cardanoNode (pure ())
+
+    let ogmios = prefix <> " (ogmios)"
+    runIO ((,) <$> lookupEnv varOgmiosHost <*> lookupEnv varOgmiosPort) >>= \case
+        (Just ogmiosHost, Just (Prelude.read -> ogmiosPort)) -> do
+            manager <- runIO $ newManager defaultManagerSettings
+            let defaultCfg = Configuration
+                    { chainProducer = Ogmios { ogmiosHost, ogmiosPort }
+                    , workDir = InMemory
+                    , serverHost = "127.0.0.1"
+                    , serverPort = 0
+                    , since = Nothing
+                    , patterns = []
+                    }
+            context ogmios $ around (withTempDirectory ref defaultCfg) $
+                skippableSpec manager
+        _ ->
+            xcontext ogmios (pure ())
   where
-    varSocket :: String
-    varSocket = "CARDANO_NODE_SOCKET"
+    varCardanoNodeSocket :: String
+    varCardanoNodeSocket = "CARDANO_NODE_SOCKET"
 
-    varConfig :: String
-    varConfig = "CARDANO_NODE_CONFIG"
+    varCardanoNodeConfig :: String
+    varCardanoNodeConfig = "CARDANO_NODE_CONFIG"
 
-    withTempDirectory :: ((FilePath, Tracers) -> IO ()) -> IO ()
-    withTempDirectory action = withSystemTempDirectory "kupo-end-to-end" $ \dir -> do
-        withTempFile dir "traces" $ \_ h ->
-            withTracers h version (defaultTracers (Just Info)) $ \tr ->
-                action (dir, tr)
+    varOgmiosHost :: String
+    varOgmiosHost = "OGMIOS_HOST"
+
+    varOgmiosPort :: String
+    varOgmiosPort = "OGMIOS_PORT"
+
+    withTempDirectory
+        :: IORef Int
+        -> Configuration
+        -> ((FilePath, Tracers, Configuration) -> IO ())
+        -> IO ()
+    withTempDirectory ref cfg action = do
+        serverPort <- atomicModifyIORef' ref $ \port -> (succ port, port)
+        withSystemTempDirectory "kupo-end-to-end" $ \dir -> do
+            withTempFile dir "traces" $ \_ h ->
+                withTracers h version (defaultTracers (Just Info)) $ \tr ->
+                    action (dir, tr, cfg { serverPort })
 
 timeoutOrThrow :: DiffTime -> IO () -> IO ()
 timeoutOrThrow t action = do
@@ -244,8 +280,8 @@ data HttpClient (m :: Type -> Type) = HttpClient
     , getAllMatches :: m [Json.Value]
     }
 
-newHttpClient :: Manager -> Int -> HttpClient IO
-newHttpClient manager port = HttpClient
+newHttpClient :: Manager -> Configuration -> HttpClient IO
+newHttpClient manager cfg = HttpClient
     { waitForServer
     , waitUntil
     , listCheckpoints
@@ -253,7 +289,7 @@ newHttpClient manager port = HttpClient
     }
   where
     baseUrl :: String
-    baseUrl = "http://" <> defaultHost <> ":" <> show port
+    baseUrl = "http://" <> serverHost cfg <> ":" <> show (serverPort cfg)
 
     waitForServer :: IO ()
     waitForServer = do
@@ -290,13 +326,3 @@ newHttpClient manager port = HttpClient
                 fail (show e)
             Right xs ->
                 pure xs
-
---
--- Fixture / Defaults
---
-
-defaultHost :: String
-defaultHost = "127.0.0.1"
-
-defaultPort :: Int
-defaultPort = 1442

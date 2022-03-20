@@ -6,8 +6,6 @@ module Test.Kupo.Fixture where
 
 import Kupo.Prelude
 
-import Kupo.Configuration
-    ( StandardCrypto )
 import Kupo.Control.MonadDatabase
     ( Checkpoint (..) )
 import Kupo.Data.Cardano
@@ -15,7 +13,7 @@ import Kupo.Data.Cardano
 import Kupo.Data.Database
     ( pointFromRow )
 
-someNonExistingPoint :: Point (Block StandardCrypto)
+someNonExistingPoint :: Point Block
 someNonExistingPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         14141414
@@ -23,7 +21,7 @@ someNonExistingPoint = pointFromRow $ Checkpoint
         "0000000000000000000000000000000000000000000000000000000000000000"
     }
 
-somePoint :: Point (Block StandardCrypto)
+somePoint :: Point Block
 somePoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         51292637
@@ -31,7 +29,7 @@ somePoint = pointFromRow $ Checkpoint
         "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771"
     }
 
-someOtherPoint :: Point (Block StandardCrypto)
+someOtherPoint :: Point Block
 someOtherPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         53392903

@@ -40,26 +40,26 @@ span.spaces    { background: white }
 <span class="lineno">   21 </span>
 <span class="lineno">   22 </span>import Kupo.Prelude
 <span class="lineno">   23 </span>
-<span class="lineno">   24 </span>import Kupo.App.ChainSync
-<span class="lineno">   25 </span>    ( ChainSyncHandler (..) )
-<span class="lineno">   26 </span>import Kupo.App.Http
-<span class="lineno">   27 </span>    ( TraceHttpServer )
-<span class="lineno">   28 </span>import Kupo.App.Mailbox
-<span class="lineno">   29 </span>    ( Mailbox, flushMailbox, putMailbox )
-<span class="lineno">   30 </span>import Kupo.Configuration
-<span class="lineno">   31 </span>    ( StandardCrypto, TraceConfiguration (..) )
-<span class="lineno">   32 </span>import Kupo.Control.MonadDatabase
-<span class="lineno">   33 </span>    ( Database (..), MonadDatabase (..), TraceDatabase (..) )
-<span class="lineno">   34 </span>import Kupo.Control.MonadLog
-<span class="lineno">   35 </span>    ( MonadLog (..), Tracer, TracerDefinition (..), TracerHKD )
-<span class="lineno">   36 </span>import Kupo.Control.MonadOuroboros
-<span class="lineno">   37 </span>    ( TraceChainSync (..) )
-<span class="lineno">   38 </span>import Kupo.Control.MonadSTM
-<span class="lineno">   39 </span>    ( MonadSTM (..) )
-<span class="lineno">   40 </span>import Kupo.Control.MonadThrow
-<span class="lineno">   41 </span>    ( MonadThrow (..) )
-<span class="lineno">   42 </span>import Kupo.Data.Cardano
-<span class="lineno">   43 </span>    ( Block, Point, SlotNo (..), Tip, getPoint, getPointSlotNo )
+<span class="lineno">   24 </span>import Kupo.App.Http
+<span class="lineno">   25 </span>    ( TraceHttpServer )
+<span class="lineno">   26 </span>import Kupo.App.Mailbox
+<span class="lineno">   27 </span>    ( Mailbox, flushMailbox, putMailbox )
+<span class="lineno">   28 </span>import Kupo.Configuration
+<span class="lineno">   29 </span>    ( TraceConfiguration (..) )
+<span class="lineno">   30 </span>import Kupo.Control.MonadDatabase
+<span class="lineno">   31 </span>    ( Database (..), MonadDatabase (..), TraceDatabase (..) )
+<span class="lineno">   32 </span>import Kupo.Control.MonadLog
+<span class="lineno">   33 </span>    ( MonadLog (..), Tracer, TracerDefinition (..), TracerHKD )
+<span class="lineno">   34 </span>import Kupo.Control.MonadOuroboros
+<span class="lineno">   35 </span>    ( TraceChainSync (..) )
+<span class="lineno">   36 </span>import Kupo.Control.MonadSTM
+<span class="lineno">   37 </span>    ( MonadSTM (..) )
+<span class="lineno">   38 </span>import Kupo.Control.MonadThrow
+<span class="lineno">   39 </span>    ( MonadThrow (..) )
+<span class="lineno">   40 </span>import Kupo.Data.Cardano
+<span class="lineno">   41 </span>    ( Block, IsBlock, Point, SlotNo (..), Tip, getPoint, getPointSlotNo )
+<span class="lineno">   42 </span>import Kupo.Data.ChainSync
+<span class="lineno">   43 </span>    ( ChainSyncHandler (..) )
 <span class="lineno">   44 </span>import Kupo.Data.Database
 <span class="lineno">   45 </span>    ( pointFromRow, pointToRow, resultToRow )
 <span class="lineno">   46 </span>import Kupo.Data.Pattern
@@ -76,8 +76,8 @@ span.spaces    { background: white }
 <span class="lineno">   57 </span>        )
 <span class="lineno">   58 </span>    =&gt; Tracers
 <span class="lineno">   59 </span>    -&gt; Database m
-<span class="lineno">   60 </span>    -&gt; Maybe (Point (Block StandardCrypto))
-<span class="lineno">   61 </span>    -&gt; m [Point (Block StandardCrypto)]
+<span class="lineno">   60 </span>    -&gt; Maybe (Point Block)
+<span class="lineno">   61 </span>    -&gt; m [Point Block]
 <span class="lineno">   62 </span><span class="decl"><span class="istickedoff">startOrResume Tracers{tracerDatabase, tracerConfiguration} Database{..} since = do</span>
 <span class="lineno">   63 </span><span class="spaces">    </span><span class="istickedoff">checkpoints &lt;- runTransaction (listCheckpointsDesc pointFromRow)</span>
 <span class="lineno">   64 </span><span class="spaces">    </span><span class="istickedoff">unless (null checkpoints) $ do</span>
@@ -122,66 +122,65 @@ span.spaces    { background: white }
 <span class="lineno">  103 </span>    :: forall m block.
 <span class="lineno">  104 </span>        ( MonadSTM m
 <span class="lineno">  105 </span>        , MonadLog m
-<span class="lineno">  106 </span>        , block ~ Block StandardCrypto
-<span class="lineno">  107 </span>        )
-<span class="lineno">  108 </span>    =&gt; Tracer IO TraceChainSync
-<span class="lineno">  109 </span>    -&gt; (Tip block -&gt; Maybe SlotNo -&gt; m ())
-<span class="lineno">  110 </span>    -&gt; Mailbox m (Tip block, block)
-<span class="lineno">  111 </span>    -&gt; Database m
-<span class="lineno">  112 </span>    -&gt; ChainSyncHandler m (Block StandardCrypto)
-<span class="lineno">  113 </span><span class="decl"><span class="istickedoff">producer tr notifyTip mailbox Database{..} = ChainSyncHandler</span>
-<span class="lineno">  114 </span><span class="spaces">    </span><span class="istickedoff">{ onRollBackward = \tip pt -&gt; do</span>
-<span class="lineno">  115 </span><span class="spaces">        </span><span class="istickedoff">logWith tr (ChainSyncRollBackward (getPointSlotNo pt))</span>
-<span class="lineno">  116 </span><span class="spaces">        </span><span class="istickedoff">lastKnownSlot &lt;- runTransaction $ rollbackTo (unSlotNo (getPointSlotNo pt))</span>
-<span class="lineno">  117 </span><span class="spaces">        </span><span class="istickedoff">notifyTip <span class="nottickedoff">tip</span> (<span class="nottickedoff">SlotNo</span> &lt;$&gt; lastKnownSlot)</span>
-<span class="lineno">  118 </span><span class="spaces">    </span><span class="istickedoff">, onRollForward = \tip blk -&gt;</span>
-<span class="lineno">  119 </span><span class="spaces">        </span><span class="istickedoff">atomically (putMailbox mailbox (tip, blk))</span>
-<span class="lineno">  120 </span><span class="spaces">    </span><span class="istickedoff">}</span></span>
-<span class="lineno">  121 </span>
-<span class="lineno">  122 </span>consumer
-<span class="lineno">  123 </span>    :: forall m block.
-<span class="lineno">  124 </span>        ( MonadSTM m
-<span class="lineno">  125 </span>        , MonadLog m
-<span class="lineno">  126 </span>        , Monad (DBTransaction m)
-<span class="lineno">  127 </span>        , block ~ Block StandardCrypto
-<span class="lineno">  128 </span>        )
-<span class="lineno">  129 </span>    =&gt; Tracer IO TraceChainSync
-<span class="lineno">  130 </span>    -&gt; (Tip block -&gt; Maybe SlotNo -&gt; m ())
-<span class="lineno">  131 </span>    -&gt; Mailbox m (Tip block, block)
-<span class="lineno">  132 </span>    -&gt; [Pattern StandardCrypto]
-<span class="lineno">  133 </span>    -&gt; Database m
-<span class="lineno">  134 </span>    -&gt; m ()
-<span class="lineno">  135 </span><span class="decl"><span class="istickedoff">consumer tr notifyTip mailbox patterns Database{..} = forever $ do</span>
-<span class="lineno">  136 </span><span class="spaces">    </span><span class="istickedoff">blks &lt;- atomically (flushMailbox mailbox)</span>
-<span class="lineno">  137 </span><span class="spaces">    </span><span class="istickedoff">let (lastKnownTip, lastKnownBlk) = last blks</span>
-<span class="lineno">  138 </span><span class="spaces">    </span><span class="istickedoff">let lastKnownPoint = getPoint lastKnownBlk</span>
-<span class="lineno">  139 </span><span class="spaces">    </span><span class="istickedoff">let lastKnownSlot = getPointSlotNo lastKnownPoint</span>
-<span class="lineno">  140 </span><span class="spaces">    </span><span class="istickedoff">let inputs = concatMap (matchBlock resultToRow patterns . snd) blks</span>
-<span class="lineno">  141 </span><span class="spaces">    </span><span class="istickedoff">logWith tr (ChainSyncRollForward <span class="nottickedoff">lastKnownSlot</span> <span class="nottickedoff">(length inputs)</span>)</span>
-<span class="lineno">  142 </span><span class="spaces">    </span><span class="istickedoff">notifyTip lastKnownTip (Just lastKnownSlot)</span>
-<span class="lineno">  143 </span><span class="spaces">    </span><span class="istickedoff">runTransaction $ do</span>
-<span class="lineno">  144 </span><span class="spaces">        </span><span class="istickedoff">insertCheckpoint (pointToRow lastKnownPoint)</span>
-<span class="lineno">  145 </span><span class="spaces">        </span><span class="istickedoff">insertInputs inputs</span></span>
-<span class="lineno">  146 </span>
-<span class="lineno">  147 </span>--
-<span class="lineno">  148 </span>-- Tracers
-<span class="lineno">  149 </span>--
-<span class="lineno">  150 </span>
-<span class="lineno">  151 </span>type Tracers = Tracers' IO Concrete
-<span class="lineno">  152 </span>
-<span class="lineno">  153 </span>data Tracers' m (kind :: TracerDefinition) = Tracers
-<span class="lineno">  154 </span>    { <span class="nottickedoff"><span class="decl"><span class="nottickedoff">tracerHttp</span></span></span>
-<span class="lineno">  155 </span>        :: TracerHKD kind (Tracer m TraceHttpServer)
-<span class="lineno">  156 </span>    , <span class="nottickedoff"><span class="decl"><span class="nottickedoff">tracerDatabase</span></span></span>
-<span class="lineno">  157 </span>        :: TracerHKD kind (Tracer m TraceDatabase)
-<span class="lineno">  158 </span>    , <span class="nottickedoff"><span class="decl"><span class="nottickedoff">tracerChainSync</span></span></span>
-<span class="lineno">  159 </span>        :: TracerHKD kind (Tracer m TraceChainSync)
-<span class="lineno">  160 </span>    , <span class="nottickedoff"><span class="decl"><span class="nottickedoff">tracerConfiguration</span></span></span>
-<span class="lineno">  161 </span>        :: TracerHKD kind (Tracer m TraceConfiguration)
-<span class="lineno">  162 </span>    } deriving (Generic)
-<span class="lineno">  163 </span>
-<span class="lineno">  164 </span><span class="decl"><span class="nottickedoff">deriving instance Show (Tracers' m MinSeverities)</span></span>
-<span class="lineno">  165 </span><span class="decl"><span class="istickedoff">deriving instance Eq (Tracers' m MinSeverities)</span></span>
+<span class="lineno">  106 </span>        )
+<span class="lineno">  107 </span>    =&gt; Tracer IO TraceChainSync
+<span class="lineno">  108 </span>    -&gt; (Tip Block -&gt; Maybe SlotNo -&gt; m ())
+<span class="lineno">  109 </span>    -&gt; Mailbox m (Tip Block, block)
+<span class="lineno">  110 </span>    -&gt; Database m
+<span class="lineno">  111 </span>    -&gt; ChainSyncHandler m (Tip Block) (Point Block) block
+<span class="lineno">  112 </span><span class="decl"><span class="istickedoff">producer tr notifyTip mailbox Database{..} = ChainSyncHandler</span>
+<span class="lineno">  113 </span><span class="spaces">    </span><span class="istickedoff">{ onRollBackward = \tip pt -&gt; do</span>
+<span class="lineno">  114 </span><span class="spaces">        </span><span class="istickedoff">logWith tr (ChainSyncRollBackward (getPointSlotNo pt))</span>
+<span class="lineno">  115 </span><span class="spaces">        </span><span class="istickedoff">lastKnownSlot &lt;- runTransaction $ rollbackTo (unSlotNo (getPointSlotNo pt))</span>
+<span class="lineno">  116 </span><span class="spaces">        </span><span class="istickedoff">notifyTip <span class="nottickedoff">tip</span> (<span class="nottickedoff">SlotNo</span> &lt;$&gt; lastKnownSlot)</span>
+<span class="lineno">  117 </span><span class="spaces">    </span><span class="istickedoff">, onRollForward = \tip blk -&gt;</span>
+<span class="lineno">  118 </span><span class="spaces">        </span><span class="istickedoff">atomically (putMailbox mailbox (tip, blk))</span>
+<span class="lineno">  119 </span><span class="spaces">    </span><span class="istickedoff">}</span></span>
+<span class="lineno">  120 </span>
+<span class="lineno">  121 </span>consumer
+<span class="lineno">  122 </span>    :: forall m block.
+<span class="lineno">  123 </span>        ( MonadSTM m
+<span class="lineno">  124 </span>        , MonadLog m
+<span class="lineno">  125 </span>        , Monad (DBTransaction m)
+<span class="lineno">  126 </span>        , IsBlock block
+<span class="lineno">  127 </span>        )
+<span class="lineno">  128 </span>    =&gt; Tracer IO TraceChainSync
+<span class="lineno">  129 </span>    -&gt; (Tip Block -&gt; Maybe SlotNo -&gt; m ())
+<span class="lineno">  130 </span>    -&gt; Mailbox m (Tip Block, block)
+<span class="lineno">  131 </span>    -&gt; [Pattern]
+<span class="lineno">  132 </span>    -&gt; Database m
+<span class="lineno">  133 </span>    -&gt; m ()
+<span class="lineno">  134 </span><span class="decl"><span class="istickedoff">consumer tr notifyTip mailbox patterns Database{..} = forever $ do</span>
+<span class="lineno">  135 </span><span class="spaces">    </span><span class="istickedoff">blks &lt;- atomically (flushMailbox mailbox)</span>
+<span class="lineno">  136 </span><span class="spaces">    </span><span class="istickedoff">let (lastKnownTip, lastKnownBlk) = last blks</span>
+<span class="lineno">  137 </span><span class="spaces">    </span><span class="istickedoff">let lastKnownPoint = getPoint lastKnownBlk</span>
+<span class="lineno">  138 </span><span class="spaces">    </span><span class="istickedoff">let lastKnownSlot = getPointSlotNo lastKnownPoint</span>
+<span class="lineno">  139 </span><span class="spaces">    </span><span class="istickedoff">let inputs = concatMap (matchBlock resultToRow patterns . snd) blks</span>
+<span class="lineno">  140 </span><span class="spaces">    </span><span class="istickedoff">logWith tr (ChainSyncRollForward <span class="nottickedoff">lastKnownSlot</span> <span class="nottickedoff">(length inputs)</span>)</span>
+<span class="lineno">  141 </span><span class="spaces">    </span><span class="istickedoff">notifyTip lastKnownTip (Just lastKnownSlot)</span>
+<span class="lineno">  142 </span><span class="spaces">    </span><span class="istickedoff">runTransaction $ do</span>
+<span class="lineno">  143 </span><span class="spaces">        </span><span class="istickedoff">insertCheckpoint (pointToRow lastKnownPoint)</span>
+<span class="lineno">  144 </span><span class="spaces">        </span><span class="istickedoff">insertInputs inputs</span></span>
+<span class="lineno">  145 </span>
+<span class="lineno">  146 </span>--
+<span class="lineno">  147 </span>-- Tracers
+<span class="lineno">  148 </span>--
+<span class="lineno">  149 </span>
+<span class="lineno">  150 </span>type Tracers = Tracers' IO Concrete
+<span class="lineno">  151 </span>
+<span class="lineno">  152 </span>data Tracers' m (kind :: TracerDefinition) = Tracers
+<span class="lineno">  153 </span>    { <span class="nottickedoff"><span class="decl"><span class="nottickedoff">tracerHttp</span></span></span>
+<span class="lineno">  154 </span>        :: TracerHKD kind (Tracer m TraceHttpServer)
+<span class="lineno">  155 </span>    , <span class="nottickedoff"><span class="decl"><span class="nottickedoff">tracerDatabase</span></span></span>
+<span class="lineno">  156 </span>        :: TracerHKD kind (Tracer m TraceDatabase)
+<span class="lineno">  157 </span>    , <span class="nottickedoff"><span class="decl"><span class="nottickedoff">tracerChainSync</span></span></span>
+<span class="lineno">  158 </span>        :: TracerHKD kind (Tracer m TraceChainSync)
+<span class="lineno">  159 </span>    , <span class="nottickedoff"><span class="decl"><span class="nottickedoff">tracerConfiguration</span></span></span>
+<span class="lineno">  160 </span>        :: TracerHKD kind (Tracer m TraceConfiguration)
+<span class="lineno">  161 </span>    } deriving (Generic)
+<span class="lineno">  162 </span>
+<span class="lineno">  163 </span><span class="decl"><span class="nottickedoff">deriving instance Show (Tracers' m MinSeverities)</span></span>
+<span class="lineno">  164 </span><span class="decl"><span class="istickedoff">deriving instance Eq (Tracers' m MinSeverities)</span></span>
 
 </pre>
 </body>

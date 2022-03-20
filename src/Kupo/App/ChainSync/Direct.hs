@@ -2,12 +2,8 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE DuplicateRecordFields #-}
-
-module Kupo.App.ChainSync
-    ( ChainSyncHandler (..)
-    , mkChainSyncClient
-    , IntersectionNotFoundException (..)
+module Kupo.App.ChainSync.Direct
+    ( mkChainSyncClient
     ) where
 
 import Kupo.Prelude
@@ -18,6 +14,8 @@ import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
     ( Point (..), Tip (..) )
+import Kupo.Data.ChainSync
+    ( ChainSyncHandler (..) )
 import Network.TypedProtocol.Pipelined
     ( Nat (..), natToInt )
 import Ouroboros.Network.Block
@@ -29,20 +27,13 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     , ClientStNext (..)
     )
 
--- | A message handler for the chain-sync client. Messages are guaranteed (by
--- the protocol) to arrive in order.
-data ChainSyncHandler m block = ChainSyncHandler
-    { onRollBackward :: Tip block -> Point block -> m ()
-    , onRollForward :: Tip block -> block -> m ()
-    }
-
 -- | A simple pipeline chain-sync clients which offers maximum pipelining and
 -- defer handling of requests to callbacks.
 mkChainSyncClient
     :: forall m block.
         ( MonadThrow m
         )
-    => ChainSyncHandler m block
+    => ChainSyncHandler m (Tip block) (Point block) block
     -> [Point block]
     -> ChainSyncClientPipelined block (Point block) (Tip block) m ()
 mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts =

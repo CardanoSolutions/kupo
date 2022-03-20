@@ -3,6 +3,7 @@
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE PatternSynonyms #-}
 
@@ -13,10 +14,7 @@ module Kupo.Configuration
     -- * Configuration
       Configuration (..)
     , WorkDir (..)
-    , StandardCrypto
-    , Point (..)
-    , Block
-    , Pattern (..)
+    , ChainProducer (..)
 
     -- ** FromText
     , patternFromText
@@ -39,8 +37,6 @@ import Kupo.Prelude
 
 import Cardano.Crypto.Hash
     ( Blake2b_256, hashFromTextAsHex, hashToBytesShort )
-import Cardano.Ledger.Crypto
-    ( StandardCrypto )
 import Data.Aeson
     ( (.:) )
 import Data.Time.Clock.POSIX
@@ -71,14 +67,24 @@ import qualified Data.Text as T
 import qualified Data.Text.Read as T
 
 data Configuration = Configuration
-    { nodeSocket :: !FilePath
-    , nodeConfig :: !FilePath
+    { chainProducer :: !ChainProducer
     , workDir :: !WorkDir
     , serverHost :: !String
     , serverPort :: !Int
-    , since :: !(Maybe (Point (Block StandardCrypto)))
-    , patterns :: ![Pattern StandardCrypto]
+    , since :: !(Maybe (Point Block))
+    , patterns :: ![Pattern]
     } deriving (Generic, Eq, Show)
+
+data ChainProducer
+    = CardanoNode
+        { nodeSocket :: !FilePath
+        , nodeConfig :: !FilePath
+        }
+    | Ogmios
+        { ogmiosHost :: !String
+        , ogmiosPort :: !Int
+        }
+    deriving (Generic, Eq, Show)
 
 data WorkDir
     = Dir FilePath
@@ -130,7 +136,7 @@ mkSystemStart =
 --                     refers to a specific point on chain identified by this
 --                     slot number and header hash.
 --
-pointFromText :: Text -> Maybe (Point (Block crypto))
+pointFromText :: Text -> Maybe (Point Block)
 pointFromText txt =
     genesisPointFromText <|> blockPointFromText
   where
@@ -153,7 +159,7 @@ slotNoFromText txt = do
 -- | Deserialise a 'HeaderHash' from a base16-encoded text string.
 headerHashFromText
     :: Text
-    -> Maybe (HeaderHash (Block crypto))
+    -> Maybe (HeaderHash Block)
 headerHashFromText =
     fmap (OneEraHash . hashToBytesShort) . hashFromTextAsHex @Blake2b_256
 
@@ -164,6 +170,12 @@ headerHashFromText =
 data TraceConfiguration where
     ConfigurationNetwork
         :: { networkParameters :: NetworkParameters }
+        -> TraceConfiguration
+    ConfigurationOgmios
+        :: { ogmiosHost :: String, ogmiosPort :: Int }
+        -> TraceConfiguration
+    ConfigurationCardanoNode
+        :: { nodeSocket :: FilePath, nodeConfig :: FilePath }
         -> TraceConfiguration
     ConfigurationInvalidOrMissingOption
         :: { hint :: Text }
@@ -177,4 +189,6 @@ instance ToJSON TraceConfiguration where
 instance HasSeverityAnnotation TraceConfiguration where
     getSeverityAnnotation = \case
         ConfigurationNetwork{} -> Info
+        ConfigurationOgmios{} -> Info
+        ConfigurationCardanoNode{} -> Info
         ConfigurationInvalidOrMissingOption{} -> Error

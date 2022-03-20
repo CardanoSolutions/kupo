@@ -48,6 +48,7 @@ library:
     - bytestring
     - cardano-binary
     - cardano-crypto-class
+    - cardano-crypto-wrapper
     - cardano-ledger-alonzo
     - cardano-ledger-shelley
     - cardano-ledger-shelley-ma
@@ -87,6 +88,7 @@ library:
     - yaml
     - wai
     - warp
+    - websockets
 
 tests:
   unit:
@@ -97,6 +99,8 @@ tests:
     - aeson
     - base
     - bytestring
+    - directory
+    - filepath
     - hspec
     - http-client
     - http-media

@@ -36,18 +36,19 @@ import Data.Char
 import Kupo.App
     ( Tracers' (..) )
 import Kupo.Configuration
-    ( Block
+    ( ChainProducer (..)
     , Configuration (..)
     , NetworkParameters (..)
-    , Pattern (..)
-    , Point (..)
-    , StandardCrypto
     , WorkDir (..)
     , patternFromText
     , pointFromText
     )
 import Kupo.Control.MonadLog
     ( Severity (..), TracerDefinition (..), defaultTracers )
+import Kupo.Data.Cardano
+    ( Block, Point (..) )
+import Kupo.Data.Pattern
+    ( Pattern )
 import Options.Applicative.Help.Pretty
     ( Doc, align, fillSep, hardline, indent, softbreak, string, text, vsep )
 import Safe
@@ -58,31 +59,24 @@ import System.FilePath.Posix
 import qualified Data.Aeson as Json
 import qualified Data.Yaml as Yaml
 
-data Command (f :: Type -> Type)
-    = Run (f NetworkParameters) Configuration (Tracers' IO MinSeverities)
+data Command
+    = Run Configuration (Tracers' IO MinSeverities)
     | HealthCheck String Int
     | Version
+    deriving (Eq, Show)
 
-deriving instance Eq (f NetworkParameters) => Eq (Command f)
-deriving instance Show (f NetworkParameters) => Show (Command f)
-
-parseOptions :: IO (Command Identity)
+parseOptions :: IO Command
 parseOptions =
-    customExecParser (prefs showHelpOnEmpty) parserInfo >>= \case
-        Version -> pure Version
-        HealthCheck host port -> pure (HealthCheck host port)
-        Run _ cfg@Configuration{nodeConfig} tracers -> do
-            networkParameters <- parseNetworkParameters nodeConfig
-            pure $ Run (Identity networkParameters) cfg tracers
+    customExecParser (prefs showHelpOnEmpty) parserInfo
 
-parseOptionsPure :: [String] -> Either String (Command Proxy)
+parseOptionsPure :: [String] -> Either String Command
 parseOptionsPure args =
     case execParserPure defaultPrefs parserInfo args of
         Success a -> Right a
         Failure e -> Left (show e)
         CompletionInvoked{} -> Left "Completion Invoked."
 
-parserInfo :: ParserInfo (Command Proxy)
+parserInfo :: ParserInfo Command
 parserInfo = info (helper <*> parser) $ mempty
     <> progDesc "Kupo - A daemon for building portable lookup indexes on Cardano."
     <> footerDoc (Just footer')
@@ -92,10 +86,9 @@ parserInfo = info (helper <*> parser) $ mempty
         <|>
         healthCheckCommand
         <|>
-        ( Run Proxy
+        ( Run
             <$> ( Configuration
-                    <$> nodeSocketOption
-                    <*> nodeConfigOption
+                    <$> chainProducerOption
                     <*> workDirOption
                     <*> serverHostOption
                     <*> serverPortOption
@@ -160,6 +153,18 @@ parserInfo = info (helper <*> parser) $ mempty
 -- Command-line options
 --
 
+chainProducerOption :: Parser ChainProducer
+chainProducerOption =
+    cardanoNodeOptions <|> ogmiosOptions
+  where
+    cardanoNodeOptions = CardanoNode
+        <$> nodeSocketOption
+        <*> nodeConfigOption
+
+    ogmiosOptions = Ogmios
+        <$> ogmiosHostOption
+        <*> ogmiosPortOption
+
 -- | --node-socket=FILEPATH
 nodeSocketOption :: Parser FilePath
 nodeSocketOption = option str $ mempty
@@ -210,8 +215,23 @@ serverPortOption = option auto $ mempty
     <> value 1442
     <> showDefault
 
+-- | [--ogmios-host=IPv4]
+ogmiosHostOption :: Parser String
+ogmiosHostOption = option str $ mempty
+    <> long "ogmios-host"
+    <> metavar "IPv4"
+    <> help "Ogmios' host address."
+    <> completer (bashCompleter "hostname")
+
+-- | [--ogmios-port=TCP/PORT]
+ogmiosPortOption :: Parser Int
+ogmiosPortOption = option auto $ mempty
+    <> long "ogmios-port"
+    <> metavar "TCP/PORT"
+    <> help "Ogmios' port."
+
 -- | [--since=POINT]
-sinceOption :: Parser (Point (Block StandardCrypto))
+sinceOption :: Parser (Point Block)
 sinceOption = option (maybeReader rdr) $ mempty
     <> long "since"
     <> metavar "POINT"
@@ -226,11 +246,11 @@ sinceOption = option (maybeReader rdr) $ mempty
             ]
         ])
   where
-    rdr :: String -> Maybe (Point (Block StandardCrypto))
+    rdr :: String -> Maybe (Point Block)
     rdr = pointFromText . toText
 
 -- | [--match=PATTERN]
-patternOption :: Parser (Pattern StandardCrypto)
+patternOption :: Parser Pattern
 patternOption = option (maybeReader (patternFromText . toText)) $ mempty
     <> long "match"
     <> metavar "PATTERN"
@@ -267,7 +287,7 @@ tracersOption = fmap defaultTracers $ option readSeverityM $ mempty
             ]
 
 -- | [--version|-v] | version
-versionOptionOrCommand :: Parser (Command f)
+versionOptionOrCommand :: Parser Command
 versionOptionOrCommand =
     flag' Version (mconcat
         [ long "version"
@@ -283,7 +303,7 @@ versionOptionOrCommand =
     helpText = "Show the software current version."
 
 -- | health-check
-healthCheckCommand :: Parser (Command f)
+healthCheckCommand :: Parser Command
 healthCheckCommand =
     subparser $ command "health-check" $ info (helper <*> parser) $ mempty
         <> progDesc helpText
