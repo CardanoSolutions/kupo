@@ -1,0 +1,359 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<style type="text/css">
+span.lineno { color: white; background: #aaaaaa; border-right: solid white 12px }
+span.nottickedoff { background: yellow}
+span.istickedoff { background: white }
+span.tickonlyfalse { margin: -1px; border: 1px solid #f20913; background: #f20913 }
+span.tickonlytrue  { margin: -1px; border: 1px solid #60de51; background: #60de51 }
+span.funcount { font-size: small; color: orange; z-index: 2; position: absolute; right: 20 }
+span.decl { font-weight: bold }
+span.spaces    { background: white }
+</style>
+</head>
+<body>
+<pre>
+<span class="decl"><span class="nottickedoff">never executed</span> <span class="tickonlytrue">always true</span> <span class="tickonlyfalse">always false</span></span>
+</pre>
+<pre>
+<span class="lineno">    1 </span>--  This Source Code Form is subject to the terms of the Mozilla Public
+<span class="lineno">    2 </span>--  License, v. 2.0. If a copy of the MPL was not distributed with this
+<span class="lineno">    3 </span>--  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+<span class="lineno">    4 </span>
+<span class="lineno">    5 </span>{-# LANGUAGE PatternSynonyms #-}
+<span class="lineno">    6 </span>
+<span class="lineno">    7 </span>module Kupo.Data.Ogmios
+<span class="lineno">    8 </span>    ( PartialBlock (..)
+<span class="lineno">    9 </span>    , PartialTransaction (..)
+<span class="lineno">   10 </span>
+<span class="lineno">   11 </span>    , RequestNextResponse (..)
+<span class="lineno">   12 </span>
+<span class="lineno">   13 </span>    , encodeFindIntersect
+<span class="lineno">   14 </span>    , encodeRequestNext
+<span class="lineno">   15 </span>
+<span class="lineno">   16 </span>    , decodeFindIntersectResponse
+<span class="lineno">   17 </span>    , decodeRequestNextResponse
+<span class="lineno">   18 </span>    ) where
+<span class="lineno">   19 </span>
+<span class="lineno">   20 </span>import Kupo.Prelude
+<span class="lineno">   21 </span>
+<span class="lineno">   22 </span>import Cardano.Crypto.Hash.Class
+<span class="lineno">   23 </span>    ( Hash, HashAlgorithm, hashFromTextAsHex, hashToBytes )
+<span class="lineno">   24 </span>import Data.Aeson
+<span class="lineno">   25 </span>    ( (.!=), (.:), (.:?) )
+<span class="lineno">   26 </span>import Kupo.Control.MonadOuroboros
+<span class="lineno">   27 </span>    ( IntersectionNotFoundException (..) )
+<span class="lineno">   28 </span>import Kupo.Data.Cardano
+<span class="lineno">   29 </span>    ( Address
+<span class="lineno">   30 </span>    , Blake2b_256
+<span class="lineno">   31 </span>    , Block
+<span class="lineno">   32 </span>    , BlockNo (..)
+<span class="lineno">   33 </span>    , pattern BlockPoint
+<span class="lineno">   34 </span>    , pattern GenesisPoint
+<span class="lineno">   35 </span>    , IsBlock (..)
+<span class="lineno">   36 </span>    , Output
+<span class="lineno">   37 </span>    , OutputReference
+<span class="lineno">   38 </span>    , Point (..)
+<span class="lineno">   39 </span>    , SlotNo (..)
+<span class="lineno">   40 </span>    , StandardCrypto
+<span class="lineno">   41 </span>    , Tip (..)
+<span class="lineno">   42 </span>    , TransactionId
+<span class="lineno">   43 </span>    , Value
+<span class="lineno">   44 </span>    , WithOrigin (..)
+<span class="lineno">   45 </span>    , headerHashToJson
+<span class="lineno">   46 </span>    , mkOutput
+<span class="lineno">   47 </span>    , slotNoToJson
+<span class="lineno">   48 </span>    , transactionIdFromHash
+<span class="lineno">   49 </span>    , transactionIdFromHash
+<span class="lineno">   50 </span>    , unsafeMakeSafeHash
+<span class="lineno">   51 </span>    , unsafeValueFromList
+<span class="lineno">   52 </span>    , withReferences
+<span class="lineno">   53 </span>    )
+<span class="lineno">   54 </span>import Kupo.Data.Pattern
+<span class="lineno">   55 </span>    ( Pattern (..), patternFromText )
+<span class="lineno">   56 </span>import Ouroboros.Consensus.Cardano.Block
+<span class="lineno">   57 </span>    ( CardanoEras )
+<span class="lineno">   58 </span>import Ouroboros.Consensus.HardFork.Combinator
+<span class="lineno">   59 </span>    ( OneEraHash (..) )
+<span class="lineno">   60 </span>import Ouroboros.Network.Block
+<span class="lineno">   61 </span>    ( pointSlot )
+<span class="lineno">   62 </span>
+<span class="lineno">   63 </span>import qualified Data.Aeson.Encoding as Json
+<span class="lineno">   64 </span>import qualified Data.Aeson.Types as Json
+<span class="lineno">   65 </span>import qualified Data.Map as Map
+<span class="lineno">   66 </span>import qualified Data.Text as Text
+<span class="lineno">   67 </span>
+<span class="lineno">   68 </span>-- PartialBlock / PartialTransaction
+<span class="lineno">   69 </span>
+<span class="lineno">   70 </span>data PartialBlock = PartialBlock
+<span class="lineno">   71 </span>    (Point Block)
+<span class="lineno">   72 </span>    [ PartialTransaction ]
+<span class="lineno">   73 </span>
+<span class="lineno">   74 </span>newtype PartialTransaction = PartialTransaction
+<span class="lineno">   75 </span>    [ (OutputReference, Output) ]
+<span class="lineno">   76 </span>
+<span class="lineno">   77 </span>instance IsBlock PartialBlock where
+<span class="lineno">   78 </span>    type BlockBody PartialBlock = PartialTransaction
+<span class="lineno">   79 </span>
+<span class="lineno">   80 </span>    <span class="decl"><span class="istickedoff">getPoint (PartialBlock pt _) =</span>
+<span class="lineno">   81 </span><span class="spaces">        </span><span class="istickedoff">pt</span></span>
+<span class="lineno">   82 </span>
+<span class="lineno">   83 </span>    <span class="decl"><span class="istickedoff">foldBlock fn result (PartialBlock _ txs) =</span>
+<span class="lineno">   84 </span><span class="spaces">        </span><span class="istickedoff">foldr fn result txs</span></span>
+<span class="lineno">   85 </span>
+<span class="lineno">   86 </span>    <span class="decl"><span class="istickedoff">mapMaybeOutputs fn (PartialTransaction outs) =</span>
+<span class="lineno">   87 </span><span class="spaces">        </span><span class="istickedoff">mapMaybe (uncurry fn) outs</span></span>
+<span class="lineno">   88 </span>
+<span class="lineno">   89 </span>-- RequestNextResponse
+<span class="lineno">   90 </span>
+<span class="lineno">   91 </span>data RequestNextResponse
+<span class="lineno">   92 </span>    = RollBackward (Tip Block) (Point Block)
+<span class="lineno">   93 </span>    | RollForward  (Tip Block) PartialBlock
+<span class="lineno">   94 </span>
+<span class="lineno">   95 </span>
+<span class="lineno">   96 </span>-- Encoders
+<span class="lineno">   97 </span>
+<span class="lineno">   98 </span>beginWspRequest :: Json.Series
+<span class="lineno">   99 </span><span class="decl"><span class="istickedoff">beginWspRequest = mconcat</span>
+<span class="lineno">  100 </span><span class="spaces">    </span><span class="istickedoff">[ Json.pair &quot;type&quot; (Json.text &quot;jsonwsp/request&quot;)</span>
+<span class="lineno">  101 </span><span class="spaces">    </span><span class="istickedoff">, Json.pair &quot;version&quot; (Json.text &quot;1.0&quot;)</span>
+<span class="lineno">  102 </span><span class="spaces">    </span><span class="istickedoff">, Json.pair &quot;servicename&quot; (Json.text &quot;ogmios&quot;)</span>
+<span class="lineno">  103 </span><span class="spaces">    </span><span class="istickedoff">]</span></span>
+<span class="lineno">  104 </span>
+<span class="lineno">  105 </span>encodeFindIntersect :: [Point Block] -&gt; Json.Encoding
+<span class="lineno">  106 </span><span class="decl"><span class="istickedoff">encodeFindIntersect pts = Json.pairs $ beginWspRequest</span>
+<span class="lineno">  107 </span><span class="spaces">    </span><span class="istickedoff">&lt;&gt; Json.pair &quot;methodname&quot; (Json.text &quot;FindIntersect&quot;)</span>
+<span class="lineno">  108 </span><span class="spaces">    </span><span class="istickedoff">&lt;&gt; Json.pair &quot;args&quot; (Json.pairs $ Json.pair &quot;points&quot; (Json.list encodePoint pts))</span></span>
+<span class="lineno">  109 </span>
+<span class="lineno">  110 </span>encodeRequestNext :: Json.Encoding
+<span class="lineno">  111 </span><span class="decl"><span class="istickedoff">encodeRequestNext = Json.pairs $ beginWspRequest</span>
+<span class="lineno">  112 </span><span class="spaces">    </span><span class="istickedoff">&lt;&gt; Json.pair &quot;methodname&quot; (Json.text &quot;RequestNext&quot;)</span></span>
+<span class="lineno">  113 </span>
+<span class="lineno">  114 </span>encodePoint :: Point Block -&gt; Json.Encoding
+<span class="lineno">  115 </span><span class="decl"><span class="istickedoff">encodePoint = \case</span>
+<span class="lineno">  116 </span><span class="spaces">    </span><span class="istickedoff">GenesisPoint -&gt;</span>
+<span class="lineno">  117 </span><span class="spaces">        </span><span class="istickedoff"><span class="nottickedoff">Json.text &quot;origin&quot;</span></span>
+<span class="lineno">  118 </span><span class="spaces">    </span><span class="istickedoff">BlockPoint slotNo headerHash -&gt;</span>
+<span class="lineno">  119 </span><span class="spaces">        </span><span class="istickedoff">Json.pairs $ mconcat</span>
+<span class="lineno">  120 </span><span class="spaces">            </span><span class="istickedoff">[ Json.pair &quot;slot&quot; (slotNoToJson slotNo)</span>
+<span class="lineno">  121 </span><span class="spaces">            </span><span class="istickedoff">, Json.pair &quot;hash&quot; (headerHashToJson headerHash)</span>
+<span class="lineno">  122 </span><span class="spaces">            </span><span class="istickedoff">]</span></span>
+<span class="lineno">  123 </span>
+<span class="lineno">  124 </span>-- Decoders
+<span class="lineno">  125 </span>
+<span class="lineno">  126 </span>decodeFindIntersectResponse
+<span class="lineno">  127 </span>    :: [Point Block]
+<span class="lineno">  128 </span>    -&gt; Json.Value
+<span class="lineno">  129 </span>    -&gt; Json.Parser (Either IntersectionNotFoundException ())
+<span class="lineno">  130 </span><span class="decl"><span class="istickedoff">decodeFindIntersectResponse (fmap pointSlot -&gt; requestedPoints) json =</span>
+<span class="lineno">  131 </span><span class="spaces">    </span><span class="istickedoff">decodeIntersectionFound json &lt;|&gt; decodeIntersectionNotFound json</span>
+<span class="lineno">  132 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">  133 </span><span class="spaces">    </span><span class="istickedoff">decodeIntersectionFound = Json.withObject <span class="nottickedoff">&quot;FindIntersectResponse&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  134 </span><span class="spaces">        </span><span class="istickedoff">(_ :: Json.Value) &lt;- o .: &quot;result&quot; &gt;&gt;= (.: &quot;IntersectionFound&quot;)</span>
+<span class="lineno">  135 </span><span class="spaces">        </span><span class="istickedoff">return (Right ())</span>
+<span class="lineno">  136 </span><span class="spaces"></span><span class="istickedoff"></span>
+<span class="lineno">  137 </span><span class="spaces">    </span><span class="istickedoff">decodeIntersectionNotFound = Json.withObject <span class="nottickedoff">&quot;FindIntersectResponse&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  138 </span><span class="spaces">        </span><span class="istickedoff">tip &lt;- o .: &quot;result&quot; &gt;&gt;= (.: &quot;IntersectionNotFound&quot;) &gt;&gt;= (.: &quot;tip&quot;) &gt;&gt;= decodeSlotNoOrOrigin</span>
+<span class="lineno">  139 </span><span class="spaces">        </span><span class="istickedoff">return (Left <span class="nottickedoff">IntersectionNotFoundException{requestedPoints, tip}</span>)</span></span>
+<span class="lineno">  140 </span>
+<span class="lineno">  141 </span>decodeRequestNextResponse
+<span class="lineno">  142 </span>    :: Json.Value
+<span class="lineno">  143 </span>    -&gt; Json.Parser RequestNextResponse
+<span class="lineno">  144 </span><span class="decl"><span class="istickedoff">decodeRequestNextResponse json =</span>
+<span class="lineno">  145 </span><span class="spaces">    </span><span class="istickedoff">decodeRollForward json &lt;|&gt; decodeRollBackward json</span>
+<span class="lineno">  146 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">  147 </span><span class="spaces">    </span><span class="istickedoff">decodeRollForward =  Json.withObject <span class="nottickedoff">&quot;RequestNextResponse&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  148 </span><span class="spaces">        </span><span class="istickedoff">result &lt;- o .: &quot;result&quot; &gt;&gt;= (.: &quot;RollForward&quot;)</span>
+<span class="lineno">  149 </span><span class="spaces">        </span><span class="istickedoff">block  &lt;- result .: &quot;block&quot;</span>
+<span class="lineno">  150 </span><span class="spaces">        </span><span class="istickedoff">tip    &lt;- result .: &quot;tip&quot; &gt;&gt;= decodeTipOrOrigin</span>
+<span class="lineno">  151 </span><span class="spaces">        </span><span class="istickedoff">RollForward tip &lt;$&gt; asum</span>
+<span class="lineno">  152 </span><span class="spaces">            </span><span class="istickedoff">[ decodeByronBlock block</span>
+<span class="lineno">  153 </span><span class="spaces">            </span><span class="istickedoff">, decodeShelleyBlock block</span>
+<span class="lineno">  154 </span><span class="spaces">            </span><span class="istickedoff">, decodeAllegraBlock block</span>
+<span class="lineno">  155 </span><span class="spaces">            </span><span class="istickedoff">, decodeMaryBlock block</span>
+<span class="lineno">  156 </span><span class="spaces">            </span><span class="istickedoff">, decodeAlonzoBlock block</span>
+<span class="lineno">  157 </span><span class="spaces">            </span><span class="istickedoff">]</span>
+<span class="lineno">  158 </span><span class="spaces"></span><span class="istickedoff"></span>
+<span class="lineno">  159 </span><span class="spaces">    </span><span class="istickedoff">decodeRollBackward = Json.withObject <span class="nottickedoff">&quot;RequestNextResponse&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  160 </span><span class="spaces">        </span><span class="istickedoff">result &lt;- o .: &quot;result&quot; &gt;&gt;= (.: &quot;RollBackward&quot;)</span>
+<span class="lineno">  161 </span><span class="spaces">        </span><span class="istickedoff">point  &lt;- result .: &quot;point&quot; &gt;&gt;= decodePointOrOrigin</span>
+<span class="lineno">  162 </span><span class="spaces">        </span><span class="istickedoff">tip    &lt;- result .: &quot;tip&quot;   &gt;&gt;= decodeTipOrOrigin</span>
+<span class="lineno">  163 </span><span class="spaces">        </span><span class="istickedoff">return (RollBackward <span class="nottickedoff">tip</span> point)</span></span>
+<span class="lineno">  164 </span>
+<span class="lineno">  165 </span>decodeByronBlock
+<span class="lineno">  166 </span>    :: Json.Value
+<span class="lineno">  167 </span>    -&gt; Json.Parser PartialBlock
+<span class="lineno">  168 </span><span class="decl"><span class="istickedoff">decodeByronBlock = Json.withObject <span class="nottickedoff">&quot;Block[Byron]&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  169 </span><span class="spaces">    </span><span class="istickedoff">block &lt;- o .: &quot;byron&quot;</span>
+<span class="lineno">  170 </span><span class="spaces">    </span><span class="istickedoff">decodeStandardBlock block &lt;|&gt; decodeEpochBoundaryBlock block</span>
+<span class="lineno">  171 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">  172 </span><span class="spaces">    </span><span class="istickedoff">decodeStandardBlock = Json.withObject <span class="nottickedoff">&quot;Block[Byron~Standard]&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  173 </span><span class="spaces">        </span><span class="istickedoff">txs &lt;- o .: &quot;body&quot; &gt;&gt;= (.: &quot;txPayload&quot;)</span>
+<span class="lineno">  174 </span><span class="spaces">        </span><span class="istickedoff">slot &lt;- o .: &quot;header&quot; &gt;&gt;= (.: &quot;slot&quot;)</span>
+<span class="lineno">  175 </span><span class="spaces">        </span><span class="istickedoff">headerHash &lt;- o .: &quot;hash&quot; &gt;&gt;= decodeOneEraHash</span>
+<span class="lineno">  176 </span><span class="spaces">        </span><span class="istickedoff">let <span class="nottickedoff">point = BlockPoint (SlotNo slot) headerHash</span></span>
+<span class="lineno">  177 </span><span class="spaces">        </span><span class="istickedoff"><span class="nottickedoff">PartialBlock point</span> &lt;$&gt; traverse <span class="nottickedoff">decodePartialTransaction</span> txs</span>
+<span class="lineno">  178 </span><span class="spaces"></span><span class="istickedoff"></span>
+<span class="lineno">  179 </span><span class="spaces">    </span><span class="istickedoff">decodeEpochBoundaryBlock = Json.withObject <span class="nottickedoff">&quot;Block[Byron~Standard]&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  180 </span><span class="spaces">        </span><span class="istickedoff">slot &lt;- o .: &quot;header&quot; &gt;&gt;= (.: &quot;blockHeight&quot;)</span>
+<span class="lineno">  181 </span><span class="spaces">        </span><span class="istickedoff">headerHash &lt;- o .: &quot;hash&quot; &gt;&gt;= decodeOneEraHash</span>
+<span class="lineno">  182 </span><span class="spaces">        </span><span class="istickedoff">let <span class="nottickedoff">point = BlockPoint (SlotNo slot) headerHash</span></span>
+<span class="lineno">  183 </span><span class="spaces">        </span><span class="istickedoff">pure <span class="nottickedoff">(PartialBlock point [])</span></span></span>
+<span class="lineno">  184 </span>
+<span class="lineno">  185 </span>decodeShelleyBlock
+<span class="lineno">  186 </span>    :: Json.Value
+<span class="lineno">  187 </span>    -&gt; Json.Parser PartialBlock
+<span class="lineno">  188 </span><span class="decl"><span class="istickedoff">decodeShelleyBlock = Json.withObject <span class="nottickedoff">&quot;ShelleyBlock&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  189 </span><span class="spaces">    </span><span class="istickedoff">shelley &lt;- o .: &quot;shelley&quot;</span>
+<span class="lineno">  190 </span><span class="spaces">    </span><span class="istickedoff">txs &lt;- shelley .: &quot;body&quot;</span>
+<span class="lineno">  191 </span><span class="spaces">    </span><span class="istickedoff">point &lt;- decodeBlockPoint shelley</span>
+<span class="lineno">  192 </span><span class="spaces">    </span><span class="istickedoff"><span class="nottickedoff">PartialBlock point</span> &lt;$&gt; traverse decodePartialTransaction txs</span></span>
+<span class="lineno">  193 </span>
+<span class="lineno">  194 </span>decodeAllegraBlock
+<span class="lineno">  195 </span>    :: Json.Value
+<span class="lineno">  196 </span>    -&gt; Json.Parser PartialBlock
+<span class="lineno">  197 </span><span class="decl"><span class="istickedoff">decodeAllegraBlock = Json.withObject <span class="nottickedoff">&quot;AllegraBlock&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  198 </span><span class="spaces">    </span><span class="istickedoff">allegra &lt;- o .: &quot;allegra&quot;</span>
+<span class="lineno">  199 </span><span class="spaces">    </span><span class="istickedoff">txs &lt;- allegra .: &quot;body&quot;</span>
+<span class="lineno">  200 </span><span class="spaces">    </span><span class="istickedoff">point &lt;- decodeBlockPoint allegra</span>
+<span class="lineno">  201 </span><span class="spaces">    </span><span class="istickedoff"><span class="nottickedoff">PartialBlock point</span> &lt;$&gt; traverse decodePartialTransaction txs</span></span>
+<span class="lineno">  202 </span>
+<span class="lineno">  203 </span>decodeMaryBlock
+<span class="lineno">  204 </span>    :: Json.Value
+<span class="lineno">  205 </span>    -&gt; Json.Parser PartialBlock
+<span class="lineno">  206 </span><span class="decl"><span class="istickedoff">decodeMaryBlock = Json.withObject <span class="nottickedoff">&quot;MaryBlock&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  207 </span><span class="spaces">    </span><span class="istickedoff">mary &lt;- o .: &quot;mary&quot;</span>
+<span class="lineno">  208 </span><span class="spaces">    </span><span class="istickedoff">txs &lt;- mary .: &quot;body&quot;</span>
+<span class="lineno">  209 </span><span class="spaces">    </span><span class="istickedoff">point &lt;- decodeBlockPoint mary</span>
+<span class="lineno">  210 </span><span class="spaces">    </span><span class="istickedoff"><span class="nottickedoff">PartialBlock point</span> &lt;$&gt; traverse decodePartialTransaction txs</span></span>
+<span class="lineno">  211 </span>
+<span class="lineno">  212 </span>decodeAlonzoBlock
+<span class="lineno">  213 </span>    :: Json.Value
+<span class="lineno">  214 </span>    -&gt; Json.Parser PartialBlock
+<span class="lineno">  215 </span><span class="decl"><span class="istickedoff">decodeAlonzoBlock = Json.withObject <span class="nottickedoff">&quot;AlonzoBlock&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  216 </span><span class="spaces">    </span><span class="istickedoff">alonzo &lt;- o .: &quot;alonzo&quot;</span>
+<span class="lineno">  217 </span><span class="spaces">    </span><span class="istickedoff">txs &lt;- alonzo .: &quot;body&quot;</span>
+<span class="lineno">  218 </span><span class="spaces">    </span><span class="istickedoff">point &lt;- decodeBlockPoint alonzo</span>
+<span class="lineno">  219 </span><span class="spaces">    </span><span class="istickedoff">PartialBlock point &lt;$&gt; traverse decodePartialTransaction txs</span></span>
+<span class="lineno">  220 </span>
+<span class="lineno">  221 </span>decodeAddress
+<span class="lineno">  222 </span>    :: Text
+<span class="lineno">  223 </span>    -&gt; Json.Parser Address
+<span class="lineno">  224 </span><span class="decl"><span class="istickedoff">decodeAddress txt =</span>
+<span class="lineno">  225 </span><span class="spaces">    </span><span class="istickedoff">case patternFromText txt of</span>
+<span class="lineno">  226 </span><span class="spaces">        </span><span class="istickedoff">Just (MatchExact addr) -&gt;</span>
+<span class="lineno">  227 </span><span class="spaces">            </span><span class="istickedoff">pure addr</span>
+<span class="lineno">  228 </span><span class="spaces">        </span><span class="istickedoff">_ -&gt;</span>
+<span class="lineno">  229 </span><span class="spaces">            </span><span class="istickedoff"><span class="nottickedoff">empty</span></span></span>
+<span class="lineno">  230 </span>
+<span class="lineno">  231 </span>decodeBlockPoint
+<span class="lineno">  232 </span>    :: Json.Object
+<span class="lineno">  233 </span>    -&gt; Json.Parser (Point Block)
+<span class="lineno">  234 </span><span class="decl"><span class="istickedoff">decodeBlockPoint o = do</span>
+<span class="lineno">  235 </span><span class="spaces">    </span><span class="istickedoff">headerHash &lt;- o .: &quot;headerHash&quot; &gt;&gt;= decodeOneEraHash</span>
+<span class="lineno">  236 </span><span class="spaces">    </span><span class="istickedoff">slot &lt;- o .: &quot;header&quot; &gt;&gt;= (.: &quot;slot&quot;)</span>
+<span class="lineno">  237 </span><span class="spaces">    </span><span class="istickedoff">pure (BlockPoint (SlotNo slot) headerHash)</span></span>
+<span class="lineno">  238 </span>
+<span class="lineno">  239 </span>decodeHash
+<span class="lineno">  240 </span>    :: HashAlgorithm alg
+<span class="lineno">  241 </span>    =&gt; Json.Value
+<span class="lineno">  242 </span>    -&gt; Json.Parser (Hash alg a)
+<span class="lineno">  243 </span><span class="decl"><span class="istickedoff">decodeHash =</span>
+<span class="lineno">  244 </span><span class="spaces">    </span><span class="istickedoff">Json.parseJSON &gt;=&gt; maybe <span class="nottickedoff">empty</span> pure . hashFromTextAsHex</span></span>
+<span class="lineno">  245 </span>
+<span class="lineno">  246 </span>decodeOneEraHash
+<span class="lineno">  247 </span>    :: Json.Value
+<span class="lineno">  248 </span>    -&gt; Json.Parser (OneEraHash (CardanoEras StandardCrypto))
+<span class="lineno">  249 </span><span class="decl"><span class="istickedoff">decodeOneEraHash =</span>
+<span class="lineno">  250 </span><span class="spaces">    </span><span class="istickedoff">fmap (OneEraHash . toShort . hashToBytes) . decodeHash @Blake2b_256</span></span>
+<span class="lineno">  251 </span>
+<span class="lineno">  252 </span>decodeOutput
+<span class="lineno">  253 </span>    :: Json.Value
+<span class="lineno">  254 </span>    -&gt; Json.Parser Output
+<span class="lineno">  255 </span><span class="decl"><span class="istickedoff">decodeOutput = Json.withObject <span class="nottickedoff">&quot;Output&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  256 </span><span class="spaces">    </span><span class="istickedoff">address &lt;- o .: &quot;address&quot; &gt;&gt;= decodeAddress</span>
+<span class="lineno">  257 </span><span class="spaces">    </span><span class="istickedoff">value &lt;- o .: &quot;value&quot; &gt;&gt;= decodeValue</span>
+<span class="lineno">  258 </span><span class="spaces">    </span><span class="istickedoff">datumHash &lt;- o .:? &quot;datum&quot; &gt;&gt;= traverse (fmap unsafeMakeSafeHash . decodeHash @Blake2b_256)</span>
+<span class="lineno">  259 </span><span class="spaces">    </span><span class="istickedoff">pure (mkOutput address value datumHash)</span></span>
+<span class="lineno">  260 </span>
+<span class="lineno">  261 </span>decodePartialTransaction
+<span class="lineno">  262 </span>    :: Json.Value
+<span class="lineno">  263 </span>    -&gt; Json.Parser PartialTransaction
+<span class="lineno">  264 </span><span class="decl"><span class="istickedoff">decodePartialTransaction = Json.withObject <span class="nottickedoff">&quot;PartialTransaction&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  265 </span><span class="spaces">    </span><span class="istickedoff">txId &lt;- o .: &quot;id&quot; &gt;&gt;= decodeTransactionId</span>
+<span class="lineno">  266 </span><span class="spaces">    </span><span class="istickedoff">outs &lt;- traverse decodeOutput =&lt;&lt; (o .: &quot;body&quot; &gt;&gt;= (.: &quot;outputs&quot;))</span>
+<span class="lineno">  267 </span><span class="spaces">    </span><span class="istickedoff">pure (PartialTransaction (withReferences txId outs))</span></span>
+<span class="lineno">  268 </span>
+<span class="lineno">  269 </span>decodePointOrOrigin
+<span class="lineno">  270 </span>    :: Json.Value
+<span class="lineno">  271 </span>    -&gt; Json.Parser (Point Block)
+<span class="lineno">  272 </span><span class="decl"><span class="istickedoff">decodePointOrOrigin json =</span>
+<span class="lineno">  273 </span><span class="spaces">    </span><span class="istickedoff">decodeOrigin json &lt;|&gt; decodePoint json</span>
+<span class="lineno">  274 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">  275 </span><span class="spaces">    </span><span class="istickedoff">decodeOrigin = Json.withText <span class="nottickedoff">&quot;PointOrigin&quot;</span> $ \case</span>
+<span class="lineno">  276 </span><span class="spaces">        </span><span class="istickedoff">txt | <span class="tickonlytrue">txt == &quot;origin&quot;</span> -&gt; pure <span class="nottickedoff">GenesisPoint</span></span>
+<span class="lineno">  277 </span><span class="spaces">        </span><span class="istickedoff">_ -&gt; <span class="nottickedoff">empty</span></span>
+<span class="lineno">  278 </span><span class="spaces">    </span><span class="istickedoff">decodePoint = Json.withObject <span class="nottickedoff">&quot;PointOrOrigin&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  279 </span><span class="spaces">        </span><span class="istickedoff">slot &lt;- o .: &quot;slot&quot;</span>
+<span class="lineno">  280 </span><span class="spaces">        </span><span class="istickedoff">hash &lt;- o .: &quot;hash&quot; &gt;&gt;= decodeOneEraHash</span>
+<span class="lineno">  281 </span><span class="spaces">        </span><span class="istickedoff">return $ BlockPoint (SlotNo slot) hash</span></span>
+<span class="lineno">  282 </span>
+<span class="lineno">  283 </span>decodeSlotNoOrOrigin
+<span class="lineno">  284 </span>    :: Json.Value
+<span class="lineno">  285 </span>    -&gt; Json.Parser (WithOrigin SlotNo)
+<span class="lineno">  286 </span><span class="decl"><span class="istickedoff">decodeSlotNoOrOrigin json =</span>
+<span class="lineno">  287 </span><span class="spaces">    </span><span class="istickedoff">decodeOrigin json &lt;|&gt; decodeSlotNo json</span>
+<span class="lineno">  288 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">  289 </span><span class="spaces">    </span><span class="istickedoff">decodeOrigin = Json.withText <span class="nottickedoff">&quot;SlotNoOrOrigin&quot;</span> $ \case</span>
+<span class="lineno">  290 </span><span class="spaces">        </span><span class="istickedoff">txt | <span class="tickonlytrue">txt == &quot;origin&quot;</span> -&gt; pure <span class="nottickedoff">Origin</span></span>
+<span class="lineno">  291 </span><span class="spaces">        </span><span class="istickedoff">_ -&gt; <span class="nottickedoff">empty</span></span>
+<span class="lineno">  292 </span><span class="spaces">    </span><span class="istickedoff">decodeSlotNo = Json.withObject <span class="nottickedoff">&quot;SlotNoOrOrigin&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  293 </span><span class="spaces">        </span><span class="istickedoff"><span class="nottickedoff">At . SlotNo</span> &lt;$&gt; (o .: &quot;slot&quot;)</span></span>
+<span class="lineno">  294 </span>
+<span class="lineno">  295 </span>decodeTipOrOrigin
+<span class="lineno">  296 </span>    :: Json.Value
+<span class="lineno">  297 </span>    -&gt; Json.Parser (Tip Block)
+<span class="lineno">  298 </span><span class="decl"><span class="istickedoff">decodeTipOrOrigin json =</span>
+<span class="lineno">  299 </span><span class="spaces">    </span><span class="istickedoff">decodeOrigin json &lt;|&gt; decodeTip json</span>
+<span class="lineno">  300 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">  301 </span><span class="spaces">    </span><span class="istickedoff">decodeOrigin = Json.withText <span class="nottickedoff">&quot;TipOrOrigin&quot;</span> $ \case</span>
+<span class="lineno">  302 </span><span class="spaces">        </span><span class="istickedoff">txt | <span class="tickonlytrue">txt == &quot;origin&quot;</span> -&gt; pure <span class="nottickedoff">TipGenesis</span></span>
+<span class="lineno">  303 </span><span class="spaces">        </span><span class="istickedoff">_ -&gt; <span class="nottickedoff">empty</span></span>
+<span class="lineno">  304 </span><span class="spaces">    </span><span class="istickedoff">decodeTip = Json.withObject <span class="nottickedoff">&quot;TipOrOrigin&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  305 </span><span class="spaces">        </span><span class="istickedoff">slot &lt;- o .: &quot;slot&quot;</span>
+<span class="lineno">  306 </span><span class="spaces">        </span><span class="istickedoff">hash &lt;- o .: &quot;hash&quot; &gt;&gt;= decodeOneEraHash</span>
+<span class="lineno">  307 </span><span class="spaces">        </span><span class="istickedoff">blockNo &lt;- o .: &quot;blockNo&quot;</span>
+<span class="lineno">  308 </span><span class="spaces">        </span><span class="istickedoff">pure $ Tip (SlotNo slot) hash (BlockNo blockNo)</span></span>
+<span class="lineno">  309 </span>
+<span class="lineno">  310 </span>decodeTransactionId
+<span class="lineno">  311 </span>    :: Json.Value
+<span class="lineno">  312 </span>    -&gt; Json.Parser TransactionId
+<span class="lineno">  313 </span><span class="decl"><span class="istickedoff">decodeTransactionId =</span>
+<span class="lineno">  314 </span><span class="spaces">    </span><span class="istickedoff">fmap transactionIdFromHash . decodeHash @Blake2b_256</span></span>
+<span class="lineno">  315 </span>
+<span class="lineno">  316 </span>decodeValue
+<span class="lineno">  317 </span>    :: Json.Value
+<span class="lineno">  318 </span>    -&gt; Json.Parser Value
+<span class="lineno">  319 </span><span class="decl"><span class="istickedoff">decodeValue = Json.withObject <span class="nottickedoff">&quot;Value&quot;</span> $ \o -&gt; do</span>
+<span class="lineno">  320 </span><span class="spaces">    </span><span class="istickedoff">coins &lt;- o .: &quot;coins&quot;</span>
+<span class="lineno">  321 </span><span class="spaces">    </span><span class="istickedoff">assets &lt;- o .:? &quot;assets&quot; .!= mempty &gt;&gt;= traverse decodeAsset . Map.toList</span>
+<span class="lineno">  322 </span><span class="spaces">    </span><span class="istickedoff">pure (unsafeValueFromList coins assets)</span>
+<span class="lineno">  323 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">  324 </span><span class="spaces">    </span><span class="istickedoff">decodeBase16' = decodeBase16 . encodeUtf8</span>
+<span class="lineno">  325 </span><span class="spaces"></span><span class="istickedoff"></span>
+<span class="lineno">  326 </span><span class="spaces">    </span><span class="istickedoff">decodeAsset</span>
+<span class="lineno">  327 </span><span class="spaces">        </span><span class="istickedoff">:: (Text, Integer)</span>
+<span class="lineno">  328 </span><span class="spaces">        </span><span class="istickedoff">-&gt; Json.Parser (ByteString, ByteString, Integer)</span>
+<span class="lineno">  329 </span><span class="spaces">    </span><span class="istickedoff">decodeAsset (assetId, quantity) =</span>
+<span class="lineno">  330 </span><span class="spaces">        </span><span class="istickedoff">case Text.splitOn &quot;.&quot; assetId of</span>
+<span class="lineno">  331 </span><span class="spaces">            </span><span class="istickedoff">[ decodeBase16' -&gt; Right policyId, decodeBase16' -&gt; Right assetName ] -&gt; do</span>
+<span class="lineno">  332 </span><span class="spaces">                </span><span class="istickedoff">pure (policyId, assetName, quantity)</span>
+<span class="lineno">  333 </span><span class="spaces">            </span><span class="istickedoff">[ decodeBase16' -&gt; Right policyId ] -&gt; do</span>
+<span class="lineno">  334 </span><span class="spaces">                </span><span class="istickedoff">pure (policyId, mempty, quantity)</span>
+<span class="lineno">  335 </span><span class="spaces">            </span><span class="istickedoff">_ -&gt;</span>
+<span class="lineno">  336 </span><span class="spaces">                </span><span class="istickedoff"><span class="nottickedoff">empty</span></span></span>
+
+</pre>
+</body>
+</html>
