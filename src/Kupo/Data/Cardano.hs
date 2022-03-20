@@ -4,6 +4,7 @@
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -16,8 +17,7 @@ module Kupo.Data.Cardano
 
       -- * Block
     , Block
-    , foldBlock
-    , getPoint
+    , BlockLike (..)
 
       -- * Transaction
     , Transaction
@@ -112,7 +112,7 @@ import Cardano.Ledger.Allegra
 import Cardano.Ledger.Alonzo
     ( AlonzoEra )
 import Cardano.Ledger.Crypto
-    ( Crypto )
+    ( Crypto, StandardCrypto )
 import Cardano.Ledger.Mary
     ( MaryEra )
 import Cardano.Ledger.Shelley
@@ -180,39 +180,52 @@ import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import qualified Ouroboros.Network.Block as Ouroboros
 
+-- BlockLike
+
+class BlockLike (blk :: Type) crypto where
+    getPoint
+        :: blk
+        -> Point (Block crypto)
+    foldBlock
+        :: (Transaction crypto -> result -> result)
+        -> result
+        -> blk
+        -> result
+
 -- Block
 
 type Block crypto =
     CardanoBlock crypto
 
-foldBlock
-    :: forall crypto b.
-        ( Crypto crypto
-        )
-    => (Transaction crypto -> b -> b)
-    -> b
-    -> Block crypto
-    -> b
-foldBlock fn b = \case
-    BlockByron{} ->
-        b
-    BlockShelley (ShelleyBlock (Ledger.Block _ txs) _) ->
-        foldr (fn . TransactionShelley) b (Ledger.Shelley.txSeqTxns' txs)
-    BlockAllegra (ShelleyBlock (Ledger.Block _ txs) _) ->
-        foldr (fn . TransactionAllegra) b (Ledger.Shelley.txSeqTxns' txs)
-    BlockMary (ShelleyBlock (Ledger.Block _ txs) _) ->
-        foldr (fn . TransactionMary) b (Ledger.Shelley.txSeqTxns' txs)
-    BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
-        foldr (fn . TransactionAlonzo) b (Ledger.Alonzo.txSeqTxns txs)
+instance (HasHeader (Block crypto), Crypto crypto) => BlockLike (CardanoBlock crypto) crypto where
+    {-# SPECIALIZE getPoint
+        :: Block StandardCrypto
+        -> Point(Block StandardCrypto) #-}
+    getPoint =
+        blockPoint
 
-getPoint
-    :: forall crypto.
-        ( HasHeader (Block crypto)
-        )
-    => Block crypto
-    -> Point (Block crypto)
-getPoint =
-    blockPoint
+    {-# SPECIALIZE foldBlock
+        :: forall result. ()
+        => (Transaction StandardCrypto -> result -> result)
+        -> result
+        -> Block StandardCrypto
+        -> result #-}
+    foldBlock fn b = \case
+        BlockByron blk ->
+            let ignoreProtocolTxs = \case
+                    ByronTx txId (Ledger.Byron.taTx -> tx) ->
+                        fn (TransactionByron tx txId)
+                    _ ->
+                        identity
+             in foldr ignoreProtocolTxs b (extractTxs blk)
+        BlockShelley (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldr (fn . TransactionShelley) b (Ledger.Shelley.txSeqTxns' txs)
+        BlockAllegra (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldr (fn . TransactionAllegra) b (Ledger.Shelley.txSeqTxns' txs)
+        BlockMary (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldr (fn . TransactionMary) b (Ledger.Shelley.txSeqTxns' txs)
+        BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldr (fn . TransactionAlonzo) b (Ledger.Alonzo.txSeqTxns txs)
 
 -- TransactionId
 
