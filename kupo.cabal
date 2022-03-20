@@ -217,6 +217,8 @@ test-suite unit
       Kupo.Data.Generators
       Kupo.Data.Pattern.Fixture
       Kupo.Data.PatternSpec
+      Kupo.Fixture
+      Kupo.OptionsSpec
       KupoSpec
       Paths_kupo
   hs-source-dirs:

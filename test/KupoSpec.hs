@@ -35,10 +35,10 @@ import Kupo.Control.MonadTime
     ( DiffTime, timeout )
 import Kupo.Data.ChainSync
     ( Block, Point, SlotNo (..), getPointSlotNo )
-import Kupo.Data.Database
-    ( pointFromRow )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
+import Kupo.Fixture
+    ( someOtherPoint, somePoint )
 import Kupo.Options
     ( parseNetworkParameters )
 import Network.HTTP.Client
@@ -247,21 +247,3 @@ defaultHost = "127.0.0.1"
 
 defaultPort :: Int
 defaultPort = 1442
-
-somePoint :: Point (Block StandardCrypto)
-somePoint = pointFromRow $ DB.Checkpoint
-    { DB.checkpointSlotNo =
-        51292637
-    , DB.checkpointHeaderHash =
-        unsafeDecodeBase16 "2e7ee124eccbc648789008f866969548\
-                           \6f5727cada41b2d86d1c36355c76b771"
-    }
-
-someOtherPoint :: Point (Block StandardCrypto)
-someOtherPoint = pointFromRow $ DB.Checkpoint
-    { DB.checkpointSlotNo =
-        53392903
-    , DB.checkpointHeaderHash =
-        unsafeDecodeBase16 "56ed3689f5a1dce99345c5ec85de8ff3\
-                           \07fe0a31dff443e0170b9c21edbeaba5"
-    }

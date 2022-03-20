@@ -18,7 +18,7 @@ module Kupo.Options
     , versionOptionOrCommand
     , healthCheckCommand
 
-      -- * Types
+      -- * NetworkParameters
     , parseNetworkParameters
     ) where
 
