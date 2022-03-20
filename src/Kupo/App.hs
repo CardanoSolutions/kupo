@@ -7,6 +7,8 @@
 module Kupo.App
     ( -- * Application Startup
       startOrResume
+    , ConflictingOptionException (..)
+    , NoStartingPointException (..)
 
       -- * Producer/Consumer
     , producer

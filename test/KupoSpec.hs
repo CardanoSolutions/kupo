@@ -2,6 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module KupoSpec
@@ -11,7 +12,7 @@ module KupoSpec
 import Kupo.Prelude
 
 import Control.Exception
-    ( catch )
+    ( catch, try )
 import Data.Aeson.Lens
     ( key, _Integer )
 import Data.List
@@ -19,7 +20,7 @@ import Data.List
 import Kupo
     ( kupo, newEnvironment, runWith, version, withTracers )
 import Kupo.App
-    ( Tracers )
+    ( ConflictingOptionException, Tracers )
 import Kupo.App.Http
     ( healthCheck )
 import Kupo.Configuration
@@ -31,7 +32,7 @@ import Kupo.Control.MonadDelay
 import Kupo.Control.MonadLog
     ( Severity (..), defaultTracers )
 import Kupo.Control.MonadTime
-    ( timeout )
+    ( DiffTime, timeout )
 import Kupo.Data.ChainSync
     ( Block, Point, SlotNo (..), getPointSlotNo )
 import Kupo.Data.Database
@@ -71,7 +72,7 @@ import qualified Kupo.Control.MonadDatabase as DB
 
 spec :: Spec
 spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> do
-    specify "in memory, only shelley" $ \(_, tr) -> do
+    specify "in memory" $ \(_, tr) -> do
         let serverPort = defaultPort
         env <- newEnvironment tr ntwrk $ defaultCfg
             { workDir = InMemory
@@ -80,7 +81,7 @@ spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> d
             , serverPort
             }
         let HttpClient{..} = newHttpClient manager serverPort
-        res <- timeout 5 $ race_
+        timeoutOrThrow 5 $ race_
             (kupo tr `runWith` env)
             (do
                 waitForServer
@@ -89,7 +90,42 @@ spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> d
                 length matches `shouldSatisfy` (> 12_000)
                 healthCheck defaultHost serverPort
             )
-        res `shouldSatisfy` isJust
+
+    specify "on disk" $ \(tmp, tr) -> do
+        let serverPort = defaultPort + 1
+        env <- newEnvironment tr ntwrk $ defaultCfg
+            { workDir = Dir tmp
+            , since = Just somePoint
+            , patterns = [MatchAny IncludingBootstrap]
+            , serverPort
+            }
+        let HttpClient{..} = newHttpClient manager serverPort
+
+        -- Can start the server on a fresh new db
+        timeoutOrThrow 5 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitForServer
+                waitUntil (> (getPointSlotNo somePoint))
+            )
+
+        -- Can restart the server
+        timeoutOrThrow 5 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitForServer
+                cps <- listCheckpoints
+                maximum cps `shouldSatisfy` (> (getPointSlotNo somePoint))
+            )
+
+        -- Can't restart with different, too recent, --since target on same db
+        env' <- newEnvironment tr ntwrk $ defaultCfg
+            { workDir = Dir tmp
+            , since = Just someOtherPoint
+            , patterns = [MatchAny IncludingBootstrap]
+            , serverPort
+            }
+        shouldThrowTimeout @ConflictingOptionException 5 (kupo tr `runWith` env')
 
 type EndToEndSpec
     =  Manager
@@ -128,6 +164,21 @@ skippableContext title skippableSpec = do
         withTempFile dir "traces" $ \_ h ->
             withTracers h version (defaultTracers (Just Info)) $ \tr ->
                 action (dir, tr)
+
+timeoutOrThrow :: DiffTime -> IO () -> IO ()
+timeoutOrThrow t action = do
+    res <- timeout t action
+    res `shouldSatisfy` isJust
+
+shouldThrowTimeout :: forall e. (Exception e) => DiffTime -> IO () -> IO ()
+shouldThrowTimeout t action = do
+    timeout t (try action) >>= \case
+        Nothing ->
+            fail $ "shouldThrowTimeout: timed out after " <> show t
+        Just (Right ()) ->
+            fail "shouldThrowTimeout: should have thrown but didn't."
+        Just (Left (_ :: e)) ->
+            pure ()
 
 --
 -- Strawman HTTP DSL
@@ -204,4 +255,13 @@ somePoint = pointFromRow $ DB.Checkpoint
     , DB.checkpointHeaderHash =
         unsafeDecodeBase16 "2e7ee124eccbc648789008f866969548\
                            \6f5727cada41b2d86d1c36355c76b771"
+    }
+
+someOtherPoint :: Point (Block StandardCrypto)
+someOtherPoint = pointFromRow $ DB.Checkpoint
+    { DB.checkpointSlotNo =
+        53392903
+    , DB.checkpointHeaderHash =
+        unsafeDecodeBase16 "56ed3689f5a1dce99345c5ec85de8ff3\
+                           \07fe0a31dff443e0170b9c21edbeaba5"
     }
