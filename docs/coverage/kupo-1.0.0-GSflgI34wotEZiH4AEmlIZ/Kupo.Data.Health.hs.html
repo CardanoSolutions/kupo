@@ -1,0 +1,85 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<style type="text/css">
+span.lineno { color: white; background: #aaaaaa; border-right: solid white 12px }
+span.nottickedoff { background: yellow}
+span.istickedoff { background: white }
+span.tickonlyfalse { margin: -1px; border: 1px solid #f20913; background: #f20913 }
+span.tickonlytrue  { margin: -1px; border: 1px solid #60de51; background: #60de51 }
+span.funcount { font-size: small; color: orange; z-index: 2; position: absolute; right: 20 }
+span.decl { font-weight: bold }
+span.spaces    { background: white }
+</style>
+</head>
+<body>
+<pre>
+<span class="decl"><span class="nottickedoff">never executed</span> <span class="tickonlytrue">always true</span> <span class="tickonlyfalse">always false</span></span>
+</pre>
+<pre>
+<span class="lineno">    1 </span>--  This Source Code Form is subject to the terms of the Mozilla Public
+<span class="lineno">    2 </span>--  License, v. 2.0. If a copy of the MPL was not distributed with this
+<span class="lineno">    3 </span>--  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+<span class="lineno">    4 </span>
+<span class="lineno">    5 </span>{-# LANGUAGE RecordWildCards #-}
+<span class="lineno">    6 </span>
+<span class="lineno">    7 </span>module Kupo.Data.Health
+<span class="lineno">    8 </span>    ( -- * Health
+<span class="lineno">    9 </span>      Health (..)
+<span class="lineno">   10 </span>    , emptyHealth
+<span class="lineno">   11 </span>
+<span class="lineno">   12 </span>      -- * ConnectionStatus
+<span class="lineno">   13 </span>    , ConnectionStatus (..)
+<span class="lineno">   14 </span>    ) where
+<span class="lineno">   15 </span>
+<span class="lineno">   16 </span>import Kupo.Prelude
+<span class="lineno">   17 </span>
+<span class="lineno">   18 </span>import Kupo.Data.Cardano
+<span class="lineno">   19 </span>    ( SlotNo, slotNoToJson )
+<span class="lineno">   20 </span>
+<span class="lineno">   21 </span>import qualified Data.Aeson.Encoding as Json
+<span class="lineno">   22 </span>
+<span class="lineno">   23 </span>-- | Information about the overall state of the application.
+<span class="lineno">   24 </span>data Health = Health
+<span class="lineno">   25 </span>    { <span class="nottickedoff"><span class="decl"><span class="nottickedoff">connectionStatus</span></span></span> :: !ConnectionStatus
+<span class="lineno">   26 </span>        -- ^ Condition of the connection with the underlying node.
+<span class="lineno">   27 </span>    , <span class="nottickedoff"><span class="decl"><span class="nottickedoff">mostRecentCheckpoint</span></span></span> :: !(Maybe SlotNo)
+<span class="lineno">   28 </span>        -- ^ Absolute slot number of the most recent database checkpoint.
+<span class="lineno">   29 </span>    , <span class="nottickedoff"><span class="decl"><span class="nottickedoff">mostRecentNodeTip</span></span></span> :: !(Maybe SlotNo)
+<span class="lineno">   30 </span>        -- ^ Absolute slot number of the tip of the node
+<span class="lineno">   31 </span>    } deriving stock (Generic, <span class="decl"><span class="nottickedoff">Eq</span></span>, <span class="decl"><span class="nottickedoff">Show</span></span>)
+<span class="lineno">   32 </span>
+<span class="lineno">   33 </span>instance ToJSON Health where
+<span class="lineno">   34 </span>    <span class="decl"><span class="istickedoff">toEncoding Health{..} = Json.pairs $ mconcat</span>
+<span class="lineno">   35 </span><span class="spaces">        </span><span class="istickedoff">[ Json.pair</span>
+<span class="lineno">   36 </span><span class="spaces">            </span><span class="istickedoff">&quot;connection_status&quot;</span>
+<span class="lineno">   37 </span><span class="spaces">            </span><span class="istickedoff">(toEncoding connectionStatus)</span>
+<span class="lineno">   38 </span><span class="spaces">        </span><span class="istickedoff">, Json.pair</span>
+<span class="lineno">   39 </span><span class="spaces">            </span><span class="istickedoff">&quot;most_recent_checkpoint&quot;</span>
+<span class="lineno">   40 </span><span class="spaces">            </span><span class="istickedoff">(maybe Json.null_ slotNoToJson mostRecentCheckpoint)</span>
+<span class="lineno">   41 </span><span class="spaces">        </span><span class="istickedoff">, Json.pair</span>
+<span class="lineno">   42 </span><span class="spaces">            </span><span class="istickedoff">&quot;most_recent_node_tip&quot;</span>
+<span class="lineno">   43 </span><span class="spaces">            </span><span class="istickedoff">(maybe Json.null_ slotNoToJson mostRecentNodeTip)</span>
+<span class="lineno">   44 </span><span class="spaces">        </span><span class="istickedoff">]</span></span>
+<span class="lineno">   45 </span>
+<span class="lineno">   46 </span>emptyHealth :: Health
+<span class="lineno">   47 </span><span class="decl"><span class="istickedoff">emptyHealth = Health</span>
+<span class="lineno">   48 </span><span class="spaces">    </span><span class="istickedoff">{ connectionStatus = Disconnected</span>
+<span class="lineno">   49 </span><span class="spaces">    </span><span class="istickedoff">, mostRecentCheckpoint = Nothing</span>
+<span class="lineno">   50 </span><span class="spaces">    </span><span class="istickedoff">, mostRecentNodeTip = Nothing</span>
+<span class="lineno">   51 </span><span class="spaces">    </span><span class="istickedoff">}</span></span>
+<span class="lineno">   52 </span>
+<span class="lineno">   53 </span>-- | Reflect the current state of the connection with the underlying node.
+<span class="lineno">   54 </span>data ConnectionStatus
+<span class="lineno">   55 </span>    = Connected
+<span class="lineno">   56 </span>    | Disconnected
+<span class="lineno">   57 </span>    deriving stock (Generic, <span class="decl"><span class="nottickedoff">Eq</span></span>, <span class="decl"><span class="nottickedoff">Show</span></span>, <span class="decl"><span class="nottickedoff"><span class="decl"><span class="nottickedoff"><span class="decl"><span class="istickedoff"><span class="decl"><span class="istickedoff"><span class="decl"><span class="nottickedoff"><span class="decl"><span class="nottickedoff">Enum</span></span></span></span></span></span></span></span></span></span></span></span>, <span class="decl"><span class="istickedoff"><span class="decl"><span class="istickedoff">Bounded</span></span></span></span>)
+<span class="lineno">   58 </span>
+<span class="lineno">   59 </span>instance ToJSON ConnectionStatus where
+<span class="lineno">   60 </span>    <span class="decl"><span class="istickedoff">toEncoding = \case</span>
+<span class="lineno">   61 </span><span class="spaces">        </span><span class="istickedoff">Connected -&gt; Json.text &quot;connected&quot;</span>
+<span class="lineno">   62 </span><span class="spaces">        </span><span class="istickedoff">Disconnected -&gt; Json.text &quot;disconnected&quot;</span></span>
+
+</pre>
+</body>
+</html>

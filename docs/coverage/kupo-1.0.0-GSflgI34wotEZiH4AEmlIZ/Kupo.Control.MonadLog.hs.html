@@ -1,0 +1,140 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<style type="text/css">
+span.lineno { color: white; background: #aaaaaa; border-right: solid white 12px }
+span.nottickedoff { background: yellow}
+span.istickedoff { background: white }
+span.tickonlyfalse { margin: -1px; border: 1px solid #f20913; background: #f20913 }
+span.tickonlytrue  { margin: -1px; border: 1px solid #60de51; background: #60de51 }
+span.funcount { font-size: small; color: orange; z-index: 2; position: absolute; right: 20 }
+span.decl { font-weight: bold }
+span.spaces    { background: white }
+</style>
+</head>
+<body>
+<pre>
+<span class="decl"><span class="nottickedoff">never executed</span> <span class="tickonlytrue">always true</span> <span class="tickonlyfalse">always false</span></span>
+</pre>
+<pre>
+<span class="lineno">    1 </span>--  This Source Code Form is subject to the terms of the Mozilla Public
+<span class="lineno">    2 </span>--  License, v. 2.0. If a copy of the MPL was not distributed with this
+<span class="lineno">    3 </span>--  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+<span class="lineno">    4 </span>
+<span class="lineno">    5 </span>module Kupo.Control.MonadLog
+<span class="lineno">    6 </span>    ( -- * Class
+<span class="lineno">    7 </span>      MonadLog (..)
+<span class="lineno">    8 </span>    , Logger
+<span class="lineno">    9 </span>
+<span class="lineno">   10 </span>      -- * Severity
+<span class="lineno">   11 </span>    , Severity (..)
+<span class="lineno">   12 </span>    , HasSeverityAnnotation (..)
+<span class="lineno">   13 </span>
+<span class="lineno">   14 </span>      -- * Tracer
+<span class="lineno">   15 </span>    , Tracer
+<span class="lineno">   16 </span>    , natTracer
+<span class="lineno">   17 </span>    , nullTracer
+<span class="lineno">   18 </span>    , contramap
+<span class="lineno">   19 </span>    , traceWith
+<span class="lineno">   20 </span>
+<span class="lineno">   21 </span>      -- * Tracers
+<span class="lineno">   22 </span>    , TracerDefinition(..)
+<span class="lineno">   23 </span>    , TracerHKD
+<span class="lineno">   24 </span>    , defaultTracers
+<span class="lineno">   25 </span>    , withTracers
+<span class="lineno">   26 </span>    ) where
+<span class="lineno">   27 </span>
+<span class="lineno">   28 </span>import Kupo.Prelude
+<span class="lineno">   29 </span>
+<span class="lineno">   30 </span>import Control.Concurrent
+<span class="lineno">   31 </span>    ( myThreadId )
+<span class="lineno">   32 </span>import Control.Monad.Class.MonadTime
+<span class="lineno">   33 </span>    ( getCurrentTime )
+<span class="lineno">   34 </span>import Control.Tracer
+<span class="lineno">   35 </span>    ( Tracer (..), natTracer, nullTracer, traceWith )
+<span class="lineno">   36 </span>import Data.Aeson.Encoding
+<span class="lineno">   37 </span>    ( Encoding, encodingToLazyByteString, pair, pairs )
+<span class="lineno">   38 </span>import Data.Char
+<span class="lineno">   39 </span>    ( isLower )
+<span class="lineno">   40 </span>import Data.Generics.Tracers
+<span class="lineno">   41 </span>    ( IsRecordOfTracers
+<span class="lineno">   42 </span>    , SomeMsg (..)
+<span class="lineno">   43 </span>    , TracerDefinition (..)
+<span class="lineno">   44 </span>    , TracerHKD
+<span class="lineno">   45 </span>    , configureTracers
+<span class="lineno">   46 </span>    , defaultTracers
+<span class="lineno">   47 </span>    )
+<span class="lineno">   48 </span>import Data.Severity
+<span class="lineno">   49 </span>    ( HasSeverityAnnotation (..), Severity (..) )
+<span class="lineno">   50 </span>import Kupo.Control.MonadSTM
+<span class="lineno">   51 </span>    ( newTMVarIO, withTMVar )
+<span class="lineno">   52 </span>import System.IO
+<span class="lineno">   53 </span>    ( BufferMode (..), hSetBuffering, hSetEncoding, utf8 )
+<span class="lineno">   54 </span>
+<span class="lineno">   55 </span>import qualified Data.ByteString.Lazy.Char8 as BL8
+<span class="lineno">   56 </span>
+<span class="lineno">   57 </span>class Monad m =&gt; MonadLog (m :: Type -&gt; Type) where
+<span class="lineno">   58 </span>    logWith :: Logger msg -&gt; msg -&gt; m ()
+<span class="lineno">   59 </span>
+<span class="lineno">   60 </span>type Logger = Tracer IO
+<span class="lineno">   61 </span>
+<span class="lineno">   62 </span>instance MonadLog IO where
+<span class="lineno">   63 </span>    <span class="decl"><span class="istickedoff">logWith = traceWith</span></span>
+<span class="lineno">   64 </span>
+<span class="lineno">   65 </span>instance MonadLog m =&gt; MonadLog (ReaderT env m) where
+<span class="lineno">   66 </span>    <span class="decl"><span class="nottickedoff">logWith tr = lift . logWith tr</span></span>
+<span class="lineno">   67 </span>
+<span class="lineno">   68 </span>type AppVersion = Text
+<span class="lineno">   69 </span>
+<span class="lineno">   70 </span>-- | Acquire and configure multiple tracers which outputs structured JSON on the
+<span class="lineno">   71 </span>-- standard output. The tracer is concurrent-safe but none buffered, while it is
+<span class="lineno">   72 </span>-- okay for a vast majority of applications, it also relies on a simple
+<span class="lineno">   73 </span>-- implementation and does not perform any caching or hardcore optimizations;
+<span class="lineno">   74 </span>-- For example timestamps are computed on-the-fly for every log messages.
+<span class="lineno">   75 </span>--
+<span class="lineno">   76 </span>withTracers
+<span class="lineno">   77 </span>    :: forall tracers. (IsRecordOfTracers tracers IO)
+<span class="lineno">   78 </span>    =&gt; Handle
+<span class="lineno">   79 </span>        -- ^ Handle to which forward logs
+<span class="lineno">   80 </span>    -&gt; AppVersion
+<span class="lineno">   81 </span>        -- ^ Extra information to embed in the logging envelope.
+<span class="lineno">   82 </span>    -&gt; tracers IO 'MinSeverities
+<span class="lineno">   83 </span>        -- ^ A configuration of tracers.
+<span class="lineno">   84 </span>    -&gt; (tracers IO 'Concrete -&gt; IO ())
+<span class="lineno">   85 </span>        -- ^ Callback with acquired and configured tracers.
+<span class="lineno">   86 </span>    -&gt; IO ()
+<span class="lineno">   87 </span><span class="decl"><span class="istickedoff">withTracers h version tracers action = do</span>
+<span class="lineno">   88 </span><span class="spaces">    </span><span class="istickedoff">hSetBuffering h LineBuffering</span>
+<span class="lineno">   89 </span><span class="spaces">    </span><span class="istickedoff">hSetEncoding h utf8</span>
+<span class="lineno">   90 </span><span class="spaces">    </span><span class="istickedoff">lock &lt;- newTMVarIO ()</span>
+<span class="lineno">   91 </span><span class="spaces">    </span><span class="istickedoff">action (configureTracers tracers (tracer lock))</span>
+<span class="lineno">   92 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">   93 </span><span class="spaces">    </span><span class="istickedoff">tracer lock = Tracer $ \(SomeMsg minSeverity tracerName msg) -&gt; do</span>
+<span class="lineno">   94 </span><span class="spaces">        </span><span class="istickedoff">let severity = getSeverityAnnotation msg</span>
+<span class="lineno">   95 </span><span class="spaces">        </span><span class="istickedoff">when (severity &gt;= minSeverity) $ liftIO $ withTMVar lock $ \() -&gt; do</span>
+<span class="lineno">   96 </span><span class="spaces">            </span><span class="istickedoff">mkEnvelop msg severity tracerName &gt;&gt;=</span>
+<span class="lineno">   97 </span><span class="spaces">                </span><span class="istickedoff">liftIO . BL8.hPutStrLn h . encodingToLazyByteString</span>
+<span class="lineno">   98 </span><span class="spaces"></span><span class="istickedoff"></span>
+<span class="lineno">   99 </span><span class="spaces">    </span><span class="istickedoff">mkEnvelop</span>
+<span class="lineno">  100 </span><span class="spaces">        </span><span class="istickedoff">:: forall m msg.</span>
+<span class="lineno">  101 </span><span class="spaces">            </span><span class="istickedoff">( ToJSON msg</span>
+<span class="lineno">  102 </span><span class="spaces">            </span><span class="istickedoff">, MonadIO m</span>
+<span class="lineno">  103 </span><span class="spaces">            </span><span class="istickedoff">)</span>
+<span class="lineno">  104 </span><span class="spaces">        </span><span class="istickedoff">=&gt; msg</span>
+<span class="lineno">  105 </span><span class="spaces">        </span><span class="istickedoff">-&gt; Severity</span>
+<span class="lineno">  106 </span><span class="spaces">        </span><span class="istickedoff">-&gt; String</span>
+<span class="lineno">  107 </span><span class="spaces">        </span><span class="istickedoff">-&gt; m Encoding</span>
+<span class="lineno">  108 </span><span class="spaces">    </span><span class="istickedoff">mkEnvelop msg severity tracerName = do</span>
+<span class="lineno">  109 </span><span class="spaces">        </span><span class="istickedoff">let context = toText (dropWhile isLower tracerName)</span>
+<span class="lineno">  110 </span><span class="spaces">        </span><span class="istickedoff">timestamp &lt;- liftIO getCurrentTime</span>
+<span class="lineno">  111 </span><span class="spaces">        </span><span class="istickedoff">threadId &lt;- drop 9 . show &lt;$&gt; liftIO myThreadId</span>
+<span class="lineno">  112 </span><span class="spaces">        </span><span class="istickedoff">pure $ pairs $ mempty</span>
+<span class="lineno">  113 </span><span class="spaces">            </span><span class="istickedoff">&lt;&gt; pair &quot;severity&quot;  (toEncoding severity)</span>
+<span class="lineno">  114 </span><span class="spaces">            </span><span class="istickedoff">&lt;&gt; pair &quot;timestamp&quot; (toEncoding timestamp)</span>
+<span class="lineno">  115 </span><span class="spaces">            </span><span class="istickedoff">&lt;&gt; pair &quot;thread&quot;    (toEncoding threadId)</span>
+<span class="lineno">  116 </span><span class="spaces">            </span><span class="istickedoff">&lt;&gt; pair &quot;message&quot;   (pairs $ pair context (toEncoding msg))</span>
+<span class="lineno">  117 </span><span class="spaces">            </span><span class="istickedoff">&lt;&gt; pair &quot;version&quot;   (toEncoding version)</span></span>
+
+</pre>
+</body>
+</html>

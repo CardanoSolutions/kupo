@@ -26,7 +26,7 @@ See the [user-manual 📖](https://cardanosolutions.github.io/kupo).
 | <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/docker.yaml"><img src="https://img.shields.io/github/workflow/status/cardanosolutions/kupo/Docker?style=for-the-badge&label=&logo=Docker&logoColor=000000&color=f9dd24" /></a> | Docker build, shipping images to [Dockerhub](https://hub.docker.com/r/cardanosolutions/kupo) |
 | <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/nix.yaml"><img src="https://img.shields.io/github/workflow/status/cardanosolutions/kupo/Nix?style=for-the-badge&label=&logo=NixOS&logoColor=000000&color=f9dd24" /></a> | Nix build, providing static binary executables as artifacts. | 
 | <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/pages/pages-build-deployment"><img src="https://img.shields.io/github/deployments/cardanosolutions/kupo/github-pages?style=for-the-badge&label=&logo=readthedocs&logoColor=000000&color=f9dd24"></a> | User manual and API reference deployment. |
-| <img src="https://img.shields.io/static/v1?style=for-the-badge&label=&message=86%&logo=codecov&logoColor=000000&color=f9dd24"> | Test code coverage. |
+| <a href="https://cardanosolutions.github.io/kupo/coverage/hpc_index.html"><img src="https://img.shields.io/static/v1?style=for-the-badge&label=&message=84%&logo=codecov&logoColor=000000&color=f9dd24"></a> | Test code coverage. |
 
 # Alternatives
 

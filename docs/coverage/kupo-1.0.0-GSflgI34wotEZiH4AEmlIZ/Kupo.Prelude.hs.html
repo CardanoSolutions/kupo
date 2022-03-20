@@ -1,0 +1,167 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<style type="text/css">
+span.lineno { color: white; background: #aaaaaa; border-right: solid white 12px }
+span.nottickedoff { background: yellow}
+span.istickedoff { background: white }
+span.tickonlyfalse { margin: -1px; border: 1px solid #f20913; background: #f20913 }
+span.tickonlytrue  { margin: -1px; border: 1px solid #60de51; background: #60de51 }
+span.funcount { font-size: small; color: orange; z-index: 2; position: absolute; right: 20 }
+span.decl { font-weight: bold }
+span.spaces    { background: white }
+</style>
+</head>
+<body>
+<pre>
+<span class="decl"><span class="nottickedoff">never executed</span> <span class="tickonlytrue">always true</span> <span class="tickonlyfalse">always false</span></span>
+</pre>
+<pre>
+<span class="lineno">    1 </span>--  This Source Code Form is subject to the terms of the Mozilla Public
+<span class="lineno">    2 </span>--  License, v. 2.0. If a copy of the MPL was not distributed with this
+<span class="lineno">    3 </span>--  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+<span class="lineno">    4 </span>
+<span class="lineno">    5 </span>module Kupo.Prelude
+<span class="lineno">    6 </span>    ( -- * relude
+<span class="lineno">    7 </span>      module Relude
+<span class="lineno">    8 </span>
+<span class="lineno">    9 </span>      -- * JSON
+<span class="lineno">   10 </span>    , FromJSON (..)
+<span class="lineno">   11 </span>    , ToJSON (..)
+<span class="lineno">   12 </span>    , byteStringToJson
+<span class="lineno">   13 </span>    , defaultGenericToEncoding
+<span class="lineno">   14 </span>
+<span class="lineno">   15 </span>      -- * Lenses
+<span class="lineno">   16 </span>    , Lens'
+<span class="lineno">   17 </span>    , view
+<span class="lineno">   18 </span>    , (^.)
+<span class="lineno">   19 </span>    , (^?)
+<span class="lineno">   20 </span>    , (^?!)
+<span class="lineno">   21 </span>    , at
+<span class="lineno">   22 </span>
+<span class="lineno">   23 </span>      -- Encoding
+<span class="lineno">   24 </span>    , encodeBase16
+<span class="lineno">   25 </span>    , decodeBase16
+<span class="lineno">   26 </span>    , unsafeDecodeBase16
+<span class="lineno">   27 </span>    , encodeBase58
+<span class="lineno">   28 </span>    , decodeBase58
+<span class="lineno">   29 </span>    , encodeBase64
+<span class="lineno">   30 </span>    , decodeBase64
+<span class="lineno">   31 </span>
+<span class="lineno">   32 </span>      -- * Serialization
+<span class="lineno">   33 </span>    , serialize'
+<span class="lineno">   34 </span>    , decodeFull'
+<span class="lineno">   35 </span>    , unsafeDeserialize'
+<span class="lineno">   36 </span>
+<span class="lineno">   37 </span>      -- * System
+<span class="lineno">   38 </span>    , hijackSigTerm
+<span class="lineno">   39 </span>    ) where
+<span class="lineno">   40 </span>
+<span class="lineno">   41 </span>import Cardano.Binary
+<span class="lineno">   42 </span>    ( decodeFull', serialize', unsafeDeserialize' )
+<span class="lineno">   43 </span>import Control.Lens
+<span class="lineno">   44 </span>    ( Lens', at, (^?), (^?!) )
+<span class="lineno">   45 </span>import Data.Aeson
+<span class="lineno">   46 </span>    ( Encoding, FromJSON (..), GToJSON', ToJSON (..), Zero, genericToEncoding )
+<span class="lineno">   47 </span>import Data.ByteString.Base16
+<span class="lineno">   48 </span>    ( decodeBase16, encodeBase16 )
+<span class="lineno">   49 </span>import Data.ByteString.Base64
+<span class="lineno">   50 </span>    ( decodeBase64, encodeBase64 )
+<span class="lineno">   51 </span>import Data.Generics.Internal.VL.Lens
+<span class="lineno">   52 </span>    ( view, (^.) )
+<span class="lineno">   53 </span>import GHC.Generics
+<span class="lineno">   54 </span>    ( Rep )
+<span class="lineno">   55 </span>import Relude hiding
+<span class="lineno">   56 </span>    ( MVar
+<span class="lineno">   57 </span>    , Nat
+<span class="lineno">   58 </span>    , Option
+<span class="lineno">   59 </span>    , STM
+<span class="lineno">   60 </span>    , TMVar
+<span class="lineno">   61 </span>    , TVar
+<span class="lineno">   62 </span>    , atomically
+<span class="lineno">   63 </span>    , catchSTM
+<span class="lineno">   64 </span>    , isEmptyTMVar
+<span class="lineno">   65 </span>    , mkWeakTMVar
+<span class="lineno">   66 </span>    , modifyTVar'
+<span class="lineno">   67 </span>    , newEmptyMVar
+<span class="lineno">   68 </span>    , newEmptyTMVar
+<span class="lineno">   69 </span>    , newEmptyTMVarIO
+<span class="lineno">   70 </span>    , newMVar
+<span class="lineno">   71 </span>    , newTMVar
+<span class="lineno">   72 </span>    , newTMVarIO
+<span class="lineno">   73 </span>    , newTVar
+<span class="lineno">   74 </span>    , newTVarIO
+<span class="lineno">   75 </span>    , putMVar
+<span class="lineno">   76 </span>    , putTMVar
+<span class="lineno">   77 </span>    , readMVar
+<span class="lineno">   78 </span>    , readTMVar
+<span class="lineno">   79 </span>    , readTVar
+<span class="lineno">   80 </span>    , readTVarIO
+<span class="lineno">   81 </span>    , swapMVar
+<span class="lineno">   82 </span>    , swapTMVar
+<span class="lineno">   83 </span>    , takeMVar
+<span class="lineno">   84 </span>    , takeTMVar
+<span class="lineno">   85 </span>    , throwSTM
+<span class="lineno">   86 </span>    , traceM
+<span class="lineno">   87 </span>    , tryPutMVar
+<span class="lineno">   88 </span>    , tryPutTMVar
+<span class="lineno">   89 </span>    , tryReadMVar
+<span class="lineno">   90 </span>    , tryReadTMVar
+<span class="lineno">   91 </span>    , tryTakeMVar
+<span class="lineno">   92 </span>    , tryTakeTMVar
+<span class="lineno">   93 </span>    , writeTVar
+<span class="lineno">   94 </span>    )
+<span class="lineno">   95 </span>import System.Posix.Signals
+<span class="lineno">   96 </span>    ( Handler (..)
+<span class="lineno">   97 </span>    , installHandler
+<span class="lineno">   98 </span>    , keyboardSignal
+<span class="lineno">   99 </span>    , raiseSignal
+<span class="lineno">  100 </span>    , softwareTermination
+<span class="lineno">  101 </span>    )
+<span class="lineno">  102 </span>
+<span class="lineno">  103 </span>import qualified Data.Aeson as Json
+<span class="lineno">  104 </span>import qualified Data.Aeson.Encoding as Json
+<span class="lineno">  105 </span>import qualified Data.ByteString.Base58 as Base58
+<span class="lineno">  106 </span>
+<span class="lineno">  107 </span>-- | The runtime does not let the application terminate gracefully when a
+<span class="lineno">  108 </span>-- SIGTERM is received. It does however for SIGINT which allows the application
+<span class="lineno">  109 </span>-- to cleanup sub-processes.
+<span class="lineno">  110 </span>--
+<span class="lineno">  111 </span>-- This function install handlers for SIGTERM and turn them into SIGINT.
+<span class="lineno">  112 </span>hijackSigTerm :: MonadIO m =&gt; m ()
+<span class="lineno">  113 </span><span class="decl"><span class="istickedoff">hijackSigTerm =</span>
+<span class="lineno">  114 </span><span class="spaces">    </span><span class="istickedoff">liftIO $ void (installHandler softwareTermination handler <span class="nottickedoff">empty</span>)</span>
+<span class="lineno">  115 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">  116 </span><span class="spaces">    </span><span class="istickedoff">handler = CatchOnce <span class="nottickedoff">(raiseSignal keyboardSignal)</span></span></span>
+<span class="lineno">  117 </span>
+<span class="lineno">  118 </span>-- | An unsafe version of 'decodeBase16'. Use with caution.
+<span class="lineno">  119 </span>unsafeDecodeBase16 :: HasCallStack =&gt; Text -&gt; ByteString
+<span class="lineno">  120 </span><span class="decl"><span class="istickedoff">unsafeDecodeBase16 =</span>
+<span class="lineno">  121 </span><span class="spaces">    </span><span class="istickedoff">either <span class="nottickedoff">error</span> identity . decodeBase16 . encodeUtf8</span></span>
+<span class="lineno">  122 </span>
+<span class="lineno">  123 </span>-- | Decode a byte string from 'Base58', re-defining here to align interfaces
+<span class="lineno">  124 </span>-- with base16 &amp; base64.
+<span class="lineno">  125 </span>decodeBase58 :: ByteString -&gt; Either Text ByteString
+<span class="lineno">  126 </span><span class="decl"><span class="istickedoff">decodeBase58 =</span>
+<span class="lineno">  127 </span><span class="spaces">    </span><span class="istickedoff">maybe (Left <span class="nottickedoff">msg</span>) Right . Base58.decodeBase58 Base58.bitcoinAlphabet</span>
+<span class="lineno">  128 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">  129 </span><span class="spaces">    </span><span class="istickedoff"><span class="nottickedoff">msg = &quot;failed to decode Base58-encoded string.&quot;</span></span></span>
+<span class="lineno">  130 </span>
+<span class="lineno">  131 </span>-- | Encode some byte string to 'Text' as Base58. See note on 'decodeBase58'.
+<span class="lineno">  132 </span>encodeBase58 :: ByteString -&gt; Text
+<span class="lineno">  133 </span><span class="decl"><span class="istickedoff">encodeBase58 =</span>
+<span class="lineno">  134 </span><span class="spaces">    </span><span class="istickedoff">decodeUtf8. Base58.encodeBase58 Base58.bitcoinAlphabet</span></span>
+<span class="lineno">  135 </span>
+<span class="lineno">  136 </span>-- | Encode a ByteString to JSON as a base16 text
+<span class="lineno">  137 </span>byteStringToJson :: ByteString -&gt; Json.Encoding
+<span class="lineno">  138 </span><span class="decl"><span class="istickedoff">byteStringToJson =</span>
+<span class="lineno">  139 </span><span class="spaces">    </span><span class="istickedoff">Json.text . encodeBase16</span></span>
+<span class="lineno">  140 </span>
+<span class="lineno">  141 </span>-- | Generic JSON encoding, with pre-defined default options.
+<span class="lineno">  142 </span>defaultGenericToEncoding :: (Generic a, GToJSON' Encoding Zero (Rep a)) =&gt; a -&gt; Json.Encoding
+<span class="lineno">  143 </span><span class="decl"><span class="istickedoff">defaultGenericToEncoding =</span>
+<span class="lineno">  144 </span><span class="spaces">    </span><span class="istickedoff">genericToEncoding Json.defaultOptions</span></span>
+
+</pre>
+</body>
+</html>
