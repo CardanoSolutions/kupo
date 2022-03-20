@@ -3,6 +3,7 @@
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Test.KupoSpec
@@ -20,7 +21,9 @@ import Data.List
 import Kupo
     ( kupo, newEnvironment, runWith, version, withTracers )
 import Kupo.App
-    ( ConflictingOptionException, Tracers )
+    ( ConflictingOptionException, NoStartingPointException, Tracers )
+import Kupo.App.ChainSync
+    ( IntersectionNotFoundException )
 import Kupo.App.Http
     ( healthCheck )
 import Kupo.Configuration
@@ -34,7 +37,7 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadTime
     ( DiffTime, timeout )
 import Kupo.Data.Cardano
-    ( SlotNo (..), getPointSlotNo )
+    ( pattern GenesisPoint, SlotNo (..), getPointSlotNo )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
 import Kupo.Options
@@ -60,19 +63,22 @@ import Test.Hspec
     , context
     , parallel
     , runIO
+    , shouldBe
     , shouldSatisfy
     , specify
     , xcontext
     )
 import Test.Kupo.Fixture
-    ( someOtherPoint, somePoint )
+    ( someNonExistingPoint, someOtherPoint, somePoint )
+import Type.Reflection
+    ( tyConName, typeRep, typeRepTyCon )
 
 import qualified Data.Aeson as Json
 
 spec :: Spec
 spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> do
     specify "in memory" $ \(_, tr) -> do
-        let serverPort = defaultPort
+        let serverPort = defaultPort + 0
         env <- newEnvironment tr ntwrk $ defaultCfg
             { workDir = InMemory
             , since = Just somePoint
@@ -90,41 +96,81 @@ spec = parallel $ skippableContext "End to end" $ \manager ntwrk defaultCfg -> d
                 healthCheck defaultHost serverPort
             )
 
-    specify "on disk" $ \(tmp, tr) -> do
+    specify "on disk (start → restart)" $ \(tmp, tr) -> do
         let serverPort = defaultPort + 1
+        let HttpClient{..} = newHttpClient manager serverPort
+        let cfg = defaultCfg
+                { workDir = Dir tmp
+                , since = Just somePoint
+                , patterns = [MatchAny IncludingBootstrap]
+                , serverPort
+                }
+
+        ( do -- Can start the server on a fresh new db
+            env <- newEnvironment tr ntwrk cfg
+            timeoutOrThrow 5 $ race_
+                (kupo tr `runWith` env)
+                (do
+                    waitForServer
+                    waitUntil (> (getPointSlotNo somePoint))
+                )
+          )
+
+        ( do -- Can restart the server
+            env <- newEnvironment tr ntwrk cfg
+            timeoutOrThrow 5 $ race_
+                (kupo tr `runWith` env)
+                (do
+                    waitForServer
+                    cps <- listCheckpoints
+                    maximum cps `shouldSatisfy` (> (getPointSlotNo somePoint))
+                )
+          )
+
+        ( do -- Can't restart with different, too recent, --since target on same db
+            env <- newEnvironment tr ntwrk $ cfg { since = Just someOtherPoint }
+            shouldThrowTimeout @ConflictingOptionException 1 (kupo tr `runWith` env)
+          )
+
+    specify "Can't start the server on a fresh new db without explicit point" $ \(tmp, tr) -> do
+        let serverPort = defaultPort + 2
         env <- newEnvironment tr ntwrk $ defaultCfg
             { workDir = Dir tmp
-            , since = Just somePoint
-            , patterns = [MatchAny IncludingBootstrap]
+            , since = Nothing
+            , patterns = []
             , serverPort
             }
+        shouldThrowTimeout @NoStartingPointException 1 (kupo tr `runWith` env)
+
+    specify "Retry and wait when node isn't available" $ \(tmp, tr) -> do
+        let serverPort = defaultPort + 3
         let HttpClient{..} = newHttpClient manager serverPort
-
-        -- Can start the server on a fresh new db
-        timeoutOrThrow 5 $ race_
-            (kupo tr `runWith` env)
-            (do
-                waitForServer
-                waitUntil (> (getPointSlotNo somePoint))
-            )
-
-        -- Can restart the server
+        env <- newEnvironment tr ntwrk $ defaultCfg
+            { workDir = Dir tmp
+            , since = Just GenesisPoint
+            , patterns = []
+            , nodeSocket = "/dev/null"
+            , serverPort
+            }
         timeoutOrThrow 5 $ race_
             (kupo tr `runWith` env)
             (do
                 waitForServer
                 cps <- listCheckpoints
-                maximum cps `shouldSatisfy` (> (getPointSlotNo somePoint))
+                threadDelay 1
+                cps' <- listCheckpoints
+                cps `shouldBe` cps'
             )
 
-        -- Can't restart with different, too recent, --since target on same db
-        env' <- newEnvironment tr ntwrk $ defaultCfg
+    specify "Crashes when no intersection is found" $ \(tmp, tr) -> do
+        let serverPort = defaultPort + 4
+        env <- newEnvironment tr ntwrk $ defaultCfg
             { workDir = Dir tmp
-            , since = Just someOtherPoint
-            , patterns = [MatchAny IncludingBootstrap]
+            , since = Just someNonExistingPoint
+            , patterns = []
             , serverPort
             }
-        shouldThrowTimeout @ConflictingOptionException 5 (kupo tr `runWith` env')
+        shouldThrowTimeout @IntersectionNotFoundException 1 (kupo tr `runWith` env)
 
 type EndToEndSpec
     =  Manager
@@ -176,8 +222,16 @@ shouldThrowTimeout t action = do
             fail $ "shouldThrowTimeout: timed out after " <> show t
         Just (Right ()) ->
             fail "shouldThrowTimeout: should have thrown but didn't."
-        Just (Left (_ :: e)) ->
-            pure ()
+        Just (Left (e :: SomeException)) -> do
+            case fromException e of
+                Nothing ->
+                    fail $ "shouldThrowTimeout: should have thrown '"
+                         <> exceptionName <> "' but did throw instead: "
+                         <> show e
+                Just (_ :: e) ->
+                    pure ()
+  where
+    exceptionName = tyConName (typeRepTyCon (typeRep @e))
 
 --
 -- Strawman HTTP DSL

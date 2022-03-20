@@ -12,10 +12,12 @@ module Kupo.App.ChainSync
 
 import Kupo.Prelude
 
+import Kupo.Control.MonadOuroboros
+    ( IntersectionNotFoundException (..) )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
-    ( Point (..), SlotNo (..), Tip (..), WithOrigin (..) )
+    ( Point (..), Tip (..) )
 import Network.TypedProtocol.Pipelined
     ( Nat (..), natToInt )
 import Ouroboros.Network.Block
@@ -26,16 +28,6 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     , ClientPipelinedStIntersect (..)
     , ClientStNext (..)
     )
-
--- | Exception thrown when creating a chain-sync client from an invalid list of
--- points.
-data IntersectionNotFoundException = IntersectionNotFoundException
-    { points :: [WithOrigin SlotNo]
-        -- ^ Provided points for intersection.
-    , tip :: WithOrigin SlotNo
-        -- ^ Current known tip of the chain.
-    } deriving (Show)
-instance Exception IntersectionNotFoundException
 
 -- | A message handler for the chain-sync client. Messages are guaranteed (by
 -- the protocol) to arrive in order.
@@ -62,8 +54,8 @@ mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts =
         { recvMsgIntersectFound = \_point _tip -> do
             pure $ clientStIdle Zero
         , recvMsgIntersectNotFound = \(getTipSlotNo -> tip) -> do
-            let points = pointSlot <$> pts
-            throwIO $ IntersectionNotFoundException{points,tip}
+            let requestedPoints = pointSlot <$> pts
+            throwIO $ IntersectionNotFoundException{requestedPoints,tip}
         }
 
     clientStIdle

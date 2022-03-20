@@ -15,6 +15,14 @@ import Kupo.Data.Cardano
 import Kupo.Data.Database
     ( pointFromRow )
 
+someNonExistingPoint :: Point (Block StandardCrypto)
+someNonExistingPoint = pointFromRow $ Checkpoint
+    { checkpointSlotNo =
+        14141414
+    , checkpointHeaderHash = unsafeDecodeBase16
+        "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+
 somePoint :: Point (Block StandardCrypto)
 somePoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =

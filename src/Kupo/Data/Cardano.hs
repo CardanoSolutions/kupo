@@ -260,21 +260,6 @@ data Transaction crypto
     | TransactionAlonzo
         (Ledger.Alonzo.ValidatedTx (AlonzoEra crypto))
 
-instance HasTransactionId Transaction where
-    getTransactionId
-        :: forall crypto. (Crypto crypto)
-        => Transaction crypto
-        -> TransactionId crypto
-    getTransactionId = \case
-        TransactionShelley tx ->
-            Ledger.txid @(ShelleyEra crypto) (Ledger.Shelley.body tx)
-        TransactionAllegra tx ->
-            Ledger.txid @(AllegraEra crypto) (Ledger.Shelley.body tx)
-        TransactionMary tx ->
-            Ledger.txid @(MaryEra crypto)    (Ledger.Shelley.body tx)
-        TransactionAlonzo tx ->
-            Ledger.txid @(AlonzoEra crypto)  (Ledger.Alonzo.body tx)
-
 mapMaybeOutputs
     :: forall a crypto. (Crypto crypto)
     => (OutputReference crypto -> Output crypto -> Maybe a)

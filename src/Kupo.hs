@@ -57,14 +57,14 @@ import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..), TraceChainSync (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
+import Kupo.Control.MonadThrow
+    ( MonadThrow (..) )
 import Kupo.Data.Health
     ( Health, emptyHealth )
 import Kupo.Options
     ( Command (..), parseOptions )
 import Kupo.Version
     ( version )
-import System.Exit
-    ( ExitCode (..) )
 import System.FilePath
     ( (</>) )
 
@@ -169,9 +169,9 @@ kupo tr@Tracers{tracerChainSync, tracerHttp, tracerDatabase} = hijackSigTerm *> 
                     slotsPerEpoch
                     nodeSocket
                     (mkChainSyncClient producer' checkpoints)
-                    & handle (\IntersectionNotFoundException{points} -> do
+                    & handle (\e@IntersectionNotFoundException{requestedPoints = points} -> do
                         logWith tracerChainSync ChainSyncIntersectionNotFound{points}
-                        exitWith (ExitFailure 1)
+                        throwIO e
                       )
             )
 

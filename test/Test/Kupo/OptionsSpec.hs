@@ -127,6 +127,9 @@ spec = parallel $ do
             { patterns = [ MatchAny IncludingBootstrap, MatchAny OnlyShelley ]
             }
           )
+        , ( defaultArgs ++ [ "--match", "NOT-A-PATTERN" ]
+          , shouldFail
+          )
         ]
         ++
         [ ( defaultArgs ++ [ "--log-level", str ]
@@ -143,6 +146,8 @@ spec = parallel $ do
             , ( "warning", defaultTracersWarning )
             , ( "Error",   defaultTracersError   )
             , ( "error",   defaultTracersError   )
+            , ( "Off",     defaultTracersOff     )
+            , ( "off",     defaultTracersOff     )
             ]
         ]
         ++
@@ -185,6 +190,9 @@ spec = parallel $ do
 defaultConfiguration :: Configuration
 defaultConfiguration = parseOptionsPure defaultArgs
     & either (error . toText) (\(Run _ cfg _) -> cfg)
+
+defaultTracersOff :: Tracers' IO 'MinSeverities
+defaultTracersOff = defaultTracers Nothing
 
 defaultTracersDebug :: Tracers' IO 'MinSeverities
 defaultTracersDebug = defaultTracers (Just Debug)

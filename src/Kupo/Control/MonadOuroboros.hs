@@ -17,6 +17,7 @@ module Kupo.Control.MonadOuroboros
     , NetworkMagic (..)
     , EpochSlots (..)
     , NodeToClientVersion (..)
+    , IntersectionNotFoundException (..)
 
       -- * Tracer
     , TraceChainSync (..)
@@ -118,6 +119,16 @@ type IsBlock block =
     , Typeable block
     )
 
+-- | Exception thrown when creating a chain-sync client from an invalid list of
+-- points.
+data IntersectionNotFoundException = IntersectionNotFoundException
+    { requestedPoints :: [WithOrigin SlotNo]
+        -- ^ Provided points for intersection.
+    , tip :: WithOrigin SlotNo
+        -- ^ Current known tip of the chain.
+    } deriving (Show)
+instance Exception IntersectionNotFoundException
+
 instance MonadOuroboros IO where
     type Block IO = CardanoBlock StandardCrypto
     withChainSyncServer tr ConnectionStatusToggle{..} wantedVersions networkMagic slotsPerEpoch socket client =
@@ -191,8 +202,11 @@ instance MonadOuroboros IO where
         onUnknownException e
             | isAsyncException e = do
                 throwIO e
-            | otherwise =
-                traceWith tr $ ChainSyncUnknownException $ show e
+            | otherwise = case fromException e of
+                Just (_ :: IntersectionNotFoundException) ->
+                    throwIO e
+                Nothing ->
+                    traceWith tr $ ChainSyncUnknownException $ show e
 
 codecs
     :: EpochSlots
