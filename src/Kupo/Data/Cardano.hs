@@ -133,10 +133,14 @@ import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
 import Ouroboros.Consensus.Block
     ( ConvertRawHash (..) )
+import Ouroboros.Consensus.Byron.Ledger.Mempool
+    ( GenTx (..) )
 import Ouroboros.Consensus.Cardano.Block
     ( CardanoBlock, HardForkBlock (..) )
 import Ouroboros.Consensus.Cardano.CanHardFork
     ( CardanoHardForkConstraints )
+import Ouroboros.Consensus.Ledger.SupportsMempool
+    ( HasTxs (extractTxs) )
 import Ouroboros.Consensus.Shelley.Ledger.Block
     ( ShelleyBlock (..) )
 import Ouroboros.Network.Block
@@ -152,6 +156,9 @@ import Ouroboros.Network.Block
 import Ouroboros.Network.Point
     ( WithOrigin (..) )
 
+import qualified Cardano.Chain.Common as Ledger.Byron
+import qualified Cardano.Chain.UTxO as Ledger.Byron
+import qualified Cardano.Crypto as Ledger.Byron
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.Data as Ledger
 import qualified Cardano.Ledger.Alonzo.Tx as Ledger.Alonzo
@@ -251,7 +258,10 @@ outputIndexToJson =
 -- Transaction
 
 data Transaction crypto
-    = TransactionShelley
+    = TransactionByron
+        Ledger.Byron.Tx
+        Ledger.Byron.TxId
+    | TransactionShelley
         (Ledger.Shelley.Tx (ShelleyEra crypto))
     | TransactionAllegra
         (Ledger.Shelley.Tx (AllegraEra crypto))
@@ -266,27 +276,33 @@ mapMaybeOutputs
     -> Transaction crypto
     -> [a]
 mapMaybeOutputs fn = \case
+    TransactionByron tx (Ledger.Byron.hashToBytes -> bytes) ->
+        let
+            txId = Ledger.TxId $ Ledger.unsafeMakeSafeHash $ UnsafeHash $ toShort bytes
+            out :| outs = Ledger.Byron.txOutputs tx
+         in
+            traverseAndTransformByron fromByronOutput txId 0 (out : outs)
     TransactionShelley tx ->
         let
             body = Ledger.Shelley.body tx
             txId = Ledger.txid @(ShelleyEra crypto) body
             outs = Ledger.Shelley._outputs body
          in
-            traverseAndTransform (asAlonzoOutput inject) txId 0 outs
+            traverseAndTransform (fromShelleyOutput inject) txId 0 outs
     TransactionAllegra tx ->
         let
             body = Ledger.Shelley.body tx
             txId = Ledger.txid @(AllegraEra crypto) body
             outs = Ledger.MaryAllegra.outputs' body
          in
-            traverseAndTransform (asAlonzoOutput inject) txId 0 outs
+            traverseAndTransform (fromShelleyOutput inject) txId 0 outs
     TransactionMary tx ->
         let
             body = Ledger.Shelley.body tx
             txId = Ledger.txid @(MaryEra crypto) body
             outs = Ledger.MaryAllegra.outputs' body
          in
-            traverseAndTransform (asAlonzoOutput identity) txId 0 outs
+            traverseAndTransform (fromShelleyOutput identity) txId 0 outs
     TransactionAlonzo tx ->
         let
             body = Ledger.Alonzo.body tx
@@ -295,6 +311,26 @@ mapMaybeOutputs fn = \case
          in
             traverseAndTransform identity txId 0 outs
   where
+    traverseAndTransformByron
+        :: forall output. ()
+        => (output -> Output crypto)
+        -> TransactionId crypto
+        -> Natural
+        -> [output]
+        -> [a]
+    traverseAndTransformByron transform txId ix = \case
+        [] -> []
+        (out:rest) ->
+            let
+                outputRef = Ledger.TxIn txId ix
+                results   = traverseAndTransformByron transform txId (succ ix) rest
+             in
+                case fn outputRef (transform out) of
+                    Nothing ->
+                        results
+                    Just result ->
+                        result : results
+
     traverseAndTransform
         :: forall output. ()
         => (output -> Output crypto)
@@ -340,7 +376,7 @@ instance HasTransactionId Ledger.TxIn where
 type Output crypto =
     Ledger.Alonzo.TxOut (AlonzoEra crypto)
 
-asAlonzoOutput
+fromShelleyOutput
     :: forall (era :: Type -> Type) crypto.
         ( Ledger.Era.Era (era crypto)
         , Ledger.Era.Crypto (era crypto) ~ crypto
@@ -350,8 +386,20 @@ asAlonzoOutput
     => (Ledger.Core.Value (era crypto) -> Ledger.Value crypto)
     -> Ledger.Core.TxOut (era crypto)
     -> Ledger.Core.TxOut (AlonzoEra crypto)
-asAlonzoOutput liftValue (Ledger.Shelley.TxOut addr value) =
+fromShelleyOutput liftValue (Ledger.Shelley.TxOut addr value) =
     Ledger.Alonzo.TxOut addr (liftValue value) SNothing
+
+fromByronOutput
+    :: forall crypto.
+        ( Crypto crypto
+        )
+    => Ledger.Byron.TxOut
+    -> Ledger.Core.TxOut (AlonzoEra crypto)
+fromByronOutput (Ledger.Byron.TxOut address value) =
+    Ledger.Alonzo.TxOut
+        (Ledger.AddrBootstrap (Ledger.BootstrapAddress address))
+        (inject $ Ledger.Coin $ toInteger $ Ledger.Byron.unsafeGetLovelace value)
+        SNothing
 
 getAddress
     :: (Crypto crypto)
@@ -584,4 +632,5 @@ sizeInvariant predicate bytes
         bytes
     | otherwise =
         error ("predicate failed for bytes: " <> show bytes)
+
 
