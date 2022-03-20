@@ -37,6 +37,12 @@ patterns =
         ]
       )
 
+    , ( "61adec17c2784d97ed403c011ab73aa32bdf74ee10ce44258bf72c256b"
+      , MatchExact (addresses !! 0)
+      , [ addresses !! 0
+        ]
+      )
+
     , ( "Ae2tdPwUPEZChsngv7kdy8pPWJrKSaZwYGMbAtVsSCVppWKfuHwxw3R7fd5"
       , MatchExact (addresses !! 4)
       , [ addresses !! 4
@@ -44,6 +50,13 @@ patterns =
       )
 
     , ( "379bd7fd5493ebb21e199526b1a1b389ddb85cd70fccd4ca169bfdc4f59042ec/*"
+      , MatchPayment (credentials !! 0)
+      , [ addresses !! 0
+        , addresses !! 2
+        ]
+      )
+
+    , ( "addr_vk1x7da0l25j04my8sej5ntrgdn38wmshxhplxdfjskn07ufavsgtkqn5hljl/*"
       , MatchPayment (credentials !! 0)
       , [ addresses !! 0
         , addresses !! 2

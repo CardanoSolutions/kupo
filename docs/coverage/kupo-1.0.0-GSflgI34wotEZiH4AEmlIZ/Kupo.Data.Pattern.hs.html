@@ -113,9 +113,9 @@ span.spaces    { background: white }
 <span class="lineno">   94 </span><span class="spaces"></span><span class="istickedoff"></span>
 <span class="lineno">   95 </span><span class="spaces">    </span><span class="istickedoff">readerExact =</span>
 <span class="lineno">   96 </span><span class="spaces">        </span><span class="istickedoff">readerBase16 txt</span>
-<span class="lineno">   97 </span><span class="spaces">            </span><span class="istickedoff"><span class="nottickedoff">(\bytes -&gt; do</span></span>
-<span class="lineno">   98 </span><span class="spaces">                </span><span class="istickedoff"><span class="nottickedoff">MatchExact &lt;$&gt; addressFromBytes bytes</span></span>
-<span class="lineno">   99 </span><span class="spaces">            </span><span class="istickedoff"><span class="nottickedoff">)</span></span>
+<span class="lineno">   97 </span><span class="spaces">            </span><span class="istickedoff">(\bytes -&gt; do</span>
+<span class="lineno">   98 </span><span class="spaces">                </span><span class="istickedoff">MatchExact &lt;$&gt; addressFromBytes bytes</span>
+<span class="lineno">   99 </span><span class="spaces">            </span><span class="istickedoff">)</span>
 <span class="lineno">  100 </span><span class="spaces">        </span><span class="istickedoff">&lt;|&gt;</span>
 <span class="lineno">  101 </span><span class="spaces">        </span><span class="istickedoff">readerBech32 txt</span>
 <span class="lineno">  102 </span><span class="spaces">            </span><span class="istickedoff">(\bytes hrp -&gt; do</span>
@@ -164,13 +164,13 @@ span.spaces    { background: white }
 <span class="lineno">  145 </span><span class="spaces">        </span><span class="istickedoff">)</span>
 <span class="lineno">  146 </span><span class="spaces">        </span><span class="istickedoff">&lt;|&gt;</span>
 <span class="lineno">  147 </span><span class="spaces">        </span><span class="istickedoff">readerBech32 str (\bytes hrp -&gt; do</span>
-<span class="lineno">  148 </span><span class="spaces">            </span><span class="istickedoff">if | <span class="tickonlyfalse">BS.length bytes == digestSize @Blake2b_256</span> -&gt; <span class="nottickedoff">do</span></span>
-<span class="lineno">  149 </span><span class="spaces">                    </span><span class="istickedoff"><span class="nottickedoff">guard $ hrp `elem`</span></span>
-<span class="lineno">  150 </span><span class="spaces">                        </span><span class="istickedoff"><span class="nottickedoff">[ [humanReadablePart|vk|]</span></span>
-<span class="lineno">  151 </span><span class="spaces">                        </span><span class="istickedoff"><span class="nottickedoff">, [humanReadablePart|addr_vk|]</span></span>
-<span class="lineno">  152 </span><span class="spaces">                        </span><span class="istickedoff"><span class="nottickedoff">, [humanReadablePart|stake_vk|]</span></span>
-<span class="lineno">  153 </span><span class="spaces">                        </span><span class="istickedoff"><span class="nottickedoff">]</span></span>
-<span class="lineno">  154 </span><span class="spaces">                    </span><span class="istickedoff"><span class="nottickedoff">pure (digest (Proxy @Blake2b_224) bytes)</span></span>
+<span class="lineno">  148 </span><span class="spaces">            </span><span class="istickedoff">if | BS.length bytes == digestSize @Blake2b_256 -&gt; do</span>
+<span class="lineno">  149 </span><span class="spaces">                    </span><span class="istickedoff">guard $ hrp `elem`</span>
+<span class="lineno">  150 </span><span class="spaces">                        </span><span class="istickedoff">[ [humanReadablePart|vk|]</span>
+<span class="lineno">  151 </span><span class="spaces">                        </span><span class="istickedoff">, [humanReadablePart|addr_vk|]</span>
+<span class="lineno">  152 </span><span class="spaces">                        </span><span class="istickedoff">, <span class="nottickedoff">[humanReadablePart|stake_vk|]</span></span>
+<span class="lineno">  153 </span><span class="spaces">                        </span><span class="istickedoff">]</span>
+<span class="lineno">  154 </span><span class="spaces">                    </span><span class="istickedoff">pure (digest <span class="nottickedoff">(Proxy @Blake2b_224)</span> bytes)</span>
 <span class="lineno">  155 </span><span class="spaces">               </span><span class="istickedoff">| <span class="tickonlytrue">BS.length bytes == digestSize @Blake2b_224</span> -&gt; do</span>
 <span class="lineno">  156 </span><span class="spaces">                    </span><span class="istickedoff">guard $ hrp `elem`</span>
 <span class="lineno">  157 </span><span class="spaces">                        </span><span class="istickedoff">[ [humanReadablePart|vkh|]</span>
