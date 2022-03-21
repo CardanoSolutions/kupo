@@ -159,6 +159,9 @@ data TraceConfiguration where
     ConfigurationCardanoNode
         :: { nodeSocket :: FilePath, nodeConfig :: FilePath }
         -> TraceConfiguration
+    ConfigurationPatterns
+        :: { patterns :: [Text] }
+        -> TraceConfiguration
     ConfigurationInvalidOrMissingOption
         :: { hint :: Text }
         -> TraceConfiguration
@@ -173,4 +176,5 @@ instance HasSeverityAnnotation TraceConfiguration where
         ConfigurationNetwork{} -> Info
         ConfigurationOgmios{} -> Info
         ConfigurationCardanoNode{} -> Info
+        ConfigurationPatterns{} -> Info
         ConfigurationInvalidOrMissingOption{} -> Error

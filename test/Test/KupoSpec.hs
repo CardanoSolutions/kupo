@@ -136,6 +136,15 @@ spec = skippableContext "End-to-end" $ \manager -> do
             shouldThrowTimeout @ConflictingOptionException 1 (kupo tr `runWith` env)
           )
 
+        ( do -- Can't restart with different, non-empty, patterns
+            env <- newEnvironment $ cfg
+                { workDir = Dir tmp
+                , since = Just somePoint
+                , patterns = [MatchAny OnlyShelley]
+                }
+            shouldThrowTimeout @ConflictingOptionException 1 (kupo tr `runWith` env)
+          )
+
     specify "Can't start the server on a fresh new db without explicit point" $ \(tmp, tr, cfg) -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp

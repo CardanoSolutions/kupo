@@ -58,7 +58,7 @@ import Kupo.Data.ChainSync
 import Kupo.Data.Database
     ( patternFromRow, patternToRow, pointFromRow, pointToRow, resultToRow )
 import Kupo.Data.Pattern
-    ( Pattern, matchBlock )
+    ( Pattern, matchBlock, patternToText )
 
 import qualified Kupo.App.ChainSync.Direct as Direct
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
@@ -125,8 +125,8 @@ startOrResume tracers configuration Database{..} = do
                 pure [pt]
 
     initPatterns = do
-        patterns <- runTransaction (listPatterns patternFromRow)
-        case (patterns, configuredPatterns) of
+        alreadyKnownPatterns <- runTransaction (listPatterns patternFromRow)
+        patterns <- case (alreadyKnownPatterns, configuredPatterns) of
             (x:xs, []) ->
                 pure (x:xs)
             ([], y:ys) -> do
@@ -144,6 +144,8 @@ startOrResume tracers configuration Database{..} = do
                 throwIO ConflictingOptionException
             (xs, _) ->
                 pure xs
+        logWith tracerConfiguration $ ConfigurationPatterns (patternToText <$> patterns)
+        return patterns
 
 data NoStartingPointException = NoStartingPointException deriving (Show)
 instance Exception NoStartingPointException
