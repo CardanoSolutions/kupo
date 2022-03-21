@@ -24,7 +24,9 @@ import Database.SQLite.Simple
 import Kupo.Data.Cardano
     ( Address, addressFromBytes, addressToBytes )
 import Kupo.Data.Database
-    ( patternToQueryLike
+    ( patternFromRow
+    , patternToQueryLike
+    , patternToRow
     , pointFromRow
     , pointToRow
     , resultFromRow
@@ -35,7 +37,7 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
-    ( genNonGenesisPoint, genResult )
+    ( genNonGenesisPoint, genPattern, genResult )
 import Test.Kupo.Data.Pattern.Fixture
     ( addresses, patterns )
 import Test.QuickCheck
@@ -48,6 +50,8 @@ spec = parallel $ do
             roundtripFromToRow genResult resultToRow resultFromRow
         prop "Checkpoint" $
             roundtripFromToRow genNonGenesisPoint pointToRow pointFromRow
+        prop "Pattern" $
+            roundtripFromToRow genPattern patternToRow patternFromRow
 
     context "patternToQueryLike" $ around withFixtureDatabase $ do
         forM_ patterns $ \(_, p, results) -> do

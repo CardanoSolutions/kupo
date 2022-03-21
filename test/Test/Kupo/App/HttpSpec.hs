@@ -30,7 +30,7 @@ import Kupo.App.Http
 import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Data.Database
-    ( pointToRow, resultToRow )
+    ( patternToRow, pointToRow, resultToRow )
 import Kupo.Data.Health
     ( Health )
 import Network.HTTP.Media.MediaType
@@ -44,7 +44,7 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
-    ( genHealth, genNonGenesisPoint, genResult )
+    ( genHealth, genNonGenesisPoint, genPattern, genResult )
 import Test.QuickCheck
     ( counterexample, generate, listOf1 )
 import Test.QuickCheck.Monadic
@@ -134,6 +134,10 @@ databaseStub = Database
         \_ -> return ()
     , listCheckpointsDesc = \mk -> lift $ do
         fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
+    , insertPatterns =
+        \_ -> return ()
+    , listPatterns = \mk -> lift $ do
+        fmap (mk . patternToRow) <$> generate (listOf1 genPattern)
     , rollbackTo =
         \_ -> return Nothing
     , runTransaction = \r ->

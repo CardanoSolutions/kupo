@@ -33,7 +33,7 @@ import Kupo.Data.Cardano
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health (..) )
 import Kupo.Data.Pattern
-    ( Result (..) )
+    ( Pattern, Result (..) )
 import Test.QuickCheck
     ( Arbitrary (..)
     , Gen
@@ -92,6 +92,10 @@ genOutputIndex =
 genOutputReference :: Gen OutputReference
 genOutputReference =
     mkOutputReference <$> genTransactionId <*> genOutputIndex
+
+genPattern :: Gen Pattern
+genPattern = elements
+    [ p | (_, p, _) <- Fixture.patterns ]
 
 genPolicyId :: Gen ByteString
 genPolicyId = elements

@@ -74,13 +74,11 @@ kupo :: Tracers -> Kupo ()
 kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
   hijackSigTerm *> do
     Env { health
-        , configuration = Configuration
+        , configuration = cfg@Configuration
             { serverHost
             , serverPort
             , chainProducer
             , workDir
-            , since
-            , patterns
             }
         } <- ask
 
@@ -107,7 +105,7 @@ kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase
 
     lock <- liftIO newLock
     liftIO $ withDatabase tracerDatabase Write lock longestRollback dbFile $ \db -> do
-        checkpoints <- startOrResume tr db since
+        (patterns, checkpoints) <- startOrResume tr cfg db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
         withChainProducer tracerConfiguration chainProducer $ \mailbox producer -> do

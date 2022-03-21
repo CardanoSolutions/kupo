@@ -113,6 +113,15 @@ data Database (m :: Type -> Type) = Database
         => (Checkpoint -> checkpoint)
         -> DBTransaction m [checkpoint]
 
+    , insertPatterns
+        :: [Text]
+        -> DBTransaction m ()
+
+    , listPatterns
+        :: forall result. ()
+        => (Text -> result)
+        -> DBTransaction m [result]
+
     , rollbackTo
         :: Word64  -- slot_no
         -> DBTransaction m (Maybe Word64)
@@ -225,6 +234,19 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
             $ \xs (checkpointHeaderHash, checkpointSlotNo) ->
                 pure ((mk Checkpoint{..}) : xs)
 
+    , insertPatterns = \patterns -> ReaderT $ \conn -> do
+        mapM_
+            (\p ->
+                insertRow @"patterns" conn
+                    [ SQLText p
+                    ]
+            )
+            patterns
+
+    , listPatterns = \mk -> ReaderT $ \conn -> do
+        fold_ conn "SELECT * FROM patterns" []
+            $ \xs (Only x) -> pure (mk x:xs)
+
     , rollbackTo = \slotNo -> ReaderT $ \conn -> do
         execute conn "DELETE FROM inputs WHERE slot_no > ?"
             [ SQLInteger (fromIntegral slotNo)
@@ -301,6 +323,7 @@ migrations =
         [1..]
         [ $(embedFile "db/001.sql")
         , $(embedFile "db/002.sql")
+        , $(embedFile "db/003.sql")
         ]
     ]
   where
