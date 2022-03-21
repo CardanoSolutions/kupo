@@ -105,7 +105,7 @@ class MonadOuroboros (m :: Type -> Type) where
 
 -- | Exception thrown when creating a chain-sync client from an invalid list of
 -- points.
-data IntersectionNotFoundException = IntersectionNotFoundException
+data IntersectionNotFoundException = IntersectionNotFound
     { requestedPoints :: [WithOrigin SlotNo]
         -- ^ Provided points for intersection.
     , tip :: WithOrigin SlotNo

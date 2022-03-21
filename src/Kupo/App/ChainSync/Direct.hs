@@ -46,7 +46,7 @@ mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts =
             pure $ clientStIdle Zero
         , recvMsgIntersectNotFound = \(getTipSlotNo -> tip) -> do
             let requestedPoints = pointSlot <$> pts
-            throwIO $ IntersectionNotFoundException{requestedPoints,tip}
+            throwIO $ IntersectionNotFound{requestedPoints,tip}
         }
 
     clientStIdle

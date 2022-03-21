@@ -10,6 +10,9 @@ module Kupo.App
     , ConflictingOptionException (..)
     , NoStartingPointException (..)
 
+      -- * ChainProducer
+    , withChainProducer
+
       -- * Producer/Consumer
     , producer
     , consumer
@@ -24,15 +27,25 @@ import Kupo.Prelude
 import Kupo.App.Http
     ( TraceHttpServer )
 import Kupo.App.Mailbox
-    ( Mailbox, flushMailbox, putMailbox )
+    ( Mailbox, flushMailbox, newMailbox, putMailbox )
 import Kupo.Configuration
-    ( TraceConfiguration (..) )
+    ( ChainProducer (..)
+    , NetworkParameters (..)
+    , TraceConfiguration (..)
+    , parseNetworkParameters
+    )
+import Kupo.Control.MonadCatch
+    ( MonadCatch (..) )
 import Kupo.Control.MonadDatabase
     ( Database (..), MonadDatabase (..), TraceDatabase (..) )
 import Kupo.Control.MonadLog
     ( MonadLog (..), Tracer, TracerDefinition (..), TracerHKD )
 import Kupo.Control.MonadOuroboros
-    ( TraceChainSync (..) )
+    ( IntersectionNotFoundException (..)
+    , MonadOuroboros (..)
+    , NodeToClientVersion (..)
+    , TraceChainSync (..)
+    )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Control.MonadThrow
@@ -45,6 +58,9 @@ import Kupo.Data.Database
     ( pointFromRow, pointToRow, resultToRow )
 import Kupo.Data.Pattern
     ( Pattern, matchBlock )
+
+import qualified Kupo.App.ChainSync.Direct as Direct
+import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 
 --
 -- Application Bootstrapping
@@ -94,6 +110,64 @@ instance Exception NoStartingPointException
 
 data ConflictingOptionException = ConflictingOptionException  deriving (Show)
 instance Exception ConflictingOptionException
+
+--
+-- Chain Producer
+--
+
+type ChainSyncClient m block =
+       Tracer IO TraceChainSync
+    -> [Point Block] -- Checkpoints
+    -> (Tip Block -> Maybe SlotNo -> m ()) -- Tip notifier
+    -> ConnectionStatusToggle m
+    -> Database m
+    -> m ()
+
+withChainProducer
+    :: Tracer IO TraceConfiguration
+    -> ChainProducer
+    -> (forall block. IsBlock block => Mailbox IO (Tip Block, block) -> ChainSyncClient IO block -> IO ())
+    -> IO ()
+withChainProducer tracerConfiguration chainProducer callback = do
+    case chainProducer of
+        Ogmios{ogmiosHost, ogmiosPort} -> do
+            logWith tracerConfiguration ConfigurationOgmios{ogmiosHost, ogmiosPort}
+            mailbox <- atomically (newMailbox mailboxSize)
+            callback mailbox $ \tracerChainSync checkpoints notifyTip statusToggle db -> do
+                let chainSyncHandler = producer tracerChainSync notifyTip mailbox db
+                Ogmios.connect statusToggle ogmiosHost ogmiosPort $
+                    Ogmios.runChainSyncClient chainSyncHandler checkpoints
+
+        CardanoNode{nodeSocket, nodeConfig} -> do
+            logWith tracerConfiguration ConfigurationCardanoNode{nodeSocket,nodeConfig}
+            mailbox <- atomically (newMailbox mailboxSize)
+            network@NetworkParameters
+                { networkMagic
+                , slotsPerEpoch
+                } <- liftIO (parseNetworkParameters nodeConfig)
+            logWith tracerConfiguration (ConfigurationNetwork network)
+            callback mailbox $ \tracerChainSync checkpoints notifyTip statusToggle db -> do
+                let chainSyncHandler = producer tracerChainSync notifyTip mailbox db
+                withChainSyncServer
+                  tracerChainSync
+                  statusToggle
+                  [ NodeToClientV_9 .. NodeToClientV_12 ]
+                  networkMagic
+                  slotsPerEpoch
+                  nodeSocket
+                  (Direct.mkChainSyncClient chainSyncHandler checkpoints)
+                  & handle (\e@IntersectionNotFound{requestedPoints = points} -> do
+                      logWith tracerChainSync ChainSyncIntersectionNotFound{points}
+                      throwIO e
+                    )
+
+-- TODO: Make the mailbox's size configurable? Larger sizes means larger
+-- memory usage at the benefits of slightly faster sync time... Though I
+-- am not sure it's worth enough to bother users with this. Between 100
+-- and 1000, the heap increases from ~150MB to ~1GB, for a 5-10%
+-- synchronization time decrease.
+mailboxSize :: Natural
+mailboxSize = 100
 
 --
 -- Producer / Consumer

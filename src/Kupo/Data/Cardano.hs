@@ -70,6 +70,7 @@ module Kupo.Data.Cardano
 
       -- * SlotNo
     , SlotNo (..)
+    , slotNoFromText
     , slotNoToJson
 
       -- * Hash
@@ -81,11 +82,13 @@ module Kupo.Data.Cardano
 
       -- * HeaderHash
     , HeaderHash
+    , headerHashFromText
     , headerHashToJson
     , unsafeHeaderHashFromBytes
 
       -- * Point
     , Point (Point)
+    , pointFromText
     , pointToJson
     , getPointSlotNo
     , getPointHeaderHash
@@ -109,6 +112,8 @@ import Cardano.Crypto.Hash
     , Hash
     , HashAlgorithm (..)
     , pattern UnsafeHash
+    , hashFromTextAsHex
+    , hashToBytesShort
     , sizeHash
     )
 import Cardano.Ledger.Allegra
@@ -143,6 +148,8 @@ import Ouroboros.Consensus.Cardano.Block
     ( CardanoBlock, HardForkBlock (..) )
 import Ouroboros.Consensus.Cardano.CanHardFork
     ()
+import Ouroboros.Consensus.HardFork.Combinator
+    ( OneEraHash (..) )
 import Ouroboros.Consensus.Ledger.SupportsMempool
     ( HasTxs (extractTxs) )
 import Ouroboros.Consensus.Shelley.Ledger.Block
@@ -182,6 +189,8 @@ import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString as BS
 import qualified Data.Map as Map
+import qualified Data.Text as T
+import qualified Data.Text.Read as T
 import qualified Ouroboros.Network.Block as Ouroboros
 
 -- IsBlock
@@ -623,6 +632,13 @@ getDelegationPartBytes = \case
 
 -- HeaderHash
 
+-- | Deserialise a 'HeaderHash' from a base16-encoded text string.
+headerHashFromText
+    :: Text
+    -> Maybe (HeaderHash Block)
+headerHashFromText =
+    fmap (OneEraHash . hashToBytesShort) . hashFromTextAsHex @Blake2b_256
+
 headerHashToJson
     :: HeaderHash Block
     -> Json.Encoding
@@ -644,6 +660,27 @@ getTipSlotNo tip =
         At sl  -> sl
 
 -- Point
+
+-- | Parse a 'Point' from a text string. This alternatively tries two patterns:
+--
+-- - "origin"        → for a points that refers to the beginning of the blockchain
+--
+-- - "N.hhhh...hhhh" → A dot-separated integer and base16-encoded digest, which
+--                     refers to a specific point on chain identified by this
+--                     slot number and header hash.
+--
+pointFromText :: Text -> Maybe (Point Block)
+pointFromText txt =
+    genesisPointFromText <|> blockPointFromText
+  where
+    genesisPointFromText = GenesisPoint
+        <$ guard (T.toLower txt == "origin")
+
+    blockPointFromText = BlockPoint
+        <$> slotNoFromText slotNo
+        <*> headerHashFromText (T.drop 1 headerHash)
+      where
+        (slotNo, headerHash) = T.breakOn "." (T.strip txt)
 
 getPointSlotNo :: Point Block -> SlotNo
 getPointSlotNo pt =
@@ -677,6 +714,13 @@ pointToJson = \case
 slotNoToJson :: SlotNo -> Json.Encoding
 slotNoToJson =
     Json.integer . toInteger . unSlotNo
+
+-- | Parse a slot number from a text string.
+slotNoFromText :: Text -> Maybe SlotNo
+slotNoFromText txt = do
+    (slotNo, remSlotNo) <- either (const Nothing) Just (T.decimal txt)
+    guard (T.null remSlotNo)
+    pure (SlotNo slotNo)
 
 -- Hash
 

@@ -4,17 +4,19 @@
 
 {-# LANGUAGE PatternSynonyms #-}
 
-module Test.Kupo.Data.ConfigurationSpec
+module Test.Kupo.Data.CardanoSpec
     ( spec
     ) where
 
 import Kupo.Prelude
 
-import Kupo.Configuration
-    ( headerHashFromText, pointFromText, slotNoFromText )
 import Kupo.Data.Cardano
-    ( pattern GenesisPoint, SlotNo (..) )
-
+    ( pattern GenesisPoint
+    , SlotNo (..)
+    , headerHashFromText
+    , pointFromText
+    , slotNoFromText
+    )
 import Test.Hspec
     ( Spec, context, parallel, shouldBe, specify )
 import Test.Hspec.QuickCheck

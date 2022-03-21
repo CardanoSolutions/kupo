@@ -136,7 +136,7 @@ decodeFindIntersectResponse (fmap pointSlot -> requestedPoints) json =
 
     decodeIntersectionNotFound = Json.withObject "FindIntersectResponse" $ \o -> do
         tip <- o .: "result" >>= (.: "IntersectionNotFound") >>= (.: "tip") >>= decodeSlotNoOrOrigin
-        return (Left IntersectionNotFoundException{requestedPoints, tip})
+        return (Left IntersectionNotFound{requestedPoints, tip})
 
 decodeRequestNextResponse
     :: Json.Value

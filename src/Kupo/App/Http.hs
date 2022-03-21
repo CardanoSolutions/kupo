@@ -7,7 +7,7 @@
 
 module Kupo.App.Http
     ( -- * Server
-      runServer
+      httpServer
     , app
 
       -- * Client
@@ -65,14 +65,14 @@ import qualified Network.Wai.Handler.Warp as Warp
 -- Server
 --
 
-runServer
+httpServer
     :: Tracer IO TraceHttpServer
     -> (forall a. (Database IO -> IO a) -> IO a)
     -> IO Health
     -> String
     -> Int
     -> IO ()
-runServer tr withDatabase readHealth host port =
+httpServer tr withDatabase readHealth host port =
     Warp.runSettings settings $ tracerMiddleware tr (app withDatabase readHealth)
   where
     settings = Warp.defaultSettings

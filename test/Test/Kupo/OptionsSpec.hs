@@ -30,7 +30,7 @@ import Kupo.Control.MonadLog
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
 import Kupo.Options
-    ( Command (..), parseNetworkParameters, parseOptionsPure )
+    ( Command (..), parseOptionsPure )
 import Test.Hspec
     ( Expectation
     , Spec
@@ -60,19 +60,6 @@ spec = parallel $ do
             case parseOptionsPure ["--node-so\t"] of
                 Right{} -> expectationFailure "Expected error but got success."
                 Left e -> e `shouldSatisfy` isInfixOf "Invalid option"
-
-    context "parseNetworkParameters" $ do
-        specify "mainnet" $ do
-            params <- parseNetworkParameters "./config/network/mainnet/cardano-node/config.json"
-            networkMagic  params `shouldBe` NetworkMagic 764824073
-            systemStart   params `shouldBe` mkSystemStart 1506203091
-            slotsPerEpoch params `shouldBe` EpochSlots 21600
-
-        specify "testnet" $ do
-            params <- parseNetworkParameters "./config/network/testnet/cardano-node/config.json"
-            networkMagic  params `shouldBe` NetworkMagic 1097911063
-            systemStart   params `shouldBe` mkSystemStart 1563999616
-            slotsPerEpoch params `shouldBe` EpochSlots 21600
   where
     matrix =
         [ ( []

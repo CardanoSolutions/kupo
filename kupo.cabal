@@ -21,6 +21,7 @@ build-type:     Simple
 extra-source-files:
     db/001.sql
     db/002.sql
+    db/003.sql
 data-files:
     docs/openapi.yaml
 
@@ -217,7 +218,8 @@ test-suite unit
   other-modules:
       Test.Kupo.App.HttpSpec
       Test.Kupo.App.MailboxSpec
-      Test.Kupo.Data.ConfigurationSpec
+      Test.Kupo.ConfigurationSpec
+      Test.Kupo.Data.CardanoSpec
       Test.Kupo.Data.DatabaseSpec
       Test.Kupo.Data.Generators
       Test.Kupo.Data.OgmiosSpec

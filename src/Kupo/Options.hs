@@ -17,9 +17,6 @@ module Kupo.Options
     , serverPortOption
     , versionOptionOrCommand
     , healthCheckCommand
-
-      -- * NetworkParameters
-    , parseNetworkParameters
     ) where
 
 import Kupo.Prelude hiding
@@ -27,37 +24,22 @@ import Kupo.Prelude hiding
 
 import Options.Applicative
 
-import Control.Monad.Trans.Except
-    ( throwE, withExceptT )
-import Data.Aeson.Lens
-    ( key, _String )
 import Data.Char
     ( toUpper )
 import Kupo.App
     ( Tracers' (..) )
 import Kupo.Configuration
-    ( ChainProducer (..)
-    , Configuration (..)
-    , NetworkParameters (..)
-    , WorkDir (..)
-    , patternFromText
-    , pointFromText
-    )
+    ( ChainProducer (..), Configuration (..), WorkDir (..) )
 import Kupo.Control.MonadLog
     ( Severity (..), TracerDefinition (..), defaultTracers )
 import Kupo.Data.Cardano
-    ( Block, Point (..) )
+    ( Block, Point (..), pointFromText )
 import Kupo.Data.Pattern
-    ( Pattern )
+    ( Pattern, patternFromText )
 import Options.Applicative.Help.Pretty
     ( Doc, align, fillSep, hardline, indent, softbreak, string, text, vsep )
 import Safe
     ( readMay )
-import System.FilePath.Posix
-    ( replaceFileName )
-
-import qualified Data.Aeson as Json
-import qualified Data.Yaml as Yaml
 
 data Command
     = Run Configuration (Tracers' IO MinSeverities)
@@ -321,36 +303,6 @@ healthCheckCommand =
   where
     parser = HealthCheck <$> serverHostOption <*> serverPortOption
     helpText = "Performs a health check against a running daemon."
-
---
--- Environment
---
-
-parseNetworkParameters :: FilePath -> IO NetworkParameters
-parseNetworkParameters configFile = runOrDie $ do
-    config <- decodeYaml @Yaml.Value configFile
-    let genesisFiles = (,)
-            <$> config ^? key "ByronGenesisFile" . _String
-            <*> config ^? key "ShelleyGenesisFile" . _String
-    case genesisFiles of
-        Nothing ->
-            throwE "Missing 'ByronGenesisFile' and/or 'ShelleyGenesisFile' from \
-                   \Cardano's configuration (i.e. '--node-config' option)?"
-        Just (toString -> byronGenesisFile, toString -> shelleyGenesisFile) -> do
-            byronGenesis   <- decodeYaml (replaceFileName configFile byronGenesisFile)
-            shelleyGenesis <- decodeYaml (replaceFileName configFile shelleyGenesisFile)
-            case Json.fromJSON (Json.Object (byronGenesis <> shelleyGenesis)) of
-                Json.Error e -> throwE e
-                Json.Success params -> pure params
-  where
-    runOrDie :: ExceptT String IO a -> IO a
-    runOrDie = runExceptT >=> either (die . ("Failed to parse network parameters: " <>)) pure
-
-    prettyParseException :: Yaml.ParseException -> String
-    prettyParseException e = "Failed to decode JSON (or YAML) file: " <> show e
-
-    decodeYaml :: FromJSON a => FilePath -> ExceptT String IO a
-    decodeYaml = withExceptT prettyParseException . ExceptT . Yaml.decodeFileEither
 
 --
 -- Helper

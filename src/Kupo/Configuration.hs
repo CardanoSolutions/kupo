@@ -5,7 +5,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE PatternSynonyms #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -16,14 +15,11 @@ module Kupo.Configuration
     , WorkDir (..)
     , ChainProducer (..)
 
-    -- ** FromText
-    , patternFromText
-    , pointFromText
-    , headerHashFromText
-    , slotNoFromText
-
     -- * NetworkParameters
     , NetworkParameters (..)
+    , parseNetworkParameters
+
+    -- ** Parameters Components
     , NetworkMagic (..)
     , EpochSlots (..)
     , SystemStart (..)
@@ -35,10 +31,12 @@ module Kupo.Configuration
 
 import Kupo.Prelude
 
-import Cardano.Crypto.Hash
-    ( Blake2b_256, hashFromTextAsHex, hashToBytesShort )
+import Control.Monad.Trans.Except
+    ( throwE, withExceptT )
 import Data.Aeson
     ( (.:) )
+import Data.Aeson.Lens
+    ( key, _String )
 import Data.Time.Clock.POSIX
     ( posixSecondsToUTCTime )
 import Data.Time.Format.ISO8601
@@ -48,23 +46,16 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadOuroboros
     ( EpochSlots (..), NetworkMagic (..) )
 import Kupo.Data.Cardano
-    ( Block
-    , pattern BlockPoint
-    , pattern GenesisPoint
-    , HeaderHash
-    , Point (..)
-    , SlotNo (..)
-    )
+    ( Block, Point (..) )
 import Kupo.Data.Pattern
-    ( Pattern (..), patternFromText )
+    ( Pattern (..) )
 import Ouroboros.Consensus.BlockchainTime.WallClock.Types
     ( SystemStart (..) )
-import Ouroboros.Consensus.HardFork.Combinator
-    ( OneEraHash (..) )
+import System.FilePath.Posix
+    ( replaceFileName )
 
 import qualified Data.Aeson as Json
-import qualified Data.Text as T
-import qualified Data.Text.Read as T
+import qualified Data.Yaml as Yaml
 
 data Configuration = Configuration
     { chainProducer :: !ChainProducer
@@ -121,47 +112,38 @@ instance FromJSON NetworkParameters where
                 Nothing -> fail "couldn't parse ISO-8601 date-time."
                 Just t  -> pure t
 
+parseNetworkParameters :: FilePath -> IO NetworkParameters
+parseNetworkParameters configFile = runOrDie $ do
+    config <- decodeYaml @Yaml.Value configFile
+    let genesisFiles = (,)
+            <$> config ^? key "ByronGenesisFile" . _String
+            <*> config ^? key "ShelleyGenesisFile" . _String
+    case genesisFiles of
+        Nothing ->
+            throwE "Missing 'ByronGenesisFile' and/or 'ShelleyGenesisFile' from \
+                   \Cardano's configuration (i.e. '--node-config' option)?"
+        Just (toString -> byronGenesisFile, toString -> shelleyGenesisFile) -> do
+            byronGenesis   <- decodeYaml (replaceFileName configFile byronGenesisFile)
+            shelleyGenesis <- decodeYaml (replaceFileName configFile shelleyGenesisFile)
+            case Json.fromJSON (Json.Object (byronGenesis <> shelleyGenesis)) of
+                Json.Error e -> throwE e
+                Json.Success params -> pure params
+  where
+    runOrDie :: ExceptT String IO a -> IO a
+    runOrDie = runExceptT >=> either (die . ("Failed to parse network parameters: " <>)) pure
+
+    prettyParseException :: Yaml.ParseException -> String
+    prettyParseException e = "Failed to decode JSON (or YAML) file: " <> show e
+
+    decodeYaml :: FromJSON a => FilePath -> ExceptT String IO a
+    decodeYaml = withExceptT prettyParseException . ExceptT . Yaml.decodeFileEither
+
 -- | Construct a 'SystemStart' from a number of seconds.
 mkSystemStart :: Int -> SystemStart
 mkSystemStart =
     SystemStart . posixSecondsToUTCTime . toPicoResolution . toEnum
   where
     toPicoResolution = (*1000000000000)
-
--- | Parse a 'Point' from a text string. This alternatively tries two patterns:
---
--- - "origin"        → for a points that refers to the beginning of the blockchain
---
--- - "N.hhhh...hhhh" → A dot-separated integer and base16-encoded digest, which
---                     refers to a specific point on chain identified by this
---                     slot number and header hash.
---
-pointFromText :: Text -> Maybe (Point Block)
-pointFromText txt =
-    genesisPointFromText <|> blockPointFromText
-  where
-    genesisPointFromText = GenesisPoint
-        <$ guard (T.toLower txt == "origin")
-
-    blockPointFromText = BlockPoint
-        <$> slotNoFromText slotNo
-        <*> headerHashFromText (T.drop 1 headerHash)
-      where
-        (slotNo, headerHash) = T.breakOn "." (T.strip txt)
-
--- | Parse a slot number from a text string.
-slotNoFromText :: Text -> Maybe SlotNo
-slotNoFromText txt = do
-    (slotNo, remSlotNo) <- either (const Nothing) Just (T.decimal txt)
-    guard (T.null remSlotNo)
-    pure (SlotNo slotNo)
-
--- | Deserialise a 'HeaderHash' from a base16-encoded text string.
-headerHashFromText
-    :: Text
-    -> Maybe (HeaderHash Block)
-headerHashFromText =
-    fmap (OneEraHash . hashToBytesShort) . hashFromTextAsHex @Blake2b_256
 
 --
 -- Tracer
