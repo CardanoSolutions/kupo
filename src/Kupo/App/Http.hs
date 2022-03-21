@@ -25,14 +25,21 @@ import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..) )
 import Kupo.Data.Cardano
     ( pointToJson )
 import Kupo.Data.Database
-    ( patternToQueryLike, pointFromRow, resultFromRow )
+    ( patternFromRow
+    , patternToQueryLike
+    , patternToRow
+    , pointFromRow
+    , resultFromRow
+    )
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health )
 import Kupo.Data.Pattern
-    ( patternFromText, resultToJson, wildcard )
+    ( Pattern, patternFromText, patternToText, resultToJson, wildcard )
 import Network.HTTP.Client
     ( defaultManagerSettings, httpLbs, newManager, parseRequest, responseBody )
 import Network.HTTP.Types.Header
@@ -68,12 +75,13 @@ import qualified Network.Wai.Handler.Warp as Warp
 httpServer
     :: Tracer IO TraceHttpServer
     -> (forall a. (Database IO -> IO a) -> IO a)
+    -> TVar IO [Pattern]
     -> IO Health
     -> String
     -> Int
     -> IO ()
-httpServer tr withDatabase readHealth host port =
-    Warp.runSettings settings $ tracerMiddleware tr (app withDatabase readHealth)
+httpServer tr withDatabase patternsVar readHealth host port =
+    Warp.runSettings settings $ tracerMiddleware tr (app withDatabase patternsVar readHealth)
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -87,9 +95,10 @@ httpServer tr withDatabase readHealth host port =
 
 app
     :: (forall a. (Database IO -> IO a) -> IO a)
+    -> TVar IO [Pattern]
     -> IO Health
     -> Application
-app withDatabase readHealth req send =
+app withDatabase patternsVar readHealth req send =
     case (requestMethod req, pathInfo req) of
         ("GET", [ "v1", "health" ]) ->
             send . handleGetHealth =<< readHealth
@@ -97,14 +106,18 @@ app withDatabase readHealth req send =
         ("GET", [ "v1", "checkpoints" ]) ->
             withDatabase (send . handleGetCheckpoints)
 
-        ("GET", [ "v1", "matches" ]) ->
-            withDatabase (send . handleGetMatches Nothing)
+        ("GET", "v1" : "matches" : args ) -> case args of
+            [ ] ->
+                withDatabase (send . handleGetMatches Nothing)
+            [ arg0 ] ->
+                withDatabase (send . handleGetMatches (Just (arg0, Nothing)))
+            [ arg0, arg1 ] ->
+                withDatabase (send . handleGetMatches (Just (arg0, Just arg1)))
+            _ ->
+                send handleNotFound
 
-        ("GET", [ "v1", "matches", arg0 ]) ->
-            withDatabase (send . handleGetMatches (Just (arg0, Nothing)))
-
-        ("GET", [ "v1", "matches", arg0, arg1 ]) ->
-            withDatabase (send . handleGetMatches (Just (arg0, Just arg1)))
+        ("GET", [ "v1", "patterns" ]) -> do
+            readTVarIO patternsVar >>= send . handleGetPatterns
 
         ("GET", _) ->
             send handleNotFound
@@ -146,6 +159,14 @@ handleGetMatches query Database{..} = do
                     (patternToQueryLike p)
                     (yield . resultFromRow)
                 done
+
+handleGetPatterns
+    :: [Pattern]
+    -> Response
+handleGetPatterns patterns = do
+    responseStreamJson Json.text $ \yield done -> do
+        mapM_ (yield . patternToText) patterns
+        done
 
 handleInvalidPattern :: Response
 handleInvalidPattern = do

@@ -29,6 +29,8 @@ import Kupo.App.Http
     ( app )
 import Kupo.Control.MonadDatabase
     ( Database (..) )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..) )
 import Kupo.Data.Database
     ( patternToRow, pointToRow, resultToRow )
 import Kupo.Data.Health
@@ -46,7 +48,7 @@ import Test.Hspec.QuickCheck
 import Test.Kupo.Data.Generators
     ( genHealth, genNonGenesisPoint, genPattern, genResult )
 import Test.QuickCheck
-    ( counterexample, generate, listOf1 )
+    ( counterexample, generate, listOf1, vectorOf )
 import Test.QuickCheck.Monadic
     ( assert, monadicIO, monitor, run )
 
@@ -94,6 +96,12 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
+        session specification "/v1/patterns" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint get Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/patterns"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
         session' "GET /v1/does-not-exist" $ do
             resNotFound <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/v1/does-not-exist"
@@ -116,8 +124,9 @@ spec = do
 --
 
 newStubbedApplication :: IO Application
-newStubbedApplication =
-    pure $ app (\callback -> callback databaseStub) healthStub
+newStubbedApplication = do
+    patterns <- newTVarIO =<< generate (vectorOf 10 genPattern)
+    pure $ app (\callback -> callback databaseStub) patterns healthStub
 
 healthStub :: IO Health
 healthStub =

@@ -119,6 +119,7 @@ kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase
                     -- isn't meant to be a public-facing web server serving millions
                     -- of clients.
                     (withDatabase nullTracer ReadOnly lock longestRollback dbFile)
+                    patterns
                     (readHealth health)
                     serverHost
                     serverPort
