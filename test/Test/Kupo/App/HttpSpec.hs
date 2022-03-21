@@ -19,6 +19,7 @@ import Data.OpenApi
     , ValidationError
     , components
     , content
+    , delete
     , get
     , paths
     , responses
@@ -102,6 +103,22 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
+        session specification "/v1/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint delete Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "DELETE" }
+                & flip Wai.setPath "/v1/patterns/*"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification "/v1/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint delete Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "DELETE" }
+                & flip Wai.setPath "/v1/patterns/*/*"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
         session' "GET /v1/does-not-exist" $ do
             resNotFound <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/v1/does-not-exist"
@@ -144,6 +161,8 @@ databaseStub = Database
     , listCheckpointsDesc = \mk -> lift $ do
         fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
     , insertPatterns =
+        \_ -> return ()
+    , deletePattern =
         \_ -> return ()
     , listPatterns = \mk -> lift $ do
         fmap (mk . patternToRow) <$> generate (listOf1 genPattern)

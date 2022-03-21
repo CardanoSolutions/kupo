@@ -306,6 +306,16 @@ components:
         - title: Nothing
           type: "null"
 
+    Deleted:
+      type: object
+      required:
+        - deleted
+      properties:
+        deleted:
+          description: Number of entities effectively deleted.
+          type: integer
+          minimum: 0
+
     HeaderHash:
       type: string
       description: A blake2b-256 hash digest of a block header.
@@ -420,6 +430,17 @@ components:
             - type: "null"
               description: Absolute slot number of the current tip of the node.
 
+  parameters:
+    pattern-fragment:
+      name: pattern-fragment
+      in: path
+      required: true
+      schema:
+        anyOf:
+          - { "$ref": "#/components/schemas/Wildcard" }
+          - { "$ref": "#/components/schemas/AddressParameter" }
+          - { "$ref": "#/components/schemas/Credential" }
+
 paths:
   /v1/matches:
     get:
@@ -443,18 +464,11 @@ paths:
       operationId: getMatchesUnary
       tags: ["Matches"]
       summary: Get Matches (x)
-      description: |
+      description: &getMatchesDescription |
         Retrieve matches from the database matching the given pattern, in descending `slot_no` order. Results are streamed to the client for more efficiency.
         See [Pattern](#section/Pattern) for more information about constructing patterns.
       parameters:
-        - in: path
-          name: pattern-fragment
-          required: true
-          schema:
-            anyOf:
-              - { "$ref": "#/components/schemas/Wildcard" }
-              - { "$ref": "#/components/schemas/AddressParameter" }
-              - { "$ref": "#/components/schemas/Credential" }
+        - { "$ref": "#/components/parameters/pattern-fragment" }
       responses:
         200:
           description: OK
@@ -474,18 +488,9 @@ paths:
       operationId: getMatches2Ary
       tags: ["Matches"]
       summary: Get Matches (x / y)
-      description: |
-        Retrieve matches from the database matching the given patterns, in descending `slot_no` order. Results are streamed to the client for more efficiency.
-        See [Pattern](#section/Pattern) for more information about constructing patterns.
+      description: &getMatchesDescription
       parameters:
-        - in: path
-          name: pattern-fragment
-          required: true
-          schema:
-            anyOf:
-              - { "$ref": "#/components/schemas/Wildcard" }
-              - { "$ref": "#/components/schemas/AddressParameter" }
-              - { "$ref": "#/components/schemas/Credential" }
+        - { "$ref": "#/components/parameters/pattern-fragment" }
       responses:
         200:
           description: OK
@@ -533,6 +538,49 @@ paths:
               schema:
                 type: array
                 items: { "$ref": "#/components/schemas/Pattern" }
+
+  /v1/patterns/{pattern-fragment}:
+    delete:
+      operationId: deletePatternUnary
+      tags: ["Patterns"]
+      summary: Delete Pattern (x)
+      description: &deletePatternDescription |
+        Removes patterns from the database and active filtering. Note that this does
+        **NOT** remove the corresponding matches nor will it halt or restart synchronization.
+        The server will continue filtering new blocks but, will that pattern removed.
+      parameters:
+        - { "$ref": "#/components/parameters/pattern-fragment" }
+      responses:
+        200:
+          description: OK
+          content:
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/Deleted" }
+        400:
+          description: Bad Request
+          content:
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/BadRequest" }
+
+  /v1/patterns/{pattern-fragment}/{pattern-fragment}:
+    delete:
+      operationId: deletePattern2Ary
+      tags: ["Patterns"]
+      summary: Delete Pattern (x)
+      description: *deletePatternDescription
+      parameters:
+        - { "$ref": "#/components/parameters/pattern-fragment" }
+      responses:
+        200:
+          description: Accepted
+          content:
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/Deleted" }
+        400:
+          description: Bad Request
+          content:
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/BadRequest" }
 
   /v1/health:
     get:

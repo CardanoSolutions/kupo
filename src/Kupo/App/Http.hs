@@ -19,6 +19,8 @@ module Kupo.App.Http
 
 import Kupo.Prelude
 
+import Data.List
+    ( (\\) )
 import Kupo.Control.MonadCatch
     ( handle )
 import Kupo.Control.MonadDatabase
@@ -30,12 +32,7 @@ import Kupo.Control.MonadSTM
 import Kupo.Data.Cardano
     ( pointToJson )
 import Kupo.Data.Database
-    ( patternFromRow
-    , patternToQueryLike
-    , patternToRow
-    , pointFromRow
-    , resultFromRow
-    )
+    ( patternToQueryLike, patternToRow, pointFromRow, resultFromRow )
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health )
 import Kupo.Data.Pattern
@@ -118,13 +115,25 @@ app withDatabase patternsVar readHealth req send =
 
         ("GET", [ "v1", "patterns" ]) -> do
             readTVarIO patternsVar >>= send . handleGetPatterns
+        ("DELETE", "v1" : "patterns" : args ) -> case args of
+            [ arg0 ] ->
+                withDatabase (send <=< handleDeletePattern patternsVar (Just (arg0, Nothing)))
+            [ arg0, arg1 ] ->
+                withDatabase (send <=< handleDeletePattern patternsVar (Just (arg0, Just arg1)))
+            _ ->
+                send handleNotFound
 
-        ("GET", _) ->
-            send handleNotFound
-
-        (_, _) ->
+        (_, "v1" : "checkpoints" : _) ->
+            send handleMethodNotAllowed
+        (_, "v1" : "health" : _) ->
+            send handleMethodNotAllowed
+        (_, "v1" : "matches" : _) ->
+            send handleMethodNotAllowed
+        (_, "v1" : "patterns" : _) ->
             send handleMethodNotAllowed
 
+        (_, _) ->
+            send handleNotFound
 --
 -- Handlers
 --
@@ -167,6 +176,28 @@ handleGetPatterns patterns = do
     responseStreamJson Json.text $ \yield done -> do
         mapM_ (yield . patternToText) patterns
         done
+
+handleDeletePattern
+    :: TVar IO [Pattern]
+    -> Maybe (Text, Maybe Text)
+    -> Database IO
+    -> IO Response
+handleDeletePattern patternsVar query Database{..} = do
+    let txt = maybe wildcard (\(a0, a1) -> a0 <> maybe "" ("/" <>) a1) query
+    case patternFromText txt of
+        Nothing ->
+            pure handleInvalidPattern
+        Just p -> do
+            runTransaction $ deletePattern (patternToRow p)
+            n <- atomically $ do
+                before <- readTVar patternsVar
+                modifyTVar' patternsVar (\\ [p])
+                after <- readTVar patternsVar
+                pure (toInteger (length before - length after))
+            pure $ responseLBS status200 defaultHeaders $
+                B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
+                    [ Json.pair "deleted" (Json.integer n)
+                    ]
 
 handleInvalidPattern :: Response
 handleInvalidPattern = do

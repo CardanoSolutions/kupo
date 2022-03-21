@@ -117,6 +117,10 @@ data Database (m :: Type -> Type) = Database
         :: [Text]
         -> DBTransaction m ()
 
+    , deletePattern
+        :: Text
+        -> DBTransaction m ()
+
     , listPatterns
         :: forall result. ()
         => (Text -> result)
@@ -242,6 +246,11 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                     ]
             )
             patterns
+
+    , deletePattern = \p -> ReaderT $ \conn -> do
+        execute conn "DELETE FROM patterns WHERE pattern = ?"
+            [ SQLText p
+            ]
 
     , listPatterns = \mk -> ReaderT $ \conn -> do
         fold_ conn "SELECT * FROM patterns" []
