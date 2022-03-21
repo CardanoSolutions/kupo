@@ -87,9 +87,17 @@ startOrResume tracers configuration Database{..} = do
 
     initCheckpoints = do
         checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
-        unless (null checkpoints) $ do
-            let ws = unSlotNo . getPointSlotNo <$> checkpoints
-            logWith tracerDatabase (DatabaseFoundCheckpoints ws)
+        case nonEmpty (sortOn Down (unSlotNo . getPointSlotNo <$> checkpoints)) of
+            Nothing -> pure ()
+            Just slots -> do
+                let mostRecentCheckpoint = head slots
+                let oldestCheckpoint = last slots
+                let totalCheckpoints = length slots
+                logWith tracerDatabase $ DatabaseFoundCheckpoints
+                    { totalCheckpoints
+                    , mostRecentCheckpoint
+                    , oldestCheckpoint
+                    }
 
         case (since, checkpoints) of
             (Nothing, []) -> do

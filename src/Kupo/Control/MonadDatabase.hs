@@ -355,7 +355,10 @@ instance Exception UnexpectedRowException
 
 data TraceDatabase where
     DatabaseFoundCheckpoints
-        :: { checkpoints :: [Word64] }
+        :: { totalCheckpoints :: Int
+           , mostRecentCheckpoint :: Word64
+           , oldestCheckpoint :: Word64
+           }
         -> TraceDatabase
     DatabaseCurrentVersion
         :: { currentVersion :: Int }
