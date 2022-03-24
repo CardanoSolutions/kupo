@@ -7,7 +7,7 @@ module Test.Kupo.App.HttpSpec
     ) where
 
 import Kupo.Prelude hiding
-    ( get )
+    ( get, put )
 
 import Data.OpenApi
     ( OpenApi
@@ -21,7 +21,10 @@ import Data.OpenApi
     , content
     , delete
     , get
+    , patch
     , paths
+    , post
+    , put
     , responses
     , schemas
     , validateJSON
@@ -67,52 +70,52 @@ spec = do
         Yaml.decodeFileThrow @IO @OpenApi "./docs/openapi.yaml"
 
     parallel $ do
-        session specification "/v1/health" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/health" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/health"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/checkpoints" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/checkpoints" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/checkpoints"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/matches" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/matches" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/matches/{pattern-fragment}" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/matches/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches/*"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches/*/*"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/patterns" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/patterns" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/patterns"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint delete Http.status200
+        session specification delete "/v1/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
                 & flip Wai.setPath "/v1/patterns/*"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint delete Http.status200
+        session specification delete "/v1/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
                 & flip Wai.setPath "/v1/patterns/*/*"
@@ -183,12 +186,10 @@ mediaTypeJson =
 findSchema
     :: HasCallStack
     => OpenApi
-    -> PathItem
-    -> Lens' PathItem (Maybe Operation)
+    -> Operation
     -> Http.Status
     -> Schema
-findSchema specification item l status = runIdentity $ do
-    op  <- oops "operation not found" $ item ^. l
+findSchema specification op status = runIdentity $ do
     res <- oops "no response for status" (op ^. responses . responses . at (Http.statusCode status)) >>= \case
         Inline a ->
             pure a
@@ -202,28 +203,37 @@ findSchema specification item l status = runIdentity $ do
         Ref (Reference ref) ->
             oops ("no schema for ref: " <> ref) $
                 specification ^. components . schemas . at ref
-  where
-    oops str = maybe (error str) pure
 
 session
     :: OpenApi
+    -> Lens' PathItem (Maybe Operation)
     -> Text
     -> ( (Schema -> Wai.SResponse -> Wai.Session (Json.Value, [ValidationError]))
-       -> PathItem
+       -> Operation
        -> Wai.Session (Json.Value, [ValidationError])
        )
     -> Spec
-session specification path callback =
-    prop (toString path) $ monadicIO $ do
+session specification opL path callback =
+    prop (method <> " " <> toString path) $ monadicIO $ do
         stub <- run newStubbedApplication
         (json, errs) <- run $ Wai.runSession (callback assertJson endpoint) stub
         monitor $ counterexample (decodeUtf8 (Json.encode json))
         forM_ errs (monitor . counterexample . show)
         assert (null errs)
   where
-    endpoint = fromMaybe
-        (error ("No path in specification for: " <> path))
-        (specification ^. paths . at (toString path))
+    Identity (endpoint, method) = do
+        item <- oops "No specification for path"
+            (specification ^. paths . at (toString path))
+        op <- oops "Operation not found" (item ^. opL)
+        pure ( op
+             , if
+                | item ^. get    == Just op -> "GET"
+                | item ^. put    == Just op -> "PUT"
+                | item ^. patch  == Just op -> "PATCH"
+                | item ^. post   == Just op -> "POST"
+                | item ^. delete == Just op -> "DELETE"
+                | otherwise                 -> "UNKNOWN"
+             )
 
     assertJson schema res = do
         res & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
@@ -243,3 +253,6 @@ session' path s = do
     specify (toString path) $ do
         stub <- newStubbedApplication
         Wai.runSession s stub
+
+oops :: (HasCallStack, Applicative f) => Text -> Maybe a -> f a
+oops str = maybe (error str) pure
