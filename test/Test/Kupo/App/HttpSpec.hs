@@ -52,7 +52,7 @@ import Test.Hspec.QuickCheck
 import Test.Kupo.Data.Generators
     ( genHealth, genNonGenesisPoint, genPattern, genResult )
 import Test.QuickCheck
-    ( counterexample, generate, listOf1, vectorOf )
+    ( arbitrary, counterexample, generate, listOf1 )
 import Test.QuickCheck.Monadic
     ( assert, monadicIO, monitor, run )
 
@@ -100,6 +100,22 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
+        session specification delete "/v1/matches/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "DELETE" }
+                & flip Wai.setPath "/v1/matches/addr_test1vql8x96dcf23cqz97l5kjzg6yc4x9fxetsnl9k3pffg5glchn9wgr"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification delete "/v1/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "DELETE" }
+                & flip Wai.setPath "/v1/matches/addr_vkh1l3le6ymm7mflkqq4gzv3qrjepu6mn6yaw0hjjachatm9kas0wfk/stake_vkh1n37cy76g337f76npllrnx5fqwh77uwd2keluqhkwal0rcmnmt6q"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
         session specification get "/v1/patterns" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/patterns"
@@ -126,7 +142,7 @@ spec = do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "PUT" }
-                & flip Wai.setPath "/v1/patterns/addr_test1vql8x96dcf23cqz97l5kjzg6yc4x9fxetsnl9k3pffg5glchn9wgr"
+                & flip Wai.setPath "/v1/patterns/*"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
@@ -134,7 +150,7 @@ spec = do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "PUT" }
-                & flip Wai.setPath "/v1/patterns/addr_vkh18sma906m44dp9w7dtcmr6kk8mmqtue3qnacezsyt6t7u5dqw3xh/*"
+                & flip Wai.setPath "/v1/patterns/*/*"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
@@ -163,22 +179,13 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 DELETE /v1/patterns/*" $ do
-            resBadRequest <- Wai.request $ Wai.defaultRequest
-                { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath "/v1/patterns/*"
-            resBadRequest
-                & Wai.assertStatus (Http.statusCode Http.status400)
-            resBadRequest
-                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
-
 --
 -- Stubs
 --
 
 newStubbedApplication :: IO Application
 newStubbedApplication = do
-    patterns <- newTVarIO =<< generate (vectorOf 10 genPattern)
+    patterns <- newTVarIO []
     pure $ app (\callback -> callback databaseStub) patterns healthStub
 
 healthStub :: IO Health
@@ -189,9 +196,11 @@ databaseStub :: Database IO
 databaseStub = Database
     { insertInputs =
         \_ -> return ()
-    , foldInputsByAddress = \_ callback -> lift $ do
+    , foldInputs = \_ callback -> lift $ do
         rows <- fmap resultToRow <$> generate (listOf1 genResult)
         mapM_ callback rows
+    , deleteInputs =
+        \_ -> liftIO (abs <$> generate arbitrary)
     , insertCheckpoint =
         \_ -> return ()
     , listCheckpointsDesc = \mk -> lift $ do
@@ -199,12 +208,14 @@ databaseStub = Database
     , insertPatterns =
         \_ -> return ()
     , deletePattern =
-        \_ -> return ()
+        \_ -> liftIO (abs <$> generate arbitrary)
     , listPatterns = \mk -> lift $ do
         fmap (mk . patternToRow) <$> generate (listOf1 genPattern)
     , rollbackTo =
         \_ -> return Nothing
     , runTransaction = \r ->
+        runReaderT r (error "Connection")
+    , runImmediateTransaction = \r ->
         runReaderT r (error "Connection")
     }
 

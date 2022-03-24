@@ -464,7 +464,7 @@ paths:
       operationId: getMatches1Ary
       tags: ["Matches"]
       summary: Get Matches (*)
-      description: &getMatchesDescription |
+      description: |
         Retrieve matches from the database matching the given pattern, in descending `slot_no` order. Results are streamed to the client for more efficiency.
         See [Pattern](#section/Pattern) for more information about constructing patterns.
       parameters:
@@ -483,11 +483,34 @@ paths:
             "application/json;charset=utf-8":
               schema: { "$ref": "#/components/schemas/BadRequest" }
 
+    delete: &deleteMatches
+      operationId: deleteMatches
+      tags: ["Matches"]
+      summary: Delete Matches (*)
+      description: |
+          Delete all matches matching the given pattern. Note that this operation is only allowed if the provided pattern isn't a currently active pattern.
+      responses:
+        200:
+          description: OK
+          content:
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/Deleted" }
+        400:
+          description: Bad Request
+          content:
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/BadRequest" }
+
   /v1/matches/{pattern-fragment}/{pattern-fragment}:
     get:
       <<: *getMatches
       operationId: getMatches2Ary
       summary: Get Matches (*/*)
+
+    delete:
+      <<: *deleteMatches
+      operationId: deleteMatches2Ary
+      summary: Delete Matches (*/*)
 
   /v1/patterns:
     get:

@@ -11,6 +11,7 @@ module Kupo.Data.Pattern
     ( -- * Pattern
       Pattern (..)
     , MatchBootstrap (OnlyShelley, IncludingBootstrap)
+    , overlaps
     , patternFromText
     , patternToText
     , wildcard
@@ -75,6 +76,33 @@ data Pattern
     | MatchDelegation ByteString
     | MatchPaymentAndDelegation ByteString ByteString
     deriving (Generic, Eq, Ord, Show)
+
+-- | Checks whether a given pattern overlaps with a list of other patterns. The
+-- inclusion is a deep inclusion such that for instance, (MatchPayment "a") is
+-- considered included in [MatchAny OnlyShelley].
+overlaps :: Pattern -> [Pattern] -> Bool
+overlaps p = \case
+    [] -> False
+    p':rest ->
+        overlapTwo (p, p') || overlapTwo (p', p) || overlaps p rest
+  where
+    overlapTwo = \case
+        (MatchAny{}, _) ->
+            True
+        (MatchExact addr, p') ->
+            isJust (matching addr p')
+        (MatchPayment a, MatchPayment a') ->
+            a == a'
+        (MatchPayment a, MatchPaymentAndDelegation a' _) ->
+            a == a'
+        (MatchDelegation b, MatchDelegation b') ->
+            b == b'
+        (MatchDelegation b, MatchPaymentAndDelegation _ b') ->
+            b == b'
+        (MatchPaymentAndDelegation a b, MatchPaymentAndDelegation a' b') ->
+            a == a' || b == b'
+        _ ->
+            False
 
 wildcard :: Text
 wildcard = "*"

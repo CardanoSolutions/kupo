@@ -10,7 +10,7 @@
 module Kupo.Control.MonadDatabase
     ( -- * Database DSL
       MonadDatabase (..)
-    , Mode (..)
+    , ConnectionType (..)
     , Database (..)
     , LongestRollback (..)
     , Connection
@@ -30,7 +30,9 @@ import Control.Exception
 import Control.Monad.Class.MonadSTM
     ( MonadSTM (..) )
 import Control.Monad.Class.MonadThrow
-    ( bracket_ )
+    ( bracket_, catch )
+import Control.Monad.Class.MonadTimer
+    ( threadDelay )
 import Control.Tracer
     ( Tracer, traceWith )
 import Data.FileEmbed
@@ -39,16 +41,20 @@ import Data.Severity
     ( HasSeverityAnnotation (..), Severity (..) )
 import Database.SQLite.Simple
     ( Connection
+    , Error (..)
     , Only (..)
     , Query (..)
     , SQLData (..)
+    , SQLError (..)
     , ToRow (..)
+    , changes
     , execute
     , execute_
     , fold_
     , nextRow
     , query_
     , withConnection
+    , withImmediateTransaction
     , withStatement
     , withTransaction
     )
@@ -66,14 +72,14 @@ class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) wh
 
     withDatabase
         :: Tracer m TraceDatabase
-        -> Mode
+        -> ConnectionType
         -> DBLock m
         -> LongestRollback
         -> FilePath
         -> (Database m -> m a)
         -> m a
 
-data Mode = Write | ReadOnly
+data ConnectionType = LongLived | ShortLived
     deriving (Eq, Show)
 
 newtype LongestRollback = LongestRollback
@@ -99,7 +105,11 @@ data Database (m :: Type -> Type) = Database
         :: [Input]
         -> DBTransaction m ()
 
-    , foldInputsByAddress
+    , deleteInputs
+        :: Text  -- An address-like query
+        -> DBTransaction m Int
+
+    , foldInputs
         :: Text  -- An address-like query
         -> (Input -> m ())
         -> DBTransaction m ()
@@ -119,7 +129,7 @@ data Database (m :: Type -> Type) = Database
 
     , deletePattern
         :: Text
-        -> DBTransaction m ()
+        -> DBTransaction m Int
 
     , listPatterns
         :: forall result. ()
@@ -131,6 +141,11 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m (Maybe Word64)
 
     , runTransaction
+        :: forall a. ()
+        => DBTransaction m a
+        -> m a
+
+    , runImmediateTransaction
         :: forall a. ()
         => DBTransaction m a
         -> m a
@@ -150,30 +165,38 @@ instance MonadDatabase IO where
         | filePath == ":memory:" = do
             traceWith tr DatabaseRunningInMemory
             case mode of
-                Write -> do
+                LongLived -> do
                     withConnection filePath $ \conn -> do
                         databaseVersion conn >>= runMigrations tr conn
                         atomically $ putTMVar inMemory conn
                         action (mkDatabase k (bracketConnection conn))
-                ReadOnly -> do
+                ShortLived -> do
                     conn <- atomically $ readTMVar inMemory
                     action (mkDatabase k (bracketConnection conn))
         | otherwise = do
             withConnection filePath $ \conn -> do
-                when (mode == Write) (databaseVersion conn >>= runMigrations tr conn)
+                when (mode == LongLived) (databaseVersion conn >>= runMigrations tr conn)
                 action (mkDatabase k (bracketConnection conn))
       where
-        -- The heuristic below aims at favoring readers over writers. We assume
-        -- that there is only one writer and possibly many readers. The count of
-        -- readers is kept in a TVar and readers increment/decrement it around
-        -- each transactions.
-        -- The writer however will only attempt writing if there's currently no
-        -- reader. In case where there's at least one reader waiting, it'll let
-        -- them pass and wait until all readers are done.
+        -- The heuristic below aims at favoring light reader/writer over the main
+        -- writer. We assume that there is only one persistent db producer and possibly
+        -- many short-lived reader/writer. The count of short-lived connection
+        -- is kept in a TVar and each connection increment/decrement it around
+        -- each transaction.
+        --
+        -- Short-lived connection are _mostly_read-only, but they may sometimes
+        -- perform quick writes. Hence, there's a simple fail-over mechanism for
+        -- them, in the (unlikely) case where they'd perform two concurrent
+        -- conflictual requests. There's no need for the LongLived connection
+        -- which is always alone.
+        --
+        -- The persistent process will only attempt writing if there's currently
+        -- no short-lived one. In case where there's at least one busy, it'll let
+        -- them pass and wait until all short-lived are done.
         bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
         bracketConnection conn between =
             case mode of
-                ReadOnly -> bracket_
+                LongLived -> bracket_
                     (do
                         atomically (modifyTVar' readers succ)
                         atomically (readTVar writer >>= check . not)
@@ -181,13 +204,21 @@ instance MonadDatabase IO where
                     (atomically (modifyTVar' readers pred))
                     (between conn)
 
-                Write -> bracket_
+                ShortLived -> bracket_
                     (atomically $ do
                         readTVar readers >>= check . (== 0)
                         writeTVar writer True
                     )
                     (atomically $ writeTVar writer False)
-                    (between conn)
+                    (let io = between conn `catch`
+                                (\e@SQLError{sqlError} -> case sqlError of
+                                    ErrorBusy -> do
+                                        threadDelay 0.1
+                                        io
+                                    _ -> throwIO e
+                                )
+                      in io
+                    )
 
 mkDatabase :: LongestRollback -> (forall a. (Connection -> IO a) -> IO a) -> Database IO
 mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
@@ -205,7 +236,11 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         )
         inputs
 
-    , foldInputsByAddress = \addressLike yield -> ReaderT $ \conn -> do
+    , deleteInputs = \addressLike -> ReaderT $ \conn -> do
+        execute_ conn (Query $ "DELETE FROM inputs WHERE address " <> addressLike)
+        changes conn
+
+    , foldInputs = \addressLike yield -> ReaderT $ \conn -> do
         let matchMaybeDatumHash = \case
                 SQLBlob datumHash -> Just datumHash
                 _ -> Nothing
@@ -251,6 +286,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         execute conn "DELETE FROM patterns WHERE pattern = ?"
             [ SQLText p
             ]
+        changes conn
 
     , listPatterns = \mk -> ReaderT $ \conn -> do
         fold_ conn "SELECT * FROM patterns" []
@@ -273,6 +309,9 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
 
     , runTransaction = \r -> bracketConnection $ \conn ->
         withTransaction conn (runReaderT r conn)
+
+    , runImmediateTransaction = \r -> bracketConnection $ \conn ->
+        withImmediateTransaction conn (runReaderT r conn)
     }
 
 insertRow

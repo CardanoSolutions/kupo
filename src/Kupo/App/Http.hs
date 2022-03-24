@@ -36,7 +36,13 @@ import Kupo.Data.Database
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health )
 import Kupo.Data.Pattern
-    ( Pattern (..), patternFromText, patternToText, resultToJson, wildcard )
+    ( Pattern (..)
+    , overlaps
+    , patternFromText
+    , patternToText
+    , resultToJson
+    , wildcard
+    )
 import Network.HTTP.Client
     ( defaultManagerSettings, httpLbs, newManager, parseRequest, responseBody )
 import Network.HTTP.Types.Header
@@ -96,33 +102,58 @@ app
     -> IO Health
     -> Application
 app withDatabase patternsVar readHealth req send =
-    case (requestMethod req, pathInfo req) of
-        ("GET", [ "v1", "health" ]) ->
-            send . handleGetHealth =<< readHealth
+    case pathInfo req of
+        ("v1" : "health" : args) ->
+            routeHealth (requestMethod req, args)
 
-        ("GET", [ "v1", "checkpoints" ]) ->
-            withDatabase (send . handleGetCheckpoints)
+        ("v1" : "checkpoints" : args) ->
+            routeCheckpoints (requestMethod req, args)
 
-        ("GET", "v1" : "matches" : args ) ->
-            withDatabase (send . handleGetMatches (patternFromQuery args))
+        ("v1" : "matches" : args) ->
+            routeMatches (requestMethod req, args)
 
-        ("GET", [ "v1", "patterns" ]) -> do
-            readTVarIO patternsVar >>= send . handleGetPatterns
-        ("PUT", "v1" : "patterns" : args ) ->
-            withDatabase (send <=< handlePutPattern patternsVar (patternFromQuery args))
-        ("DELETE", "v1" : "patterns" : args ) ->
-            withDatabase (send <=< handleDeletePattern patternsVar (patternFromQuery args))
-        (_, "v1" : "checkpoints" : _) ->
-            send handleMethodNotAllowed
-        (_, "v1" : "health" : _) ->
-            send handleMethodNotAllowed
-        (_, "v1" : "matches" : _) ->
-            send handleMethodNotAllowed
-        (_, "v1" : "patterns" : _) ->
-            send handleMethodNotAllowed
+        ("v1" : "patterns" : args) ->
+            routePatterns (requestMethod req, args)
 
-        (_, _) ->
+        _ ->
             send handleNotFound
+  where
+    routeHealth = \case
+        ("GET", []) ->
+            send . handleGetHealth =<< readHealth
+        ("GET", _) ->
+            send handleNotFound
+        (_, _) ->
+            send handleMethodNotAllowed
+
+    routeCheckpoints = \case
+        ("GET", []) ->
+            withDatabase (send . handleGetCheckpoints)
+        ("GET", _) ->
+            send handleNotFound
+        (_, _) ->
+            send handleMethodNotAllowed
+
+    routeMatches = \case
+        ("GET", args) ->
+            withDatabase (send . handleGetMatches (patternFromQuery args))
+        ("DELETE", args) ->
+            withDatabase (send <=< handleDeleteMatches patternsVar (patternFromQuery args))
+        (_, _) ->
+            send handleMethodNotAllowed
+
+    routePatterns = \case
+        ("GET", []) ->
+            readTVarIO patternsVar >>= send . handleGetPatterns
+        ("GET", _) ->
+            send handleNotFound
+        ("PUT", args) ->
+            withDatabase (send <=< handlePutPattern patternsVar (patternFromQuery args))
+        ("DELETE", args) ->
+            withDatabase (send <=< handleDeletePattern patternsVar (patternFromQuery args))
+        (_, _) ->
+            send handleMethodNotAllowed
+
 --
 -- Handlers
 --
@@ -152,10 +183,29 @@ handleGetMatches query Database{..} = do
             handleInvalidPattern
         Just p -> do
             responseStreamJson resultToJson $ \yield done -> do
-                runTransaction $ foldInputsByAddress
+                runTransaction $ foldInputs
                     (patternToQueryLike p)
                     (yield . resultFromRow)
                 done
+
+handleDeleteMatches
+    :: TVar IO [Pattern]
+    -> Maybe Text
+    -> Database IO
+    -> IO Response
+handleDeleteMatches patternsVar query Database{..} = do
+    patterns <- readTVarIO patternsVar
+    case query >>= patternFromText of
+        Nothing -> do
+            pure handleInvalidPattern
+        Just p | p `overlaps` patterns -> do
+            pure handleStillActivePattern
+        Just p -> do
+            n <- runImmediateTransaction $ deleteInputs (patternToQueryLike p)
+            pure $ responseLBS status200 defaultHeaders $
+                B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
+                    [ Json.pair "deleted" (Json.int n)
+                    ]
 
 handleGetPatterns
     :: [Pattern]
@@ -174,18 +224,12 @@ handleDeletePattern patternsVar query Database{..} = do
     case query >>= patternFromText of
         Nothing ->
             pure handleInvalidPattern
-        Just MatchAny{} -> do
-            pure handleDangerousPattern
         Just p -> do
-            runTransaction $ deletePattern (patternToRow p)
-            n <- atomically $ do
-                before <- readTVar patternsVar
-                modifyTVar' patternsVar (\\ [p])
-                after <- readTVar patternsVar
-                pure (toInteger (length before - length after))
+            n <- runImmediateTransaction $ deletePattern (patternToRow p)
+            atomically $ modifyTVar' patternsVar (\\ [p])
             pure $ responseLBS status200 defaultHeaders $
                 B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
-                    [ Json.pair "deleted" (Json.integer n)
+                    [ Json.pair "deleted" (Json.int n)
                     ]
 
 handlePutPattern
@@ -198,7 +242,7 @@ handlePutPattern patternsVar query Database{..} = do
         Nothing ->
             pure handleInvalidPattern
         Just p  -> do
-            runTransaction $ insertPatterns [patternToRow p]
+            runImmediateTransaction $ insertPatterns [patternToRow p]
             patterns <- atomically $ do
                 modifyTVar' patternsVar (nub . (p :))
                 readTVar patternsVar
@@ -216,13 +260,16 @@ handleInvalidPattern = do
                  \<https://cardanosolutions.github.io/kupo>!"
         }
 
-handleDangerousPattern :: Response
-handleDangerousPattern = do
+handleStillActivePattern :: Response
+handleStillActivePattern = do
     responseJson status400 defaultHeaders $ HttpError
-        { hint = "Dangerous operation prevented! Wildcards patterns aren't allowed \
-                 \alone when deleting pattern. If you need to delete multiple \
-                 \patterns, do multiple DELETE requests."
+        { hint = "Beware! You've just attempted to remove matches using a pattern \
+                 \that overlaps with another still active pattern! This is not \
+                 \allowed as it could lead to very confusing index states. \
+                 \Make sure to remove conflicting patterns first AND THEN, \
+                 \clean-up obsolete matches if necessary."
         }
+
 
 handleNotFound :: Response
 handleNotFound =
