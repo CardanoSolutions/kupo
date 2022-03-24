@@ -110,7 +110,7 @@ spec = do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath "/v1/patterns/*"
+                & flip Wai.setPath "/v1/patterns/addr_test1vql8x96dcf23cqz97l5kjzg6yc4x9fxetsnl9k3pffg5glchn9wgr"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
@@ -118,11 +118,27 @@ spec = do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath "/v1/patterns/*/*"
+                & flip Wai.setPath "/v1/patterns/addr_vkh18sma906m44dp9w7dtcmr6kk8mmqtue3qnacezsyt6t7u5dqw3xh/*"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session' "GET /v1/does-not-exist" $ do
+        session specification put "/v1/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "PUT" }
+                & flip Wai.setPath "/v1/patterns/addr_test1vql8x96dcf23cqz97l5kjzg6yc4x9fxetsnl9k3pffg5glchn9wgr"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification put "/v1/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "PUT" }
+                & flip Wai.setPath "/v1/patterns/addr_vkh18sma906m44dp9w7dtcmr6kk8mmqtue3qnacezsyt6t7u5dqw3xh/*"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session' "🕱 GET /v1/does-not-exist" $ do
             resNotFound <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/v1/does-not-exist"
             resNotFound
@@ -130,13 +146,30 @@ spec = do
             resNotFound
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "POST /v1/health" $ do
+        session' "🕱 POST /v1/health" $ do
             resNotAllowed <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "POST" }
                 & flip Wai.setPath "/v1/health"
             resNotAllowed
                 & Wai.assertStatus (Http.statusCode Http.status406)
             resNotAllowed
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "🕱 GET /v1/matches/*/*/*" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/v1/matches/*/*/*"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "🕱 DELETE /v1/patterns/*" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "DELETE" }
+                & flip Wai.setPath "/v1/patterns/*"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
 --

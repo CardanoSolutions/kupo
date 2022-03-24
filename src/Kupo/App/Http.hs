@@ -20,7 +20,7 @@ module Kupo.App.Http
 import Kupo.Prelude
 
 import Data.List
-    ( (\\) )
+    ( nub, (\\) )
 import Kupo.Control.MonadCatch
     ( handle )
 import Kupo.Control.MonadDatabase
@@ -36,7 +36,7 @@ import Kupo.Data.Database
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health )
 import Kupo.Data.Pattern
-    ( Pattern, patternFromText, patternToText, resultToJson, wildcard )
+    ( Pattern (..), patternFromText, patternToText, resultToJson, wildcard )
 import Network.HTTP.Client
     ( defaultManagerSettings, httpLbs, newManager, parseRequest, responseBody )
 import Network.HTTP.Types.Header
@@ -103,26 +103,15 @@ app withDatabase patternsVar readHealth req send =
         ("GET", [ "v1", "checkpoints" ]) ->
             withDatabase (send . handleGetCheckpoints)
 
-        ("GET", "v1" : "matches" : args ) -> case args of
-            [ ] ->
-                withDatabase (send . handleGetMatches Nothing)
-            [ arg0 ] ->
-                withDatabase (send . handleGetMatches (Just (arg0, Nothing)))
-            [ arg0, arg1 ] ->
-                withDatabase (send . handleGetMatches (Just (arg0, Just arg1)))
-            _ ->
-                send handleNotFound
+        ("GET", "v1" : "matches" : args ) ->
+            withDatabase (send . handleGetMatches (patternFromQuery args))
 
         ("GET", [ "v1", "patterns" ]) -> do
             readTVarIO patternsVar >>= send . handleGetPatterns
-        ("DELETE", "v1" : "patterns" : args ) -> case args of
-            [ arg0 ] ->
-                withDatabase (send <=< handleDeletePattern patternsVar (Just (arg0, Nothing)))
-            [ arg0, arg1 ] ->
-                withDatabase (send <=< handleDeletePattern patternsVar (Just (arg0, Just arg1)))
-            _ ->
-                send handleNotFound
-
+        ("PUT", "v1" : "patterns" : args ) ->
+            withDatabase (send <=< handlePutPattern patternsVar (patternFromQuery args))
+        ("DELETE", "v1" : "patterns" : args ) ->
+            withDatabase (send <=< handleDeletePattern patternsVar (patternFromQuery args))
         (_, "v1" : "checkpoints" : _) ->
             send handleMethodNotAllowed
         (_, "v1" : "health" : _) ->
@@ -154,12 +143,11 @@ handleGetCheckpoints Database{..} = do
         done
 
 handleGetMatches
-    :: Maybe (Text, Maybe Text)
+    :: Maybe Text
     -> Database IO
     -> Response
 handleGetMatches query Database{..} = do
-    let txt = maybe wildcard (\(a0, a1) -> a0 <> maybe "" ("/" <>) a1) query
-    case patternFromText txt of
+    case query >>= patternFromText of
         Nothing ->
             handleInvalidPattern
         Just p -> do
@@ -179,14 +167,15 @@ handleGetPatterns patterns = do
 
 handleDeletePattern
     :: TVar IO [Pattern]
-    -> Maybe (Text, Maybe Text)
+    -> Maybe Text
     -> Database IO
     -> IO Response
 handleDeletePattern patternsVar query Database{..} = do
-    let txt = maybe wildcard (\(a0, a1) -> a0 <> maybe "" ("/" <>) a1) query
-    case patternFromText txt of
+    case query >>= patternFromText of
         Nothing ->
             pure handleInvalidPattern
+        Just MatchAny{} -> do
+            pure handleDangerousPattern
         Just p -> do
             runTransaction $ deletePattern (patternToRow p)
             n <- atomically $ do
@@ -199,6 +188,25 @@ handleDeletePattern patternsVar query Database{..} = do
                     [ Json.pair "deleted" (Json.integer n)
                     ]
 
+handlePutPattern
+    :: TVar IO [Pattern]
+    -> Maybe Text
+    -> Database IO
+    -> IO Response
+handlePutPattern patternsVar query Database{..} = do
+    case query >>= patternFromText of
+        Nothing ->
+            pure handleInvalidPattern
+        Just p  -> do
+            runTransaction $ insertPatterns [patternToRow p]
+            patterns <- atomically $ do
+                modifyTVar' patternsVar (nub . (p :))
+                readTVar patternsVar
+            pure $ responseLBS status200 defaultHeaders $
+                B.toLazyByteString $ Json.fromEncoding $ Json.list
+                    (Json.text . patternToText)
+                    patterns
+
 handleInvalidPattern :: Response
 handleInvalidPattern = do
     responseJson status400 defaultHeaders $ HttpError
@@ -206,6 +214,14 @@ handleInvalidPattern = do
                  \pattern, including wildcards ('*') or full addresses. Make \
                  \sure to double-check the documentation at: \
                  \<https://cardanosolutions.github.io/kupo>!"
+        }
+
+handleDangerousPattern :: Response
+handleDangerousPattern = do
+    responseJson status400 defaultHeaders $ HttpError
+        { hint = "Dangerous operation prevented! Wildcards patterns aren't allowed \
+                 \alone when deleting pattern. If you need to delete multiple \
+                 \patterns, do multiple DELETE requests."
         }
 
 handleNotFound :: Response
@@ -259,6 +275,17 @@ defaultHeaders =
     [ ( hContentType, "application/json;charset=utf-8" )
     ]
 
+patternFromQuery :: [Text] -> Maybe Text
+patternFromQuery = \case
+    [] ->
+        Just wildcard
+    [arg0] ->
+        Just arg0
+    [arg0, arg1] ->
+        Just (arg0 <> "/" <> arg1)
+    _ ->
+        Nothing
+
 responseJson
     :: ToJSON a
     => Http.Status
@@ -294,7 +321,6 @@ responseStreamJson encode callback = do
     separator isFirstResult
         | isFirstResult = mempty
         | otherwise     = B.putCharUtf8 ','
-
 
 --
 -- Tracer

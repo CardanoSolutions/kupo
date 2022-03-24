@@ -288,10 +288,10 @@ components:
 
         - title: Base16 (pre-image)
           type: string
-          description: A blake2b-224 hash pre-image of some credential (verification key or script)
+          description: A hash pre-image of some credential (verification key or stake key)
           contentEncoding: base16
-          minLength: 56
-          maxLength: 56
+          minLength: 64
+          maxLength: 64
 
     DatumHash:
       oneOf:
@@ -460,10 +460,10 @@ paths:
                 items: { "$ref": "#/components/schemas/Match" }
 
   /v1/matches/{pattern-fragment}:
-    get:
-      operationId: getMatchesUnary
+    get: &getMatches
+      operationId: getMatches1Ary
       tags: ["Matches"]
-      summary: Get Matches (x)
+      summary: Get Matches (*)
       description: &getMatchesDescription |
         Retrieve matches from the database matching the given pattern, in descending `slot_no` order. Results are streamed to the client for more efficiency.
         See [Pattern](#section/Pattern) for more information about constructing patterns.
@@ -485,43 +485,9 @@ paths:
 
   /v1/matches/{pattern-fragment}/{pattern-fragment}:
     get:
+      <<: *getMatches
       operationId: getMatches2Ary
-      tags: ["Matches"]
-      summary: Get Matches (x / y)
-      description: &getMatchesDescription
-      parameters:
-        - { "$ref": "#/components/parameters/pattern-fragment" }
-      responses:
-        200:
-          description: OK
-          content:
-            "application/json;charset=utf-8":
-              schema:
-                type: array
-                items: { "$ref": "#/components/schemas/Match" }
-        400:
-          description: Bad Request
-          content:
-            "application/json;charset=utf-8":
-              schema: { "$ref": "#/components/schemas/BadRequest" }
-
-  /v1/checkpoints:
-    get:
-      operationId: getCheckpoints
-      tags: ["Checkpoints"]
-      summary: Get Checkpoints
-      description: |
-        Retrieve all checkpoints currently in the database, in descending `slot_no` order. This is useful to know where
-        the synchronization is at. On restart, the synchronization will continue from the most recent checkpoints that
-        is also known of the network.
-      responses:
-        200:
-          description: OK
-          content:
-            "application/json;charset=utf-8":
-              schema:
-                type: array
-                items: { "$ref": "#/components/schemas/Checkpoint" }
+      summary: Get Matches (*/*)
 
   /v1/patterns:
     get:
@@ -540,11 +506,11 @@ paths:
                 items: { "$ref": "#/components/schemas/Pattern" }
 
   /v1/patterns/{pattern-fragment}:
-    delete:
-      operationId: deletePatternUnary
+    delete: &deletePattern
+      operationId: deletePattern1Ary
       tags: ["Patterns"]
-      summary: Delete Pattern (x)
-      description: &deletePatternDescription |
+      summary: Delete Pattern (*)
+      description: |
         Removes patterns from the database and active filtering. Note that this does
         **NOT** remove the corresponding matches nor will it halt or restart synchronization.
         The server will continue filtering new blocks but, will that pattern removed.
@@ -562,25 +528,57 @@ paths:
             "application/json;charset=utf-8":
               schema: { "$ref": "#/components/schemas/BadRequest" }
 
-  /v1/patterns/{pattern-fragment}/{pattern-fragment}:
-    delete:
-      operationId: deletePattern2Ary
-      tags: ["Patterns"]
-      summary: Delete Pattern (x)
-      description: *deletePatternDescription
+    put: &putPattern
+      operationId: putPattern1Ary
+      tags: [ "Patterns" ]
+      summary: Add Pattern (*)
+      description: |
+        Add a new pattern to watch. This **does not** cause the server to re-sync however!
+        Only new blocks will be matched against the pattern.
       parameters:
         - { "$ref": "#/components/parameters/pattern-fragment" }
       responses:
         200:
-          description: Accepted
+          description: OK
           content:
             "application/json;charset=utf-8":
-              schema: { "$ref": "#/components/schemas/Deleted" }
+              schema:
+                type: array
+                items: { "$ref": "#/components/schemas/Pattern" }
         400:
           description: Bad Request
           content:
             "application/json;charset=utf-8":
               schema: { "$ref": "#/components/schemas/BadRequest" }
+
+  /v1/patterns/{pattern-fragment}/{pattern-fragment}:
+    delete:
+      <<: *deletePattern
+      operationId: deletePattern2Ary
+      summary: Delete Pattern (*/*)
+
+    put:
+      <<: *putPattern
+      operationId: putPattern2Ary
+      summary: Add Pattern (*/*)
+
+  /v1/checkpoints:
+    get:
+      operationId: getCheckpoints
+      tags: ["Checkpoints"]
+      summary: Get Checkpoints
+      description: |
+        Retrieve all checkpoints currently in the database, in descending `slot_no` order. This is useful to know where
+        the synchronization is at. On restart, the synchronization will continue from the most recent checkpoints that
+        is also known of the network.
+      responses:
+        200:
+          description: OK
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                type: array
+                items: { "$ref": "#/components/schemas/Checkpoint" }
 
   /v1/health:
     get:
