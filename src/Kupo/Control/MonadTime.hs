@@ -10,6 +10,7 @@ module Kupo.Control.MonadTime
     , diffTime
     , secondsToTime
     , secondsToDiffTime
+    , millisecondsToDiffTime
     , timeout
     ) where
 
@@ -24,3 +25,6 @@ import Data.Time.Clock
 
 secondsToTime :: Integer -> Time
 secondsToTime = Time . secondsToDiffTime
+
+millisecondsToDiffTime :: Integer -> DiffTime
+millisecondsToDiffTime = toEnum . fromInteger . (* 1_000_000_000)

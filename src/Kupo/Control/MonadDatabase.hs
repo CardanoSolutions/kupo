@@ -26,7 +26,7 @@ module Kupo.Control.MonadDatabase
 import Kupo.Prelude
 
 import Control.Exception
-    ( throwIO )
+    ( mask, onException, throwIO )
 import Control.Monad.Class.MonadSTM
     ( MonadSTM (..) )
 import Control.Monad.Class.MonadThrow
@@ -54,9 +54,7 @@ import Database.SQLite.Simple
     , nextRow
     , query_
     , withConnection
-    , withImmediateTransaction
     , withStatement
-    , withTransaction
     )
 import GHC.TypeLits
     ( KnownSymbol, symbolVal )
@@ -196,7 +194,7 @@ instance MonadDatabase IO where
         bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
         bracketConnection conn between =
             case mode of
-                LongLived -> bracket_
+                ShortLived -> bracket_
                     (do
                         atomically (modifyTVar' readers succ)
                         atomically (readTVar writer >>= check . not)
@@ -204,21 +202,13 @@ instance MonadDatabase IO where
                     (atomically (modifyTVar' readers pred))
                     (between conn)
 
-                ShortLived -> bracket_
+                LongLived -> bracket_
                     (atomically $ do
                         readTVar readers >>= check . (== 0)
                         writeTVar writer True
                     )
                     (atomically $ writeTVar writer False)
-                    (let io = between conn `catch`
-                                (\e@SQLError{sqlError} -> case sqlError of
-                                    ErrorBusy -> do
-                                        threadDelay 0.1
-                                        io
-                                    _ -> throwIO e
-                                )
-                      in io
-                    )
+                    (between conn)
 
 mkDatabase :: LongestRollback -> (forall a. (Connection -> IO a) -> IO a) -> Database IO
 mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
@@ -237,7 +227,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         inputs
 
     , deleteInputs = \addressLike -> ReaderT $ \conn -> do
-        execute_ conn (Query $ "DELETE FROM inputs WHERE address " <> addressLike)
+        execute_ conn (Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike)
         changes conn
 
     , foldInputs = \addressLike yield -> ReaderT $ \conn -> do
@@ -308,10 +298,10 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 throwIO $ UnexpectedRow ("MAX(" <> show slotNo <> ")") xs
 
     , runTransaction = \r -> bracketConnection $ \conn ->
-        withTransaction conn (runReaderT r conn)
+        retryWhenBusy $ withTransaction conn False (runReaderT r conn)
 
     , runImmediateTransaction = \r -> bracketConnection $ \conn ->
-        withImmediateTransaction conn (runReaderT r conn)
+        retryWhenBusy $ withTransaction conn True (runReaderT r conn)
     }
 
 insertRow
@@ -337,6 +327,39 @@ mkPreparedStatement :: Int -> Query
 mkPreparedStatement n =
     Query ("(" <> T.intercalate "," (replicate n "?") <> ")")
 
+retryWhenBusy :: IO a -> IO a
+retryWhenBusy action =
+    action `catch` (\e@SQLError{sqlError} -> case sqlError of
+        ErrorBusy -> do
+            threadDelay 0.1
+            retryWhenBusy action
+        _ ->
+            throwIO e
+    )
+
+-- NOTE: Not using sqlite-simple's version because it lacks the crucial
+-- 'onException' on commits; The commit operation may throw an 'SQLiteBusy'
+-- exception when concurrent transactions are begin executed.
+-- Yet, because it doesn't rollback in this case, it leaves the transaction in
+-- an odd shrodinger state and makes it hard for the caller to properly handle
+-- the exception (was the transaction rolled back or not? Is it safe to retry
+-- it?). So, this slightly modified version makes sure to also rollback on a
+-- failed commit; allowing caller to simply retry the whole transaction on
+-- failure.
+withTransaction :: Connection -> Bool -> IO a -> IO a
+withTransaction conn immediate action =
+  mask $ \restore -> do
+    begin
+    r <- restore action `onException` rollback
+    commit `onException` rollback
+    return r
+  where
+    begin
+        | immediate = execute_ conn "BEGIN IMMEDIATE TRANSACTION"
+        | otherwise = execute_ conn "BEGIN TRANSACTION"
+    commit   = execute_ conn "COMMIT TRANSACTION"
+    rollback = execute_ conn "ROLLBACK TRANSACTION"
+
 --
 -- Migrations
 --
@@ -361,7 +384,7 @@ runMigrations tr conn currentVersion = do
         traceWith tr DatabaseNoMigrationNeeded
     else do
         traceWith tr $ DatabaseRunningMigration currentVersion (length missingMigrations)
-        void $ withTransaction conn $
+        void $ withTransaction conn True $
             traverse (traverse (execute_ conn)) missingMigrations
 
 migrations :: [Migration]

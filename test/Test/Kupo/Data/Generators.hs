@@ -59,9 +59,11 @@ genAddress =
 
 genAssetName :: Gen ByteString
 genAssetName = elements $
-    mempty : [ generateWith seed (BS.pack <$> chooseVector (1, assetNameMaxLength))
+    mempty : [ generateWith seed (BS.pack <$> chooseVector (1, nMax) arbitrary)
              | seed <- [ 0 .. 10 ]
              ]
+  where
+    nMax = assetNameMaxLength
 
 genConnectionStatus :: Gen ConnectionStatus
 genConnectionStatus =
@@ -136,5 +138,5 @@ genValue = do
 generateWith :: Int -> Gen a -> a
 generateWith seed (MkGen run) = run (mkQCGen seed) 42
 
-chooseVector :: Arbitrary a => (Int, Int) -> Gen [a]
-chooseVector = choose >=> vector
+chooseVector :: (Int, Int) -> Gen a -> Gen [a]
+chooseVector range genA = choose range >>= (`vectorOf` genA)
