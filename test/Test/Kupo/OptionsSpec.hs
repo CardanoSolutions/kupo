@@ -17,14 +17,7 @@ import Data.List
 import Kupo.App
     ( Tracers' (..) )
 import Kupo.Configuration
-    ( ChainProducer (..)
-    , Configuration (..)
-    , EpochSlots (..)
-    , NetworkMagic (..)
-    , NetworkParameters (..)
-    , WorkDir (..)
-    , mkSystemStart
-    )
+    ( ChainProducer (..), Configuration (..), WorkDir (..) )
 import Kupo.Control.MonadLog
     ( Severity (..), TracerDefinition (..), defaultTracers )
 import Kupo.Data.Pattern

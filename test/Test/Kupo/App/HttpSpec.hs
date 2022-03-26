@@ -7,7 +7,7 @@ module Test.Kupo.App.HttpSpec
     ) where
 
 import Kupo.Prelude hiding
-    ( get )
+    ( get, put )
 
 import Data.OpenApi
     ( OpenApi
@@ -19,8 +19,12 @@ import Data.OpenApi
     , ValidationError
     , components
     , content
+    , delete
     , get
+    , patch
     , paths
+    , post
+    , put
     , responses
     , schemas
     , validateJSON
@@ -29,8 +33,10 @@ import Kupo.App.Http
     ( app )
 import Kupo.Control.MonadDatabase
     ( Database (..) )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..) )
 import Kupo.Data.Database
-    ( pointToRow, resultToRow )
+    ( patternToRow, pointToRow, resultToRow )
 import Kupo.Data.Health
     ( Health )
 import Network.HTTP.Media.MediaType
@@ -44,9 +50,9 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
-    ( genHealth, genNonGenesisPoint, genResult )
+    ( genHealth, genNonGenesisPoint, genPattern, genResult )
 import Test.QuickCheck
-    ( counterexample, generate, listOf1 )
+    ( arbitrary, counterexample, generate, listOf1 )
 import Test.QuickCheck.Monadic
     ( assert, monadicIO, monitor, run )
 
@@ -64,37 +70,91 @@ spec = do
         Yaml.decodeFileThrow @IO @OpenApi "./docs/openapi.yaml"
 
     parallel $ do
-        session specification "/v1/health" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/health" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/health"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/checkpoints" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/checkpoints" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/checkpoints"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/matches" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/matches" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/matches/{pattern-fragment}" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/matches/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches/*"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification "/v1/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint get Http.status200
+        session specification get "/v1/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches/*/*"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session' "GET /v1/does-not-exist" $ do
+        session specification delete "/v1/matches/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "DELETE" }
+                & flip Wai.setPath "/v1/matches/addr_test1vql8x96dcf23cqz97l5kjzg6yc4x9fxetsnl9k3pffg5glchn9wgr"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification delete "/v1/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "DELETE" }
+                & flip Wai.setPath "/v1/matches/addr_vkh1l3le6ymm7mflkqq4gzv3qrjepu6mn6yaw0hjjachatm9kas0wfk/stake_vkh1n37cy76g337f76npllrnx5fqwh77uwd2keluqhkwal0rcmnmt6q"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification get "/v1/patterns" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/patterns"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification delete "/v1/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "DELETE" }
+                & flip Wai.setPath "/v1/patterns/addr_test1vql8x96dcf23cqz97l5kjzg6yc4x9fxetsnl9k3pffg5glchn9wgr"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification delete "/v1/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "DELETE" }
+                & flip Wai.setPath "/v1/patterns/addr_vkh18sma906m44dp9w7dtcmr6kk8mmqtue3qnacezsyt6t7u5dqw3xh/*"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification put "/v1/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "PUT" }
+                & flip Wai.setPath "/v1/patterns/*"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification put "/v1/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "PUT" }
+                & flip Wai.setPath "/v1/patterns/*/*"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session' "🕱 GET /v1/does-not-exist" $ do
             resNotFound <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/v1/does-not-exist"
             resNotFound
@@ -102,7 +162,7 @@ spec = do
             resNotFound
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "POST /v1/health" $ do
+        session' "🕱 POST /v1/health" $ do
             resNotAllowed <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "POST" }
                 & flip Wai.setPath "/v1/health"
@@ -111,13 +171,22 @@ spec = do
             resNotAllowed
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
+        session' "🕱 GET /v1/matches/*/*/*" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/v1/matches/*/*/*"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
 --
 -- Stubs
 --
 
 newStubbedApplication :: IO Application
-newStubbedApplication =
-    pure $ app (\callback -> callback databaseStub) healthStub
+newStubbedApplication = do
+    patterns <- newTVarIO []
+    pure $ app (\callback -> callback databaseStub) patterns healthStub
 
 healthStub :: IO Health
 healthStub =
@@ -127,16 +196,26 @@ databaseStub :: Database IO
 databaseStub = Database
     { insertInputs =
         \_ -> return ()
-    , foldInputsByAddress = \_ callback -> lift $ do
+    , foldInputs = \_ callback -> lift $ do
         rows <- fmap resultToRow <$> generate (listOf1 genResult)
         mapM_ callback rows
+    , deleteInputs =
+        \_ -> liftIO (abs <$> generate arbitrary)
     , insertCheckpoint =
         \_ -> return ()
     , listCheckpointsDesc = \mk -> lift $ do
         fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
+    , insertPatterns =
+        \_ -> return ()
+    , deletePattern =
+        \_ -> liftIO (abs <$> generate arbitrary)
+    , listPatterns = \mk -> lift $ do
+        fmap (mk . patternToRow) <$> generate (listOf1 genPattern)
     , rollbackTo =
         \_ -> return Nothing
     , runTransaction = \r ->
+        runReaderT r (error "Connection")
+    , runImmediateTransaction = \r ->
         runReaderT r (error "Connection")
     }
 
@@ -151,12 +230,10 @@ mediaTypeJson =
 findSchema
     :: HasCallStack
     => OpenApi
-    -> PathItem
-    -> Lens' PathItem (Maybe Operation)
+    -> Operation
     -> Http.Status
     -> Schema
-findSchema specification item l status = runIdentity $ do
-    op  <- oops "operation not found" $ item ^. l
+findSchema specification op status = runIdentity $ do
     res <- oops "no response for status" (op ^. responses . responses . at (Http.statusCode status)) >>= \case
         Inline a ->
             pure a
@@ -170,28 +247,37 @@ findSchema specification item l status = runIdentity $ do
         Ref (Reference ref) ->
             oops ("no schema for ref: " <> ref) $
                 specification ^. components . schemas . at ref
-  where
-    oops str = maybe (error str) pure
 
 session
     :: OpenApi
+    -> Lens' PathItem (Maybe Operation)
     -> Text
     -> ( (Schema -> Wai.SResponse -> Wai.Session (Json.Value, [ValidationError]))
-       -> PathItem
+       -> Operation
        -> Wai.Session (Json.Value, [ValidationError])
        )
     -> Spec
-session specification path callback =
-    prop (toString path) $ monadicIO $ do
+session specification opL path callback =
+    prop (method <> " " <> toString path) $ monadicIO $ do
         stub <- run newStubbedApplication
         (json, errs) <- run $ Wai.runSession (callback assertJson endpoint) stub
         monitor $ counterexample (decodeUtf8 (Json.encode json))
         forM_ errs (monitor . counterexample . show)
         assert (null errs)
   where
-    endpoint = fromMaybe
-        (error ("No path in specification for: " <> path))
-        (specification ^. paths . at (toString path))
+    Identity (endpoint, method) = do
+        item <- oops "No specification for path"
+            (specification ^. paths . at (toString path))
+        op <- oops "Operation not found" (item ^. opL)
+        pure ( op
+             , if
+                | item ^. get    == Just op -> "GET"
+                | item ^. put    == Just op -> "PUT"
+                | item ^. patch  == Just op -> "PATCH"
+                | item ^. post   == Just op -> "POST"
+                | item ^. delete == Just op -> "DELETE"
+                | otherwise                 -> "UNKNOWN"
+             )
 
     assertJson schema res = do
         res & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
@@ -211,3 +297,6 @@ session' path s = do
     specify (toString path) $ do
         stub <- newStubbedApplication
         Wai.runSession s stub
+
+oops :: (HasCallStack, Applicative f) => Text -> Maybe a -> f a
+oops str = maybe (error str) pure

@@ -265,7 +265,7 @@ components:
         header_hash: { "$ref": "#/components/schemas/HeaderHash" }
 
     Credential:
-      oneOf:
+      anyOf:
         - title: Bech32
           type: string
           description: |
@@ -288,10 +288,10 @@ components:
 
         - title: Base16 (pre-image)
           type: string
-          description: A blake2b-224 hash pre-image of some credential (verification key or script)
+          description: A hash pre-image of some credential (verification key or stake key)
           contentEncoding: base16
-          minLength: 56
-          maxLength: 56
+          minLength: 64
+          maxLength: 64
 
     DatumHash:
       oneOf:
@@ -305,6 +305,16 @@ components:
 
         - title: Nothing
           type: "null"
+
+    Deleted:
+      type: object
+      required:
+        - deleted
+      properties:
+        deleted:
+          description: Number of entities effectively deleted.
+          type: integer
+          minimum: 0
 
     HeaderHash:
       type: string
@@ -339,6 +349,14 @@ components:
       description: An index of an output within a transaction.
       minimum: 0
       example: 2
+
+    Pattern:
+      description: |
+          A matching pattern for addresses. See [#Pattern]
+      anyOf:
+        - { "$ref": "#/components/schemas/Wildcard" }
+        - { "$ref": "#/components/schemas/AddressParameter" }
+        - { "$ref": "#/components/schemas/Credential" }
 
     SlotNo: &slotNo
       type: integer
@@ -412,6 +430,17 @@ components:
             - type: "null"
               description: Absolute slot number of the current tip of the node.
 
+  parameters:
+    pattern-fragment:
+      name: pattern-fragment
+      in: path
+      required: true
+      schema:
+        anyOf:
+          - { "$ref": "#/components/schemas/Wildcard" }
+          - { "$ref": "#/components/schemas/AddressParameter" }
+          - { "$ref": "#/components/schemas/Credential" }
+
 paths:
   /v1/matches:
     get:
@@ -431,22 +460,15 @@ paths:
                 items: { "$ref": "#/components/schemas/Match" }
 
   /v1/matches/{pattern-fragment}:
-    get:
-      operationId: getMatchesUnary
+    get: &getMatches
+      operationId: getMatches1Ary
       tags: ["Matches"]
-      summary: Get Matches (x)
+      summary: Get Matches (*)
       description: |
         Retrieve matches from the database matching the given pattern, in descending `slot_no` order. Results are streamed to the client for more efficiency.
         See [Pattern](#section/Pattern) for more information about constructing patterns.
       parameters:
-        - in: path
-          name: pattern-fragment
-          required: true
-          schema:
-            oneOf:
-              - { "$ref": "#/components/schemas/Wildcard" }
-              - { "$ref": "#/components/schemas/AddressParameter" }
-              - { "$ref": "#/components/schemas/Credential" }
+        - { "$ref": "#/components/parameters/pattern-fragment" }
       responses:
         200:
           description: OK
@@ -461,23 +483,42 @@ paths:
             "application/json;charset=utf-8":
               schema: { "$ref": "#/components/schemas/BadRequest" }
 
+    delete: &deleteMatches
+      operationId: deleteMatches
+      tags: ["Matches"]
+      summary: Delete Matches (*)
+      description: |
+          Delete all matches matching the given pattern. Note that this operation is only allowed if the provided pattern isn't a currently active pattern.
+      responses:
+        200:
+          description: OK
+          content:
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/Deleted" }
+        400:
+          description: Bad Request
+          content:
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/BadRequest" }
+
   /v1/matches/{pattern-fragment}/{pattern-fragment}:
     get:
+      <<: *getMatches
       operationId: getMatches2Ary
-      tags: ["Matches"]
-      summary: Get Matches (x / y)
+      summary: Get Matches (*/*)
+
+    delete:
+      <<: *deleteMatches
+      operationId: deleteMatches2Ary
+      summary: Delete Matches (*/*)
+
+  /v1/patterns:
+    get:
+      operationId: getPatterns
+      tags: ["Patterns"]
+      summary: Get Patterns
       description: |
-        Retrieve matches from the database matching the given patterns, in descending `slot_no` order. Results are streamed to the client for more efficiency.
-        See [Pattern](#section/Pattern) for more information about constructing patterns.
-      parameters:
-        - in: path
-          name: pattern-fragment
-          required: true
-          schema:
-            oneOf:
-              - { "$ref": "#/components/schemas/Wildcard" }
-              - { "$ref": "#/components/schemas/AddressParameter" }
-              - { "$ref": "#/components/schemas/Credential" }
+        Retrieve all patterns currently configured on the server.
       responses:
         200:
           description: OK
@@ -485,12 +526,64 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/components/schemas/Match" }
+                items: { "$ref": "#/components/schemas/Pattern" }
+
+  /v1/patterns/{pattern-fragment}:
+    delete: &deletePattern
+      operationId: deletePattern1Ary
+      tags: ["Patterns"]
+      summary: Delete Pattern (*)
+      description: |
+        Removes patterns from the database and active filtering. Note that this does
+        **NOT** remove the corresponding matches nor will it halt or restart synchronization.
+        The server will continue filtering new blocks but, will that pattern removed.
+      parameters:
+        - { "$ref": "#/components/parameters/pattern-fragment" }
+      responses:
+        200:
+          description: OK
+          content:
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/Deleted" }
         400:
           description: Bad Request
           content:
             "application/json;charset=utf-8":
               schema: { "$ref": "#/components/schemas/BadRequest" }
+
+    put: &putPattern
+      operationId: putPattern1Ary
+      tags: [ "Patterns" ]
+      summary: Add Pattern (*)
+      description: |
+        Add a new pattern to watch. This **does not** cause the server to re-sync however!
+        Only new blocks will be matched against the pattern.
+      parameters:
+        - { "$ref": "#/components/parameters/pattern-fragment" }
+      responses:
+        200:
+          description: OK
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                type: array
+                items: { "$ref": "#/components/schemas/Pattern" }
+        400:
+          description: Bad Request
+          content:
+            "application/json;charset=utf-8":
+              schema: { "$ref": "#/components/schemas/BadRequest" }
+
+  /v1/patterns/{pattern-fragment}/{pattern-fragment}:
+    delete:
+      <<: *deletePattern
+      operationId: deletePattern2Ary
+      summary: Delete Pattern (*/*)
+
+    put:
+      <<: *putPattern
+      operationId: putPattern2Ary
+      summary: Add Pattern (*/*)
 
   /v1/checkpoints:
     get:

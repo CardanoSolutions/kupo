@@ -10,17 +10,19 @@
 module Kupo.Data.Pattern
     ( -- * Pattern
       Pattern (..)
-    , wildcard
-    , patternFromText
-    , matching
-
-      -- ** MatchBootstrap
     , MatchBootstrap (OnlyShelley, IncludingBootstrap)
+    , overlaps
+    , patternFromText
+    , patternToText
+    , wildcard
+
+      -- * Matching
+    , matching
+    , matchBlock
 
       -- * Result
     , Result (..)
     , resultToJson
-    , matchBlock
     ) where
 
 import Kupo.Prelude
@@ -39,6 +41,7 @@ import Kupo.Data.Cardano
     , Point
     , Value
     , addressFromBytes
+    , addressToBytes
     , addressToJson
     , datumHashToJson
     , digest
@@ -72,11 +75,53 @@ data Pattern
     | MatchPayment ByteString
     | MatchDelegation ByteString
     | MatchPaymentAndDelegation ByteString ByteString
-    deriving (Generic, Eq, Show)
+    deriving (Generic, Eq, Ord, Show)
+
+-- | Checks whether a given pattern overlaps with a list of other patterns. The
+-- inclusion is a deep inclusion such that for instance, (MatchPayment "a") is
+-- considered included in [MatchAny OnlyShelley].
+overlaps :: Pattern -> [Pattern] -> Bool
+overlaps p = \case
+    [] -> False
+    p':rest ->
+        overlapTwo (p, p') || overlapTwo (p', p) || overlaps p rest
+  where
+    overlapTwo = \case
+        (MatchAny{}, _) ->
+            True
+        (MatchExact addr, p') ->
+            isJust (matching addr p')
+        (MatchPayment a, MatchPayment a') ->
+            a == a'
+        (MatchPayment a, MatchPaymentAndDelegation a' _) ->
+            a == a'
+        (MatchDelegation b, MatchDelegation b') ->
+            b == b'
+        (MatchDelegation b, MatchPaymentAndDelegation _ b') ->
+            b == b'
+        (MatchPaymentAndDelegation a b, MatchPaymentAndDelegation a' b') ->
+            a == a' || b == b'
+        _ ->
+            False
 
 wildcard :: Text
 wildcard = "*"
 {-# INLINEABLE wildcard #-}
+
+patternToText :: Pattern -> Text
+patternToText = \case
+    MatchAny IncludingBootstrap ->
+        wildcard
+    MatchAny OnlyShelley ->
+        wildcard <> "/" <> wildcard
+    MatchExact addr ->
+        encodeBase16 (addressToBytes addr)
+    MatchPayment bytes ->
+        encodeBase16 bytes <> "/" <> wildcard
+    MatchDelegation bytes ->
+        wildcard <> "/" <> encodeBase16 bytes
+    MatchPaymentAndDelegation a b ->
+        encodeBase16 a <> "/" <> encodeBase16 b
 
 patternFromText :: Text -> Maybe Pattern
 patternFromText txt =
@@ -186,7 +231,7 @@ matching addr = \case
 
 data MatchBootstrap
     = MatchBootstrap Bool
-    deriving (Generic, Eq, Show)
+    deriving (Generic, Eq, Ord, Show)
 
 pattern IncludingBootstrap :: MatchBootstrap
 pattern IncludingBootstrap <- MatchBootstrap True

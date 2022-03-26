@@ -19,13 +19,12 @@ module Kupo.Data.Database
     , resultFromRow
 
       -- * Pattern
+    , patternToRow
+    , patternFromRow
     , patternToQueryLike
     ) where
 
 import Kupo.Prelude
-
-import Kupo.Data.Pattern
-    ( MatchBootstrap (..), Pattern (..), Result (..) )
 
 import Cardano.Crypto.Hash
     ( pattern UnsafeHash )
@@ -35,6 +34,13 @@ import Cardano.Ledger.Crypto
     ( StandardCrypto )
 import Cardano.Slotting.Slot
     ( SlotNo (..) )
+import Kupo.Data.Pattern
+    ( MatchBootstrap (..)
+    , Pattern (..)
+    , Result (..)
+    , patternFromText
+    , patternToText
+    )
 import Ouroboros.Consensus.Block
     ( ConvertRawHash (..) )
 import Ouroboros.Consensus.Cardano.Block
@@ -118,7 +124,24 @@ resultToRow Result{..} = DB.Input
 -- Pattern
 --
 
-patternToQueryLike :: Pattern -> Text
+patternToRow
+    :: Pattern
+    -> Text
+patternToRow =
+    patternToText
+
+patternFromRow
+    :: HasCallStack
+    => Text
+    -> Pattern
+patternFromRow p =
+    fromMaybe
+        (error $ "patternFromRow: invalid pattern: " <> p)
+        (patternFromText p)
+
+patternToQueryLike
+    :: Pattern
+    -> Text
 patternToQueryLike = \case
     MatchAny IncludingBootstrap ->
         "LIKE '%'"

@@ -40,7 +40,7 @@ import Kupo.Configuration
 import Kupo.Control.MonadAsync
     ( concurrently3 )
 import Kupo.Control.MonadDatabase
-    ( Mode (..), MonadDatabase (..) )
+    ( ConnectionType (..), MonadDatabase (..) )
 import Kupo.Control.MonadLog
     ( nullTracer, withTracers )
 import Kupo.Control.MonadSTM
@@ -74,13 +74,11 @@ kupo :: Tracers -> Kupo ()
 kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
   hijackSigTerm *> do
     Env { health
-        , configuration = Configuration
+        , configuration = cfg@Configuration
             { serverHost
             , serverPort
             , chainProducer
             , workDir
-            , since
-            , patterns
             }
         } <- ask
 
@@ -106,8 +104,8 @@ kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase
             InMemory -> ":memory:"
 
     lock <- liftIO newLock
-    liftIO $ withDatabase tracerDatabase Write lock longestRollback dbFile $ \db -> do
-        checkpoints <- startOrResume tr db since
+    liftIO $ withDatabase tracerDatabase LongLived lock longestRollback dbFile $ \db -> do
+        (patterns, checkpoints) <- startOrResume tr cfg db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
         withChainProducer tracerConfiguration chainProducer $ \mailbox producer -> do
@@ -120,7 +118,8 @@ kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase
                     -- however pretty cheap with SQLite anyway and the HTTP server
                     -- isn't meant to be a public-facing web server serving millions
                     -- of clients.
-                    (withDatabase nullTracer ReadOnly lock longestRollback dbFile)
+                    (withDatabase nullTracer ShortLived lock longestRollback dbFile)
+                    patterns
                     (readHealth health)
                     serverHost
                     serverPort

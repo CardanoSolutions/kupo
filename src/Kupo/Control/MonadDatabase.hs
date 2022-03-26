@@ -10,7 +10,7 @@
 module Kupo.Control.MonadDatabase
     ( -- * Database DSL
       MonadDatabase (..)
-    , Mode (..)
+    , ConnectionType (..)
     , Database (..)
     , LongestRollback (..)
     , Connection
@@ -26,11 +26,13 @@ module Kupo.Control.MonadDatabase
 import Kupo.Prelude
 
 import Control.Exception
-    ( throwIO )
+    ( mask, onException, throwIO )
 import Control.Monad.Class.MonadSTM
     ( MonadSTM (..) )
 import Control.Monad.Class.MonadThrow
-    ( bracket_ )
+    ( bracket_, catch )
+import Control.Monad.Class.MonadTimer
+    ( threadDelay )
 import Control.Tracer
     ( Tracer, traceWith )
 import Data.FileEmbed
@@ -39,10 +41,13 @@ import Data.Severity
     ( HasSeverityAnnotation (..), Severity (..) )
 import Database.SQLite.Simple
     ( Connection
+    , Error (..)
     , Only (..)
     , Query (..)
     , SQLData (..)
+    , SQLError (..)
     , ToRow (..)
+    , changes
     , execute
     , execute_
     , fold_
@@ -50,7 +55,6 @@ import Database.SQLite.Simple
     , query_
     , withConnection
     , withStatement
-    , withTransaction
     )
 import GHC.TypeLits
     ( KnownSymbol, symbolVal )
@@ -66,14 +70,14 @@ class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) wh
 
     withDatabase
         :: Tracer m TraceDatabase
-        -> Mode
+        -> ConnectionType
         -> DBLock m
         -> LongestRollback
         -> FilePath
         -> (Database m -> m a)
         -> m a
 
-data Mode = Write | ReadOnly
+data ConnectionType = LongLived | ShortLived
     deriving (Eq, Show)
 
 newtype LongestRollback = LongestRollback
@@ -99,7 +103,11 @@ data Database (m :: Type -> Type) = Database
         :: [Input]
         -> DBTransaction m ()
 
-    , foldInputsByAddress
+    , deleteInputs
+        :: Text  -- An address-like query
+        -> DBTransaction m Int
+
+    , foldInputs
         :: Text  -- An address-like query
         -> (Input -> m ())
         -> DBTransaction m ()
@@ -113,11 +121,29 @@ data Database (m :: Type -> Type) = Database
         => (Checkpoint -> checkpoint)
         -> DBTransaction m [checkpoint]
 
+    , insertPatterns
+        :: [Text]
+        -> DBTransaction m ()
+
+    , deletePattern
+        :: Text
+        -> DBTransaction m Int
+
+    , listPatterns
+        :: forall result. ()
+        => (Text -> result)
+        -> DBTransaction m [result]
+
     , rollbackTo
         :: Word64  -- slot_no
         -> DBTransaction m (Maybe Word64)
 
     , runTransaction
+        :: forall a. ()
+        => DBTransaction m a
+        -> m a
+
+    , runImmediateTransaction
         :: forall a. ()
         => DBTransaction m a
         -> m a
@@ -137,30 +163,38 @@ instance MonadDatabase IO where
         | filePath == ":memory:" = do
             traceWith tr DatabaseRunningInMemory
             case mode of
-                Write -> do
+                LongLived -> do
                     withConnection filePath $ \conn -> do
                         databaseVersion conn >>= runMigrations tr conn
                         atomically $ putTMVar inMemory conn
                         action (mkDatabase k (bracketConnection conn))
-                ReadOnly -> do
+                ShortLived -> do
                     conn <- atomically $ readTMVar inMemory
                     action (mkDatabase k (bracketConnection conn))
         | otherwise = do
             withConnection filePath $ \conn -> do
-                when (mode == Write) (databaseVersion conn >>= runMigrations tr conn)
+                when (mode == LongLived) (databaseVersion conn >>= runMigrations tr conn)
                 action (mkDatabase k (bracketConnection conn))
       where
-        -- The heuristic below aims at favoring readers over writers. We assume
-        -- that there is only one writer and possibly many readers. The count of
-        -- readers is kept in a TVar and readers increment/decrement it around
-        -- each transactions.
-        -- The writer however will only attempt writing if there's currently no
-        -- reader. In case where there's at least one reader waiting, it'll let
-        -- them pass and wait until all readers are done.
+        -- The heuristic below aims at favoring light reader/writer over the main
+        -- writer. We assume that there is only one persistent db producer and possibly
+        -- many short-lived reader/writer. The count of short-lived connection
+        -- is kept in a TVar and each connection increment/decrement it around
+        -- each transaction.
+        --
+        -- Short-lived connection are _mostly_read-only, but they may sometimes
+        -- perform quick writes. Hence, there's a simple fail-over mechanism for
+        -- them, in the (unlikely) case where they'd perform two concurrent
+        -- conflictual requests. There's no need for the LongLived connection
+        -- which is always alone.
+        --
+        -- The persistent process will only attempt writing if there's currently
+        -- no short-lived one. In case where there's at least one busy, it'll let
+        -- them pass and wait until all short-lived are done.
         bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
         bracketConnection conn between =
             case mode of
-                ReadOnly -> bracket_
+                ShortLived -> bracket_
                     (do
                         atomically (modifyTVar' readers succ)
                         atomically (readTVar writer >>= check . not)
@@ -168,7 +202,7 @@ instance MonadDatabase IO where
                     (atomically (modifyTVar' readers pred))
                     (between conn)
 
-                Write -> bracket_
+                LongLived -> bracket_
                     (atomically $ do
                         readTVar readers >>= check . (== 0)
                         writeTVar writer True
@@ -192,7 +226,11 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         )
         inputs
 
-    , foldInputsByAddress = \addressLike yield -> ReaderT $ \conn -> do
+    , deleteInputs = \addressLike -> ReaderT $ \conn -> do
+        execute_ conn (Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike)
+        changes conn
+
+    , foldInputs = \addressLike yield -> ReaderT $ \conn -> do
         let matchMaybeDatumHash = \case
                 SQLBlob datumHash -> Just datumHash
                 _ -> Nothing
@@ -225,6 +263,25 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
             $ \xs (checkpointHeaderHash, checkpointSlotNo) ->
                 pure ((mk Checkpoint{..}) : xs)
 
+    , insertPatterns = \patterns -> ReaderT $ \conn -> do
+        mapM_
+            (\p ->
+                insertRow @"patterns" conn
+                    [ SQLText p
+                    ]
+            )
+            patterns
+
+    , deletePattern = \p -> ReaderT $ \conn -> do
+        execute conn "DELETE FROM patterns WHERE pattern = ?"
+            [ SQLText p
+            ]
+        changes conn
+
+    , listPatterns = \mk -> ReaderT $ \conn -> do
+        fold_ conn "SELECT * FROM patterns" []
+            $ \xs (Only x) -> pure (mk x:xs)
+
     , rollbackTo = \slotNo -> ReaderT $ \conn -> do
         execute conn "DELETE FROM inputs WHERE slot_no > ?"
             [ SQLInteger (fromIntegral slotNo)
@@ -241,7 +298,10 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 throwIO $ UnexpectedRow ("MAX(" <> show slotNo <> ")") xs
 
     , runTransaction = \r -> bracketConnection $ \conn ->
-        withTransaction conn (runReaderT r conn)
+        retryWhenBusy $ withTransaction conn False (runReaderT r conn)
+
+    , runImmediateTransaction = \r -> bracketConnection $ \conn ->
+        retryWhenBusy $ withTransaction conn True (runReaderT r conn)
     }
 
 insertRow
@@ -267,6 +327,39 @@ mkPreparedStatement :: Int -> Query
 mkPreparedStatement n =
     Query ("(" <> T.intercalate "," (replicate n "?") <> ")")
 
+retryWhenBusy :: IO a -> IO a
+retryWhenBusy action =
+    action `catch` (\e@SQLError{sqlError} -> case sqlError of
+        ErrorBusy -> do
+            threadDelay 0.1
+            retryWhenBusy action
+        _ ->
+            throwIO e
+    )
+
+-- NOTE: Not using sqlite-simple's version because it lacks the crucial
+-- 'onException' on commits; The commit operation may throw an 'SQLiteBusy'
+-- exception when concurrent transactions are begin executed.
+-- Yet, because it doesn't rollback in this case, it leaves the transaction in
+-- an odd shrodinger state and makes it hard for the caller to properly handle
+-- the exception (was the transaction rolled back or not? Is it safe to retry
+-- it?). So, this slightly modified version makes sure to also rollback on a
+-- failed commit; allowing caller to simply retry the whole transaction on
+-- failure.
+withTransaction :: Connection -> Bool -> IO a -> IO a
+withTransaction conn immediate action =
+  mask $ \restore -> do
+    begin
+    r <- restore action `onException` rollback
+    commit `onException` rollback
+    return r
+  where
+    begin
+        | immediate = execute_ conn "BEGIN IMMEDIATE TRANSACTION"
+        | otherwise = execute_ conn "BEGIN TRANSACTION"
+    commit   = execute_ conn "COMMIT TRANSACTION"
+    rollback = execute_ conn "ROLLBACK TRANSACTION"
+
 --
 -- Migrations
 --
@@ -291,7 +384,7 @@ runMigrations tr conn currentVersion = do
         traceWith tr DatabaseNoMigrationNeeded
     else do
         traceWith tr $ DatabaseRunningMigration currentVersion (length missingMigrations)
-        void $ withTransaction conn $
+        void $ withTransaction conn True $
             traverse (traverse (execute_ conn)) missingMigrations
 
 migrations :: [Migration]
@@ -301,6 +394,7 @@ migrations =
         [1..]
         [ $(embedFile "db/001.sql")
         , $(embedFile "db/002.sql")
+        , $(embedFile "db/003.sql")
         ]
     ]
   where
@@ -332,7 +426,10 @@ instance Exception UnexpectedRowException
 
 data TraceDatabase where
     DatabaseFoundCheckpoints
-        :: { checkpoints :: [Word64] }
+        :: { totalCheckpoints :: Int
+           , mostRecentCheckpoint :: Word64
+           , oldestCheckpoint :: Word64
+           }
         -> TraceDatabase
     DatabaseCurrentVersion
         :: { currentVersion :: Int }

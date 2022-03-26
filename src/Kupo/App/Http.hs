@@ -19,20 +19,30 @@ module Kupo.App.Http
 
 import Kupo.Prelude
 
+import Data.List
+    ( nub, (\\) )
 import Kupo.Control.MonadCatch
     ( handle )
 import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..) )
 import Kupo.Data.Cardano
     ( pointToJson )
 import Kupo.Data.Database
-    ( patternToQueryLike, pointFromRow, resultFromRow )
+    ( patternToQueryLike, patternToRow, pointFromRow, resultFromRow )
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health )
 import Kupo.Data.Pattern
-    ( patternFromText, resultToJson, wildcard )
+    ( Pattern (..)
+    , overlaps
+    , patternFromText
+    , patternToText
+    , resultToJson
+    , wildcard
+    )
 import Network.HTTP.Client
     ( defaultManagerSettings, httpLbs, newManager, parseRequest, responseBody )
 import Network.HTTP.Types.Header
@@ -68,12 +78,13 @@ import qualified Network.Wai.Handler.Warp as Warp
 httpServer
     :: Tracer IO TraceHttpServer
     -> (forall a. (Database IO -> IO a) -> IO a)
+    -> TVar IO [Pattern]
     -> IO Health
     -> String
     -> Int
     -> IO ()
-httpServer tr withDatabase readHealth host port =
-    Warp.runSettings settings $ tracerMiddleware tr (app withDatabase readHealth)
+httpServer tr withDatabase patternsVar readHealth host port =
+    Warp.runSettings settings $ tracerMiddleware tr (app withDatabase patternsVar readHealth)
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -87,28 +98,59 @@ httpServer tr withDatabase readHealth host port =
 
 app
     :: (forall a. (Database IO -> IO a) -> IO a)
+    -> TVar IO [Pattern]
     -> IO Health
     -> Application
-app withDatabase readHealth req send =
-    case (requestMethod req, pathInfo req) of
-        ("GET", [ "v1", "health" ]) ->
+app withDatabase patternsVar readHealth req send =
+    case pathInfo req of
+        ("v1" : "health" : args) ->
+            routeHealth (requestMethod req, args)
+
+        ("v1" : "checkpoints" : args) ->
+            routeCheckpoints (requestMethod req, args)
+
+        ("v1" : "matches" : args) ->
+            routeMatches (requestMethod req, args)
+
+        ("v1" : "patterns" : args) ->
+            routePatterns (requestMethod req, args)
+
+        _ ->
+            send handleNotFound
+  where
+    routeHealth = \case
+        ("GET", []) ->
             send . handleGetHealth =<< readHealth
-
-        ("GET", [ "v1", "checkpoints" ]) ->
-            withDatabase (send . handleGetCheckpoints)
-
-        ("GET", [ "v1", "matches" ]) ->
-            withDatabase (send . handleGetMatches Nothing)
-
-        ("GET", [ "v1", "matches", arg0 ]) ->
-            withDatabase (send . handleGetMatches (Just (arg0, Nothing)))
-
-        ("GET", [ "v1", "matches", arg0, arg1 ]) ->
-            withDatabase (send . handleGetMatches (Just (arg0, Just arg1)))
-
         ("GET", _) ->
             send handleNotFound
+        (_, _) ->
+            send handleMethodNotAllowed
 
+    routeCheckpoints = \case
+        ("GET", []) ->
+            withDatabase (send . handleGetCheckpoints)
+        ("GET", _) ->
+            send handleNotFound
+        (_, _) ->
+            send handleMethodNotAllowed
+
+    routeMatches = \case
+        ("GET", args) ->
+            withDatabase (send . handleGetMatches (patternFromQuery args))
+        ("DELETE", args) ->
+            withDatabase (send <=< handleDeleteMatches patternsVar (patternFromQuery args))
+        (_, _) ->
+            send handleMethodNotAllowed
+
+    routePatterns = \case
+        ("GET", []) ->
+            readTVarIO patternsVar >>= send . handleGetPatterns
+        ("GET", _) ->
+            send handleNotFound
+        ("PUT", args) ->
+            withDatabase (send <=< handlePutPattern patternsVar (patternFromQuery args))
+        ("DELETE", args) ->
+            withDatabase (send <=< handleDeletePattern patternsVar (patternFromQuery args))
         (_, _) ->
             send handleMethodNotAllowed
 
@@ -132,20 +174,82 @@ handleGetCheckpoints Database{..} = do
         done
 
 handleGetMatches
-    :: Maybe (Text, Maybe Text)
+    :: Maybe Text
     -> Database IO
     -> Response
 handleGetMatches query Database{..} = do
-    let txt = maybe wildcard (\(a0, a1) -> a0 <> maybe "" ("/" <>) a1) query
-    case patternFromText txt of
+    case query >>= patternFromText of
         Nothing ->
             handleInvalidPattern
         Just p -> do
             responseStreamJson resultToJson $ \yield done -> do
-                runTransaction $ foldInputsByAddress
+                runTransaction $ foldInputs
                     (patternToQueryLike p)
                     (yield . resultFromRow)
                 done
+
+handleDeleteMatches
+    :: TVar IO [Pattern]
+    -> Maybe Text
+    -> Database IO
+    -> IO Response
+handleDeleteMatches patternsVar query Database{..} = do
+    patterns <- readTVarIO patternsVar
+    case query >>= patternFromText of
+        Nothing -> do
+            pure handleInvalidPattern
+        Just p | p `overlaps` patterns -> do
+            pure handleStillActivePattern
+        Just p -> do
+            n <- runImmediateTransaction $ deleteInputs (patternToQueryLike p)
+            pure $ responseLBS status200 defaultHeaders $
+                B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
+                    [ Json.pair "deleted" (Json.int n)
+                    ]
+
+handleGetPatterns
+    :: [Pattern]
+    -> Response
+handleGetPatterns patterns = do
+    responseStreamJson Json.text $ \yield done -> do
+        mapM_ (yield . patternToText) patterns
+        done
+
+handleDeletePattern
+    :: TVar IO [Pattern]
+    -> Maybe Text
+    -> Database IO
+    -> IO Response
+handleDeletePattern patternsVar query Database{..} = do
+    case query >>= patternFromText of
+        Nothing ->
+            pure handleInvalidPattern
+        Just p -> do
+            n <- runImmediateTransaction $ deletePattern (patternToRow p)
+            atomically $ modifyTVar' patternsVar (\\ [p])
+            pure $ responseLBS status200 defaultHeaders $
+                B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
+                    [ Json.pair "deleted" (Json.int n)
+                    ]
+
+handlePutPattern
+    :: TVar IO [Pattern]
+    -> Maybe Text
+    -> Database IO
+    -> IO Response
+handlePutPattern patternsVar query Database{..} = do
+    case query >>= patternFromText of
+        Nothing ->
+            pure handleInvalidPattern
+        Just p  -> do
+            runImmediateTransaction $ insertPatterns [patternToRow p]
+            patterns <- atomically $ do
+                modifyTVar' patternsVar (nub . (p :))
+                readTVar patternsVar
+            pure $ responseLBS status200 defaultHeaders $
+                B.toLazyByteString $ Json.fromEncoding $ Json.list
+                    (Json.text . patternToText)
+                    patterns
 
 handleInvalidPattern :: Response
 handleInvalidPattern = do
@@ -155,6 +259,17 @@ handleInvalidPattern = do
                  \sure to double-check the documentation at: \
                  \<https://cardanosolutions.github.io/kupo>!"
         }
+
+handleStillActivePattern :: Response
+handleStillActivePattern = do
+    responseJson status400 defaultHeaders $ HttpError
+        { hint = "Beware! You've just attempted to remove matches using a pattern \
+                 \that overlaps with another still active pattern! This is not \
+                 \allowed as it could lead to very confusing index states. \
+                 \Make sure to remove conflicting patterns first AND THEN, \
+                 \clean-up obsolete matches if necessary."
+        }
+
 
 handleNotFound :: Response
 handleNotFound =
@@ -207,6 +322,17 @@ defaultHeaders =
     [ ( hContentType, "application/json;charset=utf-8" )
     ]
 
+patternFromQuery :: [Text] -> Maybe Text
+patternFromQuery = \case
+    [] ->
+        Just wildcard
+    [arg0] ->
+        Just arg0
+    [arg0, arg1] ->
+        Just (arg0 <> "/" <> arg1)
+    _ ->
+        Nothing
+
 responseJson
     :: ToJSON a
     => Http.Status
@@ -242,7 +368,6 @@ responseStreamJson encode callback = do
     separator isFirstResult
         | isFirstResult = mempty
         | otherwise     = B.putCharUtf8 ','
-
 
 --
 -- Tracer
