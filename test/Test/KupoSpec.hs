@@ -89,7 +89,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             (kupo tr `runWith` env)
             (do
                 waitForServer
-                waitUntil (> 21600)
+                waitUntil (> 21_600)
                 matches <- getAllMatches
                 length matches `shouldSatisfy` (> 10)
                 healthCheck (serverHost cfg) (serverPort cfg)

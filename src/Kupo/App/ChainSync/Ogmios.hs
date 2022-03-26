@@ -68,7 +68,10 @@ connect
     -> (WS.Connection -> IO ())
     -> IO ()
 connect ConnectionStatusToggle{toggleConnected, toggleDisconnected} host port action =
-    retry $ WS.runClient host port "/" (\ws -> toggleConnected >> action ws)
+    retry $ WS.runClientWith host port "/"
+        WS.defaultConnectionOptions
+        [("Sec-WebSocket-Protocol", "ogmios.v1:compact")]
+        (\ws -> toggleConnected >> action ws)
   where
     retry io = catch io $ \e ->
         if isRetryableIOException e then do
