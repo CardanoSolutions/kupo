@@ -78,8 +78,8 @@ spec = skippableContext "End-to-end" $ \manager -> do
     specify "in memory" $ \(_, tr, cfg) -> do
         env <- newEnvironment $ cfg
             { workDir = InMemory
-            , since = Just somePoint
-            , patterns = [MatchAny OnlyShelley]
+            , since = Just GenesisPoint
+            , patterns = [MatchAny IncludingBootstrap]
             }
         let HttpClient{..} = newHttpClient manager cfg
         let timeLimit = case chainProducer cfg of
@@ -89,9 +89,9 @@ spec = skippableContext "End-to-end" $ \manager -> do
             (kupo tr `runWith` env)
             (do
                 waitForServer
-                waitUntil (> (getPointSlotNo somePoint + 100_000))
+                waitUntil (> 21600)
                 matches <- getAllMatches
-                length matches `shouldSatisfy` (> 12_000)
+                length matches `shouldSatisfy` (> 10)
                 healthCheck (serverHost cfg) (serverPort cfg)
             )
 
@@ -102,7 +102,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             env <- newEnvironment $ cfg
                 { workDir = Dir tmp
                 , since = Just somePoint
-                , patterns = [MatchAny IncludingBootstrap]
+                , patterns = [MatchAny OnlyShelley]
                 }
             timeoutOrThrow 5 $ race_
                 (kupo tr `runWith` env)
@@ -116,7 +116,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             env <- newEnvironment $ cfg
                 { workDir = Dir tmp
                 , since = Just somePoint
-                , patterns = [MatchAny IncludingBootstrap]
+                , patterns = [MatchAny OnlyShelley]
                 }
             timeoutOrThrow 5 $ race_
                 (kupo tr `runWith` env)
@@ -131,7 +131,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             env <- newEnvironment $ cfg
                 { workDir = Dir tmp
                 , since = Just someOtherPoint
-                , patterns = [MatchAny IncludingBootstrap]
+                , patterns = [MatchAny OnlyShelley]
                 }
             shouldThrowTimeout @ConflictingOptionException 1 (kupo tr `runWith` env)
           )
@@ -140,7 +140,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             env <- newEnvironment $ cfg
                 { workDir = Dir tmp
                 , since = Just somePoint
-                , patterns = [MatchAny OnlyShelley]
+                , patterns = [MatchAny IncludingBootstrap]
                 }
             shouldThrowTimeout @ConflictingOptionException 1 (kupo tr `runWith` env)
           )
