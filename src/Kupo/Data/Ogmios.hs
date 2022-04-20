@@ -23,8 +23,6 @@ import Cardano.Crypto.Hash.Class
     ( Hash, HashAlgorithm, hashFromTextAsHex, hashToBytes )
 import Data.Aeson
     ( (.!=), (.:), (.:?) )
-import Kupo.Control.MonadOuroboros
-    ( IntersectionNotFoundException (..) )
 import Kupo.Data.Cardano
     ( Address
     , Blake2b_256
@@ -51,6 +49,8 @@ import Kupo.Data.Cardano
     , unsafeValueFromList
     , withReferences
     )
+import Kupo.Data.ChainSync
+    ( IntersectionNotFoundException (..) )
 import Kupo.Data.Pattern
     ( Pattern (..), patternFromText )
 import Ouroboros.Consensus.Cardano.Block

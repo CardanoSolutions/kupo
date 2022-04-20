@@ -7,7 +7,8 @@
 module Kupo.App
     ( -- * Application Startup
       startOrResume
-    , ConflictingOptionException (..)
+    , newPatternsCache
+    , ConflictingOptionsException (..)
     , NoStartingPointException (..)
 
       -- * ChainProducer
@@ -24,6 +25,8 @@ module Kupo.App
 
 import Kupo.Prelude
 
+import Kupo.App.ChainSync
+    ( TraceChainSync (..) )
 import Kupo.App.Http
     ( TraceHttpServer )
 import Kupo.App.Mailbox
@@ -42,11 +45,7 @@ import Kupo.Control.MonadDatabase
 import Kupo.Control.MonadLog
     ( MonadLog (..), Tracer, TracerDefinition (..), TracerHKD )
 import Kupo.Control.MonadOuroboros
-    ( IntersectionNotFoundException (..)
-    , MonadOuroboros (..)
-    , NodeToClientVersion (..)
-    , TraceChainSync (..)
-    )
+    ( MonadOuroboros (..), NodeToClientVersion (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Control.MonadThrow
@@ -54,7 +53,7 @@ import Kupo.Control.MonadThrow
 import Kupo.Data.Cardano
     ( Block, IsBlock, Point, SlotNo (..), Tip, getPoint, getPointSlotNo )
 import Kupo.Data.ChainSync
-    ( ChainSyncHandler (..) )
+    ( ChainSyncHandler (..), IntersectionNotFoundException (..) )
 import Kupo.Data.Database
     ( patternFromRow, patternToRow, pointFromRow, pointToRow, resultToRow )
 import Kupo.Data.Pattern
@@ -70,88 +69,101 @@ import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 startOrResume
     :: forall m.
         ( MonadThrow m
+        , MonadLog m
+        )
+    => Tracers
+    -> Configuration
+    -> Database m
+    -> m [Point Block]
+startOrResume tracers configuration Database{..} = do
+    checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
+    case nonEmpty (sortOn Down (unSlotNo . getPointSlotNo <$> checkpoints)) of
+        Nothing -> pure ()
+        Just slots -> do
+            let mostRecentCheckpoint = head slots
+            let oldestCheckpoint = last slots
+            let totalCheckpoints = length slots
+            logWith tracerDatabase $ DatabaseFoundCheckpoints
+                { totalCheckpoints
+                , mostRecentCheckpoint
+                , oldestCheckpoint
+                }
+    case (since, checkpoints) of
+        (Nothing, []) -> do
+            logWith tracerConfiguration errNoStartingPoint
+            throwIO NoStartingPointException
+        (Just point, mostRecentCheckpoint:_) -> do
+            if getPointSlotNo point > getPointSlotNo mostRecentCheckpoint then do
+                logWith tracerConfiguration errConflictingOptions
+                throwIO ConflictingOptionsException
+            else do
+                pure (sortOn (Down . getPointSlotNo) (point : checkpoints))
+        (Nothing, pts) -> do
+            pure pts
+        (Just pt, []) ->
+            pure [pt]
+  where
+    Tracers{tracerDatabase, tracerConfiguration} = tracers
+    Configuration{since} = configuration
+
+    errNoStartingPoint = ConfigurationInvalidOrMissingOption
+        "No '--since' provided and no checkpoints found in the \
+        \database. An explicit starting point (e.g. 'origin') is \
+        \required the first time launching the application."
+
+    errConflictingOptions = ConfigurationInvalidOrMissingOption
+        "The point provided through '--since' is more recent than \
+        \any of the known checkpoints and it isn't possible to make \
+        \a choice for resuming the application: should synchronization \
+        \restart from the latest checkpoint or from the provided \
+        \--since point? Please dispel the confusion by either choosing \
+        \a different starting point (or none at all) or by using a \
+        \fresh new database."
+
+
+newPatternsCache
+    :: forall m.
+        ( MonadThrow m
         , MonadSTM m
         , MonadLog m
         )
     => Tracers
     -> Configuration
     -> Database m
-    -> m (TVar m [Pattern], [Point Block])
-startOrResume tracers configuration Database{..} = do
-    checkpoints <- initCheckpoints
-    patterns <- newTVarIO =<< initPatterns
-    pure (patterns, checkpoints)
+    -> m (TVar m [Pattern])
+newPatternsCache tracers configuration Database{..} = do
+    alreadyKnownPatterns <- runTransaction (listPatterns patternFromRow)
+    patterns <- case (alreadyKnownPatterns, configuredPatterns) of
+        (x:xs, []) ->
+            pure (x:xs)
+        ([], y:ys) -> do
+            runTransaction (insertPatterns (patternToRow <$> (y:ys)))
+            pure (y:ys)
+        ([], []) ->
+            pure []
+        (xs, ys) | sort xs /= sort ys -> do
+            logWith tracerConfiguration errConflictingOptions
+            throwIO ConflictingOptionsException
+        (xs, _) ->
+            pure xs
+    logWith tracerConfiguration $ ConfigurationPatterns (patternToText <$> patterns)
+    newTVarIO patterns
   where
-    Tracers{tracerDatabase, tracerConfiguration} = tracers
-    Configuration{since, patterns = configuredPatterns} = configuration
+    Tracers{tracerConfiguration} = tracers
+    Configuration{patterns = configuredPatterns} = configuration
 
-    initCheckpoints = do
-        checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
-        case nonEmpty (sortOn Down (unSlotNo . getPointSlotNo <$> checkpoints)) of
-            Nothing -> pure ()
-            Just slots -> do
-                let mostRecentCheckpoint = head slots
-                let oldestCheckpoint = last slots
-                let totalCheckpoints = length slots
-                logWith tracerDatabase $ DatabaseFoundCheckpoints
-                    { totalCheckpoints
-                    , mostRecentCheckpoint
-                    , oldestCheckpoint
-                    }
-
-        case (since, checkpoints) of
-            (Nothing, []) -> do
-                logWith tracerConfiguration $ ConfigurationInvalidOrMissingOption
-                    "No '--since' provided and no checkpoints found in the \
-                    \database. An explicit starting point (e.g. 'origin') is \
-                    \required the first time launching the application."
-                throwIO NoStartingPointException
-            (Just point, mostRecentCheckpoint:_) -> do
-                if getPointSlotNo point > getPointSlotNo mostRecentCheckpoint then do
-                    logWith tracerConfiguration $ ConfigurationInvalidOrMissingOption
-                        "The point provided through '--since' is more recent than \
-                        \any of the known checkpoints and it isn't possible to make \
-                        \a choice for resuming the application: should synchronization \
-                        \restart from the latest checkpoint or from the provided \
-                        \--since point? Please dispel the confusion by either choosing \
-                        \a different starting point (or none at all) or by using a \
-                        \fresh new database."
-                    throwIO ConflictingOptionException
-                else do
-                    pure (sortOn (Down . getPointSlotNo) (point : checkpoints))
-            (Nothing, pts) -> do
-                pure pts
-            (Just pt, []) ->
-                pure [pt]
-
-    initPatterns = do
-        alreadyKnownPatterns <- runTransaction (listPatterns patternFromRow)
-        patterns <- case (alreadyKnownPatterns, configuredPatterns) of
-            (x:xs, []) ->
-                pure (x:xs)
-            ([], y:ys) -> do
-                runTransaction (insertPatterns (patternToRow <$> (y:ys)))
-                pure (y:ys)
-            ([], []) ->
-                pure []
-            (xs, ys) | sort xs /= sort ys -> do
-                logWith tracerConfiguration $ ConfigurationInvalidOrMissingOption
-                    "Configuration patterns are different from previously known \
-                    \patterns. Restarting a running server using different \
-                    \command-line patterns is not allowed for it may likely be \
-                    \an error. If you do intent do dynamically manage patterns, \
-                    \please use the HTTP API instead of the command-line options."
-                throwIO ConflictingOptionException
-            (xs, _) ->
-                pure xs
-        logWith tracerConfiguration $ ConfigurationPatterns (patternToText <$> patterns)
-        return patterns
+    errConflictingOptions = ConfigurationInvalidOrMissingOption
+        "Configuration patterns are different from previously known \
+        \patterns. Restarting a running server using different \
+        \command-line patterns is not allowed for it may likely be \
+        \an error. If you do intent do dynamically manage patterns, \
+        \please use the HTTP API instead of the command-line options."
 
 data NoStartingPointException = NoStartingPointException deriving (Show)
 instance Exception NoStartingPointException
 
-data ConflictingOptionException = ConflictingOptionException  deriving (Show)
-instance Exception ConflictingOptionException
+data ConflictingOptionsException = ConflictingOptionsException  deriving (Show)
+instance Exception ConflictingOptionsException
 
 --
 -- Chain Producer
@@ -191,7 +203,6 @@ withChainProducer tracerConfiguration chainProducer callback = do
             callback mailbox $ \tracerChainSync checkpoints notifyTip statusToggle db -> do
                 let chainSyncHandler = producer tracerChainSync notifyTip mailbox db
                 withChainSyncServer
-                  tracerChainSync
                   statusToggle
                   [ NodeToClientV_9 .. NodeToClientV_12 ]
                   networkMagic

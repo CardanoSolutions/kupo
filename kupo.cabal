@@ -38,6 +38,7 @@ library
   exposed-modules:
       Kupo
       Kupo.App
+      Kupo.App.ChainSync
       Kupo.App.ChainSync.Direct
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Health

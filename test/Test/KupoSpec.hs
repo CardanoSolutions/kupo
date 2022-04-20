@@ -21,7 +21,7 @@ import Data.List
 import Kupo
     ( kupo, newEnvironment, runWith, version, withTracers )
 import Kupo.App
-    ( ConflictingOptionException, NoStartingPointException, Tracers )
+    ( ConflictingOptionsException, NoStartingPointException, Tracers )
 import Kupo.App.Http
     ( healthCheck )
 import Kupo.Configuration
@@ -32,12 +32,12 @@ import Kupo.Control.MonadDelay
     ( threadDelay )
 import Kupo.Control.MonadLog
     ( Severity (..), defaultTracers )
-import Kupo.Control.MonadOuroboros
-    ( IntersectionNotFoundException )
 import Kupo.Control.MonadTime
     ( DiffTime, timeout )
 import Kupo.Data.Cardano
     ( pattern GenesisPoint, SlotNo (..), getPointSlotNo )
+import Kupo.Data.ChainSync
+    ( IntersectionNotFoundException )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
 import Network.HTTP.Client
@@ -133,7 +133,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 , since = Just someOtherPoint
                 , patterns = [MatchAny OnlyShelley]
                 }
-            shouldThrowTimeout @ConflictingOptionException 1 (kupo tr `runWith` env)
+            shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
           )
 
         ( do -- Can't restart with different, non-empty, patterns
@@ -142,7 +142,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 , since = Just somePoint
                 , patterns = [MatchAny IncludingBootstrap]
                 }
-            shouldThrowTimeout @ConflictingOptionException 1 (kupo tr `runWith` env)
+            shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
           )
 
     specify "Can't start the server on a fresh new db without explicit point" $ \(tmp, tr, cfg) -> do
@@ -153,7 +153,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             }
         shouldThrowTimeout @NoStartingPointException 1 (kupo tr `runWith` env)
 
-    specify "Retry and wait when node isn't available" $ \(tmp, tr, cfg) -> do
+    specify "Retry and wait when chain producer isn't available" $ \(tmp, tr, cfg) -> do
         let HttpClient{..} = newHttpClient manager cfg
         env <- newEnvironment $ cfg
             { workDir = Dir tmp

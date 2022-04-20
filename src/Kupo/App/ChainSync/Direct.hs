@@ -8,14 +8,12 @@ module Kupo.App.ChainSync.Direct
 
 import Kupo.Prelude
 
-import Kupo.Control.MonadOuroboros
-    ( IntersectionNotFoundException (..) )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
     ( Point (..), Tip (..) )
 import Kupo.Data.ChainSync
-    ( ChainSyncHandler (..) )
+    ( ChainSyncHandler (..), IntersectionNotFoundException (..) )
 import Network.TypedProtocol.Pipelined
     ( Nat (..), natToInt )
 import Ouroboros.Network.Block

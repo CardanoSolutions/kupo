@@ -9,10 +9,6 @@ module Kupo.App.ChainSync.Ogmios
 
 import Kupo.Prelude
 
-import Kupo.Control.MonadCatch
-    ( MonadCatch (..) )
-import Kupo.Control.MonadDelay
-    ( MonadDelay (..) )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
@@ -67,19 +63,11 @@ connect
     -> Int
     -> (WS.Connection -> IO ())
     -> IO ()
-connect ConnectionStatusToggle{toggleConnected, toggleDisconnected} host port action =
-    retry $ WS.runClientWith host port "/"
+connect ConnectionStatusToggle{toggleConnected} host port action =
+    WS.runClientWith host port "/"
         WS.defaultConnectionOptions
         [("Sec-WebSocket-Protocol", "ogmios.v1:compact")]
         (\ws -> toggleConnected >> action ws)
-  where
-    retry io = catch io $ \e ->
-        if isRetryableIOException e then do
-            toggleDisconnected
-            threadDelay 0.5
-            retry io
-        else
-            throwIO e
 
 data CannotResolveAddressException = CannotResolveAddress
     { host :: String

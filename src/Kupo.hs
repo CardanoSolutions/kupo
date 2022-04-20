@@ -30,7 +30,15 @@ module Kupo
 import Kupo.Prelude
 
 import Kupo.App
-    ( Tracers, Tracers' (..), consumer, startOrResume, withChainProducer )
+    ( Tracers
+    , Tracers' (..)
+    , consumer
+    , newPatternsCache
+    , startOrResume
+    , withChainProducer
+    )
+import Kupo.App.ChainSync
+    ( withChainSyncExceptionHandler )
 import Kupo.App.Health
     ( connectionStatusToggle, readHealth, recordCheckpoint )
 import Kupo.App.Http
@@ -105,7 +113,7 @@ kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase
 
     lock <- liftIO newLock
     liftIO $ withDatabase tracerDatabase LongLived lock longestRollback dbFile $ \db -> do
-        (patterns, checkpoints) <- startOrResume tr cfg db
+        patterns <- newPatternsCache tr cfg db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
         withChainProducer tracerConfiguration chainProducer $ \mailbox producer -> do
@@ -135,12 +143,14 @@ kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase
                 )
 
                 -- Block producer, fetching blocks from the network
-                ( producer
-                    tracerChainSync
-                    checkpoints
-                    notifyTip
-                    statusToggle
-                    db
+                ( withChainSyncExceptionHandler tracerChainSync statusToggle $ do
+                    checkpoints <- startOrResume tr cfg db
+                    producer
+                        tracerChainSync
+                        checkpoints
+                        notifyTip
+                        statusToggle
+                        db
                 )
 
 --

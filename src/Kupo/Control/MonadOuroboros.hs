@@ -4,8 +4,6 @@
 
 {-# LANGUAGE RecordWildCards #-}
 
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-
 module Kupo.Control.MonadOuroboros
     ( -- * MonadOuroboros
       MonadOuroboros (..)
@@ -17,10 +15,7 @@ module Kupo.Control.MonadOuroboros
     , NetworkMagic (..)
     , EpochSlots (..)
     , NodeToClientVersion (..)
-    , IntersectionNotFoundException (..)
-
-      -- * Tracer
-    , TraceChainSync (..)
+    , WithOrigin (..)
     ) where
 
 import Kupo.Prelude
@@ -29,22 +24,10 @@ import Cardano.Chain.Slotting
     ( EpochSlots (..) )
 import Cardano.Ledger.Crypto
     ( StandardCrypto )
-import Cardano.Slotting.Slot
-    ( SlotNo )
-import Control.Exception.Safe
-    ( IOException, isAsyncException )
-import Control.Monad.Class.MonadThrow
-    ( MonadCatch (..), MonadThrow (..) )
-import Control.Monad.Class.MonadTimer
-    ( threadDelay )
 import Control.Tracer
-    ( Tracer, nullTracer, traceWith )
+    ( nullTracer )
 import Data.Map.Strict
     ( (!) )
-import Data.Severity
-    ( HasSeverityAnnotation (..), Severity (..) )
-import Data.Time.Clock
-    ( DiffTime )
 import Ouroboros.Consensus.Byron.Ledger.Config
     ( CodecConfig (..) )
 import Ouroboros.Consensus.Cardano
@@ -94,8 +77,7 @@ class MonadOuroboros (m :: Type -> Type) where
     type BlockT m :: Type
     withChainSyncServer
         :: (StandardHash (BlockT m), Typeable (BlockT m))
-        => Tracer m TraceChainSync
-        -> ConnectionStatusToggle m
+        => ConnectionStatusToggle m
         -> [NodeToClientVersion]
         -> NetworkMagic
         -> EpochSlots
@@ -103,23 +85,11 @@ class MonadOuroboros (m :: Type -> Type) where
         -> ChainSyncClientPipelined (BlockT m) (Point (BlockT m)) (Tip (BlockT m)) IO ()
         -> m ()
 
--- | Exception thrown when creating a chain-sync client from an invalid list of
--- points.
-data IntersectionNotFoundException = IntersectionNotFound
-    { requestedPoints :: [WithOrigin SlotNo]
-        -- ^ Provided points for intersection.
-    , tip :: WithOrigin SlotNo
-        -- ^ Current known tip of the chain.
-    } deriving (Show)
-instance Exception IntersectionNotFoundException
-
 instance MonadOuroboros IO where
     type BlockT IO = CardanoBlock StandardCrypto
-    withChainSyncServer tr ConnectionStatusToggle{..} wantedVersions networkMagic slotsPerEpoch socket client =
+    withChainSyncServer ConnectionStatusToggle{..} wantedVersions networkMagic slotsPerEpoch socket client =
         withIOManager $ \iocp -> do
             connectTo (mkLocalSnocket iocp) tracers versions socket
-                & onExceptions
-                & foreverCalmly
       where
         tracers = NetworkConnectTracers
             { nctMuxTracer = nullTracer
@@ -158,31 +128,6 @@ instance MonadOuroboros IO where
                     }
                 ]
 
-        foreverCalmly a = do
-            let a' = a *> threadDelay 5 *> a' in a'
-
-        onExceptions
-            = handle onUnknownException
-            . handle onIOException
-            . (`onException` toggleDisconnected)
-
-        onIOException :: IOException -> IO ()
-        onIOException e
-            | isRetryableIOException e = do
-                traceWith tr $ ChainSyncFailedToConnect socket 5
-            | otherwise = do
-                traceWith tr $ ChainSyncUnknownException $ show (toException e)
-
-        onUnknownException :: SomeException -> IO ()
-        onUnknownException e
-            | isAsyncException e = do
-                throwIO e
-            | otherwise = case fromException e of
-                Just (_ :: IntersectionNotFoundException) ->
-                    throwIO e
-                Nothing ->
-                    traceWith tr $ ChainSyncUnknownException $ show e
-
 codecs
     :: EpochSlots
     -> NodeToClientVersion
@@ -200,47 +145,3 @@ codecs epochSlots nodeToClientV =
         allegra = ShelleyCodecConfig
         mary    = ShelleyCodecConfig
         alonzo  = ShelleyCodecConfig
-
---
--- Tracer
---
-
-data TraceChainSync where
-    ChainSyncRollBackward
-        :: { point :: SlotNo }
-        -> TraceChainSync
-    ChainSyncRollForward
-        :: { slotNo :: SlotNo, matches :: Int }
-        -> TraceChainSync
-    ChainSyncIntersectionNotFound
-        :: { points :: [WithOrigin SlotNo] }
-        -> TraceChainSync
-    ChainSyncFailedToConnect
-        :: { socket :: FilePath, retryingIn :: DiffTime }
-        -> TraceChainSync
-    ChainSyncUnknownException
-        :: { exception :: Text }
-        -> TraceChainSync
-    deriving stock (Generic, Show)
-
-instance ToJSON TraceChainSync where
-    toEncoding =
-        defaultGenericToEncoding
-
-instance ToJSON (WithOrigin SlotNo) where
-    toEncoding = \case
-        Origin -> toEncoding ("origin" :: Text)
-        At sl -> toEncoding sl
-
-instance HasSeverityAnnotation TraceChainSync where
-    getSeverityAnnotation = \case
-        ChainSyncRollForward{} ->
-            Debug
-        ChainSyncRollBackward{} ->
-            Notice
-        ChainSyncFailedToConnect{} ->
-            Warning
-        ChainSyncIntersectionNotFound{} ->
-            Error
-        ChainSyncUnknownException{} ->
-            Error

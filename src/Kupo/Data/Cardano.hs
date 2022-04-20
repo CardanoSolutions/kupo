@@ -733,6 +733,13 @@ digestSize :: forall alg. HashAlgorithm alg => Int
 digestSize =
     fromIntegral (sizeHash (Proxy @alg))
 
+-- WithOrigin
+
+instance ToJSON (WithOrigin SlotNo) where
+    toEncoding = \case
+        Origin -> toEncoding ("origin" :: Text)
+        At sl -> toEncoding sl
+
 -- Helper
 
 sizeInvariant :: HasCallStack => (Int -> Bool) -> ByteString -> ByteString
@@ -741,5 +748,3 @@ sizeInvariant predicate bytes
         bytes
     | otherwise =
         error ("predicate failed for bytes: " <> show bytes)
-
-

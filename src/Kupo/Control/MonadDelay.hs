@@ -4,7 +4,14 @@
 
 module Kupo.Control.MonadDelay
     ( MonadDelay (..)
+    , foreverCalmly
     ) where
+
+import Kupo.Prelude
 
 import Control.Monad.Class.MonadTimer
     ( MonadDelay (..) )
+
+foreverCalmly :: (MonadDelay m) => m a -> m a
+foreverCalmly a = do
+    let a' = a *> threadDelay 5 *> a' in a'

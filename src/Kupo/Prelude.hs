@@ -37,13 +37,10 @@ module Kupo.Prelude
       -- * System
     , hijackSigTerm
     , ConnectionStatusToggle (..)
-    , isRetryableIOException
     ) where
 
 import Cardano.Binary
     ( decodeFull', serialize', unsafeDeserialize' )
-import Control.Exception
-    ( IOException )
 import Control.Lens
     ( Lens', at, (^?), (^?!) )
 import Data.Aeson
@@ -54,8 +51,6 @@ import Data.ByteString.Base64
     ( decodeBase64, encodeBase64 )
 import Data.Generics.Internal.VL.Lens
     ( view, (^.) )
-import Data.List
-    ( isInfixOf )
 import GHC.Generics
     ( Rep )
 import Relude hiding
@@ -98,8 +93,6 @@ import Relude hiding
     , tryTakeTMVar
     , writeTVar
     )
-import System.IO.Error
-    ( isDoesNotExistError )
 import System.Posix.Signals
     ( Handler (..)
     , installHandler
@@ -116,16 +109,6 @@ data ConnectionStatusToggle m = ConnectionStatusToggle
     { toggleConnected :: m ()
     , toggleDisconnected :: m ()
     }
-
-isRetryableIOException :: IOException -> Bool
-isRetryableIOException e =
-    isResourceVanishedError e || isDoesNotExistError e || isTryAgainError e
-  where
-    isTryAgainError :: IOException -> Bool
-    isTryAgainError = isInfixOf "resource exhausted" . show
-
-    isResourceVanishedError :: IOException -> Bool
-    isResourceVanishedError = isInfixOf "resource vanished" . show
 
 -- | The runtime does not let the application terminate gracefully when a
 -- SIGTERM is received. It does however for SIGINT which allows the application
