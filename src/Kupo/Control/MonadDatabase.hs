@@ -395,6 +395,7 @@ migrations =
         [ $(embedFile "db/001.sql")
         , $(embedFile "db/002.sql")
         , $(embedFile "db/003.sql")
+        , $(embedFile "db/004.sql")
         ]
     ]
   where

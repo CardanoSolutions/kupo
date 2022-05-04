@@ -263,8 +263,13 @@ decodePartialTransaction
     -> Json.Parser PartialTransaction
 decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     txId <- o .: "id" >>= decodeTransactionId
-    outs <- traverse decodeOutput =<< (o .: "body" >>= (.: "outputs"))
-    pure (PartialTransaction (withReferences txId outs))
+    inputSource <- o .:? "inputSource"
+    case inputSource of
+        Just ("collaterals" :: Text) ->
+            pure (PartialTransaction [])
+        _ -> do
+            outs <- traverse decodeOutput =<< (o .: "body" >>= (.: "outputs"))
+            pure (PartialTransaction (withReferences txId outs))
 
 decodePointOrOrigin
     :: Json.Value

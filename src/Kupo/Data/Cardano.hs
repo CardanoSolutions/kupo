@@ -291,7 +291,11 @@ instance IsBlock Block where
                 txId = Ledger.txid @(AlonzoEra StandardCrypto) body
                 outs = Ledger.Alonzo.outputs' body
              in
-                traverseAndTransform identity txId 0 outs
+                case Ledger.Alonzo.isValid tx of
+                    Ledger.Alonzo.IsValid True ->
+                        traverseAndTransform identity txId 0 outs
+                    _ ->
+                        []
       where
         traverseAndTransformByron
             :: forall output. ()
