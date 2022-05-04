@@ -383,7 +383,8 @@ runMigrations tr conn currentVersion = do
     if null missingMigrations then
         traceWith tr DatabaseNoMigrationNeeded
     else do
-        traceWith tr $ DatabaseRunningMigration currentVersion (length missingMigrations)
+        let targetVersion = currentVersion + length missingMigrations
+        traceWith tr $ DatabaseRunningMigration currentVersion targetVersion
         void $ withTransaction conn True $
             traverse (traverse (execute_ conn)) missingMigrations
 
