@@ -35,6 +35,8 @@ import Kupo.Data.Cardano
     , Blake2b_256
     , Block
     , DatumHash
+    , Input
+    , InputStatus (..)
     , IsBlock (..)
     , Output
     , OutputReference
@@ -67,6 +69,7 @@ import Kupo.Data.Cardano
 import qualified Codec.Binary.Bech32 as Bech32
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString as BS
+import qualified Data.Set as Set
 import qualified Data.Text as T
 
 data Pattern
@@ -251,6 +254,7 @@ data Result = Result
     , value :: Value
     , datumHash :: Maybe DatumHash
     , point :: Point Block
+    , status :: InputStatus
     } deriving (Show, Eq)
 
 resultToJson
@@ -280,19 +284,23 @@ resultToJson Result{..} = Json.pairs $ mconcat
 -- multiple patterns. This is to facilitate building an index of matches to
 -- results.
 matchBlock
-    :: forall block result.
+    :: forall block result input.
         ( IsBlock block
+        , Ord input
         )
     => (Result -> result)
+    -> (Input -> input)
     -> [Pattern]
     -> block
-    -> [result]
-matchBlock transform ms blk =
-    let pt = getPoint blk in foldBlock (fn pt) [] blk
+    -> (Set input, [result])
+matchBlock toResult toInput patterns blk =
+    let pt = getPoint blk in foldBlock (fn pt) (Set.empty, []) blk
   where
-    fn :: Point Block -> BlockBody block -> [result] -> [result]
-    fn pt tx results =
-        concatMap (flip (mapMaybeOutputs @block) tx . match pt) ms ++ results
+    fn :: Point Block -> BlockBody block -> (Set input, [result]) -> (Set input, [result])
+    fn pt tx (consumed, produced) =
+        ( Set.foldr (Set.insert . toInput) consumed (spentInputs @block tx)
+        , concatMap (flip (mapMaybeOutputs @block) tx . match pt) patterns ++ produced
+        )
 
     match
         :: Point Block
@@ -302,10 +310,11 @@ matchBlock transform ms blk =
         -> Maybe result
     match pt m outputReference out = do
         getAddress out `matching` m
-        pure $ transform Result
+        pure $ toResult Result
             { outputReference
             , address = getAddress out
             , value = getValue out
             , datumHash = getDatumHash out
             , point = pt
+            , status = Unspent
             }

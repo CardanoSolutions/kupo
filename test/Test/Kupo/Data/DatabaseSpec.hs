@@ -133,7 +133,7 @@ shortLivedWorker dir lock = do
                 , (1, do
                     p <- genPattern
                     let q = patternToQueryLike p
-                    pure $ void $ runImmediateTransaction $ deleteInputs q
+                    pure $ void $ runImmediateTransaction $ deleteInputsByAddress q
                   )
                 , (1, do
                     p <- genPattern

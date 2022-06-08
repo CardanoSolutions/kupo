@@ -201,7 +201,7 @@ handleDeleteMatches patternsVar query Database{..} = do
         Just p | p `overlaps` patterns -> do
             pure handleStillActivePattern
         Just p -> do
-            n <- runImmediateTransaction $ deleteInputs (patternToQueryLike p)
+            n <- runImmediateTransaction $ deleteInputsByAddress (patternToSql p)
             pure $ responseLBS status200 defaultHeaders $
                 B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)

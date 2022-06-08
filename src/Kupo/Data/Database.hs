@@ -21,7 +21,10 @@ module Kupo.Data.Database
       -- * Pattern
     , patternToRow
     , patternFromRow
-    , patternToQueryLike
+    , patternToSql
+
+      -- * Filtering
+    , statusToSql
     ) where
 
 import Kupo.Prelude
@@ -34,6 +37,8 @@ import Cardano.Ledger.Crypto
     ( StandardCrypto )
 import Cardano.Slotting.Slot
     ( SlotNo (..) )
+import Kupo.Data.Cardano
+    ( inputStatusToText, unsafeInputStatusFromText )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
@@ -55,6 +60,7 @@ import Ouroboros.Network.Block
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Shelley.API as Ledger
 import qualified Kupo.Control.MonadDatabase as DB
+import qualified Network.HTTP.Types.URI as Http
 
 --
 -- Checkpoint
@@ -98,6 +104,7 @@ resultFromRow row = Result
     , value = unsafeDeserialize' (DB.value row)
     , datumHash = unsafeDeserialize' <$> (DB.datumHash row)
     , point = pointFromRow (DB.Checkpoint (DB.headerHash row) (DB.slotNo row))
+    , status = unsafeInputStatusFromText (DB.status row)
     }
   where
     unsafeAddressFromBytes =
@@ -113,6 +120,7 @@ resultToRow Result{..} = DB.Input
     , DB.datumHash = serialize' <$> datumHash
     , DB.headerHash = checkpointHeaderHash
     , DB.slotNo = checkpointSlotNo
+    , DB.status = inputStatusToText status
     }
   where
     DB.Checkpoint
@@ -139,10 +147,10 @@ patternFromRow p =
         (error $ "patternFromRow: invalid pattern: " <> p)
         (patternFromText p)
 
-patternToQueryLike
+patternToSql
     :: Pattern
     -> Text
-patternToQueryLike = \case
+patternToSql = \case
     MatchAny IncludingBootstrap ->
         "LIKE '%'"
     MatchAny OnlyShelley ->
@@ -155,3 +163,20 @@ patternToQueryLike = \case
         "LIKE '%" <> encodeBase16 delegation <> "' AND len > 58"
     MatchPaymentAndDelegation payment delegation ->
         "LIKE '__" <> encodeBase16 payment <> encodeBase16 delegation <> "'"
+
+--
+-- Filters
+--
+
+statusToSql
+    :: Http.Query
+    -> Maybe Text
+statusToSql = \case
+    [ ("spent", Nothing) ] ->
+        Just "status = 'spent'"
+    [ ("unspent", Nothing) ] ->
+        Just "status = 'unspent'"
+    [] ->
+        Just ""
+    _ ->
+        Nothing

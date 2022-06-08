@@ -30,6 +30,7 @@ import Kupo.Data.Cardano
     , BlockNo (..)
     , pattern BlockPoint
     , pattern GenesisPoint
+    , Input
     , IsBlock (..)
     , Output
     , OutputReference
@@ -42,6 +43,7 @@ import Kupo.Data.Cardano
     , WithOrigin (..)
     , headerHashToJson
     , mkOutput
+    , mkOutputReference
     , slotNoToJson
     , transactionIdFromHash
     , transactionIdFromHash
@@ -63,6 +65,7 @@ import Ouroboros.Network.Block
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as Text
 
 -- PartialBlock / PartialTransaction
@@ -71,8 +74,10 @@ data PartialBlock = PartialBlock
     (Point Block)
     [ PartialTransaction ]
 
-newtype PartialTransaction = PartialTransaction
-    [ (OutputReference, Output) ]
+data PartialTransaction = PartialTransaction
+    { inputs :: [ Input ]
+    , outputs :: [ (OutputReference, Output) ]
+    }
 
 instance IsBlock PartialBlock where
     type BlockBody PartialBlock = PartialTransaction
@@ -80,11 +85,14 @@ instance IsBlock PartialBlock where
     getPoint (PartialBlock pt _) =
         pt
 
+    spentInputs PartialTransaction{inputs} =
+        Set.fromList inputs
+
     foldBlock fn result (PartialBlock _ txs) =
         foldr fn result txs
 
-    mapMaybeOutputs fn (PartialTransaction outs) =
-        mapMaybe (uncurry fn) outs
+    mapMaybeOutputs fn (PartialTransaction{outputs}) =
+        mapMaybe (uncurry fn) outputs
 
 -- RequestNextResponse
 
@@ -265,11 +273,28 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     txId <- o .: "id" >>= decodeTransactionId
     inputSource <- o .:? "inputSource"
     case inputSource of
-        Just ("collaterals" :: Text) ->
-            pure (PartialTransaction [])
+        Just ("collaterals" :: Text) -> do
+            inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "collaterals"))
+            pure PartialTransaction
+                { inputs
+                , outputs = []
+                }
+
         _ -> do
+            inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "inputs"))
             outs <- traverse decodeOutput =<< (o .: "body" >>= (.: "outputs"))
-            pure (PartialTransaction (withReferences txId outs))
+            pure PartialTransaction
+                { inputs
+                , outputs = withReferences txId outs
+                }
+
+decodeInput
+    :: Json.Value
+    -> Json.Parser Input
+decodeInput = Json.withObject "Input" $ \o ->
+    mkOutputReference
+        <$> (decodeTransactionId =<< (o .: "txId"))
+        <*> (o .: "index")
 
 decodePointOrOrigin
     :: Json.Value

@@ -34,6 +34,9 @@ module Kupo.Data.Cardano
 
       -- * Input
     , Input
+    , InputStatus (..)
+    , inputStatusToText
+    , unsafeInputStatusFromText
     , OutputReference
     , mkOutputReference
     , withReferences
@@ -140,6 +143,8 @@ import Data.Maybe.Strict
     ( StrictMaybe (..), maybeToStrictMaybe, strictMaybeToMaybe )
 import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
+import GHC.Records
+    ( HasField (..) )
 import Ouroboros.Consensus.Block
     ( ConvertRawHash (..) )
 import Ouroboros.Consensus.Byron.Ledger.Mempool
@@ -189,6 +194,7 @@ import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString as BS
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Read as T
 import qualified Ouroboros.Network.Block as Ouroboros
@@ -207,6 +213,10 @@ class IsBlock (block :: Type) where
         -> result
         -> block
         -> result
+
+    spentInputs
+        :: BlockBody block
+        -> Set Input
 
     mapMaybeOutputs
         :: (OutputReference -> Output -> Maybe result)
@@ -252,15 +262,36 @@ instance IsBlock Block where
         BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
             foldr (fn . TransactionAlonzo) result (Ledger.Alonzo.txSeqTxns txs)
 
+    spentInputs
+        :: Transaction
+        -> Set Input
+    spentInputs = \case
+        TransactionByron tx _ ->
+            foldr (Set.insert . transformByron) Set.empty (Ledger.Byron.txInputs tx)
+        TransactionShelley tx ->
+            getField @"inputs" (getField @"body" tx)
+        TransactionAllegra tx ->
+            getField @"inputs" (getField @"body" tx)
+        TransactionMary tx ->
+            getField @"inputs" (getField @"body" tx)
+        TransactionAlonzo tx ->
+            case Ledger.Alonzo.isValid tx of
+                Ledger.Alonzo.IsValid True ->
+                    getField @"inputs" (getField @"body" tx)
+                Ledger.Alonzo.IsValid False ->
+                    getField @"collateral" (getField @"body" tx)
+      where
+        transformByron (Ledger.Byron.TxInUtxo txId ix) =
+            Ledger.TxIn (transactionIdFromByron txId) (fromIntegral ix)
+
     mapMaybeOutputs
         :: forall result. ()
         => (OutputReference -> Output -> Maybe result)
         -> Transaction
         -> [result]
     mapMaybeOutputs fn = \case
-        TransactionByron tx (Ledger.Byron.hashToBytes -> bytes) ->
+        TransactionByron tx (transactionIdFromByron -> txId) ->
             let
-                txId = Ledger.TxId $ Ledger.unsafeMakeSafeHash $ UnsafeHash $ toShort bytes
                 out :| outs = Ledger.Byron.txOutputs tx
              in
                 traverseAndTransformByron fromByronOutput txId 0 (out : outs)
@@ -345,6 +376,12 @@ type TransactionId =
 type TransactionId' crypto =
     Ledger.TxId crypto
 
+transactionIdFromByron
+    :: Ledger.Byron.TxId
+    -> TransactionId
+transactionIdFromByron (Ledger.Byron.hashToBytes -> bytes) =
+    Ledger.TxId (Ledger.unsafeMakeSafeHash (UnsafeHash (toShort bytes)))
+
 transactionIdFromHash
     :: Hash Blake2b_256 Ledger.EraIndependentTxBody
     -> TransactionId
@@ -407,6 +444,22 @@ type Input =
 
 type Input' crypto =
     Ledger.TxIn crypto
+
+-- InputStatus
+--
+data InputStatus = Spent | Unspent
+    deriving (Show, Eq)
+
+inputStatusToText :: InputStatus -> Text
+inputStatusToText = \case
+    Spent -> "spent"
+    Unspent -> "unspent"
+
+unsafeInputStatusFromText :: HasCallStack => Text -> InputStatus
+unsafeInputStatusFromText = \case
+    "spent" -> Spent
+    "unspent" -> Unspent
+    _ -> error "neither 'spent' or 'unspent'."
 
 -- OutputReference
 

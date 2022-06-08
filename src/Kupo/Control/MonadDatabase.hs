@@ -7,6 +7,8 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Kupo.Control.MonadDatabase
     ( -- * Database DSL
       MonadDatabase (..)
@@ -56,9 +58,12 @@ import Database.SQLite.Simple
     , withConnection
     , withStatement
     )
+import Database.SQLite.Simple.ToField
+    ( ToField (..) )
 import GHC.TypeLits
     ( KnownSymbol, symbolVal )
 
+import qualified Data.Set as Set
 import qualified Data.Text as T
 
 class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) where
@@ -91,6 +96,7 @@ data Input = Input
     , datumHash :: Maybe ByteString
     , headerHash :: ByteString
     , slotNo :: Word64
+    , status :: Text
     } deriving (Show)
 
 data Checkpoint = Checkpoint
@@ -103,9 +109,17 @@ data Database (m :: Type -> Type) = Database
         :: [Input]
         -> DBTransaction m ()
 
-    , deleteInputs
+    , deleteInputsByAddress
         :: Text  -- An address-like query
         -> DBTransaction m Int
+
+    , deleteInputsByReference
+        :: Set ByteString  -- An output reference
+        -> DBTransaction m ()
+
+    , markInputsByReference
+        :: Set ByteString  -- An output reference
+        -> DBTransaction m ()
 
     , foldInputs
         :: Text  -- An address-like query
@@ -222,19 +236,32 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 , maybe SQLNull SQLBlob datumHash
                 , SQLBlob headerHash
                 , SQLInteger (fromIntegral slotNo)
+                , SQLText status
                 ]
         )
         inputs
 
-    , deleteInputs = \addressLike -> ReaderT $ \conn -> do
+    , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
         execute_ conn (Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike)
         changes conn
+
+    , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
+        let n = length refs
+        unless (n == 0) $ do
+            let values = mkPreparedStatement n
+            execute conn ("DELETE FROM inputs WHERE output_reference IN " <> values) refs
+
+    , markInputsByReference = \refs -> ReaderT $ \conn -> do
+        let n = length refs
+        unless (n == 0) $ do
+            let values = mkPreparedStatement n
+            execute conn ("UPDATE inputs SET status = 'spent' WHERE output_reference IN " <> values) refs
 
     , foldInputs = \addressLike yield -> ReaderT $ \conn -> do
         let matchMaybeDatumHash = \case
                 SQLBlob datumHash -> Just datumHash
                 _ -> Nothing
-        let qry = "SELECT output_reference, address, value, datum_hash, header_hash, slot_no, LENGTH(address) as len \
+        let qry = "SELECT output_reference, address, value, datum_hash, header_hash, slot_no, status, LENGTH(address) as len \
                   \FROM inputs WHERE address " <> addressLike <> " ORDER BY slot_no DESC"
         fold_ conn (Query qry) () $ \() -> \case
             [ SQLBlob outputReference
@@ -243,6 +270,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 , matchMaybeDatumHash -> datumHash
                 , SQLBlob headerHash
                 , SQLInteger (fromIntegral -> slotNo)
+                , SQLText status
                 , _ -- LENGTH(address)
                 ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
@@ -421,6 +449,13 @@ data UnexpectedRowException
     = UnexpectedRow Text [[SQLData]]
     deriving Show
 instance Exception UnexpectedRowException
+
+--
+-- Orphan
+--
+
+instance (ToField a) => ToRow (Set a) where
+    toRow = Set.foldr (\x xs -> toField x : xs) []
 
 --
 -- Tracer

@@ -199,7 +199,7 @@ databaseStub = Database
     , foldInputs = \_ callback -> lift $ do
         rows <- fmap resultToRow <$> generate (listOf1 genResult)
         mapM_ callback rows
-    , deleteInputs =
+    , deleteInputsByAddress =
         \_ -> liftIO (abs <$> generate arbitrary)
     , insertCheckpoint =
         \_ -> return ()
