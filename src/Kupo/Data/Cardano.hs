@@ -34,12 +34,15 @@ module Kupo.Data.Cardano
 
       -- * Input
     , Input
-    , InputStatus (..)
-    , inputStatusToText
-    , unsafeInputStatusFromText
     , OutputReference
     , mkOutputReference
     , withReferences
+
+      -- * InputStatus
+    , InputStatus (..)
+    , inputStatusToJson
+    , inputStatusToText
+    , unsafeInputStatusFromText
 
       -- * Output
     , Output
@@ -450,12 +453,23 @@ type Input' crypto =
 data InputStatus = Spent | Unspent
     deriving (Show, Eq)
 
-inputStatusToText :: InputStatus -> Text
+inputStatusToJson
+    :: InputStatus
+    -> Json.Encoding
+inputStatusToJson =
+    Json.text . inputStatusToText
+
+inputStatusToText
+    :: InputStatus
+    -> Text
 inputStatusToText = \case
     Spent -> "spent"
     Unspent -> "unspent"
 
-unsafeInputStatusFromText :: HasCallStack => Text -> InputStatus
+unsafeInputStatusFromText
+    :: HasCallStack
+    => Text
+    -> InputStatus
 unsafeInputStatusFromText = \case
     "spent" -> Spent
     "unspent" -> Unspent

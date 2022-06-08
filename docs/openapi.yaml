@@ -335,6 +335,7 @@ components:
         - datum_hash
         - slot_no
         - header_hash
+        - status
       properties:
         transaction_id: { "$ref": "#/components/schemas/TransactionId" }
         output_index: { "$ref": "#/components/schemas/OutputIndex" }
@@ -343,6 +344,14 @@ components:
         datum_hash: { "$ref": "#/components/schemas/DatumHash" }
         slot_no: { "$ref": "#/components/schemas/SlotNo" }
         header_hash: { "$ref": "#/components/schemas/HeaderHash" }
+        status: { "$ref": "#/components/schemas/InputStatus" }
+
+    InputStatus:
+      type: string
+      description: Indicate the status of this particular input.
+      enum:
+        - spent
+        - unspent
 
     OutputIndex:
       type: integer
@@ -441,6 +450,22 @@ components:
           - { "$ref": "#/components/schemas/AddressParameter" }
           - { "$ref": "#/components/schemas/Credential" }
 
+    spent:
+      name: spent
+      in: query
+      required: false
+      allowEmptyValue: true
+      description: |
+        Query flag (i.e. `?spent`) to filter matches by status, to get only 'spent' matches.
+
+    unspent:
+      name: unspent
+      in: query
+      required: false
+      allowEmptyValue: true
+      description: |
+        Query flag (i.e. `?unspent`) filter matches by status, to get only 'unspent' matches.
+
 paths:
   /v1/matches:
     get:
@@ -450,6 +475,9 @@ paths:
       description: |
         Retrieve all matches from the database, in descending `slot_no` order. Results are streamed to the client for more efficiency.
         Note that this is generally a bad idea for indexes built off permissive patterns (e.g. `*`) for the server will yield a large response.
+      parameters:
+        - { "$ref": "#/components/parameters/spent" }
+        - { "$ref": "#/components/parameters/unspent" }
       responses:
         200:
           description: OK
@@ -469,6 +497,8 @@ paths:
         See [Pattern](#section/Pattern) for more information about constructing patterns.
       parameters:
         - { "$ref": "#/components/parameters/pattern-fragment" }
+        - { "$ref": "#/components/parameters/spent" }
+        - { "$ref": "#/components/parameters/unspent" }
       responses:
         200:
           description: OK

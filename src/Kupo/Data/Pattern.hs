@@ -57,6 +57,7 @@ import Kupo.Data.Cardano
     , getTransactionId
     , getValue
     , headerHashToJson
+    , inputStatusToJson
     , isBootstrap
     , outputIndexToJson
     , slotNoToJson
@@ -275,6 +276,8 @@ resultToJson Result{..} = Json.pairs $ mconcat
         (slotNoToJson (getPointSlotNo point))
     , Json.pair "header_hash"
         (headerHashToJson (unsafeGetPointHeaderHash point))
+    , Json.pair "status"
+        (inputStatusToJson status)
     ]
 
 -- | Match all outputs in transactions from a block that match any of the given

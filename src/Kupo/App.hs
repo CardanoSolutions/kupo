@@ -253,7 +253,6 @@ consumer
     :: forall m block.
         ( MonadSTM m
         , MonadLog m
-        , MonadFail m
         , Monad (DBTransaction m)
         , IsBlock block
         )
@@ -269,7 +268,6 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} = forever
     let (lastKnownTip, lastKnownBlk) = last blks
     let lastKnownPoint = getPoint lastKnownBlk
     let lastKnownSlot = getPointSlotNo lastKnownPoint
-    when (lastKnownSlot >= 58836325) $ fail "done" -- TODO: TMP
     let (spentInputs, newInputs) = foldMap (matchBlock resultToRow serialize' patterns . snd) blks
     logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
     notifyTip lastKnownTip (Just lastKnownSlot)
