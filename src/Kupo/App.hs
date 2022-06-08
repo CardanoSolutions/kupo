@@ -34,6 +34,7 @@ import Kupo.App.Mailbox
 import Kupo.Configuration
     ( ChainProducer (..)
     , Configuration (..)
+    , InputManagement (..)
     , NetworkParameters (..)
     , TraceConfiguration (..)
     , parseNetworkParameters
@@ -76,6 +77,9 @@ startOrResume
     -> Database m
     -> m [Point Block]
 startOrResume tracers configuration Database{..} = do
+    -- TODO: include sanity check and fail if '--prune-utxo' is included but
+    -- there exists marked inputs in the database. This would indicate that the
+    -- index was restarted with a different configuration.
     checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
     case nonEmpty (sortOn Down (unSlotNo . getPointSlotNo <$> checkpoints)) of
         Nothing -> pure ()
@@ -249,26 +253,36 @@ consumer
     :: forall m block.
         ( MonadSTM m
         , MonadLog m
+        , MonadFail m
         , Monad (DBTransaction m)
         , IsBlock block
         )
     => Tracer IO TraceChainSync
+    -> InputManagement
     -> (Tip Block -> Maybe SlotNo -> m ())
     -> Mailbox m (Tip Block, block)
     -> TVar m [Pattern]
     -> Database m
     -> m ()
-consumer tr notifyTip mailbox patternsVar Database{..} = forever $ do
+consumer tr inputManagement notifyTip mailbox patternsVar Database{..} = forever $ do
     (blks, patterns) <- atomically $ (,) <$> flushMailbox mailbox <*> readTVar patternsVar
     let (lastKnownTip, lastKnownBlk) = last blks
     let lastKnownPoint = getPoint lastKnownBlk
     let lastKnownSlot = getPointSlotNo lastKnownPoint
-    let inputs = concatMap (matchBlock resultToRow patterns . snd) blks
-    logWith tr (ChainSyncRollForward lastKnownSlot (length inputs))
+    when (lastKnownSlot >= 58836325) $ fail "done" -- TODO: TMP
+    let (spentInputs, newInputs) = foldMap (matchBlock resultToRow serialize' patterns . snd) blks
+    logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
     notifyTip lastKnownTip (Just lastKnownSlot)
     runTransaction $ do
         insertCheckpoint (pointToRow lastKnownPoint)
-        insertInputs inputs
+        insertInputs newInputs
+        onSpentInputs spentInputs
+  where
+    onSpentInputs = case inputManagement of
+        MarkSpentInputs ->
+            markInputsByReference
+        RemoveSpentInputs ->
+            deleteInputsByReference
 
 --
 -- Tracers

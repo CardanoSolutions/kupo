@@ -87,6 +87,7 @@ kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase
             , serverPort
             , chainProducer
             , workDir
+            , inputManagement
             }
         } <- ask
 
@@ -136,6 +137,7 @@ kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase
                 -- Block consumer fueling the database
                 ( consumer
                     tracerChainSync
+                    inputManagement
                     notifyTip
                     mailbox
                     patterns
