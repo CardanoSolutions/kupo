@@ -393,7 +393,8 @@ withTransaction conn immediate action =
 --
 
 type MigrationRevision = Int
-type Migration = [Query]
+
+data Migration = SchemaMigration [Query] | SettingsMigration Query
 
 databaseVersion :: Connection -> IO MigrationRevision
 databaseVersion conn =
@@ -413,25 +414,40 @@ runMigrations tr conn currentVersion = do
     else do
         let targetVersion = currentVersion + length missingMigrations
         traceWith tr $ DatabaseRunningMigration currentVersion targetVersion
-        void $ withTransaction conn True $
-            traverse (traverse (execute_ conn)) missingMigrations
+        executeMigrations missingMigrations
+  where
+    executeMigrations = \case
+        [] -> do
+            pure ()
+        (SchemaMigration instructions):rest -> do
+            void $ withTransaction conn True $ traverse (execute_ conn) instructions
+            executeMigrations rest
+        (SettingsMigration instruction):rest -> do
+            execute_ conn instruction
+            executeMigrations rest
 
 migrations :: [Migration]
 migrations =
-    [ mkMigration ix (decodeUtf8 m)
-    | (ix, m) <- zip
+    [ mkMigration ix (decodeUtf8 migration)
+    | (ix, (migration, mkMigration)) <- zip
         [1..]
-        [ $(embedFile "db/001.sql")
-        , $(embedFile "db/002.sql")
-        , $(embedFile "db/003.sql")
-        , $(embedFile "db/004.sql")
+        [ ( $(embedFile "db/001.sql"), mkSchemaMigration )
+        , ( $(embedFile "db/002.sql"), mkSchemaMigration )
+        , ( $(embedFile "db/003.sql"), mkSchemaMigration )
+        , ( $(embedFile "db/004.sql"), mkSchemaMigration )
+        , ( $(embedFile "db/005.sql"), mkSchemaMigration )
+        , ( $(embedFile "db/006.sql"), mkSettingsMigration )
         ]
     ]
   where
-    mkMigration :: Int -> Text -> [Query]
-    mkMigration i sql =
+    mkSchemaMigration :: Int -> Text -> Migration
+    mkSchemaMigration i sql = SchemaMigration $
         ("PRAGMA user_version = " <> show i <> ";")
         : (fmap Query . filter (not . T.null . T.strip) . T.splitOn ";") sql
+
+    mkSettingsMigration :: Int -> Text -> Migration
+    mkSettingsMigration i sql = SettingsMigration $
+        ("PRAGMA user_version = " <> show i <> ";") <> " " <> Query sql
 
 --
 -- Exceptions
