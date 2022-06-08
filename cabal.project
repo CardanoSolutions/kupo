@@ -186,6 +186,12 @@ source-repository-package
     server/modules/contra-tracers
     server/modules/fast-bech32
 
+source-repository-package
+  type: git
+  location: https://github.com/IreneKnapp/direct-sqlite
+  tag: ab62e1e0e85ca9b92a55265744821ccfb75b0633
+  --sha256: 1r8w5dybyg2d274xlzjdy1p0v4zarhvsi20j9c7370bmp588y6n6
+
 constraints:
     hedgehog >= 1.0
   , bimap >= 0.4.0
@@ -194,6 +200,7 @@ constraints:
   , network >= 3.1.1.0
   , relude == 0.7.0.0
   , graphviz >= 2999.20.1.0
+  , direct-sqlite >= 2.3.27
 
 allow-newer:
   monoidal-containers:aeson,
