@@ -21,7 +21,10 @@ module Kupo.Data.Database
       -- * Pattern
     , patternToRow
     , patternFromRow
-    , patternToQueryLike
+    , patternToSql
+
+      -- * Filtering
+    , statusToSql
     ) where
 
 import Kupo.Prelude
@@ -55,6 +58,7 @@ import Ouroboros.Network.Block
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Shelley.API as Ledger
 import qualified Kupo.Control.MonadDatabase as DB
+import qualified Network.HTTP.Types.URI as Http
 
 --
 -- Checkpoint
@@ -97,7 +101,8 @@ resultFromRow row = Result
     , address = (unsafeAddressFromBytes . unsafeDecodeBase16)  (DB.address row)
     , value = unsafeDeserialize' (DB.value row)
     , datumHash = unsafeDeserialize' <$> (DB.datumHash row)
-    , point = pointFromRow (DB.Checkpoint (DB.headerHash row) (DB.slotNo row))
+    , createdAt = pointFromRow (DB.Checkpoint (DB.createdAtHeaderHash row) (DB.createdAtSlotNo row))
+    , spentAt = pointFromRow <$> (DB.Checkpoint <$> DB.spentAtHeaderHash row <*> DB.spentAtSlotNo row)
     }
   where
     unsafeAddressFromBytes =
@@ -111,14 +116,14 @@ resultToRow Result{..} = DB.Input
     , DB.address = encodeBase16 (Ledger.serialiseAddr address)
     , DB.value = serialize' value
     , DB.datumHash = serialize' <$> datumHash
-    , DB.headerHash = checkpointHeaderHash
-    , DB.slotNo = checkpointSlotNo
+    , DB.createdAtSlotNo = DB.checkpointSlotNo createdAtRow
+    , DB.createdAtHeaderHash = DB.checkpointHeaderHash createdAtRow
+    , DB.spentAtSlotNo = DB.checkpointSlotNo <$> spentAtRow
+    , DB.spentAtHeaderHash = DB.checkpointHeaderHash <$> spentAtRow
     }
   where
-    DB.Checkpoint
-        { checkpointHeaderHash
-        , checkpointSlotNo
-        } = pointToRow point
+    createdAtRow = pointToRow createdAt
+    spentAtRow = pointToRow <$> spentAt
 
 --
 -- Pattern
@@ -139,10 +144,10 @@ patternFromRow p =
         (error $ "patternFromRow: invalid pattern: " <> p)
         (patternFromText p)
 
-patternToQueryLike
+patternToSql
     :: Pattern
     -> Text
-patternToQueryLike = \case
+patternToSql = \case
     MatchAny IncludingBootstrap ->
         "LIKE '%'"
     MatchAny OnlyShelley ->
@@ -155,3 +160,20 @@ patternToQueryLike = \case
         "LIKE '%" <> encodeBase16 delegation <> "' AND len > 58"
     MatchPaymentAndDelegation payment delegation ->
         "LIKE '__" <> encodeBase16 payment <> encodeBase16 delegation <> "'"
+
+--
+-- Filters
+--
+
+statusToSql
+    :: Http.Query
+    -> Maybe Text
+statusToSql = \case
+    [ ("spent", Nothing) ] ->
+        Just "spent_at IS NOT NULL"
+    [ ("unspent", Nothing) ] ->
+        Just "spent_at IS NULL"
+    [] ->
+        Just ""
+    _ ->
+        Nothing

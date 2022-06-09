@@ -7,6 +7,8 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module Kupo.Control.MonadDatabase
     ( -- * Database DSL
       MonadDatabase (..)
@@ -56,10 +58,14 @@ import Database.SQLite.Simple
     , withConnection
     , withStatement
     )
+import Database.SQLite.Simple.ToField
+    ( ToField (..) )
 import GHC.TypeLits
     ( KnownSymbol, symbolVal )
 
+import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Database.SQLite.Simple as Sqlite
 
 class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) where
     type DBTransaction m :: (Type -> Type)
@@ -89,8 +95,10 @@ data Input = Input
     , address :: Text
     , value :: ByteString
     , datumHash :: Maybe ByteString
-    , headerHash :: ByteString
-    , slotNo :: Word64
+    , createdAtSlotNo :: Word64
+    , createdAtHeaderHash :: ByteString
+    , spentAtSlotNo :: Maybe Word64
+    , spentAtHeaderHash :: Maybe ByteString
     } deriving (Show)
 
 data Checkpoint = Checkpoint
@@ -103,17 +111,29 @@ data Database (m :: Type -> Type) = Database
         :: [Input]
         -> DBTransaction m ()
 
-    , deleteInputs
+    , deleteInputsByAddress
         :: Text  -- An address-like query
         -> DBTransaction m Int
+
+    , deleteInputsByReference
+        :: Set ByteString  -- An output reference
+        -> DBTransaction m ()
+
+    , markInputsByReference
+        :: Word64 -- Slot
+        -> Set ByteString  -- An output reference
+        -> DBTransaction m ()
+
+    , countSpentInputs
+        :: DBTransaction m Int
 
     , foldInputs
         :: Text  -- An address-like query
         -> (Input -> m ())
         -> DBTransaction m ()
 
-    , insertCheckpoint
-        :: Checkpoint
+    , insertCheckpoints
+        :: [Checkpoint]
         -> DBTransaction m ()
 
     , listCheckpointsDesc
@@ -220,48 +240,87 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 , SQLText address
                 , SQLBlob value
                 , maybe SQLNull SQLBlob datumHash
-                , SQLBlob headerHash
-                , SQLInteger (fromIntegral slotNo)
+                , SQLInteger (fromIntegral createdAtSlotNo)
+                , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
                 ]
         )
         inputs
 
-    , deleteInputs = \addressLike -> ReaderT $ \conn -> do
+    , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
         execute_ conn (Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike)
         changes conn
 
+    , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
+        let n = length refs
+        unless (n == 0) $ do
+            let qry = "DELETE FROM inputs WHERE output_reference IN " <> mkPreparedStatement n
+            execute conn qry refs
+
+    , markInputsByReference = \(fromIntegral -> slotNo) refs -> ReaderT $ \conn -> do
+        let n = length refs
+        unless (n == 0) $ do
+            let qry = "UPDATE inputs SET spent_at = ? WHERE output_reference IN " <> mkPreparedStatement n
+            execute conn qry (SQLInteger slotNo : toRow refs)
+
     , foldInputs = \addressLike yield -> ReaderT $ \conn -> do
-        let matchMaybeDatumHash = \case
-                SQLBlob datumHash -> Just datumHash
+        let matchMaybeBytes = \case
+                SQLBlob bytes -> Just bytes
                 _ -> Nothing
-        let qry = "SELECT output_reference, address, value, datum_hash, header_hash, slot_no, LENGTH(address) as len \
-                  \FROM inputs WHERE address " <> addressLike <> " ORDER BY slot_no DESC"
+        let matchMaybeWord64 = \case
+                SQLInteger (fromIntegral -> wrd) -> Just wrd
+                _ -> Nothing
+        let qry = "SELECT output_reference, address, value, datum_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash, LENGTH(address) as len \
+                  \FROM inputs \
+                  \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
+                  \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
+                  \WHERE address " <> addressLike <> " ORDER BY created_at DESC"
+
         fold_ conn (Query qry) () $ \() -> \case
             [ SQLBlob outputReference
                 , SQLText address
                 , SQLBlob value
-                , matchMaybeDatumHash -> datumHash
-                , SQLBlob headerHash
-                , SQLInteger (fromIntegral -> slotNo)
+                , matchMaybeBytes -> datumHash
+                , SQLInteger (fromIntegral -> createdAtSlotNo)
+                , SQLBlob createdAtHeaderHash
+                , matchMaybeWord64 -> spentAtSlotNo
+                , matchMaybeBytes -> spentAtHeaderHash
                 , _ -- LENGTH(address)
                 ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
 
-    , insertCheckpoint = \Checkpoint{..} -> ReaderT $ \conn -> do
-        insertRow @"checkpoints" conn
-            [ SQLBlob checkpointHeaderHash
-            , SQLInteger (fromIntegral checkpointSlotNo)
-            ]
-        execute conn "DELETE FROM checkpoints WHERE slot_no < ?"
-            [ SQLInteger (fromIntegral checkpointSlotNo - longestRollback)
-            ]
+    , countSpentInputs = ReaderT $ \conn -> do
+        let qry = "SELECT COUNT(rowid) FROM inputs WHERE spent_at IS NOT NULL"
+        query_ conn qry >>= \case
+            [[SQLInteger n]] ->
+                return (fromIntegral n)
+            xs ->
+                throwIO $ UnexpectedRow (fromQuery qry) xs
+
+    , insertCheckpoints = \cps -> ReaderT $ \conn ->
+        mapM_
+        (\Checkpoint{..} ->
+            insertRow @"checkpoints" conn
+                [ SQLBlob checkpointHeaderHash
+                , SQLInteger (fromIntegral checkpointSlotNo)
+                ]
+        )
+        cps
 
     , listCheckpointsDesc = \mk -> ReaderT $ \conn -> do
-        -- NOTE: fetching in *ASC*ending order because the list construction
-        -- reverses it,
-        fold_ conn "SELECT * FROM checkpoints ORDER BY slot_no ASC" []
-            $ \xs (checkpointHeaderHash, checkpointSlotNo) ->
-                pure ((mk Checkpoint{..}) : xs)
+        let points =
+                [ 0, 10 .. longestRollback `div` 2 ^ n ]
+                ++
+                [ longestRollback `div` (2 ^ e) | (e :: Integer) <- [ n-1, n-2 .. 0 ] ]
+              where
+                n = 9
+        let qry = "SELECT * FROM checkpoints \
+                  \WHERE slot_no >= ((SELECT MAX(slot_no) FROM checkpoints) - ?) \
+                  \ORDER BY slot_no ASC \
+                  \LIMIT 1"
+        fmap mconcat $ forM points $ \pt ->
+            Sqlite.fold conn qry [SQLInteger pt] [] $
+                \xs (checkpointHeaderHash, checkpointSlotNo) ->
+                    pure ((mk Checkpoint{..}) : xs)
 
     , insertPatterns = \patterns -> ReaderT $ \conn -> do
         mapM_
@@ -283,7 +342,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
             $ \xs (Only x) -> pure (mk x:xs)
 
     , rollbackTo = \slotNo -> ReaderT $ \conn -> do
-        execute conn "DELETE FROM inputs WHERE slot_no > ?"
+        execute conn "DELETE FROM inputs WHERE created_at > ?"
             [ SQLInteger (fromIntegral slotNo)
             ]
         execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
@@ -365,7 +424,8 @@ withTransaction conn immediate action =
 --
 
 type MigrationRevision = Int
-type Migration = [Query]
+
+data Migration = SchemaMigration [Query] | SettingsMigration Query
 
 databaseVersion :: Connection -> IO MigrationRevision
 databaseVersion conn =
@@ -385,25 +445,40 @@ runMigrations tr conn currentVersion = do
     else do
         let targetVersion = currentVersion + length missingMigrations
         traceWith tr $ DatabaseRunningMigration currentVersion targetVersion
-        void $ withTransaction conn True $
-            traverse (traverse (execute_ conn)) missingMigrations
+        executeMigrations missingMigrations
+  where
+    executeMigrations = \case
+        [] -> do
+            pure ()
+        (SchemaMigration instructions):rest -> do
+            void $ withTransaction conn True $ traverse (execute_ conn) instructions
+            executeMigrations rest
+        (SettingsMigration instruction):rest -> do
+            execute_ conn instruction
+            executeMigrations rest
 
 migrations :: [Migration]
 migrations =
-    [ mkMigration ix (decodeUtf8 m)
-    | (ix, m) <- zip
+    [ mkMigration ix (decodeUtf8 migration)
+    | (ix, (migration, mkMigration)) <- zip
         [1..]
-        [ $(embedFile "db/001.sql")
-        , $(embedFile "db/002.sql")
-        , $(embedFile "db/003.sql")
-        , $(embedFile "db/004.sql")
+        [ ( $(embedfile "db/v1.0.0-beta/001.sql", mkSchemaMigration )
+        , ( $(embedfile "db/v1.0.0/001.sql", mkSchemaMigration )
+        , ( $(embedfile "db/v1.0.0/002.sql", mkSchemaMigration )
+        , ( $(embedfile "db/v1.0.1/001.sql", mkSchemaMigration )
+        , ( $(embedfile "db/v2.0.0/001.sql", mkSchemaMigration )
+        , ( $(embedfile "db/v2.0.0/002.sql", mkSettingsMigration )
         ]
     ]
   where
-    mkMigration :: Int -> Text -> [Query]
-    mkMigration i sql =
+    mkSchemaMigration :: Int -> Text -> Migration
+    mkSchemaMigration i sql = SchemaMigration $
         ("PRAGMA user_version = " <> show i <> ";")
         : (fmap Query . filter (not . T.null . T.strip) . T.splitOn ";") sql
+
+    mkSettingsMigration :: Int -> Text -> Migration
+    mkSettingsMigration i sql = SettingsMigration $
+        ("PRAGMA user_version = " <> show i <> ";") <> " " <> Query sql
 
 --
 -- Exceptions
@@ -421,6 +496,13 @@ data UnexpectedRowException
     = UnexpectedRow Text [[SQLData]]
     deriving Show
 instance Exception UnexpectedRowException
+
+--
+-- Orphan
+--
+
+instance (ToField a) => ToRow (Set a) where
+    toRow = Set.foldr (\x xs -> toField x : xs) []
 
 --
 -- Tracer

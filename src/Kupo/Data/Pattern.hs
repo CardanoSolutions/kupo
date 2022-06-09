@@ -35,10 +35,12 @@ import Kupo.Data.Cardano
     , Blake2b_256
     , Block
     , DatumHash
+    , Input
     , IsBlock (..)
     , Output
     , OutputReference
     , Point
+    , SlotNo
     , Value
     , addressFromBytes
     , addressToBytes
@@ -67,6 +69,8 @@ import Kupo.Data.Cardano
 import qualified Codec.Binary.Bech32 as Bech32
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString as BS
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
 
 data Pattern
@@ -250,7 +254,8 @@ data Result = Result
     , address :: Address
     , value :: Value
     , datumHash :: Maybe DatumHash
-    , point :: Point Block
+    , createdAt :: Point Block
+    , spentAt :: Maybe (Point Block)
     } deriving (Show, Eq)
 
 resultToJson
@@ -267,10 +272,25 @@ resultToJson Result{..} = Json.pairs $ mconcat
         (valueToJson value)
     , Json.pair "datum_hash"
         (maybe Json.null_ datumHashToJson datumHash)
-    , Json.pair "slot_no"
-        (slotNoToJson (getPointSlotNo point))
-    , Json.pair "header_hash"
-        (headerHashToJson (unsafeGetPointHeaderHash point))
+    , Json.pair "created_at"
+        (Json.pairs $ mconcat
+            [ Json.pair "slot_no"
+                (slotNoToJson (getPointSlotNo createdAt))
+            , Json.pair "header_hash"
+                (headerHashToJson (unsafeGetPointHeaderHash createdAt))
+            ]
+        )
+    , Json.pair "spent_at"
+        (case spentAt of
+            Nothing -> Json.null_
+            Just point ->
+                Json.pairs $ mconcat
+                    [ Json.pair "slot_no"
+                        (slotNoToJson (getPointSlotNo point))
+                    , Json.pair "header_hash"
+                        (headerHashToJson (unsafeGetPointHeaderHash point))
+                    ]
+        )
     ]
 
 -- | Match all outputs in transactions from a block that match any of the given
@@ -280,19 +300,32 @@ resultToJson Result{..} = Json.pairs $ mconcat
 -- multiple patterns. This is to facilitate building an index of matches to
 -- results.
 matchBlock
-    :: forall block result.
+    :: forall block result slotNo input.
         ( IsBlock block
+        , Ord input
+        , Ord slotNo
         )
     => (Result -> result)
+    -> (SlotNo -> slotNo)
+    -> (Input -> input)
     -> [Pattern]
     -> block
-    -> [result]
-matchBlock transform ms blk =
-    let pt = getPoint blk in foldBlock (fn pt) [] blk
+    -> (Map slotNo (Set input), [result])
+matchBlock toResult toSlotNo toInput patterns blk =
+    let pt = getPoint blk in foldBlock (fn pt) (mempty, mempty) blk
   where
-    fn :: Point Block -> BlockBody block -> [result] -> [result]
-    fn pt tx results =
-        concatMap (flip (mapMaybeOutputs @block) tx . match pt) ms ++ results
+    fn
+        :: Point Block
+        -> BlockBody block
+        -> (Map slotNo (Set input), [result])
+        -> (Map slotNo (Set input), [result])
+    fn pt tx (consumed, produced) =
+        ( Map.alter
+            (\st -> Just (Set.foldr (Set.insert . toInput) (fromMaybe mempty st) (spentInputs @block tx)))
+            (toSlotNo (getPointSlotNo pt))
+            consumed
+        , concatMap (flip (mapMaybeOutputs @block) tx . match pt) patterns ++ produced
+        )
 
     match
         :: Point Block
@@ -302,10 +335,11 @@ matchBlock transform ms blk =
         -> Maybe result
     match pt m outputReference out = do
         getAddress out `matching` m
-        pure $ transform Result
+        pure $ toResult Result
             { outputReference
             , address = getAddress out
             , value = getValue out
             , datumHash = getDatumHash out
-            , point = pt
+            , createdAt = pt
+            , spentAt = Nothing
             }

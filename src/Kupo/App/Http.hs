@@ -32,7 +32,7 @@ import Kupo.Control.MonadSTM
 import Kupo.Data.Cardano
     ( pointToJson )
 import Kupo.Data.Database
-    ( patternToQueryLike, patternToRow, pointFromRow, resultFromRow )
+    ( patternToRow, patternToSql, pointFromRow, resultFromRow, statusToSql )
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health )
 import Kupo.Data.Pattern
@@ -54,6 +54,7 @@ import Network.Wai
     , Middleware
     , Response
     , pathInfo
+    , queryString
     , requestMethod
     , responseLBS
     , responseStatus
@@ -68,7 +69,9 @@ import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Binary.Builder as B
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.Text as T
 import qualified Network.HTTP.Types.Status as Http
+import qualified Network.HTTP.Types.URI as Http
 import qualified Network.Wai.Handler.Warp as Warp
 
 --
@@ -136,7 +139,7 @@ app withDatabase patternsVar readHealth req send =
 
     routeMatches = \case
         ("GET", args) ->
-            withDatabase (send . handleGetMatches (patternFromQuery args))
+            withDatabase (send . handleGetMatches (patternFromQuery args) (queryString req))
         ("DELETE", args) ->
             withDatabase (send <=< handleDeleteMatches patternsVar (patternFromQuery args))
         (_, _) ->
@@ -175,17 +178,19 @@ handleGetCheckpoints Database{..} = do
 
 handleGetMatches
     :: Maybe Text
+    -> Http.Query
     -> Database IO
     -> Response
-handleGetMatches query Database{..} = do
-    case query >>= patternFromText of
-        Nothing ->
+handleGetMatches patternQuery filterQuery Database{..} = do
+    case (patternQuery >>= patternFromText, statusToSql filterQuery) of
+        (Nothing, _) ->
             handleInvalidPattern
-        Just p -> do
+        (_, Nothing) ->
+            handleInvalidFilterQuery
+        (Just p, Just q) -> do
+            let query = patternToSql p <> if T.null q then "" else (" AND " <> q)
             responseStreamJson resultToJson $ \yield done -> do
-                runTransaction $ foldInputs
-                    (patternToQueryLike p)
-                    (yield . resultFromRow)
+                runTransaction $ foldInputs query (yield . resultFromRow)
                 done
 
 handleDeleteMatches
@@ -201,7 +206,7 @@ handleDeleteMatches patternsVar query Database{..} = do
         Just p | p `overlaps` patterns -> do
             pure handleStillActivePattern
         Just p -> do
-            n <- runImmediateTransaction $ deleteInputs (patternToQueryLike p)
+            n <- runImmediateTransaction $ deleteInputsByAddress (patternToSql p)
             pure $ responseLBS status200 defaultHeaders $
                 B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)
@@ -258,6 +263,15 @@ handleInvalidPattern = do
                  \pattern, including wildcards ('*') or full addresses. Make \
                  \sure to double-check the documentation at: \
                  \<https://cardanosolutions.github.io/kupo>!"
+        }
+
+handleInvalidFilterQuery :: Response
+handleInvalidFilterQuery = do
+    responseJson status400 defaultHeaders $ HttpError
+        { hint = "Invalid filter query! Matches can be filtered by status using \
+                 \HTTP query flags. Provide either '?spent' or '?unspent' to \
+                 \filter accordingly. Anything else is an error. In case of \
+                 \doubts, check the documentation at: <https://cardanosolutions.github.io/kupo>!"
         }
 
 handleStillActivePattern :: Response

@@ -29,7 +29,11 @@ import Data.Char
 import Kupo.App
     ( Tracers' (..) )
 import Kupo.Configuration
-    ( ChainProducer (..), Configuration (..), WorkDir (..) )
+    ( ChainProducer (..)
+    , Configuration (..)
+    , InputManagement (..)
+    , WorkDir (..)
+    )
 import Kupo.Control.MonadLog
     ( Severity (..), TracerDefinition (..), defaultTracers )
 import Kupo.Data.Cardano
@@ -76,6 +80,7 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> serverPortOption
                     <*> optional sinceOption
                     <*> many patternOption
+                    <*> inputManagementOption
                 )
             <*> (tracersOption <|> Tracers
                     <$> fmap Const (logLevelOption "http-server")
@@ -237,6 +242,15 @@ patternOption = option (maybeReader (patternFromText . toText)) $ mempty
     <> long "match"
     <> metavar "PATTERN"
     <> help "A pattern to match on. Can be provided multiple times (as a logical disjunction, i.e. 'or')"
+
+-- | [--prune-utxo]
+inputManagementOption :: Parser InputManagement
+inputManagementOption = flag MarkSpentInputs RemoveSpentInputs $ mempty
+    <> long "prune-utxo"
+    <> helpDoc (Just doc)
+  where
+    doc =
+        string "Remove inputs from the index when spent, instead of marking them as 'spent'."
 
 -- | [--log-level-{COMPONENT}=SEVERITY], default: Info
 logLevelOption :: Text -> Parser (Maybe Severity)

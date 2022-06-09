@@ -1,7 +1,7 @@
 _config: !include ".hpack.config.yaml"
 
 name:                kupo
-version:             1.0.1
+version:             2.0.0
 stability:           experimental
 github:              "cardanosolutions/kupo"
 license:             MPL-2.0
@@ -13,7 +13,7 @@ synopsis:            A daemon for building lookup indexes from entities of the C
 category:            Web
 
 extra-source-files:
-- db/*.sql
+- db/**/*.sql
 
 data-files:
 - docs/openapi.yaml
@@ -114,6 +114,7 @@ tests:
     - relude
     - sqlite-simple
     - temporary
+    - text
     - wai
     - wai-extra
     - yaml
@@ -130,6 +131,6 @@ executables:
       ghc-options:
       - -O2
       - -Werror
-      - '"-with-rtsopts=-T -N2"'
+      - '"-with-rtsopts=-T -N2 -I0 -A16m"'
     dependencies:
     - kupo

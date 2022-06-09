@@ -40,6 +40,13 @@ packages:
   original:
     hackage: contra-tracers-1.0.0
 - completed:
+    hackage: direct-sqlite-2.3.27@sha256:94207d3018da3bda84bc6ce00d2c0236ced7edb37afbd726ed2a0bfa236e149b,3771
+    pantry-tree:
+      size: 770
+      sha256: c7f5afe70db567e2cf9f3119b49f4b402705e6bd08ed8ba98747a64a8a0bef41
+  original:
+    hackage: direct-sqlite-2.3.27
+- completed:
     hackage: dom-lt-0.2.3@sha256:89f17bbeb0d23f5a46fe7099b81cc9b4b5df32aadb5080fc171c874aafc802c0,1850
     pantry-tree:
       size: 442

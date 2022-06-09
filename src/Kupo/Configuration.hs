@@ -13,6 +13,7 @@ module Kupo.Configuration
     -- * Configuration
       Configuration (..)
     , WorkDir (..)
+    , InputManagement (..)
     , ChainProducer (..)
 
     -- * NetworkParameters
@@ -64,6 +65,7 @@ data Configuration = Configuration
     , serverPort :: !Int
     , since :: !(Maybe (Point Block))
     , patterns :: ![Pattern]
+    , inputManagement :: !InputManagement
     } deriving (Generic, Eq, Show)
 
 data ChainProducer
@@ -80,6 +82,21 @@ data ChainProducer
 data WorkDir
     = Dir FilePath
     | InMemory
+    deriving (Generic, Eq, Show)
+
+-- | What to do with inputs that are spent. There are two options:
+--
+-- - 'Mark': keeps all spent inputs in the index, but marks them as spent or
+-- unspent. Clients may then query filtered results based on their status.
+--
+-- - 'Remove': which deletes any spent inputs from the index, keeping it
+-- concise.
+--
+-- There are use-cases for both behavior, hence why is is a user-configured
+-- behavior. The default should be the less destructive one, which is 'Mark'.
+data InputManagement
+    = MarkSpentInputs
+    | RemoveSpentInputs
     deriving (Generic, Eq, Show)
 
 data NetworkParameters = NetworkParameters

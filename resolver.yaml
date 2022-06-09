@@ -14,6 +14,7 @@ packages:
 - composition-prelude-3.0.0.2
 - constraints-extras-0.3.1.0
 - contra-tracers-1.0.0
+- direct-sqlite-2.3.27
 - dom-lt-0.2.3
 - fast-bech32-1.0.0
 - gray-code-0.3.1
