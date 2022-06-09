@@ -1,8 +1,31 @@
+### [2.0.0] - UNRELEASED
+
+#### Added
+
+- [📌 #17](https://github.com/CardanoSolutions/kupo/issues/20) - New command-line flag: `--prune-utxo`. When set, inputs that are spent on-chain will be removed from the index. Once-synced, 
+  the index therefore only contain the current ledger UTxO set. When not set, spent inputs are kept in the index but are now marked accordingly to record if and when they've spent.
+
+  HTTP endpoints for `/matches` (& the like) can also now accept either optional query-flag `?spent` or `?unspent` to filter matches depending on whether they've been spent. 
+
+  Consequently, there's also a new (possibly `null`) field `spent_at` returned for each match result. When set, it indicates the slot in which the input was found being spent. 
+
+  - `GET v1/matches` → [🕮  API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches)
+  - `GET v1/matches/{pattern-fragment}` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getMatches1Ary)
+  - `GET v1/matches/{pattern-fragment}/{pattern-fragment}` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getMatches2Ary)
+
+#### Changed
+
+- [📌 #17](https://github.com/CardanoSolutions/kupo/issues/20) - The `slot_no` and `header_hash` fields are no longer accessible on top-level match result objects. Instead, they're now nested under a `created_at` field, analogous to how `spent_at` has been introduced. 
+
+#### Removed
+
+- N/A
+
 ### [1.0.1] - 2022-05-04
 
 #### Added
 
-- N/A
+N/A
 
 #### Changed
 

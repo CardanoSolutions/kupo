@@ -58,7 +58,7 @@ info:
       --in-memory
     ```
 
-    #### --in-memory / --workdir
+    #### --in-memory / --workdir \<dir>
 
     This will build an index from the beginning of the blockchain (i.e. `origin`) of all transaction outputs where that stake key has been involved in. The `--in-memory` option tells kupo to not persist the index on-disk but to build it fully
     in-memory. When building such a large index (from origin!), this is not recommended as it may cause the program memory usage to grow unbounded.
@@ -76,7 +76,7 @@ info:
 
     Perfect, now kupo will store all the information in a database on-disk at the location pointed by `--workdir`. Incidentally, this also allows kupo to resume its work from where it lefts it in case the server is interrupted. Neat!
 
-    #### --since
+    #### --since \<slot-no.header_hash>
 
     What if we only need to synchronize from a given point in time? For example, we may want to skip the entire Byron and Shelley eras because we know that this stake key may only have been used starting from the Allegra era onwards.
     Fortunately, we can use the `--since` to provide a different starting point!
@@ -100,12 +100,18 @@ info:
     | Last Mary Block    | 39916796 | e72579ff89dc9ed325b723a33624b596c08141c7bd573ecfff56a1f7229e4d09 |
     | Last Alonzo Block  | N/A      | N/A                                                              |
 
-    #### --match
+    #### --match \<pattern>
 
     Kupo can accept one or more matching patterns using the `--match` option. In case multiple patterns are provided, they'll ALL be used when looking for addresses. This allows for example to build an index for a list of payment keys known of a wallet. The syntax for patterns
     is explained in greater details in the [Pattern](#section/Pattern) section below.
 
-    #### --ogmios-host / --ogmios-port
+    #### --prune-utxo
+
+    Sometimes, it isn't necessary to keep old data around. Fear not, Kupo has got you covered! Using the `--prune-utxo` command-line flag, you can instrument Kupo to automatically remove inputs that are spent on-chain. This makes sure to keep only what's truly available on-chain and
+    has a positive effect on both the final size of the index and the synchronization time. If you don't set that flag, then all data are kept in the database and spent inputs are instead marked to know if and when they were spent. You can then using query-flag in the API to filter
+    results based on whether or not they've been spent.
+
+    #### --ogmios-host \<hostname> / --ogmios-port \<port-number>
 
     So far, we've connected Kupo to a local cardano-node, using a unix domain socket as a communication channel. However, Kupo can also connect through [Ogmios](https://github.com/CardanoSolutions/ogmios#readme); and this works for either a local or remote instance of Ogmios! To do so,
     simply swap the `--node-socket` and `--node-config` options for `--ogmios-host` and `--ogmios-port`. For instance:
