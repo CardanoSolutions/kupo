@@ -39,8 +39,8 @@ import Kupo.Data.Cardano
     ( Address, addressFromBytes, addressToBytes )
 import Kupo.Data.Database
     ( patternFromRow
-    , patternToQueryLike
     , patternToRow
+    , patternToSql
     , pointFromRow
     , pointToRow
     , resultFromRow
@@ -71,9 +71,9 @@ spec = parallel $ do
         prop "Pattern" $
             roundtripFromToRow genPattern patternToRow patternFromRow
 
-    context "patternToQueryLike" $ around withFixtureDatabase $ do
+    context "patternToSql" $ around withFixtureDatabase $ do
         forM_ patterns $ \(_, p, results) -> do
-            let like = patternToQueryLike p
+            let like = patternToSql p
             specify (toString like) $ \conn -> do
                 rows <- query_ conn $ "SELECT address, LENGTH(address) as len \
                                       \FROM addresses \
@@ -127,12 +127,12 @@ shortLivedWorker dir lock = do
                   )
                 , (2, do
                     p <- genPattern
-                    let q = patternToQueryLike p
+                    let q = patternToSql p
                     pure $ runTransaction $ foldInputs q (\_ -> pure ())
                   )
                 , (1, do
                     p <- genPattern
-                    let q = patternToQueryLike p
+                    let q = patternToSql p
                     pure $ void $ runImmediateTransaction $ deleteInputsByAddress q
                   )
                 , (1, do

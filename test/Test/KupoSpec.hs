@@ -15,7 +15,7 @@ import Kupo.Prelude
 import Control.Exception
     ( catch, try )
 import Data.Aeson.Lens
-    ( key, _Integer )
+    ( key, _Integer, _Value )
 import Data.List
     ( maximum )
 import Kupo
@@ -25,7 +25,11 @@ import Kupo.App
 import Kupo.App.Http
     ( healthCheck )
 import Kupo.Configuration
-    ( ChainProducer (..), Configuration (..), WorkDir (..) )
+    ( ChainProducer (..)
+    , Configuration (..)
+    , InputManagement (..)
+    , WorkDir (..)
+    )
 import Kupo.Control.MonadAsync
     ( race_ )
 import Kupo.Control.MonadDelay
@@ -190,6 +194,27 @@ spec = skippableContext "End-to-end" $ \manager -> do
             }
         shouldThrowTimeout @IntersectionNotFoundException 1 (kupo tr `runWith` env)
 
+    specify "Can prune utxo on-the-fly" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClient manager cfg
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just somePoint
+            , patterns = [MatchAny OnlyShelley]
+            , inputManagement = RemoveSpentInputs
+            }
+
+        let isUnspent :: Json.Value -> Bool
+            isUnspent x = (x ^? key "spent_at" . _Value) == Just Json.Null
+
+        timeoutOrThrow 30 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitForServer
+                waitUntil (> 50_000)
+                matches <- getAllMatches
+                all isUnspent matches `shouldBe` True
+            )
+
 type EndToEndSpec
     =  Manager
     -> SpecWith (FilePath, Tracers, Configuration)
@@ -208,6 +233,7 @@ skippableContext prefix skippableSpec = do
                     , serverPort = 0
                     , since = Nothing
                     , patterns = []
+                    , inputManagement = MarkSpentInputs
                     }
             context cardanoNode $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager
@@ -225,6 +251,7 @@ skippableContext prefix skippableSpec = do
                     , serverPort = 0
                     , since = Nothing
                     , patterns = []
+                    , inputManagement = MarkSpentInputs
                     }
             context ogmios $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager

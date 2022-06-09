@@ -112,6 +112,7 @@ genResult = Result
     <*> genValue
     <*> frequency [(1, pure Nothing), (5, Just <$> genDatumHash)]
     <*> genNonGenesisPoint
+    <*> frequency [(1, pure Nothing), (5, Just <$> genNonGenesisPoint)]
 
 genSlotNo :: Gen SlotNo
 genSlotNo = do

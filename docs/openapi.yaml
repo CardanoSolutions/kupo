@@ -254,9 +254,6 @@ components:
           type: string
           description: Some hint about what went wrong.
 
-    Checkpoint:
-      $ref: "#/components/schemas/Point"
-
     Credential:
       anyOf:
         - title: Bech32
@@ -628,7 +625,7 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/components/schemas/Checkpoint" }
+                items: { "$ref": "#/components/schemas/Point" }
 
   /v1/health:
     get:

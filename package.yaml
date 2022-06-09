@@ -114,6 +114,7 @@ tests:
     - relude
     - sqlite-simple
     - temporary
+    - text
     - wai
     - wai-extra
     - yaml

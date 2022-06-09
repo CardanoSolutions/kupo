@@ -162,6 +162,7 @@ decodeRequestNextResponse json =
             , decodeAllegraBlock block
             , decodeMaryBlock block
             , decodeAlonzoBlock block
+            , decodeBabbageBlock block
             ]
 
     decodeRollBackward = Json.withObject "RequestNextResponse" $ \o -> do
@@ -226,6 +227,16 @@ decodeAlonzoBlock = Json.withObject "AlonzoBlock" $ \o -> do
     point <- decodeBlockPoint alonzo
     PartialBlock point <$> traverse decodePartialTransaction txs
 
+decodeBabbageBlock
+    :: Json.Value
+    -> Json.Parser PartialBlock
+decodeBabbageBlock = Json.withObject "babbageBlock" $ \o -> do
+    babbage <- o .: "babbage"
+    txs <- babbage .: "body"
+    point <- decodeBlockPoint babbage
+    PartialBlock point <$> traverse decodePartialTransaction txs
+
+
 decodeAddress
     :: Text
     -> Json.Parser Address
@@ -263,7 +274,7 @@ decodeOutput
 decodeOutput = Json.withObject "Output" $ \o -> do
     address <- o .: "address" >>= decodeAddress
     value <- o .: "value" >>= decodeValue
-    datumHash <- o .:? "datum" >>= traverse (fmap unsafeMakeSafeHash . decodeHash @Blake2b_256)
+    datumHash <- o .:? "datumHash" >>= traverse (fmap unsafeMakeSafeHash . decodeHash @Blake2b_256)
     pure (mkOutput address value datumHash)
 
 decodePartialTransaction

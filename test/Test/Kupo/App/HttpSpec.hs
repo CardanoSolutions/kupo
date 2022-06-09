@@ -58,11 +58,13 @@ import Test.QuickCheck.Monadic
 
 import qualified Data.Aeson as Json
 import qualified Data.OpenApi as OpenApi
+import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.Status as Http
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Test as Wai
+import qualified Prelude
 
 spec :: Spec
 spec = do
@@ -85,6 +87,18 @@ spec = do
         session specification get "/v1/matches" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification get "/v1/matches?spent" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches?spent"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification get "/v1/matches?unspent" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches?unspent"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
@@ -201,7 +215,11 @@ databaseStub = Database
         mapM_ callback rows
     , deleteInputsByAddress =
         \_ -> liftIO (abs <$> generate arbitrary)
-    , insertCheckpoint =
+    , deleteInputsByReference =
+        \_ -> return ()
+    , markInputsByReference =
+        \_ _ -> return ()
+    , insertCheckpoints =
         \_ -> return ()
     , listCheckpointsDesc = \mk -> lift $ do
         fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
@@ -266,8 +284,9 @@ session specification opL path callback =
         assert (null errs)
   where
     Identity (endpoint, method) = do
+        let rawPath = toString (Prelude.head (T.splitOn "?" path))
         item <- oops "No specification for path"
-            (specification ^. paths . at (toString path))
+            (specification ^. paths . at rawPath)
         op <- oops "Operation not found" (item ^. opL)
         pure ( op
              , if

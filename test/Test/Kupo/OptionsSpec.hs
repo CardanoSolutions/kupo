@@ -17,7 +17,11 @@ import Data.List
 import Kupo.App
     ( Tracers' (..) )
 import Kupo.Configuration
-    ( ChainProducer (..), Configuration (..), WorkDir (..) )
+    ( ChainProducer (..)
+    , Configuration (..)
+    , InputManagement (..)
+    , WorkDir (..)
+    )
 import Kupo.Control.MonadLog
     ( Severity (..), TracerDefinition (..), defaultTracers )
 import Kupo.Data.Pattern
@@ -105,6 +109,11 @@ spec = parallel $ do
           )
         , ( defaultArgs ++ [ "--port", "#" ]
           , shouldFail
+          )
+        , ( defaultArgs ++ [ "--prune-utxo" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { inputManagement = RemoveSpentInputs
+            }
           )
         , ( defaultArgs ++ [ "--since", "51292637.2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771" ]
           , shouldParseAppConfiguration $ defaultConfiguration
