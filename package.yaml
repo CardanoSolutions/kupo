@@ -13,7 +13,7 @@ synopsis:            A daemon for building lookup indexes from entities of the C
 category:            Web
 
 extra-source-files:
-- db/*.sql
+- db/**/*.sql
 
 data-files:
 - docs/openapi.yaml
