@@ -124,6 +124,9 @@ data Database (m :: Type -> Type) = Database
         -> Set ByteString  -- An output reference
         -> DBTransaction m ()
 
+    , countSpentInputs
+        :: DBTransaction m Int
+
     , foldInputs
         :: Text  -- An address-like query
         -> (Input -> m ())
@@ -284,6 +287,14 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 , _ -- LENGTH(address)
                 ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
+
+    , countSpentInputs = ReaderT $ \conn -> do
+        let qry = "SELECT COUNT(rowid) FROM inputs WHERE spent_at IS NOT NULL"
+        query_ conn qry >>= \case
+            [[SQLInteger n]] ->
+                return (fromIntegral n)
+            xs ->
+                throwIO $ UnexpectedRow (fromQuery qry) xs
 
     , insertCheckpoints = \cps -> ReaderT $ \conn ->
         mapM_

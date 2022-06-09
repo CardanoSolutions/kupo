@@ -149,6 +149,16 @@ spec = skippableContext "End-to-end" $ \manager -> do
             shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
           )
 
+        ( do -- Can't restart with different utxo management behavior
+            env <- newEnvironment $ cfg
+                { workDir = Dir tmp
+                , since = Just somePoint
+                , patterns = [MatchAny OnlyShelley]
+                , inputManagement = RemoveSpentInputs
+                }
+            shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
+          )
+
     specify "Can't start the server on a fresh new db without explicit point" $ \(tmp, tr, cfg) -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp

@@ -219,6 +219,8 @@ databaseStub = Database
         \_ -> return ()
     , markInputsByReference =
         \_ _ -> return ()
+    , countSpentInputs = lift $ do
+        generate arbitrary
     , insertCheckpoints =
         \_ -> return ()
     , listCheckpointsDesc = \mk -> lift $ do

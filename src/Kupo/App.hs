@@ -83,6 +83,7 @@ startOrResume tracers configuration Database{..} = do
     -- there exists marked inputs in the database. This would indicate that the
     -- index was restarted with a different configuration.
     checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
+
     case nonEmpty (sortOn Down (unSlotNo . getPointSlotNo <$> checkpoints)) of
         Nothing -> pure ()
         Just slots -> do
@@ -94,13 +95,22 @@ startOrResume tracers configuration Database{..} = do
                 , mostRecentCheckpoint
                 , oldestCheckpoint
                 }
+
+    nSpent <- runTransaction countSpentInputs
+    case inputManagement of
+        RemoveSpentInputs | nSpent > 0 -> do
+            logWith tracerConfiguration errConflictingUtxoManagementOption
+            throwIO ConflictingOptionsException
+        _ ->
+            pure ()
+
     case (since, checkpoints) of
         (Nothing, []) -> do
             logWith tracerConfiguration errNoStartingPoint
             throwIO NoStartingPointException
         (Just point, mostRecentCheckpoint:_) -> do
             if getPointSlotNo point > getPointSlotNo mostRecentCheckpoint then do
-                logWith tracerConfiguration errConflictingOptions
+                logWith tracerConfiguration errConflictingSinceOptions
                 throwIO ConflictingOptionsException
             else do
                 pure (sortOn (Down . getPointSlotNo) (point : checkpoints))
@@ -108,16 +118,17 @@ startOrResume tracers configuration Database{..} = do
             pure pts
         (Just pt, []) ->
             pure [pt]
+
   where
     Tracers{tracerDatabase, tracerConfiguration} = tracers
-    Configuration{since} = configuration
+    Configuration{since, inputManagement} = configuration
 
     errNoStartingPoint = ConfigurationInvalidOrMissingOption
         "No '--since' provided and no checkpoints found in the \
         \database. An explicit starting point (e.g. 'origin') is \
         \required the first time launching the application."
 
-    errConflictingOptions = ConfigurationInvalidOrMissingOption
+    errConflictingSinceOptions = ConfigurationInvalidOrMissingOption
         "The point provided through '--since' is more recent than \
         \any of the known checkpoints and it isn't possible to make \
         \a choice for resuming the application: should synchronization \
@@ -126,6 +137,16 @@ startOrResume tracers configuration Database{..} = do
         \a different starting point (or none at all) or by using a \
         \fresh new database."
 
+    errConflictingUtxoManagementOption = ConfigurationInvalidOrMissingOption
+        "It appears that the application was restarted with a conflicting \
+        \behavior w.r.t. UTxO management. Indeed, `--prune-utxo` indicates \
+        \that inputs should be pruned from the database when spent. However \
+        \inputs marked as 'spent' were found in the database, which suggests \
+        \that it was first constructed without the flag `--prune-utxo`. \
+        \Continuing would lead to a inconsistent state and is therefore \
+        \prevented. \n\nShould you still want to proceed, make sure to first \
+        \prune all spent inputs from the database using the following \
+        \query: \n\n\t DELETE FROM inputs WHERE spent_at IS NOT NULL;"
 
 newPatternsCache
     :: forall m.
