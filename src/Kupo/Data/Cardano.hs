@@ -38,12 +38,6 @@ module Kupo.Data.Cardano
     , mkOutputReference
     , withReferences
 
-      -- * InputStatus
-    , InputStatus (..)
-    , inputStatusToJson
-    , inputStatusToText
-    , unsafeInputStatusFromText
-
       -- * Output
     , Output
     , mkOutput
@@ -447,33 +441,6 @@ type Input =
 
 type Input' crypto =
     Ledger.TxIn crypto
-
--- InputStatus
---
-data InputStatus = Spent | Unspent
-    deriving (Show, Eq)
-
-inputStatusToJson
-    :: InputStatus
-    -> Json.Encoding
-inputStatusToJson =
-    Json.text . inputStatusToText
-
-inputStatusToText
-    :: InputStatus
-    -> Text
-inputStatusToText = \case
-    Spent -> "spent"
-    Unspent -> "unspent"
-
-unsafeInputStatusFromText
-    :: HasCallStack
-    => Text
-    -> InputStatus
-unsafeInputStatusFromText = \case
-    "spent" -> Spent
-    "unspent" -> Unspent
-    _ -> error "neither 'spent' or 'unspent'."
 
 -- OutputReference
 

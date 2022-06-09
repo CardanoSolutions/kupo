@@ -37,8 +37,6 @@ import Cardano.Ledger.Crypto
     ( StandardCrypto )
 import Cardano.Slotting.Slot
     ( SlotNo (..) )
-import Kupo.Data.Cardano
-    ( inputStatusToText, unsafeInputStatusFromText )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
@@ -103,8 +101,8 @@ resultFromRow row = Result
     , address = (unsafeAddressFromBytes . unsafeDecodeBase16)  (DB.address row)
     , value = unsafeDeserialize' (DB.value row)
     , datumHash = unsafeDeserialize' <$> (DB.datumHash row)
-    , point = pointFromRow (DB.Checkpoint (DB.headerHash row) (DB.slotNo row))
-    , status = unsafeInputStatusFromText (DB.status row)
+    , createdAt = pointFromRow (DB.Checkpoint (DB.createdAtHeaderHash row) (DB.createdAtSlotNo row))
+    , spentAt = pointFromRow <$> (DB.Checkpoint <$> DB.spentAtHeaderHash row <*> DB.spentAtSlotNo row)
     }
   where
     unsafeAddressFromBytes =
@@ -118,15 +116,14 @@ resultToRow Result{..} = DB.Input
     , DB.address = encodeBase16 (Ledger.serialiseAddr address)
     , DB.value = serialize' value
     , DB.datumHash = serialize' <$> datumHash
-    , DB.headerHash = checkpointHeaderHash
-    , DB.slotNo = checkpointSlotNo
-    , DB.status = inputStatusToText status
+    , DB.createdAtSlotNo = DB.checkpointSlotNo createdAtRow
+    , DB.createdAtHeaderHash = DB.checkpointHeaderHash createdAtRow
+    , DB.spentAtSlotNo = DB.checkpointSlotNo <$> spentAtRow
+    , DB.spentAtHeaderHash = DB.checkpointHeaderHash <$> spentAtRow
     }
   where
-    DB.Checkpoint
-        { checkpointHeaderHash
-        , checkpointSlotNo
-        } = pointToRow point
+    createdAtRow = pointToRow createdAt
+    spentAtRow = pointToRow <$> spentAt
 
 --
 -- Pattern
@@ -173,9 +170,9 @@ statusToSql
     -> Maybe Text
 statusToSql = \case
     [ ("spent", Nothing) ] ->
-        Just "status = 'spent'"
+        Just "spent_at IS NOT NULL"
     [ ("unspent", Nothing) ] ->
-        Just "status = 'unspent'"
+        Just "spent_at IS NULL"
     [] ->
         Just ""
     _ ->

@@ -255,14 +255,7 @@ components:
           description: Some hint about what went wrong.
 
     Checkpoint:
-      type: object
-      additionalProperties: false
-      required:
-        - slot_no
-        - header_hash
-      properties:
-        slot_no: { "$ref": "#/components/schemas/SlotNo" }
-        header_hash: { "$ref": "#/components/schemas/HeaderHash" }
+      $ref: "#/components/schemas/Point"
 
     Credential:
       anyOf:
@@ -333,25 +326,19 @@ components:
         - address
         - value
         - datum_hash
-        - slot_no
-        - header_hash
-        - status
+        - created_at
+        - spent_at
       properties:
         transaction_id: { "$ref": "#/components/schemas/TransactionId" }
         output_index: { "$ref": "#/components/schemas/OutputIndex" }
         address: { "$ref": "#/components/schemas/Address" }
         value: { "$ref": "#/components/schemas/Value" }
         datum_hash: { "$ref": "#/components/schemas/DatumHash" }
-        slot_no: { "$ref": "#/components/schemas/SlotNo" }
-        header_hash: { "$ref": "#/components/schemas/HeaderHash" }
-        status: { "$ref": "#/components/schemas/InputStatus" }
-
-    InputStatus:
-      type: string
-      description: Indicate the status of this particular input.
-      enum:
-        - spent
-        - unspent
+        created_at: { "$ref": "#/components/schemas/Point" }
+        spent_at:
+          oneOf:
+            - { "$ref": "#/components/schemas/Point" }
+            - type: "null"
 
     OutputIndex:
       type: integer
@@ -366,6 +353,16 @@ components:
         - { "$ref": "#/components/schemas/Wildcard" }
         - { "$ref": "#/components/schemas/AddressParameter" }
         - { "$ref": "#/components/schemas/Credential" }
+
+    Point:
+      type: object
+      additionalProperties: false
+      required:
+        - slot_no
+        - header_hash
+      properties:
+        slot_no: { "$ref": "#/components/schemas/SlotNo" }
+        header_hash: { "$ref": "#/components/schemas/HeaderHash" }
 
     SlotNo: &slotNo
       type: integer

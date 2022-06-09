@@ -60,6 +60,8 @@ import Kupo.Data.Database
 import Kupo.Data.Pattern
     ( Pattern, matchBlock, patternToText )
 
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Kupo.App.ChainSync.Direct as Direct
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 
@@ -268,19 +270,19 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} = forever
     let (lastKnownTip, lastKnownBlk) = last blks
     let lastKnownPoint = getPoint lastKnownBlk
     let lastKnownSlot = getPointSlotNo lastKnownPoint
-    let (spentInputs, newInputs) = foldMap (matchBlock resultToRow serialize' patterns . snd) blks
+    let (spentInputs, newInputs) = foldMap (matchBlock resultToRow unSlotNo serialize' patterns . snd) blks
     logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
     notifyTip lastKnownTip (Just lastKnownSlot)
     runTransaction $ do
-        insertCheckpoint (pointToRow lastKnownPoint)
+        insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
         insertInputs newInputs
         onSpentInputs spentInputs
   where
     onSpentInputs = case inputManagement of
         MarkSpentInputs ->
-            markInputsByReference
+            void . Map.traverseWithKey markInputsByReference
         RemoveSpentInputs ->
-            deleteInputsByReference
+            deleteInputsByReference . Map.foldr Set.union Set.empty
 
 --
 -- Tracers

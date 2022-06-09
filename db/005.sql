@@ -5,12 +5,13 @@ CREATE TABLE IF NOT EXISTS inputs (
   address TEXT NOT NULL,
   value BLOB NOT NULL,
   datum_hash BLOB,
-  header_hash BLOB NOT NULL,
-  slot_no INTEGER NOT NULL,
-  status TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  spent_at INTEGER,
   PRIMARY KEY (output_reference)
 );
 
-CREATE INDEX IF NOT EXISTS inputsByAddressAndStatus  ON inputs(address, status);
+CREATE INDEX IF NOT EXISTS inputsByAddress ON inputs(address, spent_at);
 
 DELETE FROM checkpoints;
+
+CREATE INDEX IF NOT EXISTS checkpointsBySlotNo ON checkpoints(slot_no);
