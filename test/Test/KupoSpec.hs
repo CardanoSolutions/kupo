@@ -15,7 +15,7 @@ import Kupo.Prelude
 import Control.Exception
     ( catch, try )
 import Data.Aeson.Lens
-    ( key, _Integer, _Value )
+    ( key, _Integer, _String, _Value )
 import Data.List
     ( maximum )
 import Kupo
@@ -39,9 +39,17 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadTime
     ( DiffTime, timeout )
 import Kupo.Data.Cardano
-    ( pattern GenesisPoint, SlotNo (..), getPointSlotNo )
+    ( Block
+    , pattern GenesisPoint
+    , Point
+    , SlotNo (..)
+    , getPointSlotNo
+    , pointFromText
+    )
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException )
+import Kupo.Data.Http.GetCheckpointMode
+    ( GetCheckpointMode (..) )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
 import Network.HTTP.Client
@@ -65,12 +73,18 @@ import Test.Hspec
     , context
     , runIO
     , shouldBe
+    , shouldReturn
     , shouldSatisfy
     , specify
     , xcontext
     )
 import Test.Kupo.Fixture
-    ( someNonExistingPoint, someOtherPoint, somePoint )
+    ( someNonExistingPoint
+    , someOtherPoint
+    , somePoint
+    , somePointAncestor
+    , somePointSuccessor
+    )
 import Type.Reflection
     ( tyConName, typeRep, typeRepTyCon )
 
@@ -225,6 +239,33 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 all isUnspent matches `shouldBe` True
             )
 
+    specify "Retrieve checkpoints and ancestors" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClient manager cfg
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just somePointAncestor
+            , patterns = [MatchAny OnlyShelley]
+            , inputManagement = RemoveSpentInputs
+            }
+        let strict = GetCheckpointStrict
+        let flex = GetCheckpointClosestAncestor
+        timeoutOrThrow 5 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitForServer
+                waitUntil (> (getPointSlotNo somePointSuccessor))
+                getCheckpointBySlot strict (getPointSlotNo somePoint)
+                    `shouldReturn` Just somePoint
+                getCheckpointBySlot strict (pred (getPointSlotNo somePoint))
+                    `shouldReturn` Nothing
+                getCheckpointBySlot strict (getPointSlotNo somePointSuccessor)
+                    `shouldReturn` Just somePointSuccessor
+                getCheckpointBySlot strict  (pred (getPointSlotNo somePointSuccessor))
+                    `shouldReturn` Nothing
+                getCheckpointBySlot flex (pred (getPointSlotNo somePointSuccessor))
+                    `shouldReturn` Just somePoint
+            )
+
 type EndToEndSpec
     =  Manager
     -> SpecWith (FilePath, Tracers, Configuration)
@@ -323,6 +364,7 @@ data HttpClient (m :: Type -> Type) = HttpClient
     { waitForServer :: m ()
     , waitUntil :: (SlotNo -> Bool) -> m ()
     , listCheckpoints :: m [SlotNo]
+    , getCheckpointBySlot :: GetCheckpointMode -> SlotNo -> m (Maybe (Point Block))
     , getAllMatches :: m [Json.Value]
     }
 
@@ -331,6 +373,7 @@ newHttpClient manager cfg = HttpClient
     { waitForServer
     , waitUntil
     , listCheckpoints
+    , getCheckpointBySlot
     , getAllMatches
     }
   where
@@ -361,6 +404,22 @@ newHttpClient manager cfg = HttpClient
                 fail (show e)
             Right (xs :: [Json.Value]) -> do
                 pure $ SlotNo . maybe 0 fromIntegral . (\x -> x ^? key "slot_no" . _Integer) <$> xs
+
+    getCheckpointBySlot :: GetCheckpointMode -> SlotNo -> IO (Maybe (Point Block))
+    getCheckpointBySlot mode (SlotNo slot) = do
+        let qry = case mode of
+                GetCheckpointStrict -> "?strict"
+                GetCheckpointClosestAncestor -> ""
+        req <- parseRequest (baseUrl <> "/v1/checkpoints/" <> show slot <> qry)
+        res <- httpLbs req manager
+        let body = responseBody res
+        case Json.eitherDecode' body of
+            Left e ->
+                fail (show e)
+            Right (val :: Json.Value) -> pure $ do
+                slotNo <- val ^? key "slot_no" . _Integer
+                headerHash <- val ^? key "header_hash" . _String
+                pointFromText (show slotNo <> "." <> toText headerHash)
 
     getAllMatches :: IO [Json.Value]
     getAllMatches = do

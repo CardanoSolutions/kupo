@@ -29,13 +29,15 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
-    ( pointToJson )
+    ( SlotNo (..), getPointSlotNo, pointToJson, slotNoFromText )
 import Kupo.Data.Database
     ( patternToRow, patternToSql, pointFromRow, resultFromRow, statusToSql )
 import Kupo.Data.Health
     ( Health )
+import Kupo.Data.Http.GetCheckpointMode
+    ( GetCheckpointMode (..), getCheckpointModeFromQuery )
 import Kupo.Data.Http.Response
-    ( responseJson, responseStreamJson )
+    ( responseJson, responseJsonEncoding, responseStreamJson )
 import Kupo.Data.Http.Status
     ( Status (..), mkStatus )
 import Kupo.Data.Pattern
@@ -130,6 +132,10 @@ app withDatabase patternsVar readHealth req send =
             withDatabase (send .
                 handleGetCheckpoints
             )
+        ("GET", [arg]) ->
+            withDatabase (send <=<
+                handleGetCheckpointBySlot (slotNoFromText arg) (queryString req)
+            )
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
@@ -185,6 +191,37 @@ handleGetCheckpoints Database{..} = do
         points <- runTransaction (listCheckpointsDesc pointFromRow)
         mapM_ yield points
         done
+
+handleGetCheckpointBySlot
+    :: Maybe SlotNo
+    -> [Http.QueryItem]
+    -> Database IO
+    -> IO Response
+handleGetCheckpointBySlot mSlotNo query Database{..} =
+    case (mSlotNo, getCheckpointModeFromQuery query) of
+        (Nothing, _) ->
+            pure Errors.invalidSlotNo
+        (_, Nothing) ->
+            pure Errors.invalidStrictMode
+        (Just slotNo, Just mode) -> do
+            handleGetCheckpointBySlot' slotNo mode
+  where
+    handleGetCheckpointBySlot' slotNo mode = do
+        let successor = succ (unSlotNo slotNo)
+        points <- runTransaction (listAncestorsDesc successor 1 pointFromRow)
+        pure $ responseJsonEncoding status200 Default.headers $
+            case points of
+                [point] ->
+                    case mode of
+                        GetCheckpointStrict
+                            | getPointSlotNo point == slotNo ->
+                                pointToJson point
+                            | otherwise ->
+                                Json.null_
+                        GetCheckpointClosestAncestor ->
+                            pointToJson point
+                _ ->
+                    Json.null_
 
 --
 -- /v1/matches

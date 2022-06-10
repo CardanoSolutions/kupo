@@ -450,13 +450,21 @@ components:
           - { "$ref": "#/components/schemas/AddressParameter" }
           - { "$ref": "#/components/schemas/Credential" }
 
+    slot-no:
+      name: slot-no
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+
     spent:
       name: spent
       in: query
       required: false
       allowEmptyValue: true
       description: |
-        Query flag (i.e. `?spent`) to filter matches by status, to get only 'spent' matches.
+        A query flag (i.e. `?spent`) to filter matches by status, to get only 'spent' matches.
 
     unspent:
       name: unspent
@@ -464,7 +472,24 @@ components:
       required: false
       allowEmptyValue: true
       description: |
-        Query flag (i.e. `?unspent`) filter matches by status, to get only 'unspent' matches.
+        A query flag (i.e. `?unspent`) filter matches by status, to get only 'unspent' matches.
+
+    strict:
+      name: strict
+      in: query
+      required: false
+      allowEmptyValue: true
+      description: |
+        A query flag (i.e. `?strict`) to only look for checkpoints that strictly match the provided slot. The behavior otherwise is to look for the largest nearest slot smaller or equal to the one provided.
+
+tags:
+  - name: Matches
+  - name: Checkpoints
+    description: |
+      An API for inspecting checkpoints known of the database. A checkpoint really is a point on-chain that directly references a block. They are comprised of an absolute slot
+      number and a block header hash. Kupo records all such points as it processes blocks. In particular, they are also used to resume synchronization upon restart.
+  - name: Patterns
+  - name: Health
 
 paths:
   /v1/matches:
@@ -617,13 +642,13 @@ paths:
 
   /v1/checkpoints:
     get:
-      operationId: getCheckpoints
+      operationId: sampleCheckpoints
       tags: ["Checkpoints"]
-      summary: Get Checkpoints
+      summary: Sample Checkpoints
       description: |
-        Retrieve all checkpoints currently in the database, in descending `slot_no` order. This is useful to know where
-        the synchronization is at. On restart, the synchronization will continue from the most recent checkpoints that
-        is also known of the network.
+        Retrieve a **sample of** all checkpoints currently in the database, in descending `slot_no` order.
+        This is useful to know where the synchronization is at. On restart, the synchronization will continue from the most recent
+        checkpoints that is also valid on the network.
       responses:
         200:
           description: OK
@@ -632,6 +657,28 @@ paths:
               schema:
                 type: array
                 items: { "$ref": "#/components/schemas/Point" }
+
+  /v1/checkpoints/{slot-no}:
+    get:
+      operationId: getCheckpointBySlot
+      tags: ["Checkpoints"]
+      summary: Get Checkpoint By Slot
+      description: |
+        Retrieve a checkpoint by its (absolute) slot number. The query is flexible by default. Meaning that, if there's no checkpoint at the given slot, the server
+        will for for the closest (i.e. most recent) slot that is **before** the provided slot number. This is particularly useful to find ancestors to known slots
+        in order to use them for references on-chain.
+      parameters:
+        - { "$ref": "#/components/parameters/slot-no" }
+        - { "$ref": "#/components/parameters/strict" }
+      responses:
+        200:
+          description: OK
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                oneOf:
+                  - { "$ref": "#/components/schemas/Point" }
+                  - type: "null"
 
   /v1/health:
     get:

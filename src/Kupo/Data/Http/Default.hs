@@ -6,12 +6,9 @@ module Kupo.Data.Http.Default
     ( headers
     ) where
 
-import Kupo.Prelude
 
 import Network.HTTP.Types.Header
-    ( Header, hContentLength, hContentType )
-
-
+    ( Header, hContentType )
 
 headers :: [Header]
 headers =

@@ -9,15 +9,20 @@
 
   Consequently, there's also a new (possibly `null`) field `spent_at` returned for each match result. When set, it indicates the slot in which the input was found being spent. 
 
-  - `GET v1/matches` → [🕮  API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches)
-  - `GET v1/matches/{pattern-fragment}` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getMatches1Ary)
-  - `GET v1/matches/{pattern-fragment}/{pattern-fragment}` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getMatches2Ary)
+  - `GET v1/matches[?(spent|unspent)]` → [🕮  API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches)
+  - `GET v1/matches/{pattern-fragment}[?(spent|unspent)]` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getMatches1Ary)
+  - `GET v1/matches/{pattern-fragment}/{pattern-fragment}[?(spent|unspent)]` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getMatches2Ary)
+
+[📌 #24](https://github.com/CardanoSolutions/kupo/issues/24) - New HTTP endpoint to retrieve a point on-chain from a given slot. The endpoint is flexible and allows for retrieving the ancestor 
+  of a known point very easily. This is handy in combination with other protocols that leverage on-chain points and intersections (like [Ogmios' chain-sync](https://ogmios.dev/mini-protocols/local-chain-sync/)). 
+
+  - `GET v1/checkpoints/{slot-no}[?strict]` → [🕮  API Reference](https://cardanosolutions.github.io/kupo/#operation/getCheckpointBySlot)
 
 #### Changed
 
 - [📌 #17](https://github.com/CardanoSolutions/kupo/issues/20) - The `slot_no` and `header_hash` fields are no longer accessible on top-level match result objects. Instead, they're now nested under a `created_at` field, analogous to how `spent_at` has been introduced. 
 
-- [📌 #24](https://github.com/CardanoSolutions/kupo/issues/24) - Fixed a bug where listing checkpoints may sometimes return duplicate entries. 
+- [📌 #24](https://github.com/CardanoSolutions/kupo/issues/24) - Fixed a bug where listing checkpoints would sometimes return duplicate entries. 
 
 #### Removed
 

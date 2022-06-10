@@ -50,6 +50,22 @@ stillActivePattern =
                  \clean-up obsolete matches if necessary."
         }
 
+invalidStrictMode :: Response
+invalidStrictMode =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Invalid strict-mode query flag! This endpoint only accepts a \
+                 \single query flag '?strict' which semantics is defined in the \
+                 \documentation: <https://cardanosolutions.github.io/kupo>. \
+                 \Any other query parameter is treated as an error."
+        }
+
+invalidSlotNo :: Response
+invalidSlotNo =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "The path parameter for the endpoint must be an absolute slot \
+                 \number. That is, an non-negative integer."
+        }
+
 notFound :: Response
 notFound =
     responseJson status404 Default.headers $ HttpError
