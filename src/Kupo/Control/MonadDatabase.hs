@@ -62,6 +62,8 @@ import Database.SQLite.Simple.ToField
     ( ToField (..) )
 import GHC.TypeLits
     ( KnownSymbol, symbolVal )
+import Numeric
+    ( Floating (..) )
 
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -139,6 +141,13 @@ data Database (m :: Type -> Type) = Database
     , listCheckpointsDesc
         :: forall checkpoint. ()
         => (Checkpoint -> checkpoint)
+        -> DBTransaction m [checkpoint]
+
+    , listAncestorsDesc
+        :: forall checkpoint. ()
+        => Word64 -- Slot
+        -> Int64 -- Number of ancestors to retrieve
+        -> (Checkpoint -> checkpoint)
         -> DBTransaction m [checkpoint]
 
     , insertPatterns
@@ -312,15 +321,24 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 ++
                 [ longestRollback `div` (2 ^ e) | (e :: Integer) <- [ n-1, n-2 .. 0 ] ]
               where
-                n = 9
+                n = ceiling (log (fromIntegral @_ @Double longestRollback))
         let qry = "SELECT * FROM checkpoints \
                   \WHERE slot_no >= ((SELECT MAX(slot_no) FROM checkpoints) - ?) \
                   \ORDER BY slot_no ASC \
                   \LIMIT 1"
-        fmap mconcat $ forM points $ \pt ->
+        fmap (fmap mk . nubOn checkpointSlotNo . mconcat) $ forM points $ \pt ->
             Sqlite.fold conn qry [SQLInteger pt] [] $
                 \xs (checkpointHeaderHash, checkpointSlotNo) ->
-                    pure ((mk Checkpoint{..}) : xs)
+                    pure (Checkpoint{..} : xs)
+
+    , listAncestorsDesc = \slotNo n mk -> ReaderT $ \conn -> do
+        let qry = "SELECT * FROM checkpoints \
+                  \WHERE slot_no < ? \
+                  \ORDER BY slot_no DESC \
+                  \LIMIT ?"
+        fmap reverse $ Sqlite.fold conn qry (SQLInteger <$> [fromIntegral slotNo, n]) [] $
+            \xs (checkpointHeaderHash, checkpointSlotNo) ->
+                pure ((mk Checkpoint{..}) : xs)
 
     , insertPatterns = \patterns -> ReaderT $ \conn -> do
         mapM_

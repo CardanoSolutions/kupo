@@ -10,6 +10,8 @@ module Test.Kupo.Data.DatabaseSpec
 
 import Kupo.Prelude
 
+import Data.List
+    ( maximum )
 import Data.Maybe
     ( fromJust )
 import Database.SQLite.Simple
@@ -26,7 +28,11 @@ import Database.SQLite.Simple
 import Kupo.Control.MonadAsync
     ( mapConcurrently_ )
 import Kupo.Control.MonadDatabase
-    ( ConnectionType (..), Database (..), MonadDatabase (..) )
+    ( ConnectionType (..)
+    , Database (..)
+    , LongestRollback (..)
+    , MonadDatabase (..)
+    )
 import Kupo.Control.MonadDelay
     ( threadDelay )
 import Kupo.Control.MonadLog
@@ -36,7 +42,14 @@ import Kupo.Control.MonadSTM
 import Kupo.Control.MonadTime
     ( millisecondsToDiffTime )
 import Kupo.Data.Cardano
-    ( Address, addressFromBytes, addressToBytes )
+    ( Address
+    , Block
+    , Point
+    , SlotNo (..)
+    , addressFromBytes
+    , addressToBytes
+    , getPointSlotNo
+    )
 import Kupo.Data.Database
     ( patternFromRow
     , patternToRow
@@ -55,11 +68,30 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
-    ( chooseVector, genNonGenesisPoint, genPattern, genResult )
+    ( chooseVector
+    , genNonGenesisPoint
+    , genPattern
+    , genPointsBetween
+    , genResult
+    )
 import Test.Kupo.Data.Pattern.Fixture
     ( addresses, patterns )
 import Test.QuickCheck
-    ( Gen, Property, choose, counterexample, forAllBlind, frequency, generate )
+    ( Gen
+    , Property
+    , choose
+    , counterexample
+    , forAllBlind
+    , forAllShow
+    , frequency
+    , generate
+    )
+import Test.QuickCheck.Monadic
+    ( PropertyM, assert, monadicIO, monitor, run )
+import Test.QuickCheck.Property
+    ( Testable )
+
+import qualified Prelude
 
 spec :: Spec
 spec = parallel $ do
@@ -79,6 +111,39 @@ spec = parallel $ do
                                       \FROM addresses \
                                       \WHERE address " <> Query like
                 sort (rowToAddress <$> rows) `shouldBe` sort results
+
+    context "checkpoints" $ do
+        let k = 100
+        prop "list checkpoints after inserting them" $
+            forAllCheckpoints k $ \pts -> monadicIO $ do
+                cps <- withInMemoryDatabase k $ \Database{..} -> do
+                    runTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    runTransaction $ fmap getPointSlotNo <$> listCheckpointsDesc pointFromRow
+                monitor $ counterexample (show cps)
+                assert $ all (uncurry (>)) (zip cps (drop 1 cps))
+                assert $ Prelude.head cps == maximum (getPointSlotNo <$> pts)
+
+        prop "get ancestor of any checkpoint" $
+            forAllCheckpoints k $ \pts -> monadicIO $ do
+                oneByOne <- withInMemoryDatabase k $ \Database{..} -> do
+                    runTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    fmap mconcat $ runTransaction $ forM pts $ \pt -> do
+                        let slotNo = unSlotNo (getPointSlotNo pt)
+                        listAncestorsDesc slotNo 1 pointFromRow
+
+                allAtOnce <- withInMemoryDatabase k $ \Database{..} -> do
+                    runTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    fmap reverse $ runTransaction $ do
+                        let slotNo = unSlotNo (maximum (getPointSlotNo <$> pts))
+                        listAncestorsDesc slotNo (fromIntegral $ length pts) pointFromRow
+
+                monitor $ counterexample $ toString $ unlines
+                    [ "one-by-one:  " <> show (getPointSlotNo <$> oneByOne)
+                    , "all-at-once: " <> show (getPointSlotNo <$> allAtOnce)
+                    ]
+
+                assert (Prelude.init pts == oneByOne)
+                assert (oneByOne == allAtOnce)
 
     context "concurrent read / write" $ do
         specify "1 long-lived worker vs 2 short-lived workers" $ do
@@ -191,3 +256,28 @@ rowToAddress = \case
         fromJust (addressFromBytes (unsafeDecodeBase16 txt))
     _ ->
         error "rowToAddress: not SQLText"
+
+withInMemoryDatabase
+    :: MonadDatabase m
+    => Word64
+    -> (Database m -> m b)
+    -> PropertyM m b
+withInMemoryDatabase k action = do
+    lock <- run newLock
+    run $ withDatabase
+        nullTracer
+        LongLived
+        lock
+        (LongestRollback k)
+        ":memory:"
+        action
+
+forAllCheckpoints
+    :: Testable prop
+    => Word64
+    -> ([Point Block] -> prop)
+    -> Property
+forAllCheckpoints k =
+    forAllShow
+        (genPointsBetween (0, SlotNo (10 * k)))
+        (show . fmap getPointSlotNo)
