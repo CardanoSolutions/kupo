@@ -2,6 +2,7 @@ index-state: 2021-12-07T00:00:00Z
 
 packages:
   ./
+  modules/websockets-json
 
 tests: False
 
@@ -9,6 +10,9 @@ test-show-details: direct
 
 package kupo
   flags: +production
+  tests: false
+
+package websockets-json
   tests: false
 
 -- Using RDRAND instead of /dev/urandom as an entropy source for key

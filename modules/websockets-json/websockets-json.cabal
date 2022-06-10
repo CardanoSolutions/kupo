@@ -1,0 +1,79 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.4.
+--
+-- see: https://github.com/sol/hpack
+
+name:           websockets-json
+version:        1.0.0
+synopsis:       Extras for websockets with JSON.
+description:    Please see the README on GitHub at <https://github.com/cardanosolutions/kupo/tree/master/server/modules/websockets-json>
+category:       Network
+homepage:       https://github.com/cardanosolutions/kupo#readme
+bug-reports:    https://github.com/cardanosolutions/kupo/issues
+author:         KtorZ <matthias.benkort@gmail.com>
+maintainer:     matthias.benkort@gmail.com
+copyright:      2022 KtorZ
+license:        MPL-2.0
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    LICENSE
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/cardanosolutions/kupo
+
+library
+  exposed-modules:
+      Network.WebSockets.Json
+  other-modules:
+      Paths_websockets_json
+  hs-source-dirs:
+      src
+  default-extensions:
+      BangPatterns
+      BinaryLiterals
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveTraversable
+      DerivingStrategies
+      EmptyDataDecls
+      ExistentialQuantification
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      InstanceSigs
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      NamedFieldPuns
+      NoImplicitPrelude
+      NumericUnderscores
+      OverloadedStrings
+      PartialTypeSignatures
+      PatternGuards
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      TypeSynonymInstances
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -fno-warn-unticked-promoted-constructors -fno-warn-partial-fields
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , io-classes
+    , relude
+    , websockets
+  default-language: Haskell2010

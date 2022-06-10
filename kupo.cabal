@@ -166,6 +166,7 @@ library
     , wai
     , warp
     , websockets
+    , websockets-json
     , yaml
   if flag(production)
     ghc-options: -Werror -O2

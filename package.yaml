@@ -89,6 +89,7 @@ library:
     - wai
     - warp
     - websockets
+    - websockets-json
 
 tests:
   unit:

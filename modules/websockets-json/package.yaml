@@ -1,0 +1,30 @@
+_config: !include "../../.hpack.config.yaml"
+
+name:                websockets-json
+version:             1.0.0
+github:              "cardanosolutions/kupo"
+license:             MPL-2.0
+author:              "KtorZ <matthias.benkort@gmail.com>"
+maintainer:          "matthias.benkort@gmail.com"
+copyright:           "2022 KtorZ"
+description:         Please see the README on GitHub at <https://github.com/cardanosolutions/kupo/tree/master/server/modules/websockets-json>
+synopsis:            Extras for websockets with JSON.
+category:            Network
+
+extra-source-files:
+- LICENSE
+- README.md
+
+dependencies:
+- base >= 4.7 && < 5
+
+default-extensions: *default-extensions
+
+library:
+  source-dirs: src
+  ghc-options: *ghc-options-lib
+  dependencies:
+    - aeson
+    - relude
+    - io-classes
+    - websockets
