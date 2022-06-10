@@ -462,12 +462,12 @@ migrations =
     [ mkMigration ix (decodeUtf8 migration)
     | (ix, (migration, mkMigration)) <- zip
         [1..]
-        [ ( $(embedfile "db/v1.0.0-beta/001.sql", mkSchemaMigration )
-        , ( $(embedfile "db/v1.0.0/001.sql", mkSchemaMigration )
-        , ( $(embedfile "db/v1.0.0/002.sql", mkSchemaMigration )
-        , ( $(embedfile "db/v1.0.1/001.sql", mkSchemaMigration )
-        , ( $(embedfile "db/v2.0.0/001.sql", mkSchemaMigration )
-        , ( $(embedfile "db/v2.0.0/002.sql", mkSettingsMigration )
+        [ ( $(embedFile "db/v1.0.0-beta/001.sql"), mkSchemaMigration   )
+        , ( $(embedFile "db/v1.0.0/001.sql"),      mkSchemaMigration   )
+        , ( $(embedFile "db/v1.0.0/002.sql"),      mkSchemaMigration   )
+        , ( $(embedFile "db/v1.0.1/001.sql"),      mkSchemaMigration   )
+        , ( $(embedFile "db/v2.0.0/001.sql"),      mkSchemaMigration   )
+        , ( $(embedFile "db/v2.0.0/002.sql"),      mkSettingsMigration )
         ]
     ]
   where
