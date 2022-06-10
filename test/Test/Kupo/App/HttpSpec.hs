@@ -225,6 +225,8 @@ databaseStub = Database
         \_ -> return ()
     , listCheckpointsDesc = \mk -> lift $ do
         fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
+    , listAncestorsDesc = \_ _ mk -> lift $ do
+        fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
     , insertPatterns =
         \_ -> return ()
     , deletePattern =

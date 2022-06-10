@@ -87,6 +87,18 @@ genNonGenesisPoint :: Gen (Point Block)
 genNonGenesisPoint = do
     BlockPoint <$> genSlotNo <*> genHeaderHash
 
+genPointsBetween :: (SlotNo, SlotNo) -> Gen [Point Block]
+genPointsBetween (inf, sup)
+    | inf >= sup = pure []
+    | otherwise = do
+        slotNo <- SlotNo <$> frequency
+            [ (3, pure (unSlotNo inf + 1))
+            , (2, choose (unSlotNo inf + 1, min (unSlotNo inf + 5) (unSlotNo sup)))
+            , (1, choose (unSlotNo inf + 1, unSlotNo sup))
+            ]
+        pt <- BlockPoint slotNo <$> genHeaderHash
+        (pt :) <$> genPointsBetween (slotNo, sup)
+
 genOutputIndex :: Gen OutputIndex
 genOutputIndex =
     fromIntegral <$> choose (0 :: Int, 255)

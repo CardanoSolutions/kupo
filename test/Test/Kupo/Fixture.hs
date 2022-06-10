@@ -29,6 +29,22 @@ somePoint = pointFromRow $ Checkpoint
         "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771"
     }
 
+somePointAncestor :: Point Block
+somePointAncestor = pointFromRow $ Checkpoint
+    { checkpointSlotNo =
+        51292617
+    , checkpointHeaderHash = unsafeDecodeBase16
+        "e63797c3982e9af8ab1f9ea1a60bfa47df9ead2e745adcca95ad30c6f49982a0"
+    }
+
+somePointSuccessor :: Point Block
+somePointSuccessor = pointFromRow $ Checkpoint
+    { checkpointSlotNo =
+        51292686
+    , checkpointHeaderHash = unsafeDecodeBase16
+        "0cdb5efde9aba0bbd2f0606d4ab64e4762cf13fe4ee78e0c5d956666fe6c95d3"
+    }
+
 someOtherPoint :: Point Block
 someOtherPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =

@@ -14,6 +14,7 @@ module Kupo.Data.Pattern
     , overlaps
     , patternFromText
     , patternToText
+    , patternFromPath
     , wildcard
 
       -- * Matching
@@ -111,6 +112,17 @@ overlaps p = \case
 wildcard :: Text
 wildcard = "*"
 {-# INLINEABLE wildcard #-}
+
+patternFromPath :: [Text] -> Maybe Text
+patternFromPath = \case
+    [] ->
+        Just wildcard
+    [arg0] ->
+        Just arg0
+    [arg0, arg1] ->
+        Just (arg0 <> "/" <> arg1)
+    _ ->
+        Nothing
 
 patternToText :: Pattern -> Text
 patternToText = \case

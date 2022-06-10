@@ -46,6 +46,7 @@ library
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Health
       Kupo.App.Http
+      Kupo.App.Http.HealthCheck
       Kupo.App.Mailbox
       Kupo.Configuration
       Kupo.Control.MonadAsync
@@ -61,6 +62,11 @@ library
       Kupo.Data.ChainSync
       Kupo.Data.Database
       Kupo.Data.Health
+      Kupo.Data.Http.Default
+      Kupo.Data.Http.Error
+      Kupo.Data.Http.GetCheckpointMode
+      Kupo.Data.Http.Response
+      Kupo.Data.Http.Status
       Kupo.Data.Ogmios
       Kupo.Data.Pattern
       Kupo.Options

@@ -2,7 +2,6 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App.Http
@@ -10,7 +9,7 @@ module Kupo.App.Http
       httpServer
     , app
 
-      -- * Client
+      -- * HealthCheck
     , healthCheck
 
       -- * Tracer
@@ -21,8 +20,8 @@ import Kupo.Prelude
 
 import Data.List
     ( nub, (\\) )
-import Kupo.Control.MonadCatch
-    ( handle )
+import Kupo.App.Http.HealthCheck
+    ( healthCheck )
 import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Control.MonadLog
@@ -30,25 +29,27 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
-    ( pointToJson )
+    ( SlotNo (..), getPointSlotNo, pointToJson, slotNoFromText )
 import Kupo.Data.Database
     ( patternToRow, patternToSql, pointFromRow, resultFromRow, statusToSql )
 import Kupo.Data.Health
-    ( ConnectionStatus (..), Health )
+    ( Health )
+import Kupo.Data.Http.GetCheckpointMode
+    ( GetCheckpointMode (..), getCheckpointModeFromQuery )
+import Kupo.Data.Http.Response
+    ( responseJson, responseJsonEncoding, responseStreamJson )
+import Kupo.Data.Http.Status
+    ( Status (..), mkStatus )
 import Kupo.Data.Pattern
     ( Pattern (..)
     , overlaps
+    , patternFromPath
     , patternFromText
     , patternToText
     , resultToJson
-    , wildcard
     )
-import Network.HTTP.Client
-    ( defaultManagerSettings, httpLbs, newManager, parseRequest, responseBody )
-import Network.HTTP.Types.Header
-    ( Header, hContentLength, hContentType )
 import Network.HTTP.Types.Status
-    ( status200, status400, status404, status406 )
+    ( status200 )
 import Network.Wai
     ( Application
     , Middleware
@@ -58,19 +59,14 @@ import Network.Wai
     , requestMethod
     , responseLBS
     , responseStatus
-    , responseStream
     )
-import Relude.Extra
-    ( lookup )
-import System.Exit
-    ( ExitCode (..) )
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Binary.Builder as B
-import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
-import qualified Network.HTTP.Types.Status as Http
+import qualified Kupo.Data.Http.Default as Default
+import qualified Kupo.Data.Http.Error as Errors
 import qualified Network.HTTP.Types.URI as Http
 import qualified Network.Wai.Handler.Warp as Warp
 
@@ -87,7 +83,9 @@ httpServer
     -> Int
     -> IO ()
 httpServer tr withDatabase patternsVar readHealth host port =
-    Warp.runSettings settings $ tracerMiddleware tr (app withDatabase patternsVar readHealth)
+    Warp.runSettings settings
+        $ tracerMiddleware tr
+        $ app withDatabase patternsVar readHealth
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -119,53 +117,71 @@ app withDatabase patternsVar readHealth req send =
             routePatterns (requestMethod req, args)
 
         _ ->
-            send handleNotFound
+            send Errors.notFound
   where
     routeHealth = \case
         ("GET", []) ->
             send . handleGetHealth =<< readHealth
         ("GET", _) ->
-            send handleNotFound
+            send Errors.notFound
         (_, _) ->
-            send handleMethodNotAllowed
+            send Errors.methodNotAllowed
 
     routeCheckpoints = \case
         ("GET", []) ->
-            withDatabase (send . handleGetCheckpoints)
+            withDatabase (send .
+                handleGetCheckpoints
+            )
+        ("GET", [arg]) ->
+            withDatabase (send <=<
+                handleGetCheckpointBySlot (slotNoFromText arg) (queryString req)
+            )
         ("GET", _) ->
-            send handleNotFound
+            send Errors.notFound
         (_, _) ->
-            send handleMethodNotAllowed
+            send Errors.methodNotAllowed
 
     routeMatches = \case
         ("GET", args) ->
-            withDatabase (send . handleGetMatches (patternFromQuery args) (queryString req))
+            withDatabase (send .
+                handleGetMatches (patternFromPath args) (queryString req)
+            )
         ("DELETE", args) ->
-            withDatabase (send <=< handleDeleteMatches patternsVar (patternFromQuery args))
+            withDatabase (send <=<
+                handleDeleteMatches patternsVar (patternFromPath args)
+            )
         (_, _) ->
-            send handleMethodNotAllowed
+            send Errors.methodNotAllowed
 
     routePatterns = \case
         ("GET", []) ->
             readTVarIO patternsVar >>= send . handleGetPatterns
         ("GET", _) ->
-            send handleNotFound
+            send Errors.notFound
         ("PUT", args) ->
-            withDatabase (send <=< handlePutPattern patternsVar (patternFromQuery args))
+            withDatabase (send <=<
+                handlePutPattern patternsVar (patternFromPath args)
+            )
         ("DELETE", args) ->
-            withDatabase (send <=< handleDeletePattern patternsVar (patternFromQuery args))
+            withDatabase (send <=<
+                handleDeletePattern patternsVar (patternFromPath args)
+            )
         (_, _) ->
-            send handleMethodNotAllowed
+            send Errors.methodNotAllowed
 
 --
--- Handlers
+-- /v1/health
 --
 
 handleGetHealth
     :: Health
     -> Response
 handleGetHealth =
-    responseJson status200 defaultHeaders
+    responseJson status200 Default.headers
+
+--
+-- /v1/checkpoints
+--
 
 handleGetCheckpoints
     :: Database IO
@@ -176,6 +192,41 @@ handleGetCheckpoints Database{..} = do
         mapM_ yield points
         done
 
+handleGetCheckpointBySlot
+    :: Maybe SlotNo
+    -> [Http.QueryItem]
+    -> Database IO
+    -> IO Response
+handleGetCheckpointBySlot mSlotNo query Database{..} =
+    case (mSlotNo, getCheckpointModeFromQuery query) of
+        (Nothing, _) ->
+            pure Errors.invalidSlotNo
+        (_, Nothing) ->
+            pure Errors.invalidStrictMode
+        (Just slotNo, Just mode) -> do
+            handleGetCheckpointBySlot' slotNo mode
+  where
+    handleGetCheckpointBySlot' slotNo mode = do
+        let successor = succ (unSlotNo slotNo)
+        points <- runTransaction (listAncestorsDesc successor 1 pointFromRow)
+        pure $ responseJsonEncoding status200 Default.headers $
+            case points of
+                [point] ->
+                    case mode of
+                        GetCheckpointStrict
+                            | getPointSlotNo point == slotNo ->
+                                pointToJson point
+                            | otherwise ->
+                                Json.null_
+                        GetCheckpointClosestAncestor ->
+                            pointToJson point
+                _ ->
+                    Json.null_
+
+--
+-- /v1/matches
+--
+
 handleGetMatches
     :: Maybe Text
     -> Http.Query
@@ -184,9 +235,9 @@ handleGetMatches
 handleGetMatches patternQuery filterQuery Database{..} = do
     case (patternQuery >>= patternFromText, statusToSql filterQuery) of
         (Nothing, _) ->
-            handleInvalidPattern
+            Errors.invalidPattern
         (_, Nothing) ->
-            handleInvalidFilterQuery
+            Errors.invalidFilterQuery
         (Just p, Just q) -> do
             let query = patternToSql p <> if T.null q then "" else (" AND " <> q)
             responseStreamJson resultToJson $ \yield done -> do
@@ -202,15 +253,19 @@ handleDeleteMatches patternsVar query Database{..} = do
     patterns <- readTVarIO patternsVar
     case query >>= patternFromText of
         Nothing -> do
-            pure handleInvalidPattern
+            pure Errors.invalidPattern
         Just p | p `overlaps` patterns -> do
-            pure handleStillActivePattern
+            pure Errors.stillActivePattern
         Just p -> do
             n <- runImmediateTransaction $ deleteInputsByAddress (patternToSql p)
-            pure $ responseLBS status200 defaultHeaders $
+            pure $ responseLBS status200 Default.headers $
                 B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)
                     ]
+
+--
+-- /v1/patterns
+--
 
 handleGetPatterns
     :: [Pattern]
@@ -228,11 +283,11 @@ handleDeletePattern
 handleDeletePattern patternsVar query Database{..} = do
     case query >>= patternFromText of
         Nothing ->
-            pure handleInvalidPattern
+            pure Errors.invalidPattern
         Just p -> do
             n <- runImmediateTransaction $ deletePattern (patternToRow p)
             atomically $ modifyTVar' patternsVar (\\ [p])
-            pure $ responseLBS status200 defaultHeaders $
+            pure $ responseLBS status200 Default.headers $
                 B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)
                     ]
@@ -245,143 +300,16 @@ handlePutPattern
 handlePutPattern patternsVar query Database{..} = do
     case query >>= patternFromText of
         Nothing ->
-            pure handleInvalidPattern
+            pure Errors.invalidPattern
         Just p  -> do
             runImmediateTransaction $ insertPatterns [patternToRow p]
             patterns <- atomically $ do
                 modifyTVar' patternsVar (nub . (p :))
                 readTVar patternsVar
-            pure $ responseLBS status200 defaultHeaders $
+            pure $ responseLBS status200 Default.headers $
                 B.toLazyByteString $ Json.fromEncoding $ Json.list
                     (Json.text . patternToText)
                     patterns
-
-handleInvalidPattern :: Response
-handleInvalidPattern = do
-    responseJson status400 defaultHeaders $ HttpError
-        { hint = "Invalid pattern! To fetch matches, you may provide any valid \
-                 \pattern, including wildcards ('*') or full addresses. Make \
-                 \sure to double-check the documentation at: \
-                 \<https://cardanosolutions.github.io/kupo>!"
-        }
-
-handleInvalidFilterQuery :: Response
-handleInvalidFilterQuery = do
-    responseJson status400 defaultHeaders $ HttpError
-        { hint = "Invalid filter query! Matches can be filtered by status using \
-                 \HTTP query flags. Provide either '?spent' or '?unspent' to \
-                 \filter accordingly. Anything else is an error. In case of \
-                 \doubts, check the documentation at: <https://cardanosolutions.github.io/kupo>!"
-        }
-
-handleStillActivePattern :: Response
-handleStillActivePattern = do
-    responseJson status400 defaultHeaders $ HttpError
-        { hint = "Beware! You've just attempted to remove matches using a pattern \
-                 \that overlaps with another still active pattern! This is not \
-                 \allowed as it could lead to very confusing index states. \
-                 \Make sure to remove conflicting patterns first AND THEN, \
-                 \clean-up obsolete matches if necessary."
-        }
-
-
-handleNotFound :: Response
-handleNotFound =
-    responseJson status404 defaultHeaders $ HttpError
-        { hint = "Endpoint not found. Make sure to double-check the \
-                 \documentation at: <https://cardanosolutions.github.io/kupo>!"
-        }
-
-handleMethodNotAllowed :: Response
-handleMethodNotAllowed =
-    responseJson status406 defaultHeaders $ HttpError
-        { hint = "Unsupported method called on known endpoint. Make sure to \
-                 \double-check the documentation at: \
-                 \<https://cardanosolutions.github.io/kupo>!"
-        }
-
---
--- Clients
---
-
--- | Performs a health check against a running server, this is a standalone
--- program which exits immediately, either with a success or an error code.
-healthCheck :: String -> Int -> IO ()
-healthCheck host port = do
-    response <- handle onAnyException $ join $ httpLbs
-        <$> parseRequest ("http://" <> host <> ":" <> show port <> "/v1/health")
-        <*> newManager defaultManagerSettings
-    case Json.decode (responseBody response) >>= getConnectionStatus of
-        Just st | Json.value st == Json.toEncoding Connected ->
-            return ()
-        _ -> do
-            exitWith (ExitFailure 1)
-  where
-    onAnyException (_ :: SomeException) =
-        exitWith (ExitFailure 1)
-    getConnectionStatus =
-        lookup @(Map String Json.Value) "connection_status"
-
---
--- Helpers
---
-
-data HttpError = HttpError
-    { hint :: Text }
-    deriving stock (Generic)
-    deriving anyclass (ToJSON)
-
-defaultHeaders :: [Header]
-defaultHeaders =
-    [ ( hContentType, "application/json;charset=utf-8" )
-    ]
-
-patternFromQuery :: [Text] -> Maybe Text
-patternFromQuery = \case
-    [] ->
-        Just wildcard
-    [arg0] ->
-        Just arg0
-    [arg0, arg1] ->
-        Just (arg0 <> "/" <> arg1)
-    _ ->
-        Nothing
-
-responseJson
-    :: ToJSON a
-    => Http.Status
-    -> [Header]
-    -> a
-    -> Response
-responseJson status headers a =
-    let
-        bytes = B.toLazyByteString $ Json.fromEncoding (Json.toEncoding a)
-        len = BL.length bytes
-        contentLength = ( hContentLength, encodeUtf8 (show @Text len) )
-     in
-        responseLBS status (contentLength : headers) bytes
-
-responseStreamJson
-    :: (a -> Json.Encoding)
-    -> ((a -> IO ()) -> IO () -> IO ())
-    -> Response
-responseStreamJson encode callback = do
-    responseStream status200 defaultHeaders $ \write flush -> do
-        ref <- newIORef True
-        write openBracket
-        callback
-            (\a -> do
-                isFirstResult <- readIORef ref
-                write (separator isFirstResult <> Json.fromEncoding (encode a))
-                writeIORef ref False
-            )
-            (write closeBracket >> flush)
-  where
-    openBracket = B.putCharUtf8 '['
-    closeBracket = B.putCharUtf8 ']'
-    separator isFirstResult
-        | isFirstResult = mempty
-        | otherwise     = B.putCharUtf8 ','
 
 --
 -- Tracer
@@ -415,18 +343,3 @@ instance ToJSON TraceHttpServer where
     toEncoding =
         defaultGenericToEncoding
 
---
--- Status
---
-
-data Status = Status
-    { statusCode :: Int
-    , statusMessage :: Text
-    } deriving stock (Generic)
-      deriving anyclass (ToJSON)
-
-mkStatus :: Http.Status -> Status
-mkStatus status = Status
-    { statusCode = Http.statusCode status
-    , statusMessage = decodeUtf8 (Http.statusMessage status)
-    }

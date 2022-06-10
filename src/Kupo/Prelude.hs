@@ -37,6 +37,9 @@ module Kupo.Prelude
       -- * System
     , hijackSigTerm
     , ConnectionStatusToggle (..)
+
+      -- * Utils
+    , nubOn
     ) where
 
 import Cardano.Binary
@@ -51,6 +54,8 @@ import Data.ByteString.Base64
     ( decodeBase64, encodeBase64 )
 import Data.Generics.Internal.VL.Lens
     ( view, (^.) )
+import Data.List
+    ( nubBy )
 import GHC.Generics
     ( Rep )
 import Relude hiding
@@ -148,3 +153,8 @@ byteStringToJson =
 defaultGenericToEncoding :: (Generic a, GToJSON' Encoding Zero (Rep a)) => a -> Json.Encoding
 defaultGenericToEncoding =
     genericToEncoding Json.defaultOptions
+
+-- | Remove duplicates from a list based on information extracted from the
+-- elements.
+nubOn :: Eq b => (a -> b) -> [a] -> [a]
+nubOn b = nubBy (on (==) b)
