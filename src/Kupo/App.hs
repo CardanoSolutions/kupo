@@ -247,7 +247,7 @@ withChainProducer tracerConfiguration chainProducer callback = do
 -- and 1000, the heap increases from ~150MB to ~1GB, for a 5-10%
 -- synchronization time decrease.
 mailboxSize :: Natural
-mailboxSize = 100
+mailboxSize = 50
 
 --
 -- Producer / Consumer
