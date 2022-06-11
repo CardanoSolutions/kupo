@@ -34,8 +34,6 @@ import Ouroboros.Consensus.Cardano
     ( CardanoBlock )
 import Ouroboros.Consensus.Cardano.Block
     ( CodecConfig (..) )
-import Ouroboros.Consensus.HardFork.Combinator.Block
-    ()
 import Ouroboros.Consensus.Network.NodeToClient
     ( ClientCodecs, Codecs' (..), clientCodecs )
 import Ouroboros.Consensus.Node.NetworkProtocolVersion
@@ -72,6 +70,11 @@ import Ouroboros.Network.Protocol.Handshake.Version
     ( combineVersions, simpleSingletonVersions )
 import Ouroboros.Network.Snocket
     ( Snocket (..) )
+
+import Ouroboros.Consensus.Protocol.Praos.Translate
+    ()
+import Ouroboros.Consensus.Shelley.Ledger.SupportsProtocol
+    ()
 
 class MonadOuroboros (m :: Type -> Type) where
     type BlockT m :: Type
@@ -138,10 +141,11 @@ codecs epochSlots nodeToClientV =
     supportedVersions =
         supportedNodeToClientVersions (Proxy @(BlockT IO))
     cfg =
-        CardanoCodecConfig byron shelley allegra mary alonzo
+        CardanoCodecConfig byron shelley allegra mary alonzo babbage
       where
-        byron   = ByronCodecConfig epochSlots
-        shelley = ShelleyCodecConfig
-        allegra = ShelleyCodecConfig
-        mary    = ShelleyCodecConfig
-        alonzo  = ShelleyCodecConfig
+        byron    = ByronCodecConfig epochSlots
+        shelley  = ShelleyCodecConfig
+        allegra  = ShelleyCodecConfig
+        mary     = ShelleyCodecConfig
+        alonzo   = ShelleyCodecConfig
+        babbage  = ShelleyCodecConfig

@@ -390,7 +390,7 @@ newHttpClient manager cfg = HttpClient
     waitUntil :: (SlotNo -> Bool) -> IO ()
     waitUntil predicate = do
         checkpoints <- listCheckpoints
-        unless (predicate (maximum checkpoints)) $ do
+        unless (not (null checkpoints) && predicate (maximum checkpoints)) $ do
             threadDelay 0.1
             waitUntil predicate
 
