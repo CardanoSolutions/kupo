@@ -52,6 +52,7 @@ import Kupo.Control.MonadSTM
 import System.IO
     ( BufferMode (..), hSetBuffering, hSetEncoding, utf8 )
 
+import qualified Data.Aeson.Key as Json.Key
 import qualified Data.ByteString.Lazy.Char8 as BL8
 
 class Monad m => MonadLog (m :: Type -> Type) where
@@ -106,7 +107,7 @@ withTracers h version tracers action = do
         -> String
         -> m Encoding
     mkEnvelop msg severity tracerName = do
-        let context = toText (dropWhile isLower tracerName)
+        let context = Json.Key.fromString (dropWhile isLower tracerName)
         timestamp <- liftIO getCurrentTime
         threadId <- drop 9 . show <$> liftIO myThreadId
         pure $ pairs $ mempty
