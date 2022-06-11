@@ -61,7 +61,6 @@ import Kupo.Data.Pattern
     ( Pattern, matchBlock, patternToText )
 
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Kupo.App.ChainSync.Direct as Direct
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 
@@ -247,7 +246,7 @@ withChainProducer tracerConfiguration chainProducer callback = do
 -- and 1000, the heap increases from ~150MB to ~1GB, for a 5-10%
 -- synchronization time decrease.
 mailboxSize :: Natural
-mailboxSize = 50
+mailboxSize = 100
 
 --
 -- Producer / Consumer
@@ -303,7 +302,7 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} = forever
         MarkSpentInputs ->
             void . Map.traverseWithKey markInputsByReference
         RemoveSpentInputs ->
-            deleteInputsByReference . Map.foldr Set.union Set.empty
+            traverse_ deleteInputsByReference
 
 --
 -- Tracers
