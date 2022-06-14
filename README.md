@@ -14,6 +14,10 @@
 
 See the [user-manual 📖](https://cardanosolutions.github.io/kupo).
 
+# Roadmap 
+
+See [projects 🎯](https://github.com/CardanoSolutions/kupo/projects).
+
 # System Requirements
 
 | Category         | Value                                      |
@@ -48,6 +52,16 @@ Key difference(s): Oura in itself does not provide any chain-indexing, but it su
 
 <p align="right">
   <a href="https://github.com/txpipe/oura/#readme">Learn more</a>
+  </p>
+</details>
+
+<details>
+  <summary>scrolls</summary>
+
+Key differences(s): Scrolls provides (at this stage) only an in-memory storage via Redis. This means that it's not possible to index the entire chain without resorting to large memory requirements. It also synchronizes blocks from the chain using the node-to-node protocol which means that it can do so on any remote node relay, but it is also slower (because a more defensive protocol) than the node-to-client protocol upon which Kupo relies. 
+
+<p align="right">
+  <a href="https://github.com/txpipe/scrolls">Learn more</a>
   </p>
 </details>
 
@@ -101,6 +115,8 @@ Key differences(s): the plutus-chain-index is the native component behind the PA
   <a href="CONTRIBUTING.md"> 📐 Contributing</a>
   |
   <a href="CHANGELOG.md"> 💾 Changelog</a>
+  |
+  <a href="https://twitter.com/_KtorZ_"><img src=".github/twitter.svg" alt="Twitter"> Twitter (@_KtorZ_)</a>
 </p>
 
 <p align="center"><a href="https://github.com/cardanosolutions/kupo/blob/master/LICENSE"><img src=".github/license.svg" alt="license=MPL-2.0" /></a></p>
