@@ -29,14 +29,8 @@ module Kupo.Data.Database
 
 import Kupo.Prelude
 
-import Cardano.Crypto.Hash
-    ( pattern UnsafeHash )
-import Cardano.Ledger.Alonzo
-    ( AlonzoEra )
-import Cardano.Ledger.Crypto
-    ( StandardCrypto )
-import Cardano.Slotting.Slot
-    ( SlotNo (..) )
+import Kupo.Data.Cardano
+    ( Block, SlotNo (..), StandardCrypto )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
@@ -48,15 +42,10 @@ import Ouroboros.Consensus.Block
     ( ConvertRawHash (..) )
 import Ouroboros.Consensus.Cardano.Block
     ( CardanoBlock )
-import Ouroboros.Consensus.HardFork.Combinator.AcrossEras
-    ( OneEraHash (..) )
-import Ouroboros.Consensus.Shelley.Ledger.Block
-    ( ShelleyBlock (..), ShelleyHash (..) )
 import Ouroboros.Network.Block
     ( pattern BlockPoint, pattern GenesisPoint, Point (..) )
 
 import qualified Cardano.Ledger.Address as Ledger
-import qualified Cardano.Ledger.Shelley.API as Ledger
 import qualified Kupo.Control.MonadDatabase as DB
 import qualified Network.HTTP.Types.URI as Http
 
@@ -69,11 +58,7 @@ pointFromRow
     -> Point (CardanoBlock StandardCrypto)
 pointFromRow row = BlockPoint
     (SlotNo (DB.checkpointSlotNo row))
-    (fromShelleyHash $ fromShortRawHash proxy $ toShort $ DB.checkpointHeaderHash row)
-  where
-    proxy = Proxy @(ShelleyBlock (AlonzoEra StandardCrypto))
-    fromShelleyHash (Ledger.unHashHeader . unShelleyHash -> UnsafeHash h) =
-        coerce h
+    (fromShortRawHash (Proxy @Block) $ toShort $ DB.checkpointHeaderHash row)
 
 pointToRow
     :: HasCallStack

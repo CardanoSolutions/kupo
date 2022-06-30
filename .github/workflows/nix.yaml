@@ -33,7 +33,7 @@ jobs:
     - name: 🔨 Build
       run: |
         nix-build -A kupo.components.exes.kupo -o dist
-        cp -r dist/* . && chmod +w share
+        cp -r dist/* . && mkdir -p share && chmod +w share
         mkdir -p share/zsh/site-functions          && ./bin/kupo --zsh-completion-script  kupo > share/zsh/site-functions/_kupo
         mkdir -p share/bash-completion/completions && ./bin/kupo --bash-completion-script kupo > share/bash-completion/completions/kupo
         chmod -w share

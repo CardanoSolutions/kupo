@@ -120,6 +120,8 @@ import Cardano.Ledger.Allegra
     ( AllegraEra )
 import Cardano.Ledger.Alonzo
     ( AlonzoEra )
+import Cardano.Ledger.Babbage
+    ( BabbageEra )
 import Cardano.Ledger.Crypto
     ( Crypto, StandardCrypto )
 import Cardano.Ledger.Mary
@@ -137,7 +139,7 @@ import Data.Binary.Put
 import Data.ByteString.Bech32
     ( HumanReadablePart (..), encodeBech32 )
 import Data.Maybe.Strict
-    ( StrictMaybe (..), maybeToStrictMaybe, strictMaybeToMaybe )
+    ( StrictMaybe (..) )
 import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
 import GHC.Records
@@ -148,8 +150,6 @@ import Ouroboros.Consensus.Byron.Ledger.Mempool
     ( GenTx (..) )
 import Ouroboros.Consensus.Cardano.Block
     ( CardanoBlock, HardForkBlock (..) )
-import Ouroboros.Consensus.Cardano.CanHardFork
-    ()
 import Ouroboros.Consensus.HardFork.Combinator
     ( OneEraHash (..) )
 import Ouroboros.Consensus.Ledger.SupportsMempool
@@ -168,6 +168,13 @@ import Ouroboros.Network.Block
 import Ouroboros.Network.Point
     ( WithOrigin (..) )
 
+import Ouroboros.Consensus.Cardano
+    ()
+import Ouroboros.Consensus.Protocol.Praos.Translate
+    ()
+import Ouroboros.Consensus.Shelley.Ledger.SupportsProtocol
+    ()
+
 import qualified Cardano.Chain.Common as Ledger.Byron
 import qualified Cardano.Chain.UTxO as Ledger.Byron
 import qualified Cardano.Crypto as Ledger.Byron
@@ -176,6 +183,8 @@ import qualified Cardano.Ledger.Alonzo.Data as Ledger
 import qualified Cardano.Ledger.Alonzo.Tx as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxBody as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxSeq as Ledger.Alonzo
+import qualified Cardano.Ledger.Babbage.TxBody as Ledger.Babbage
+import qualified Cardano.Ledger.BaseTypes as Ledger
 import qualified Cardano.Ledger.Block as Ledger
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Credential as Ledger
@@ -189,7 +198,9 @@ import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
 import qualified Cardano.Ledger.ShelleyMA.TxBody as Ledger.MaryAllegra
 import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Data.Aeson.Encoding as Json
+import qualified Data.Aeson.Key as Json
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Short as SBS
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -258,6 +269,8 @@ instance IsBlock Block where
             foldr (fn . TransactionMary) result (Ledger.Shelley.txSeqTxns' txs)
         BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
             foldr (fn . TransactionAlonzo) result (Ledger.Alonzo.txSeqTxns txs)
+        BlockBabbage (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldr (fn . TransactionBabbage) result (Ledger.Alonzo.txSeqTxns txs)
 
     spentInputs
         :: Transaction
@@ -277,9 +290,17 @@ instance IsBlock Block where
                     getField @"inputs" (getField @"body" tx)
                 Ledger.Alonzo.IsValid False ->
                     getField @"collateral" (getField @"body" tx)
+        TransactionBabbage tx ->
+            case Ledger.Alonzo.isValid tx of
+                Ledger.Alonzo.IsValid True ->
+                    getField @"inputs" (getField @"body" tx)
+                Ledger.Alonzo.IsValid False ->
+                    getField @"collateral" (getField @"body" tx)
       where
         transformByron (Ledger.Byron.TxInUtxo txId ix) =
-            Ledger.TxIn (transactionIdFromByron txId) (fromIntegral ix)
+            mkOutputReference
+                (transactionIdFromByron txId)
+                (fromIntegral @Word16 @Word64 ix)
 
     mapMaybeOutputs
         :: forall result. ()
@@ -321,6 +342,17 @@ instance IsBlock Block where
              in
                 case Ledger.Alonzo.isValid tx of
                     Ledger.Alonzo.IsValid True ->
+                        traverseAndTransform fromAlonzoOutput txId 0 outs
+                    _ ->
+                        []
+        TransactionBabbage tx ->
+            let
+                body = Ledger.Alonzo.body tx
+                txId = Ledger.txid @(BabbageEra StandardCrypto) body
+                outs = Ledger.Babbage.outputs' body
+             in
+                case Ledger.Alonzo.isValid tx of
+                    Ledger.Alonzo.IsValid True ->
                         traverseAndTransform identity txId 0 outs
                     _ ->
                         []
@@ -329,14 +361,14 @@ instance IsBlock Block where
             :: forall output. ()
             => (output -> Output)
             -> TransactionId
-            -> Natural
+            -> OutputIndex
             -> [output]
             -> [result]
         traverseAndTransformByron transform txId ix = \case
             [] -> []
             (out:rest) ->
                 let
-                    outputRef = Ledger.TxIn txId ix
+                    outputRef = mkOutputReference txId ix
                     results   = traverseAndTransformByron transform txId (succ ix) rest
                  in
                     case fn outputRef (transform out) of
@@ -349,14 +381,14 @@ instance IsBlock Block where
             :: forall output. ()
             => (output -> Output)
             -> TransactionId
-            -> Natural
+            -> OutputIndex
             -> StrictSeq output
             -> [result]
         traverseAndTransform transform txId ix = \case
             Empty -> []
             output :<| rest ->
                 let
-                    outputRef = Ledger.TxIn txId ix
+                    outputRef = mkOutputReference txId ix
                     results   = traverseAndTransform transform txId (succ ix) rest
                  in
                     case fn outputRef (transform output) of
@@ -407,10 +439,10 @@ transactionIdToJson =
 
 -- OutputIndex
 
-type OutputIndex = Natural
+type OutputIndex = Word64
 
 getOutputIndex :: OutputReference' crypto -> OutputIndex
-getOutputIndex (Ledger.TxIn _ ix) =
+getOutputIndex (Ledger.TxIn _ (Ledger.TxIx ix)) =
     ix
 
 outputIndexToJson :: OutputIndex -> Json.Encoding
@@ -433,6 +465,8 @@ data Transaction' crypto
         (Ledger.Shelley.Tx (MaryEra crypto))
     | TransactionAlonzo
         (Ledger.Alonzo.ValidatedTx (AlonzoEra crypto))
+    | TransactionBabbage
+        (Ledger.Alonzo.ValidatedTx (BabbageEra crypto))
 
 -- Input
 
@@ -454,8 +488,8 @@ mkOutputReference
     :: TransactionId
     -> OutputIndex
     -> OutputReference
-mkOutputReference =
-    Ledger.TxIn
+mkOutputReference i =
+    Ledger.TxIn i . Ledger.TxIx
 
 withReferences
     :: TransactionId
@@ -480,15 +514,26 @@ type Output =
     Output' StandardCrypto
 
 type Output' crypto =
-    Ledger.Alonzo.TxOut (AlonzoEra crypto)
+    Ledger.Babbage.TxOut (BabbageEra crypto)
 
 mkOutput
     :: Address
     -> Value
     -> Maybe DatumHash
     -> Output
-mkOutput address value =
-    Ledger.Alonzo.TxOut address value . maybeToStrictMaybe
+mkOutput address value = \case
+    Nothing ->
+        Ledger.Babbage.TxOut
+            address
+            value
+            Ledger.Babbage.NoDatum
+            SNothing
+    Just datumHash ->
+        Ledger.Babbage.TxOut
+            address
+            value
+            (Ledger.Babbage.DatumHash datumHash)
+            SNothing
 
 fromShelleyOutput
     :: forall (era :: Type -> Type) crypto.
@@ -499,39 +544,69 @@ fromShelleyOutput
         )
     => (Ledger.Core.Value (era crypto) -> Ledger.Value crypto)
     -> Ledger.Core.TxOut (era crypto)
-    -> Ledger.Core.TxOut (AlonzoEra crypto)
+    -> Ledger.Core.TxOut (BabbageEra crypto)
 fromShelleyOutput liftValue (Ledger.Shelley.TxOut addr value) =
-    Ledger.Alonzo.TxOut addr (liftValue value) SNothing
+    Ledger.Babbage.TxOut addr (liftValue value) Ledger.Babbage.NoDatum SNothing
+
+fromAlonzoOutput
+    :: forall crypto.
+        ( Crypto crypto
+        )
+    => Ledger.Core.TxOut (AlonzoEra crypto)
+    -> Ledger.Core.TxOut (BabbageEra crypto)
+fromAlonzoOutput (Ledger.Alonzo.TxOut addr value datum) =
+    case datum of
+        SNothing ->
+            Ledger.Babbage.TxOut
+                addr
+                value
+                Ledger.Babbage.NoDatum
+                SNothing
+
+        SJust datumHash ->
+            Ledger.Babbage.TxOut
+                addr
+                value
+                (Ledger.Babbage.DatumHash datumHash)
+                SNothing
+
 
 fromByronOutput
     :: forall crypto.
         ( Crypto crypto
         )
     => Ledger.Byron.TxOut
-    -> Ledger.Core.TxOut (AlonzoEra crypto)
+    -> Ledger.Core.TxOut (BabbageEra crypto)
 fromByronOutput (Ledger.Byron.TxOut address value) =
-    Ledger.Alonzo.TxOut
+    Ledger.Babbage.TxOut
         (Ledger.AddrBootstrap (Ledger.BootstrapAddress address))
         (inject $ Ledger.Coin $ toInteger $ Ledger.Byron.unsafeGetLovelace value)
+        Ledger.Babbage.NoDatum
         SNothing
 
 getAddress
     :: Output
     -> Address
-getAddress (Ledger.Alonzo.TxOut address _value _datumHash) =
+getAddress (Ledger.Babbage.TxOut address _value _datumHash _refScript) =
     address
 
 getValue
     :: Output
     -> Value
-getValue (Ledger.Alonzo.TxOut _address value _datumHash) =
+getValue (Ledger.Babbage.TxOut _address value _datumHash _refScript) =
     value
 
 getDatumHash
     :: Output
     -> Maybe DatumHash
-getDatumHash (Ledger.Alonzo.TxOut _address _value datumHash) =
-    (strictMaybeToMaybe datumHash)
+getDatumHash (Ledger.Babbage.TxOut _address _value datumHash _refScript) =
+    case datumHash of
+        Ledger.Babbage.NoDatum ->
+            Nothing
+        Ledger.Babbage.Datum{} ->
+            Nothing
+        Ledger.Babbage.DatumHash h ->
+            Just h
 
 -- DatumHash
 
@@ -591,6 +666,7 @@ unsafeValueFromList ada assets =
 
     unsafeAssetName =
         Ledger.AssetName
+        . toShort
         . sizeInvariant (<= assetNameMaxLength)
 
 valueToJson :: Value -> Json.Encoding
@@ -604,7 +680,7 @@ valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
         Json.pairs
         .
         Map.foldrWithKey
-            (\k v r -> Json.pair (assetIdToText k) (Json.integer v) <> r)
+            (\k v r -> Json.pair (assetIdToKey k) (Json.integer v) <> r)
             mempty
         .
         flatten
@@ -614,10 +690,12 @@ valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
         (\k inner -> Map.union (Map.mapKeys (k,) inner))
         mempty
 
-    assetIdToText :: (Ledger.PolicyID StandardCrypto, Ledger.AssetName) -> Text
-    assetIdToText (Ledger.PolicyID (Ledger.ScriptHash (UnsafeHash pid)), Ledger.AssetName bytes)
-        | BS.null bytes = encodeBase16 (fromShort pid)
-        | otherwise     = encodeBase16 (fromShort pid) <> "." <> encodeBase16 bytes
+    assetIdToKey :: (Ledger.PolicyID StandardCrypto, Ledger.AssetName) -> Json.Key
+    assetIdToKey (Ledger.PolicyID (Ledger.ScriptHash (UnsafeHash pid)), Ledger.AssetName bytes)
+        | SBS.null bytes = Json.fromText
+            (encodeBase16 (fromShort pid))
+        | otherwise     = Json.fromText
+            (encodeBase16 (fromShort pid) <> "." <> encodeBase16 (fromShort bytes))
 
 -- Address
 
