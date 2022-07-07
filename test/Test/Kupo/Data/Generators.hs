@@ -65,6 +65,10 @@ genAssetName = elements $
   where
     nMax = assetNameMaxLength
 
+genNonEmptyAssetName :: Gen ByteString
+genNonEmptyAssetName =
+    genAssetName `suchThat` (not . BS.null)
+
 genConnectionStatus :: Gen ConnectionStatus
 genConnectionStatus =
     arbitraryBoundedEnum

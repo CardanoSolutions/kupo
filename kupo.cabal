@@ -64,6 +64,7 @@ library
       Kupo.Data.Health
       Kupo.Data.Http.Default
       Kupo.Data.Http.Error
+      Kupo.Data.Http.FilterMatchesBy
       Kupo.Data.Http.GetCheckpointMode
       Kupo.Data.Http.Response
       Kupo.Data.Http.Status
@@ -235,6 +236,7 @@ test-suite unit
       Test.Kupo.Data.CardanoSpec
       Test.Kupo.Data.DatabaseSpec
       Test.Kupo.Data.Generators
+      Test.Kupo.Data.Http.FilterMatchesBySpec
       Test.Kupo.Data.OgmiosSpec
       Test.Kupo.Data.Pattern.Fixture
       Test.Kupo.Data.PatternSpec

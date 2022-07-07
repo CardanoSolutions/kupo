@@ -397,14 +397,14 @@ components:
           description:
           propertyNames:
             type: string
-            pattern: ^[a-f0-9]{64}(.[a-f0-9]{64})?$
+            pattern: ^[a-f0-9]{56}(.[a-f0-9]{2,64})?$
           additionalProperties:
             x-additionalPropertiesName: "{policy_id}.{asset_name}"
             type: integer
             description: A quantity of some asset.
           example:
-            5d5b08661220099e5e430475c219518179efc7e6c8289db028904834025d5b086: 231
-            efc7e6c8289db028904834025d5b085d5b08661220099e5e430475c2195181796.08661220099e: 1
+            1220099e5e430475c219518179efc7e6c8289db028904834025d5b086: 231
+            289db028904834025d5b085d5b08661220099e5e430475c2195181796.08661220099e: 1
 
     Wildcard:
       type: string
@@ -464,7 +464,7 @@ components:
       required: false
       allowEmptyValue: true
       description: |
-        A query flag (i.e. `?spent`) to filter matches by status, to get only 'spent' matches.
+        A query flag (i.e. `?spent`) to filter matches by status, to get only 'spent' matches.  Note that, when running kupo with `--prune-utxo`, this will always return an empty list of results.
 
     unspent:
       name: unspent
@@ -473,6 +473,36 @@ components:
       allowEmptyValue: true
       description: |
         A query flag (i.e. `?unspent`) filter matches by status, to get only 'unspent' matches.
+
+    policy_id:
+      name: policy_id
+      in: query
+      required: false
+      allowEmptyValue: false
+      schema:
+        type: string
+        contentEncoding: base16
+        pattern: ^[a-f0-9]{56}$
+      description: |
+        Filter matches to only include results whose value carries assets associated with the given `policy_id`.
+      example:
+        1220099e5e430475c219518179efc7e6c8289db028904834025d5b086
+
+    asset_name:
+      name: asset_name
+      in: query
+      required: false
+      allowEmptyValue: false
+      schema:
+        type: string
+        contentEncoding: base16
+        pattern: ^[a-f0-9]{2,64}$
+      description: |
+        Filter matches to only include results whose value carries assets associated with the given asset id (i.e. (`policy_id`, `asset_name`)).
+
+        This filter can only be used **in conjunction with `policy_id`.**
+      example:
+        08661220099e
 
     strict:
       name: strict
@@ -503,6 +533,8 @@ paths:
       parameters:
         - { "$ref": "#/components/parameters/spent" }
         - { "$ref": "#/components/parameters/unspent" }
+        - { "$ref": "#/components/parameters/policy_id" }
+        - { "$ref": "#/components/parameters/asset_name" }
       responses:
         200:
           description: OK
@@ -524,6 +556,8 @@ paths:
         - { "$ref": "#/components/parameters/pattern-fragment" }
         - { "$ref": "#/components/parameters/spent" }
         - { "$ref": "#/components/parameters/unspent" }
+        - { "$ref": "#/components/parameters/policy_id" }
+        - { "$ref": "#/components/parameters/asset_name" }
       responses:
         200:
           description: OK

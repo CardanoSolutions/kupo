@@ -29,11 +29,19 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
-    ( SlotNo (..), getPointSlotNo, pointToJson, slotNoFromText )
+    ( SlotNo (..)
+    , getPointSlotNo
+    , hasAssetId
+    , hasPolicyId
+    , pointToJson
+    , slotNoFromText
+    )
 import Kupo.Data.Database
     ( patternToRow, patternToSql, pointFromRow, resultFromRow, statusToSql )
 import Kupo.Data.Health
     ( Health )
+import Kupo.Data.Http.FilterMatchesBy
+    ( FilterMatchesBy (..), filterMatchesBy )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..), getCheckpointModeFromQuery )
 import Kupo.Data.Http.Response
@@ -42,6 +50,7 @@ import Kupo.Data.Http.Status
     ( Status (..), mkStatus )
 import Kupo.Data.Pattern
     ( Pattern (..)
+    , Result (..)
     , overlaps
     , patternFromPath
     , patternFromText
@@ -64,7 +73,6 @@ import Network.Wai
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Binary.Builder as B
-import qualified Data.Text as T
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
 import qualified Network.HTTP.Types.URI as Http
@@ -232,17 +240,36 @@ handleGetMatches
     -> Http.Query
     -> Database IO
     -> Response
-handleGetMatches patternQuery filterQuery Database{..} = do
-    case (patternQuery >>= patternFromText, statusToSql filterQuery) of
-        (Nothing, _) ->
+handleGetMatches patternQuery queryParams Database{..} = do
+    case patternQuery >>= patternFromText of
+        Nothing ->
             Errors.invalidPattern
-        (_, Nothing) ->
-            Errors.invalidFilterQuery
-        (Just p, Just q) -> do
-            let query = patternToSql p <> if T.null q then "" else (" AND " <> q)
-            responseStreamJson resultToJson $ \yield done -> do
-                runTransaction $ foldInputs query (yield . resultFromRow)
-                done
+        Just p -> do
+            let query = patternToSql p <>
+                    case statusToSql queryParams of
+                        Nothing -> ""
+                        Just q  -> " AND " <> q
+            case filterMatchesBy queryParams of
+                Nothing ->
+                    responseStreamJson resultToJson $ \yield done -> do
+                        runTransaction $ foldInputs query (yield . resultFromRow)
+                        done
+                Just (FilterByAssetId assetId) ->
+                    responseStreamJson resultToJson $ \yield done -> do
+                        let yieldIf result = do
+                                if hasAssetId (value result) assetId
+                                then yield result
+                                else pure ()
+                        runTransaction $ foldInputs query (yieldIf . resultFromRow)
+                        done
+                Just (FilterByPolicyId policyId) ->
+                    responseStreamJson resultToJson $ \yield done -> do
+                        let yieldIf result = do
+                                if hasPolicyId (value result) policyId
+                                then yield result
+                                else pure ()
+                        runTransaction $ foldInputs query (yieldIf . resultFromRow)
+                        done
 
 handleDeleteMatches
     :: TVar IO [Pattern]

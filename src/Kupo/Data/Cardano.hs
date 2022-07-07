@@ -47,9 +47,26 @@ module Kupo.Data.Cardano
 
     -- * Value
     , Value
+    , hasAssetId
+    , hasPolicyId
     , unsafeValueFromList
     , valueToJson
     , assetNameMaxLength
+
+    -- * AssetId
+    , AssetId
+
+    -- * PolicyId
+    , PolicyId
+    , unsafePolicyIdFromBytes
+    , policyIdFromText
+    , policyIdToText
+
+    -- * AssetName
+    , AssetName
+    , unsafeAssetNameFromBytes
+    , assetNameFromText
+    , assetNameToText
 
     -- * DatumHash
     , DatumHash
@@ -156,6 +173,8 @@ import Ouroboros.Consensus.Ledger.SupportsMempool
     ( HasTxs (extractTxs) )
 import Ouroboros.Consensus.Shelley.Ledger.Block
     ( ShelleyBlock (..) )
+import Ouroboros.Consensus.Util
+    ( eitherToMaybe )
 import Ouroboros.Network.Block
     ( pattern BlockPoint
     , pattern GenesisPoint
@@ -643,8 +662,13 @@ type Value =
 type Value' crypto =
     Ledger.Value crypto
 
-assetNameMaxLength :: Int
-assetNameMaxLength = 32
+hasAssetId :: Value -> AssetId -> Bool
+hasAssetId value (policyId, assetName) =
+    Ledger.lookup policyId assetName value > 0
+
+hasPolicyId :: Value -> PolicyId -> Bool
+hasPolicyId value policyId =
+    policyId `Set.member` Ledger.policies value
 
 unsafeValueFromList
     :: Integer
@@ -653,21 +677,9 @@ unsafeValueFromList
 unsafeValueFromList ada assets =
     Ledger.valueFromList
         ada
-        [ ( unsafePolicyId pid, unsafeAssetName name, q)
+        [ ( unsafePolicyIdFromBytes pid, unsafeAssetNameFromBytes name, q)
         | (pid, name, q) <- assets
         ]
-  where
-    unsafePolicyId =
-        Ledger.PolicyID
-        . Ledger.ScriptHash
-        . UnsafeHash
-        . toShort
-        . sizeInvariant (== (digestSize @Blake2b_224))
-
-    unsafeAssetName =
-        Ledger.AssetName
-        . toShort
-        . sizeInvariant (<= assetNameMaxLength)
 
 valueToJson :: Value -> Json.Encoding
 valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
@@ -696,6 +708,55 @@ valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
             (encodeBase16 (fromShort pid))
         | otherwise     = Json.fromText
             (encodeBase16 (fromShort pid) <> "." <> encodeBase16 (fromShort bytes))
+
+-- AssetId
+
+type AssetId = (PolicyId, Ledger.AssetName)
+
+-- PolicyId
+
+type PolicyId = Ledger.PolicyID StandardCrypto
+
+unsafePolicyIdFromBytes :: ByteString -> PolicyId
+unsafePolicyIdFromBytes =
+    Ledger.PolicyID
+    . Ledger.ScriptHash
+    . UnsafeHash
+    . toShort
+    . sizeInvariant (== (digestSize @Blake2b_224))
+
+policyIdFromText :: Text -> Maybe PolicyId
+policyIdFromText (encodeUtf8 -> bytes) = do
+    -- NOTE: assuming base16 encoding, hence '2 *'
+    guard (BS.length bytes <= 2 * digestSize @Blake2b_224)
+    unsafePolicyIdFromBytes <$> eitherToMaybe (decodeBase16 bytes)
+
+policyIdToText :: PolicyId -> Text
+policyIdToText (Ledger.PolicyID (Ledger.ScriptHash (UnsafeHash scriptHash))) =
+    encodeBase16 (fromShort scriptHash)
+
+-- AssetName
+
+type AssetName = Ledger.AssetName
+
+assetNameMaxLength :: Int
+assetNameMaxLength = 32
+
+unsafeAssetNameFromBytes :: ByteString -> Ledger.AssetName
+unsafeAssetNameFromBytes =
+    Ledger.AssetName
+    . toShort
+    . sizeInvariant (<= assetNameMaxLength)
+
+assetNameFromText :: Text -> Maybe AssetName
+assetNameFromText (encodeUtf8 -> bytes) = do
+    -- NOTE: assuming base16 encoding, hence '2 *'
+    guard (BS.length bytes <= 2 * assetNameMaxLength)
+    unsafeAssetNameFromBytes <$> eitherToMaybe (decodeBase16 bytes)
+
+assetNameToText :: AssetName -> Text
+assetNameToText (Ledger.AssetName assetName) =
+    encodeBase16 (fromShort assetName)
 
 -- Address
 

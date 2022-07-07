@@ -142,7 +142,7 @@ decodeBase58 =
 -- | Encode some byte string to 'Text' as Base58. See note on 'decodeBase58'.
 encodeBase58 :: ByteString -> Text
 encodeBase58 =
-    decodeUtf8. Base58.encodeBase58 Base58.bitcoinAlphabet
+    decodeUtf8 . Base58.encodeBase58 Base58.bitcoinAlphabet
 
 -- | Encode a ByteString to JSON as a base16 text
 byteStringToJson :: ByteString -> Json.Encoding

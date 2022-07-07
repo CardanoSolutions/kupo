@@ -154,11 +154,11 @@ statusToSql
     :: Http.Query
     -> Maybe Text
 statusToSql = \case
-    [ ("spent", Nothing) ] ->
-        Just "spent_at IS NOT NULL"
-    [ ("unspent", Nothing) ] ->
-        Just "spent_at IS NULL"
+    ("spent", Nothing):rest ->
+        guard (isNothing (statusToSql rest)) $> "spent_at IS NOT NULL"
+    ("unspent", Nothing):rest ->
+        guard (isNothing (statusToSql rest)) $> "spent_at IS NULL"
     [] ->
-        Just ""
-    _ ->
         Nothing
+    _:rest ->
+        statusToSql rest

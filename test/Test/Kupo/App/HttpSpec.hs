@@ -12,6 +12,8 @@ import Kupo.Prelude hiding
 import Data.OpenApi
     ( OpenApi
     , Operation
+    , Param
+    , ParamLocation (..)
     , PathItem
     , Reference (..)
     , Referenced (..)
@@ -21,6 +23,9 @@ import Data.OpenApi
     , content
     , delete
     , get
+    , in_
+    , name
+    , parameters
     , patch
     , paths
     , post
@@ -99,6 +104,18 @@ spec = do
         session specification get "/v1/matches?unspent" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches?unspent"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification get "/v1/matches?policy_id=96cb...dc48" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches?policy_id=96cb65293573e5c9f947d40bd06f80c465d4c6acee7598398765dc48"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification get "/v1/matches?policy_id=96cb...dc48&asset_name=40bd" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches?policy_id=96cb65293573e5c9f947d40bd06f80c465d4c6acee7598398765dc48&asset_name=40bd"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
@@ -285,22 +302,57 @@ session specification opL path callback =
         (json, errs) <- run $ Wai.runSession (callback assertJson endpoint) stub
         monitor $ counterexample (decodeUtf8 (Json.encode json))
         forM_ errs (monitor . counterexample . show)
+        forM_ queryParams $ \param -> assert (param ^. in_ == ParamQuery)
         assert (null errs)
   where
-    Identity (endpoint, method) = do
+    Identity (endpoint, queryParams, method) = do
         let rawPath = toString (Prelude.head (T.splitOn "?" path))
         item <- oops "No specification for path"
             (specification ^. paths . at rawPath)
         op <- oops "Operation not found" (item ^. opL)
-        pure ( op
-             , if
-                | item ^. get    == Just op -> "GET"
-                | item ^. put    == Just op -> "PUT"
-                | item ^. patch  == Just op -> "PATCH"
-                | item ^. post   == Just op -> "POST"
-                | item ^. delete == Just op -> "DELETE"
-                | otherwise                 -> "UNKNOWN"
-             )
+        params <- findQueryParams op
+        return
+            ( op
+            , params
+            , if
+               | item ^. get    == Just op -> "GET"
+               | item ^. put    == Just op -> "PUT"
+               | item ^. patch  == Just op -> "PATCH"
+               | item ^. post   == Just op -> "POST"
+               | item ^. delete == Just op -> "DELETE"
+               | otherwise                 -> "UNKNOWN"
+            )
+
+    findQueryParams :: (HasCallStack, Monad f) => Operation -> f [Param]
+    findQueryParams op =
+        case T.splitOn "?" path of
+            _:[params] -> do
+                traverse (findQueryParam op) (T.splitOn "&" params)
+            _ ->
+                pure []
+
+    findQueryParam :: (HasCallStack, Monad f) => Operation -> Text -> f Param
+    findQueryParam op keyVal =
+        case T.splitOn "=" keyVal of
+            key:_ -> do
+                oops
+                    ("Definition for query parameter '" <> key <> "' not found")
+                    (paramAt key (op ^. parameters))
+            _ ->
+                error "guardQueryParam: malformed param"
+
+    paramAt :: Text -> [Referenced Param] -> Maybe Param
+    paramAt paramName = \case
+        [] ->
+            Nothing
+        (Inline param):_ | param ^. name == paramName ->
+            Just param
+        Ref (Reference ref):rest -> do
+            param <- oops ("no component for ref: " <> ref) $
+                specification ^. components . parameters . at ref
+            paramAt paramName (Inline param:rest)
+        _:rest ->
+            paramAt paramName rest
 
     assertJson schema res = do
         res & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
