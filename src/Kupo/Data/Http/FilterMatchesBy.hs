@@ -17,6 +17,7 @@ import qualified Network.HTTP.Types as Http
 data FilterMatchesBy
     = FilterByAssetId AssetId
     | FilterByPolicyId PolicyId
+    | NoFilter
     deriving (Eq, Show, Generic)
 
 -- | Creates a 'FilterMatchesBy' from query parameters. This search for zero,
@@ -45,7 +46,7 @@ filterMatchesBy = search Nothing
   where
     search byPolicyId = \case
         [] ->
-            byPolicyId
+            byPolicyId <|> Just NoFilter
         ("policy_id", Just bytes):rest -> do
             str <- either (const Nothing) pure (decodeUtf8' bytes)
             guard (isNothing byPolicyId)

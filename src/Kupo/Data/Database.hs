@@ -24,7 +24,10 @@ module Kupo.Data.Database
     , patternToSql
 
       -- * Filtering
-    , statusToSql
+    , StatusFlag (..)
+    , statusFlagFromQueryParams
+    , isNoStatusFlag
+    , applyStatusFlag
     ) where
 
 import Kupo.Prelude
@@ -150,15 +153,33 @@ patternToSql = \case
 -- Filters
 --
 
-statusToSql
+data StatusFlag
+    = NoStatusFlag
+    | StatusFlag (Text -> Text)
+
+isNoStatusFlag :: StatusFlag -> Bool
+isNoStatusFlag = \case
+    NoStatusFlag -> True
+    _ -> False
+
+applyStatusFlag :: StatusFlag -> Text -> Text
+applyStatusFlag = \case
+    NoStatusFlag  -> identity
+    StatusFlag fn -> fn
+
+statusFlagFromQueryParams
     :: Http.Query
-    -> Maybe Text
-statusToSql = \case
-    ("spent", Nothing):rest ->
-        guard (isNothing (statusToSql rest)) $> "spent_at IS NOT NULL"
-    ("unspent", Nothing):rest ->
-        guard (isNothing (statusToSql rest)) $> "spent_at IS NULL"
+    -> Maybe StatusFlag
+statusFlagFromQueryParams = \case
+    ("spent", val):rest -> do
+        guard (isNothing val)
+        guardM (isNoStatusFlag <$> statusFlagFromQueryParams rest)
+        pure (StatusFlag (<> " AND spent_at IS NOT NULL"))
+    ("unspent", val):rest -> do
+        guard (isNothing val)
+        guardM (isNoStatusFlag <$> statusFlagFromQueryParams rest)
+        pure (StatusFlag (<> " AND spent_at IS NULL"))
     [] ->
-        Nothing
+        Just NoStatusFlag
     _:rest ->
-        statusToSql rest
+        statusFlagFromQueryParams rest

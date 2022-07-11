@@ -31,13 +31,22 @@ invalidPattern =
                  \<https://cardanosolutions.github.io/kupo>!"
         }
 
-invalidFilterQuery :: Response
-invalidFilterQuery =
+invalidStatusFlag :: Response
+invalidStatusFlag =
     responseJson status400 Default.headers $ HttpError
         { hint = "Invalid filter query! Matches can be filtered by status using \
                  \HTTP query flags. Provide either '?spent' or '?unspent' to \
                  \filter accordingly. Anything else is an error. In case of \
                  \doubts, check the documentation at: <https://cardanosolutions.github.io/kupo>!"
+        }
+
+invalidMatchFilter :: Response
+invalidMatchFilter =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Invalid or incomplete filter query parameters! 'policy_id' and \
+                 \'asset_name' query values must be encoded in base16. Be aware \
+                 \that you MUST specify a 'policy_id' if you specify an 'asset_name'. \
+                 \In case of doubts, check the documentation at: <https://cardanosolutions.github.io/kupo>!"
         }
 
 stillActivePattern :: Response
