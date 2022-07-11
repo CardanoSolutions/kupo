@@ -359,6 +359,14 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         fold_ conn "SELECT * FROM patterns" []
             $ \xs (Only x) -> pure (mk x:xs)
 
+    , selectPatterns = \mk -> \addressLike yield -> ReaderT $ \conn -> do
+        let qry = "SELECT * \
+                  \FROM patterns \
+                  \WHERE pattern " <> addressLike
+
+        fold_ conn qry []
+            $ \xs (Only x) -> pure (mk x:xs)
+
     , rollbackTo = \slotNo -> ReaderT $ \conn -> do
         execute conn "DELETE FROM inputs WHERE created_at > ?"
             [ SQLInteger (fromIntegral slotNo)

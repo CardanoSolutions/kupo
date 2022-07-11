@@ -170,8 +170,10 @@ app withDatabase patternsVar readHealth req send =
     routePatterns = \case
         ("GET", []) ->
             readTVarIO patternsVar >>= send . handleGetPatterns
-        ("GET", _) ->
-            send Errors.notFound
+        ("GET", args) ->
+            withDatabase (send .
+                handleGetMatchingPatterns (patternFromPath args) (queryString req)
+            )
         ("PUT", args) ->
             withDatabase (send <=<
                 handlePutPattern patternsVar (patternFromPath args)
@@ -308,6 +310,21 @@ handleGetPatterns patterns = do
     responseStreamJson Json.text $ \yield done -> do
         mapM_ (yield . patternToText) patterns
         done
+
+handleGetMatchingPatterns
+    :: Maybe Text
+    -> Http.Query
+    -> Database IO
+    -> Response
+handleGetMatchingPatterns patternQuery queryParams Database{..} = do
+    case patternQuery >>= patternFromText of
+        Nothing ->
+            Errors.invalidPattern
+        Just p -> do
+            let query = patternToSql p
+            responseStreamJson resultToJson $ \yield done -> do
+                runTransaction $ selectPatterns patternFromRow query (yield . patternToText)
+                done
 
 handleDeletePattern
     :: TVar IO [Pattern]
