@@ -14,8 +14,6 @@ import Kupo.Prelude
 
 import Data.List
     ( isInfixOf )
-import Kupo.App
-    ( Tracers' (..) )
 import Kupo.Configuration
     ( ChainProducer (..)
     , Configuration (..)
@@ -27,7 +25,7 @@ import Kupo.Control.MonadLog
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
 import Kupo.Options
-    ( Command (..), parseOptionsPure )
+    ( Command (..), Tracers (..), parseOptionsPure )
 import Test.Hspec
     ( Expectation
     , Spec
@@ -196,22 +194,22 @@ defaultConfiguration :: Configuration
 defaultConfiguration = parseOptionsPure defaultArgs
     & either (error . toText) (\(Run cfg _) -> cfg)
 
-defaultTracersOff :: Tracers' IO 'MinSeverities
+defaultTracersOff :: Tracers IO 'MinSeverities
 defaultTracersOff = defaultTracers Nothing
 
-defaultTracersDebug :: Tracers' IO 'MinSeverities
+defaultTracersDebug :: Tracers IO 'MinSeverities
 defaultTracersDebug = defaultTracers (Just Debug)
 
-defaultTracersInfo :: Tracers' IO 'MinSeverities
+defaultTracersInfo :: Tracers IO 'MinSeverities
 defaultTracersInfo = defaultTracers (Just Info)
 
-defaultTracersNotice :: Tracers' IO 'MinSeverities
+defaultTracersNotice :: Tracers IO 'MinSeverities
 defaultTracersNotice = defaultTracers (Just Notice)
 
-defaultTracersWarning :: Tracers' IO 'MinSeverities
+defaultTracersWarning :: Tracers IO 'MinSeverities
 defaultTracersWarning = defaultTracers (Just Warning)
 
-defaultTracersError :: Tracers' IO 'MinSeverities
+defaultTracersError :: Tracers IO 'MinSeverities
 defaultTracersError = defaultTracers (Just Error)
 
 defaultArgs :: [String]
@@ -235,7 +233,7 @@ shouldParseAppConfiguration cfg =
     flip shouldBe (Right (Run cfg defaultTracersInfo))
 
 shouldParseTracersConfiguration
-    :: Tracers' IO 'MinSeverities
+    :: Tracers IO 'MinSeverities
     -> (Either String Command -> Expectation)
 shouldParseTracersConfiguration tracers =
     flip shouldBe (Right (Run defaultConfiguration tracers))

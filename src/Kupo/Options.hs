@@ -17,6 +17,9 @@ module Kupo.Options
     , serverPortOption
     , versionOptionOrCommand
     , healthCheckCommand
+
+      -- * Tracers
+    , Tracers (..)
     ) where
 
 import Kupo.Prelude hiding
@@ -26,16 +29,21 @@ import Options.Applicative
 
 import Data.Char
     ( toUpper )
-import Kupo.App
-    ( Tracers' (..) )
+import Kupo.App.ChainSync
+    ( TraceChainSync )
+import Kupo.App.Http
+    ( TraceHttpServer )
 import Kupo.Configuration
     ( ChainProducer (..)
     , Configuration (..)
     , InputManagement (..)
+    , TraceConfiguration
     , WorkDir (..)
     )
+import Kupo.Control.MonadDatabase
+    ( TraceDatabase )
 import Kupo.Control.MonadLog
-    ( Severity (..), TracerDefinition (..), defaultTracers )
+    ( Severity (..), Tracer, TracerDefinition (..), TracerHKD, defaultTracers )
 import Kupo.Data.Cardano
     ( Block, Point (..), pointFromText )
 import Kupo.Data.Pattern
@@ -46,7 +54,7 @@ import Safe
     ( readMay )
 
 data Command
-    = Run Configuration (Tracers' IO MinSeverities)
+    = Run Configuration (Tracers IO MinSeverities)
     | HealthCheck String Int
     | Version
     deriving (Eq, Show)
@@ -267,7 +275,7 @@ logLevelOption component =
         string $ "Minimal severity of " <> toString component <> " log messages."
 
 -- | [--log-level=SEVERITY]
-tracersOption :: Parser (Tracers' m MinSeverities)
+tracersOption :: Parser (Tracers m MinSeverities)
 tracersOption = fmap defaultTracers $ option readSeverityM $ mempty
     <> long "log-level"
     <> metavar "SEVERITY"
@@ -317,6 +325,24 @@ healthCheckCommand =
   where
     parser = HealthCheck <$> serverHostOption <*> serverPortOption
     helpText = "Performs a health check against a running daemon."
+
+--
+-- Tracers
+--
+
+data Tracers m (kind :: TracerDefinition) = Tracers
+    { tracerHttp
+        :: TracerHKD kind (Tracer m TraceHttpServer)
+    , tracerDatabase
+        :: TracerHKD kind (Tracer m TraceDatabase)
+    , tracerChainSync
+        :: TracerHKD kind (Tracer m TraceChainSync)
+    , tracerConfiguration
+        :: TracerHKD kind (Tracer m TraceConfiguration)
+    } deriving (Generic)
+
+deriving instance Show (Tracers m MinSeverities)
+deriving instance Eq (Tracers m MinSeverities)
 
 --
 -- Helper

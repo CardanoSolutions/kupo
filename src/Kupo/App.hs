@@ -5,35 +5,22 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App
-    ( -- * Application Startup
-      startOrResume
-    , newPatternsCache
-    , ConflictingOptionsException (..)
-    , NoStartingPointException (..)
-
-      -- * ChainProducer
-    , withChainProducer
+    ( -- * ChainProducer
+      withChainProducer
 
       -- * Producer/Consumer
     , producer
     , consumer
-
-      -- * Tracers
-    , Tracers' (..)
-    , Tracers
     ) where
 
 import Kupo.Prelude
 
 import Kupo.App.ChainSync
     ( TraceChainSync (..) )
-import Kupo.App.Http
-    ( TraceHttpServer )
 import Kupo.App.Mailbox
     ( Mailbox, flushMailbox, newMailbox, putMailbox )
 import Kupo.Configuration
     ( ChainProducer (..)
-    , Configuration (..)
     , InputManagement (..)
     , NetworkParameters (..)
     , TraceConfiguration (..)
@@ -42,9 +29,9 @@ import Kupo.Configuration
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadDatabase
-    ( Database (..), MonadDatabase (..), TraceDatabase (..) )
+    ( Database (..), MonadDatabase (..) )
 import Kupo.Control.MonadLog
-    ( MonadLog (..), Tracer, TracerDefinition (..), TracerHKD )
+    ( MonadLog (..), Tracer )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..) )
 import Kupo.Control.MonadSTM
@@ -56,140 +43,13 @@ import Kupo.Data.Cardano
 import Kupo.Data.ChainSync
     ( ChainSyncHandler (..), IntersectionNotFoundException (..) )
 import Kupo.Data.Database
-    ( patternFromRow, patternToRow, pointFromRow, pointToRow, resultToRow )
+    ( pointToRow, resultToRow )
 import Kupo.Data.Pattern
-    ( Pattern, matchBlock, patternToText )
+    ( Pattern, matchBlock )
 
 import qualified Data.Map as Map
 import qualified Kupo.App.ChainSync.Direct as Direct
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
-
---
--- Application Bootstrapping
---
-
-startOrResume
-    :: forall m.
-        ( MonadThrow m
-        , MonadLog m
-        )
-    => Tracers
-    -> Configuration
-    -> Database m
-    -> m [Point Block]
-startOrResume tracers configuration Database{..} = do
-    -- TODO: include sanity check and fail if '--prune-utxo' is included but
-    -- there exists marked inputs in the database. This would indicate that the
-    -- index was restarted with a different configuration.
-    checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
-
-    case nonEmpty (sortOn Down (unSlotNo . getPointSlotNo <$> checkpoints)) of
-        Nothing -> pure ()
-        Just slots -> do
-            let mostRecentCheckpoint = head slots
-            let oldestCheckpoint = last slots
-            let totalCheckpoints = length slots
-            logWith tracerDatabase $ DatabaseFoundCheckpoints
-                { totalCheckpoints
-                , mostRecentCheckpoint
-                , oldestCheckpoint
-                }
-
-    nSpent <- runTransaction countSpentInputs
-    case inputManagement of
-        RemoveSpentInputs | nSpent > 0 -> do
-            logWith tracerConfiguration errConflictingUtxoManagementOption
-            throwIO ConflictingOptionsException
-        _ ->
-            pure ()
-
-    case (since, checkpoints) of
-        (Nothing, []) -> do
-            logWith tracerConfiguration errNoStartingPoint
-            throwIO NoStartingPointException
-        (Just point, mostRecentCheckpoint:_) -> do
-            if getPointSlotNo point > getPointSlotNo mostRecentCheckpoint then do
-                logWith tracerConfiguration errConflictingSinceOptions
-                throwIO ConflictingOptionsException
-            else do
-                pure (sortOn (Down . getPointSlotNo) (point : checkpoints))
-        (Nothing, pts) -> do
-            pure pts
-        (Just pt, []) ->
-            pure [pt]
-
-  where
-    Tracers{tracerDatabase, tracerConfiguration} = tracers
-    Configuration{since, inputManagement} = configuration
-
-    errNoStartingPoint = ConfigurationInvalidOrMissingOption
-        "No '--since' provided and no checkpoints found in the \
-        \database. An explicit starting point (e.g. 'origin') is \
-        \required the first time launching the application."
-
-    errConflictingSinceOptions = ConfigurationInvalidOrMissingOption
-        "The point provided through '--since' is more recent than \
-        \any of the known checkpoints and it isn't possible to make \
-        \a choice for resuming the application: should synchronization \
-        \restart from the latest checkpoint or from the provided \
-        \--since point? Please dispel the confusion by either choosing \
-        \a different starting point (or none at all) or by using a \
-        \fresh new database."
-
-    errConflictingUtxoManagementOption = ConfigurationInvalidOrMissingOption
-        "It appears that the application was restarted with a conflicting \
-        \behavior w.r.t. UTxO management. Indeed, `--prune-utxo` indicates \
-        \that inputs should be pruned from the database when spent. However \
-        \inputs marked as 'spent' were found in the database, which suggests \
-        \that it was first constructed without the flag `--prune-utxo`. \
-        \Continuing would lead to a inconsistent state and is therefore \
-        \prevented. \n\nShould you still want to proceed, make sure to first \
-        \prune all spent inputs from the database using the following \
-        \query: \n\n\t DELETE FROM inputs WHERE spent_at IS NOT NULL;"
-
-newPatternsCache
-    :: forall m.
-        ( MonadThrow m
-        , MonadSTM m
-        , MonadLog m
-        )
-    => Tracers
-    -> Configuration
-    -> Database m
-    -> m (TVar m [Pattern])
-newPatternsCache tracers configuration Database{..} = do
-    alreadyKnownPatterns <- runTransaction (listPatterns patternFromRow)
-    patterns <- case (alreadyKnownPatterns, configuredPatterns) of
-        (x:xs, []) ->
-            pure (x:xs)
-        ([], y:ys) -> do
-            runTransaction (insertPatterns (patternToRow <$> (y:ys)))
-            pure (y:ys)
-        ([], []) ->
-            pure []
-        (xs, ys) | sort xs /= sort ys -> do
-            logWith tracerConfiguration errConflictingOptions
-            throwIO ConflictingOptionsException
-        (xs, _) ->
-            pure xs
-    logWith tracerConfiguration $ ConfigurationPatterns (patternToText <$> patterns)
-    newTVarIO patterns
-  where
-    Tracers{tracerConfiguration} = tracers
-    Configuration{patterns = configuredPatterns} = configuration
-
-    errConflictingOptions = ConfigurationInvalidOrMissingOption
-        "Configuration patterns are different from previously known \
-        \patterns. Restarting a running server using different \
-        \command-line patterns is not allowed for it may likely be \
-        \an error. If you do intent do dynamically manage patterns, \
-        \please use the HTTP API instead of the command-line options."
-
-data NoStartingPointException = NoStartingPointException deriving (Show)
-instance Exception NoStartingPointException
-
-data ConflictingOptionsException = ConflictingOptionsException  deriving (Show)
-instance Exception ConflictingOptionsException
 
 --
 -- Chain Producer
@@ -206,7 +66,11 @@ type ChainSyncClient m block =
 withChainProducer
     :: Tracer IO TraceConfiguration
     -> ChainProducer
-    -> (forall block. IsBlock block => Mailbox IO (Tip Block, block) -> ChainSyncClient IO block -> IO ())
+    -> ( forall block. IsBlock block
+            => Mailbox IO (Tip Block, block)
+            -> ChainSyncClient IO block
+            -> IO ()
+       )
     -> IO ()
 withChainProducer tracerConfiguration chainProducer callback = do
     case chainProducer of
@@ -303,23 +167,3 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} = forever
             void . Map.traverseWithKey markInputsByReference
         RemoveSpentInputs ->
             traverse_ deleteInputsByReference
-
---
--- Tracers
---
-
-type Tracers = Tracers' IO Concrete
-
-data Tracers' m (kind :: TracerDefinition) = Tracers
-    { tracerHttp
-        :: TracerHKD kind (Tracer m TraceHttpServer)
-    , tracerDatabase
-        :: TracerHKD kind (Tracer m TraceDatabase)
-    , tracerChainSync
-        :: TracerHKD kind (Tracer m TraceChainSync)
-    , tracerConfiguration
-        :: TracerHKD kind (Tracer m TraceConfiguration)
-    } deriving (Generic)
-
-deriving instance Show (Tracers' m MinSeverities)
-deriving instance Eq (Tracers' m MinSeverities)

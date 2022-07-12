@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -26,6 +27,12 @@ module Kupo.Configuration
     , SystemStart (..)
     , mkSystemStart
 
+    -- * Application Setup
+    , startOrResume
+    , newPatternsCache
+    , ConflictingOptionsException (..)
+    , NoStartingPointException (..)
+
     -- * Tracer
     , TraceConfiguration (..)
     ) where
@@ -42,14 +49,22 @@ import Data.Time.Clock.POSIX
     ( posixSecondsToUTCTime )
 import Data.Time.Format.ISO8601
     ( iso8601ParseM )
+import Kupo.Control.MonadDatabase
+    ( Database (..) )
 import Kupo.Control.MonadLog
-    ( HasSeverityAnnotation (..), Severity (..) )
+    ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
 import Kupo.Control.MonadOuroboros
     ( EpochSlots (..), NetworkMagic (..) )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..) )
+import Kupo.Control.MonadThrow
+    ( MonadThrow (..) )
 import Kupo.Data.Cardano
-    ( Block, Point (..) )
+    ( Block, Point (..), SlotNo (..), getPointSlotNo )
+import Kupo.Data.Database
+    ( patternFromRow, patternToRow, pointFromRow )
 import Kupo.Data.Pattern
-    ( Pattern (..) )
+    ( Pattern (..), patternToText )
 import Ouroboros.Consensus.BlockchainTime.WallClock.Types
     ( SystemStart (..) )
 import System.FilePath.Posix
@@ -163,6 +178,131 @@ mkSystemStart =
     toPicoResolution = (*1000000000000)
 
 --
+-- Application Bootstrapping
+--
+
+startOrResume
+    :: forall m.
+        ( MonadThrow m
+        , MonadLog m
+        )
+    => Tracer IO TraceConfiguration
+    -> Configuration
+    -> Database m
+    -> m [Point Block]
+startOrResume tr configuration Database{..} = do
+    -- TODO: include sanity check and fail if '--prune-utxo' is included but
+    -- there exists marked inputs in the database. This would indicate that the
+    -- index was restarted with a different configuration.
+    checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
+
+    case nonEmpty (sortOn Down (unSlotNo . getPointSlotNo <$> checkpoints)) of
+        Nothing -> pure ()
+        Just slots -> do
+            let mostRecentCheckpoint = head slots
+            let oldestCheckpoint = last slots
+            let totalCheckpoints = length slots
+            logWith tr $ ConfigurationFoundCheckpoints
+                { totalCheckpoints
+                , mostRecentCheckpoint
+                , oldestCheckpoint
+                }
+
+    nSpent <- runTransaction countSpentInputs
+    case inputManagement of
+        RemoveSpentInputs | nSpent > 0 -> do
+            logWith tr errConflictingUtxoManagementOption
+            throwIO ConflictingOptionsException
+        _ ->
+            pure ()
+
+    case (since, checkpoints) of
+        (Nothing, []) -> do
+            logWith tr errNoStartingPoint
+            throwIO NoStartingPointException
+        (Just point, mostRecentCheckpoint:_) -> do
+            if getPointSlotNo point > getPointSlotNo mostRecentCheckpoint then do
+                logWith tr errConflictingSinceOptions
+                throwIO ConflictingOptionsException
+            else do
+                pure (sortOn (Down . getPointSlotNo) (point : checkpoints))
+        (Nothing, pts) -> do
+            pure pts
+        (Just pt, []) ->
+            pure [pt]
+
+  where
+    Configuration{since, inputManagement} = configuration
+
+    errNoStartingPoint = ConfigurationInvalidOrMissingOption
+        "No '--since' provided and no checkpoints found in the \
+        \database. An explicit starting point (e.g. 'origin') is \
+        \required the first time launching the application."
+
+    errConflictingSinceOptions = ConfigurationInvalidOrMissingOption
+        "The point provided through '--since' is more recent than \
+        \any of the known checkpoints and it isn't possible to make \
+        \a choice for resuming the application: should synchronization \
+        \restart from the latest checkpoint or from the provided \
+        \--since point? Please dispel the confusion by either choosing \
+        \a different starting point (or none at all) or by using a \
+        \fresh new database."
+
+    errConflictingUtxoManagementOption = ConfigurationInvalidOrMissingOption
+        "It appears that the application was restarted with a conflicting \
+        \behavior w.r.t. UTxO management. Indeed, `--prune-utxo` indicates \
+        \that inputs should be pruned from the database when spent. However \
+        \inputs marked as 'spent' were found in the database, which suggests \
+        \that it was first constructed without the flag `--prune-utxo`. \
+        \Continuing would lead to a inconsistent state and is therefore \
+        \prevented. \n\nShould you still want to proceed, make sure to first \
+        \prune all spent inputs from the database using the following \
+        \query: \n\n\t DELETE FROM inputs WHERE spent_at IS NOT NULL;"
+
+newPatternsCache
+    :: forall m.
+        ( MonadThrow m
+        , MonadSTM m
+        , MonadLog m
+        )
+    => Tracer IO TraceConfiguration
+    -> Configuration
+    -> Database m
+    -> m (TVar m [Pattern])
+newPatternsCache tr configuration Database{..} = do
+    alreadyKnownPatterns <- runTransaction (listPatterns patternFromRow)
+    patterns <- case (alreadyKnownPatterns, configuredPatterns) of
+        (x:xs, []) ->
+            pure (x:xs)
+        ([], y:ys) -> do
+            runTransaction (insertPatterns (patternToRow <$> (y:ys)))
+            pure (y:ys)
+        ([], []) ->
+            pure []
+        (xs, ys) | sort xs /= sort ys -> do
+            logWith tr errConflictingOptions
+            throwIO ConflictingOptionsException
+        (xs, _) ->
+            pure xs
+    logWith tr $ ConfigurationPatterns (patternToText <$> patterns)
+    newTVarIO patterns
+  where
+    Configuration{patterns = configuredPatterns} = configuration
+
+    errConflictingOptions = ConfigurationInvalidOrMissingOption
+        "Configuration patterns are different from previously known \
+        \patterns. Restarting a running server using different \
+        \command-line patterns is not allowed for it may likely be \
+        \an error. If you do intent do dynamically manage patterns, \
+        \please use the HTTP API instead of the command-line options."
+
+data NoStartingPointException = NoStartingPointException deriving (Show)
+instance Exception NoStartingPointException
+
+data ConflictingOptionsException = ConflictingOptionsException  deriving (Show)
+instance Exception ConflictingOptionsException
+
+--
 -- Tracer
 --
 
@@ -179,6 +319,12 @@ data TraceConfiguration where
     ConfigurationPatterns
         :: { patterns :: [Text] }
         -> TraceConfiguration
+    ConfigurationFoundCheckpoints
+        :: { totalCheckpoints :: Int
+           , mostRecentCheckpoint :: Word64
+           , oldestCheckpoint :: Word64
+           }
+        -> TraceConfiguration
     ConfigurationInvalidOrMissingOption
         :: { hint :: Text }
         -> TraceConfiguration
@@ -194,4 +340,5 @@ instance HasSeverityAnnotation TraceConfiguration where
         ConfigurationOgmios{} -> Info
         ConfigurationCardanoNode{} -> Info
         ConfigurationPatterns{} -> Info
+        ConfigurationFoundCheckpoints{} -> Info
         ConfigurationInvalidOrMissingOption{} -> Error

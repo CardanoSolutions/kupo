@@ -527,12 +527,6 @@ instance (ToField a) => ToRow (Set a) where
 --
 
 data TraceDatabase where
-    DatabaseFoundCheckpoints
-        :: { totalCheckpoints :: Int
-           , mostRecentCheckpoint :: Word64
-           , oldestCheckpoint :: Word64
-           }
-        -> TraceDatabase
     DatabaseCurrentVersion
         :: { currentVersion :: Int }
         -> TraceDatabase
@@ -551,7 +545,6 @@ instance ToJSON TraceDatabase where
 
 instance HasSeverityAnnotation TraceDatabase where
     getSeverityAnnotation = \case
-        DatabaseFoundCheckpoints{}  -> Info
         DatabaseCurrentVersion{}    -> Info
         DatabaseNoMigrationNeeded{} -> Debug
         DatabaseRunningMigration{}  -> Notice

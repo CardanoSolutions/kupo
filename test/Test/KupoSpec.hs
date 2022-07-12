@@ -20,14 +20,14 @@ import Data.List
     ( maximum )
 import Kupo
     ( kupo, newEnvironment, runWith, version, withTracers )
-import Kupo.App
-    ( ConflictingOptionsException, NoStartingPointException, Tracers )
 import Kupo.App.Http
     ( healthCheck )
 import Kupo.Configuration
     ( ChainProducer (..)
     , Configuration (..)
+    , ConflictingOptionsException
     , InputManagement (..)
+    , NoStartingPointException
     , WorkDir (..)
     )
 import Kupo.Control.MonadAsync
@@ -35,7 +35,7 @@ import Kupo.Control.MonadAsync
 import Kupo.Control.MonadDelay
     ( threadDelay )
 import Kupo.Control.MonadLog
-    ( Severity (..), defaultTracers )
+    ( Severity (..), TracerDefinition (..), defaultTracers )
 import Kupo.Control.MonadTime
     ( DiffTime, timeout )
 import Kupo.Data.Cardano
@@ -52,6 +52,8 @@ import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..) )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
+import Kupo.Options
+    ( Tracers (..) )
 import Network.HTTP.Client
     ( HttpException
     , Manager
@@ -268,7 +270,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
 
 type EndToEndSpec
     =  Manager
-    -> SpecWith (FilePath, Tracers, Configuration)
+    -> SpecWith (FilePath, Tracers IO 'Concrete, Configuration)
 
 skippableContext :: String -> EndToEndSpec -> Spec
 skippableContext prefix skippableSpec = do
@@ -324,7 +326,7 @@ skippableContext prefix skippableSpec = do
     withTempDirectory
         :: IORef Int
         -> Configuration
-        -> ((FilePath, Tracers, Configuration) -> IO ())
+        -> ((FilePath, Tracers IO 'Concrete, Configuration) -> IO ())
         -> IO ()
     withTempDirectory ref cfg action = do
         serverPort <- atomicModifyIORef' ref $ \port -> (succ port, port)

@@ -30,13 +30,7 @@ module Kupo
 import Kupo.Prelude
 
 import Kupo.App
-    ( Tracers
-    , Tracers' (..)
-    , consumer
-    , newPatternsCache
-    , startOrResume
-    , withChainProducer
-    )
+    ( consumer, withChainProducer )
 import Kupo.App.ChainSync
     ( withChainSyncExceptionHandler )
 import Kupo.App.Health
@@ -44,19 +38,19 @@ import Kupo.App.Health
 import Kupo.App.Http
     ( healthCheck, httpServer )
 import Kupo.Configuration
-    ( Configuration (..), WorkDir (..) )
+    ( Configuration (..), WorkDir (..), newPatternsCache, startOrResume )
 import Kupo.Control.MonadAsync
     ( concurrently3 )
 import Kupo.Control.MonadDatabase
     ( ConnectionType (..), MonadDatabase (..) )
 import Kupo.Control.MonadLog
-    ( nullTracer, withTracers )
+    ( TracerDefinition (..), nullTracer, withTracers )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Health
     ( Health, emptyHealth )
 import Kupo.Options
-    ( Command (..), parseOptions )
+    ( Command (..), Tracers (..), parseOptions )
 import Kupo.Version
     ( version )
 import System.FilePath
@@ -78,8 +72,8 @@ newtype Kupo a = Kupo
         )
 
 -- | Application entry point.
-kupo :: Tracers -> Kupo ()
-kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
+kupo :: Tracers IO Concrete -> Kupo ()
+kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
   hijackSigTerm *> do
     Env { health
         , configuration = cfg@Configuration
@@ -114,7 +108,7 @@ kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase
 
     lock <- liftIO newLock
     liftIO $ withDatabase tracerDatabase LongLived lock longestRollback dbFile $ \db -> do
-        patterns <- newPatternsCache tr cfg db
+        patterns <- newPatternsCache tracerConfiguration cfg db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
         withChainProducer tracerConfiguration chainProducer $ \mailbox producer -> do
@@ -146,7 +140,7 @@ kupo tr@Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase
 
                 -- Block producer, fetching blocks from the network
                 ( withChainSyncExceptionHandler tracerChainSync statusToggle $ do
-                    checkpoints <- startOrResume tr cfg db
+                    checkpoints <- startOrResume tracerConfiguration cfg db
                     producer
                         tracerChainSync
                         checkpoints
