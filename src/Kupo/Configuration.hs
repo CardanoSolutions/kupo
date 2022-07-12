@@ -277,8 +277,9 @@ newPatternsCache tr configuration Database{..} = do
         ([], y:ys) -> do
             runTransaction (insertPatterns (patternToRow <$> (y:ys)))
             pure (y:ys)
-        ([], []) ->
-            pure []
+        ([], []) -> do
+            logWith tr errNoPatterns
+            throwIO ConflictingOptionsException
         (xs, ys) | sort xs /= sort ys -> do
             logWith tr errConflictingOptions
             throwIO ConflictingOptionsException
@@ -288,6 +289,14 @@ newPatternsCache tr configuration Database{..} = do
     newTVarIO patterns
   where
     Configuration{patterns = configuredPatterns} = configuration
+
+    errNoPatterns = ConfigurationInvalidOrMissingOption
+        "Hey! It looks like the current configuration has no pattern defined. \
+        \This would cause the indexer to run and index... nothing! You should \
+        \try to define matching patterns using --match because there are much \
+        \better ways to heat a room than to burn CPU cycles. If you're unsure \
+        \about how to use patterns, have a look at the 'pattern' section on \
+        \the user guide: <https://cardanosolutions.github.io/kupo/#section/Pattern>."
 
     errConflictingOptions = ConfigurationInvalidOrMissingOption
         "Configuration patterns are different from previously known \

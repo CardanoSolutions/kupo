@@ -179,7 +179,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Nothing
-            , patterns = []
+            , patterns = [MatchAny OnlyShelley]
             }
         shouldThrowTimeout @NoStartingPointException 1 (kupo tr `runWith` env)
 
@@ -188,7 +188,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just GenesisPoint
-            , patterns = []
+            , patterns = [MatchAny OnlyShelley]
             , chainProducer =
                 case chainProducer cfg of
                     CardanoNode{nodeConfig} ->
@@ -216,9 +216,17 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just someNonExistingPoint
-            , patterns = []
+            , patterns = [MatchAny OnlyShelley]
             }
         shouldThrowTimeout @IntersectionNotFoundException 1 (kupo tr `runWith` env)
+
+    specify "Crashes when no patterns are defined" $ \(tmp, tr, cfg) -> do
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just somePoint
+            , patterns = []
+            }
+        shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
 
     specify "Can prune utxo on-the-fly" $ \(tmp, tr, cfg) -> do
         let HttpClient{..} = newHttpClient manager cfg
