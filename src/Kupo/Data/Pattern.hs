@@ -111,8 +111,10 @@ overlaps p = \case
             False
 
 
--- | Checks whether a pattern x fully includes pattern y. For instance, (MatchPayment "a") is
--- considered included in [MatchAny OnlyShelley].
+-- | Checks whether a pattern x fully includes pattern y. 
+-- If any result matched by y is also matched by x, then the function returns 
+-- 'True'. Otherwise it returns 'False'. The converse may not be true:
+-- x may match more results than y.
 includes :: Pattern -> Pattern -> Bool
 includes x y = case (x, y) of
     (MatchAny IncludingBootstrap, _) ->
@@ -137,6 +139,7 @@ includes x y = case (x, y) of
         False
 
 -- | All patterns in the list that are fully covering the given pattern
+-- according to the definition given by 'includes'
 included :: Pattern -> [Pattern] -> [Pattern]
 included p = filter (`includes` p)
 
