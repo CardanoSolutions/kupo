@@ -94,7 +94,7 @@ withChainProducer tracerConfiguration chainProducer callback = do
                 let chainSyncHandler = producer tracerChainSync notifyTip mailbox db
                 withChainSyncServer
                   statusToggle
-                  [ NodeToClientV_9 .. NodeToClientV_12 ]
+                  [ NodeToClientV_9 .. maxBound ]
                   networkMagic
                   slotsPerEpoch
                   nodeSocket
