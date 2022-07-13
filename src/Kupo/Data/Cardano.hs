@@ -42,7 +42,7 @@ module Kupo.Data.Cardano
     , Output
     , mkOutput
     , getAddress
-    , getDatumHash
+    , getDatum
     , getValue
 
     -- * Value
@@ -68,10 +68,20 @@ module Kupo.Data.Cardano
     , assetNameFromText
     , assetNameToText
 
+    -- * Datum
+    , Datum
+    , noDatum
+    , unsafeDatumFromBytes
+    , datumToJson
+    , hashDatum
+
     -- * DatumHash
     , DatumHash
     , unsafeDatumHashFromBytes
     , datumHashToJson
+
+    -- * BinaryData
+    , BinaryData
 
       -- * Address
     , Address
@@ -156,7 +166,7 @@ import Data.Binary.Put
 import Data.ByteString.Bech32
     ( HumanReadablePart (..), encodeBech32 )
 import Data.Maybe.Strict
-    ( StrictMaybe (..) )
+    ( StrictMaybe (..), strictMaybeToMaybe )
 import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
 import GHC.Records
@@ -606,26 +616,48 @@ fromByronOutput (Ledger.Byron.TxOut address value) =
 getAddress
     :: Output
     -> Address
-getAddress (Ledger.Babbage.TxOut address _value _datumHash _refScript) =
+getAddress (Ledger.Babbage.TxOut address _value _datum _refScript) =
     address
 
 getValue
     :: Output
     -> Value
-getValue (Ledger.Babbage.TxOut _address value _datumHash _refScript) =
+getValue (Ledger.Babbage.TxOut _address value _datum _refScript) =
     value
 
-getDatumHash
+getDatum
     :: Output
+    -> Datum
+getDatum (Ledger.Babbage.TxOut _address _value datum _refScript) =
+    datum
+
+-- Datum
+
+type Datum =
+    Ledger.Datum (BabbageEra StandardCrypto)
+
+unsafeDatumFromBytes
+    :: ByteString
+    -> Datum
+unsafeDatumFromBytes =
+    undefined
+
+noDatum
+    :: Datum
+noDatum =
+    Ledger.NoDatum
+
+datumToJson
+    :: Datum
+    -> Json.Encoding
+datumToJson =
+    undefined
+
+hashDatum
+    :: Datum
     -> Maybe DatumHash
-getDatumHash (Ledger.Babbage.TxOut _address _value datumHash _refScript) =
-    case datumHash of
-        Ledger.Babbage.NoDatum ->
-            Nothing
-        Ledger.Babbage.Datum{} ->
-            Nothing
-        Ledger.Babbage.DatumHash h ->
-            Just h
+hashDatum =
+    strictMaybeToMaybe . Ledger.datumDataHash
 
 -- DatumHash
 
@@ -653,6 +685,11 @@ datumHashToJson
     -> Json.Encoding
 datumHashToJson =
     hashToJson . Ledger.extractHash
+
+-- BinaryData
+
+type BinaryData =
+    Ledger.BinaryData (BabbageEra StandardCrypto)
 
 -- Value
 

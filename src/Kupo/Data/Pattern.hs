@@ -37,7 +37,7 @@ import Kupo.Data.Cardano
     , Blake2b_224
     , Blake2b_256
     , Block
-    , DatumHash
+    , Datum
     , Input
     , IsBlock (..)
     , Output
@@ -52,13 +52,14 @@ import Kupo.Data.Cardano
     , digest
     , digestSize
     , getAddress
-    , getDatumHash
+    , getDatum
     , getDelegationPartBytes
     , getOutputIndex
     , getPaymentPartBytes
     , getPointSlotNo
     , getTransactionId
     , getValue
+    , hashDatum
     , headerHashToJson
     , isBootstrap
     , outputIndexToJson
@@ -298,7 +299,7 @@ data Result = Result
     { outputReference :: OutputReference
     , address :: Address
     , value :: Value
-    , datumHash :: Maybe DatumHash
+    , datum :: Datum
     , createdAt :: Point Block
     , spentAt :: Maybe (Point Block)
     } deriving (Show, Eq)
@@ -316,7 +317,7 @@ resultToJson Result{..} = Json.pairs $ mconcat
     , Json.pair "value"
         (valueToJson value)
     , Json.pair "datum_hash"
-        (maybe Json.null_ datumHashToJson datumHash)
+        (maybe Json.null_ datumHashToJson (hashDatum datum))
     , Json.pair "created_at"
         (Json.pairs $ mconcat
             [ Json.pair "slot_no"
@@ -384,7 +385,7 @@ matchBlock toResult toSlotNo toInput patterns blk =
             { outputReference
             , address = getAddress out
             , value = getValue out
-            , datumHash = getDatumHash out
+            , datum = getDatum out
             , createdAt = pt
             , spentAt = Nothing
             }

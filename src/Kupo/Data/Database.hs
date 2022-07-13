@@ -33,7 +33,14 @@ module Kupo.Data.Database
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( Block, SlotNo (..), StandardCrypto )
+    ( BinaryData
+    , Block
+    , Datum
+    , SlotNo (..)
+    , StandardCrypto
+    , hashDatum
+    , noDatum
+    )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
@@ -49,6 +56,7 @@ import Ouroboros.Network.Block
     ( pattern BlockPoint, pattern GenesisPoint, Point (..) )
 
 import qualified Cardano.Ledger.Address as Ledger
+import qualified Cardano.Ledger.Alonzo.Data as Ledger
 import qualified Kupo.Control.MonadDatabase as DB
 import qualified Network.HTTP.Types.URI as Http
 
@@ -85,12 +93,18 @@ resultFromRow
     => DB.Input
     -> Result
 resultFromRow row = Result
-    { outputReference = unsafeDeserialize' (DB.outputReference row)
-    , address = (unsafeAddressFromBytes . unsafeDecodeBase16)  (DB.address row)
-    , value = unsafeDeserialize' (DB.value row)
-    , datumHash = unsafeDeserialize' <$> (DB.datumHash row)
-    , createdAt = pointFromRow (DB.Checkpoint (DB.createdAtHeaderHash row) (DB.createdAtSlotNo row))
-    , spentAt = pointFromRow <$> (DB.Checkpoint <$> DB.spentAtHeaderHash row <*> DB.spentAtSlotNo row)
+    { outputReference =
+        unsafeDeserialize' (DB.outputReference row)
+    , address =
+        (unsafeAddressFromBytes . unsafeDecodeBase16)  (DB.address row)
+    , value =
+        unsafeDeserialize' (DB.value row)
+    , datum =
+        datumFromRow (DB.datumHash row) (DB.datum row)
+    , createdAt =
+        pointFromRow (DB.Checkpoint (DB.createdAtHeaderHash row) (DB.createdAtSlotNo row))
+    , spentAt =
+        pointFromRow <$> (DB.Checkpoint <$> DB.spentAtHeaderHash row <*> DB.spentAtSlotNo row)
     }
   where
     unsafeAddressFromBytes =
@@ -100,18 +114,61 @@ resultToRow
     :: Result
     -> DB.Input
 resultToRow Result{..} = DB.Input
-    { DB.outputReference = serialize' outputReference
-    , DB.address = encodeBase16 (Ledger.serialiseAddr address)
-    , DB.value = serialize' value
-    , DB.datumHash = serialize' <$> datumHash
-    , DB.createdAtSlotNo = DB.checkpointSlotNo createdAtRow
-    , DB.createdAtHeaderHash = DB.checkpointHeaderHash createdAtRow
-    , DB.spentAtSlotNo = DB.checkpointSlotNo <$> spentAtRow
-    , DB.spentAtHeaderHash = DB.checkpointHeaderHash <$> spentAtRow
+    { DB.outputReference =
+        serialize' outputReference
+    , DB.address =
+        encodeBase16 (Ledger.serialiseAddr address)
+    , DB.value =
+        serialize' value
+    , DB.datum =
+        datumToRow datum
+    , DB.datumHash =
+        serialize' <$> hashDatum datum
+    , DB.createdAtSlotNo =
+        DB.checkpointSlotNo createdAtRow
+    , DB.createdAtHeaderHash =
+        DB.checkpointHeaderHash createdAtRow
+    , DB.spentAtSlotNo =
+        DB.checkpointSlotNo <$> spentAtRow
+    , DB.spentAtHeaderHash =
+        DB.checkpointHeaderHash <$> spentAtRow
     }
   where
     createdAtRow = pointToRow createdAt
     spentAtRow = pointToRow <$> spentAt
+
+--
+-- BinaryData / Datum
+--
+
+datumFromRow
+    :: Maybe ByteString
+    -> Maybe DB.BinaryData
+    -> Datum
+datumFromRow hash = \case
+    Just DB.BinaryData{..} ->
+        unsafeDeserialize' binaryData
+    Nothing ->
+        maybe noDatum (Ledger.DatumHash . unsafeDeserialize') hash
+
+datumToRow
+    :: Datum
+    -> Maybe DB.BinaryData
+datumToRow = \case
+    Ledger.NoDatum ->
+        Nothing
+    Ledger.DatumHash{} ->
+        Nothing
+    Ledger.Datum bin ->
+        Just (binaryDataToRow bin)
+
+binaryDataToRow
+    :: BinaryData
+    -> DB.BinaryData
+binaryDataToRow bin = DB.BinaryData
+    { DB.binaryDataHash = serialize' (Ledger.hashBinaryData bin)
+    , DB.binaryData = serialize' bin
+    }
 
 --
 -- Pattern

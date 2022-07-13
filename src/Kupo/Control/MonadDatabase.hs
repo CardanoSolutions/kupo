@@ -20,6 +20,7 @@ module Kupo.Control.MonadDatabase
       -- * Database Entities
     , Input (..)
     , Checkpoint (..)
+    , BinaryData (..)
 
       -- * Tracer
     , TraceDatabase (..)
@@ -96,11 +97,17 @@ data Input = Input
     { outputReference :: ByteString
     , address :: Text
     , value :: ByteString
+    , datum :: Maybe BinaryData
     , datumHash :: Maybe ByteString
     , createdAtSlotNo :: Word64
     , createdAtHeaderHash :: ByteString
     , spentAtSlotNo :: Maybe Word64
     , spentAtHeaderHash :: Maybe ByteString
+    } deriving (Show)
+
+data BinaryData = BinaryData
+    { binaryDataHash :: ByteString
+    , binaryData :: ByteString
     } deriving (Show)
 
 data Checkpoint = Checkpoint
@@ -243,17 +250,25 @@ mkDatabase :: LongestRollback -> (forall a. (Connection -> IO a) -> IO a) -> Dat
 mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
     { insertInputs = \inputs -> ReaderT $ \conn ->
         mapM_
-        (\Input{..} ->
-            insertRow @"inputs" conn
-                [ SQLBlob outputReference
-                , SQLText address
-                , SQLBlob value
-                , maybe SQLNull SQLBlob datumHash
-                , SQLInteger (fromIntegral createdAtSlotNo)
-                , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
-                ]
-        )
-        inputs
+            (\Input{..} -> do
+                insertRow @"inputs" conn
+                    [ SQLBlob outputReference
+                    , SQLText address
+                    , SQLBlob value
+                    , maybe SQLNull SQLBlob datumHash
+                    , SQLInteger (fromIntegral createdAtSlotNo)
+                    , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
+                    ]
+                case datum of
+                    Nothing ->
+                        pure ()
+                    Just BinaryData{..} ->
+                        insertRow @"binary_data" conn
+                            [ SQLBlob binaryDataHash
+                            , SQLBlob binaryData
+                            ]
+            )
+            inputs
 
     , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
         execute_ conn (Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike)
@@ -284,6 +299,10 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                   \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
                   \WHERE address " <> addressLike <> " ORDER BY created_at DESC"
 
+        -- TODO: Allow resolving datums on demand through a LEFT JOIN on binary_data.
+        --
+        -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
+        let datum = Nothing
         fold_ conn (Query qry) () $ \() -> \case
             [ SQLBlob outputReference
                 , SQLText address
@@ -486,6 +505,7 @@ migrations =
         , ( $(embedFile "db/v1.0.1/001.sql"),      mkSchemaMigration   )
         , ( $(embedFile "db/v2.0.0/001.sql"),      mkSchemaMigration   )
         , ( $(embedFile "db/v2.0.0/002.sql"),      mkSettingsMigration )
+        , ( $(embedFile "db/v2.0.0/003.sql"),      mkSchemaMigration   )
         ]
     ]
   where
