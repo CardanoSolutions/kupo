@@ -115,7 +115,11 @@ overlaps p = \case
 -- considered included in [MatchAny OnlyShelley].
 includes :: Pattern -> Pattern -> Bool
 includes x y = case (x, y) of
-    (MatchAny{}, _) ->
+    (MatchAny IncludingBootstrap, _) ->
+        True
+    (MatchAny OnlyShelley, MatchAny IncludingBootstrap) ->
+        False
+    (MatchAny OnlyShelley, _) ->
         True
     (p, MatchExact addr') ->
         isJust (matching addr' p)

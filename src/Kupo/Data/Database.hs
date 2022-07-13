@@ -33,7 +33,7 @@ module Kupo.Data.Database
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( Block, SlotNo (..), StandardCrypto)
+    ( Block, SlotNo (..), StandardCrypto )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
@@ -148,7 +148,6 @@ patternToSql = \case
         "LIKE '%" <> encodeBase16 delegation <> "' AND len > 58"
     MatchPaymentAndDelegation payment delegation ->
         "LIKE '__" <> encodeBase16 payment <> encodeBase16 delegation <> "'"
-
 
 --
 -- Filters
