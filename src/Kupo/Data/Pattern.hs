@@ -384,7 +384,7 @@ matchBlock Codecs{..} patterns blk =
 
         , concatMap (flip (mapMaybeOutputs @block) tx . match pt) patterns ++ produced
 
-        , Map.foldMapWithKey (\k -> pure . toBinaryData k) (datums @block tx) ++ witnessed
+        , Map.foldMapWithKey (\k -> pure . toBinaryData k) (witnessedDatums @block tx) ++ witnessed
         )
 
     match

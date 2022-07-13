@@ -25,10 +25,12 @@ import Data.Aeson
     ( (.!=), (.:), (.:?) )
 import Kupo.Data.Cardano
     ( Address
+    , BinaryData
     , Blake2b_256
     , Block
     , BlockNo (..)
     , pattern BlockPoint
+    , DatumHash
     , pattern GenesisPoint
     , Input
     , IsBlock (..)
@@ -41,9 +43,14 @@ import Kupo.Data.Cardano
     , TransactionId
     , Value
     , WithOrigin (..)
+    , binaryDataFromBytes
+    , datumHashFromBytes
+    , fromBinaryData
+    , fromDatumHash
     , headerHashToJson
     , mkOutput
     , mkOutputReference
+    , noDatum
     , slotNoToJson
     , transactionIdFromHash
     , transactionIdFromHash
@@ -63,6 +70,8 @@ import Ouroboros.Network.Block
     ( pointSlot )
 
 import qualified Data.Aeson.Encoding as Json
+import qualified Data.Aeson.Key as Key
+import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Aeson.Types as Json
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -77,6 +86,7 @@ data PartialBlock = PartialBlock
 data PartialTransaction = PartialTransaction
     { inputs :: [ Input ]
     , outputs :: [ (OutputReference, Output) ]
+    , datums :: Map DatumHash BinaryData
     }
 
 instance IsBlock PartialBlock where
@@ -93,6 +103,9 @@ instance IsBlock PartialBlock where
 
     mapMaybeOutputs fn (PartialTransaction{outputs}) =
         mapMaybe (uncurry fn) outputs
+
+    witnessedDatums PartialTransaction{datums} =
+        datums
 
 -- RequestNextResponse
 
@@ -275,7 +288,14 @@ decodeOutput = Json.withObject "Output" $ \o -> do
     address <- o .: "address" >>= decodeAddress
     value <- o .: "value" >>= decodeValue
     datumHash <- o .:? "datumHash" >>= traverse (fmap unsafeMakeSafeHash . decodeHash @Blake2b_256)
-    pure (mkOutput address value datumHash)
+    datum <- o .:? "datum" >>= traverse decodeBinaryData
+    case (datumHash, datum) of
+        (Just x, _) ->
+            pure $ mkOutput address value (fromDatumHash x)
+        (Nothing, Just x) ->
+            pure $ mkOutput address value (fromBinaryData x)
+        (Nothing, Nothing) ->
+            pure $ mkOutput address value noDatum
 
 decodePartialTransaction
     :: Json.Value
@@ -283,12 +303,15 @@ decodePartialTransaction
 decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     txId <- o .: "id" >>= decodeTransactionId
     inputSource <- o .:? "inputSource"
+    witness <- o .: "witness"
+    datums <- witness .:? "datums" .!= Json.Object mempty >>= decodeDatums
     case inputSource of
         Just ("collaterals" :: Text) -> do
             inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "collaterals"))
             pure PartialTransaction
                 { inputs
                 , outputs = []
+                , datums
                 }
 
         _ -> do
@@ -297,7 +320,44 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
             pure PartialTransaction
                 { inputs
                 , outputs = withReferences txId outs
+                , datums
                 }
+
+decodeDatums
+    :: Json.Value
+    -> Json.Parser (Map DatumHash BinaryData)
+decodeDatums = Json.withObject "Datums" $
+    KeyMap.foldrWithKey
+        (\k v accum -> Map.insert
+            <$> decodeDatumHash k
+            <*> decodeBinaryData v
+            <*> accum
+        )
+        (pure mempty)
+
+decodeDatumHash
+    :: Json.Key
+    -> Json.Parser DatumHash
+decodeDatumHash k = do
+    case datumHashFromBytes <$> decodeBase16 (encodeUtf8 (Key.toText k)) of
+        Right (Just hash) ->
+            pure hash
+        Right Nothing ->
+            fail "decodeDatumHash: datumHashFromBytes failed."
+        Left e ->
+            fail (toString e)
+
+decodeBinaryData
+    :: Json.Value
+    -> Json.Parser BinaryData
+decodeBinaryData = Json.withText "BinaryData" $ \t ->
+    case binaryDataFromBytes <$> decodeBase16 (encodeUtf8 t) of
+        Right (Just bin) ->
+            pure bin
+        Right Nothing ->
+            fail "decodeBinaryData: binaryDataFromBytes failed."
+        Left e ->
+            fail (toString e)
 
 decodeInput
     :: Json.Value

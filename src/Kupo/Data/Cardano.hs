@@ -77,11 +77,13 @@ module Kupo.Data.Cardano
 
     -- * DatumHash
     , DatumHash
+    , datumHashFromBytes
     , unsafeDatumHashFromBytes
     , datumHashToJson
 
     -- * BinaryData
     , BinaryData
+    , binaryDataFromBytes
     , unsafeBinaryDataFromBytes
 
       -- * Address
@@ -262,7 +264,7 @@ class IsBlock (block :: Type) where
         -> BlockBody block
         -> [result]
 
-    datums
+    witnessedDatums
         :: BlockBody block
         -> Map DatumHash BinaryData
 
@@ -432,10 +434,10 @@ instance IsBlock Block where
                         Just result ->
                             result : results
 
-    datums
+    witnessedDatums
         :: Transaction
         -> Map DatumHash BinaryData
-    datums = \case
+    witnessedDatums = \case
         TransactionByron{} ->
             mempty
         TransactionShelley{} ->
@@ -573,21 +575,14 @@ type Output' crypto =
 mkOutput
     :: Address
     -> Value
-    -> Maybe DatumHash
+    -> Datum
     -> Output
-mkOutput address value = \case
-    Nothing ->
-        Ledger.Babbage.TxOut
-            address
-            value
-            Ledger.Babbage.NoDatum
-            SNothing
-    Just datumHash ->
-        Ledger.Babbage.TxOut
-            address
-            value
-            (Ledger.Babbage.DatumHash datumHash)
-            SNothing
+mkOutput address value datum =
+    Ledger.Babbage.TxOut
+        address
+        value
+        datum
+        SNothing
 
 fromShelleyOutput
     :: forall (era :: Type -> Type) crypto.
@@ -692,6 +687,15 @@ type DatumHash =
 type DatumHash' crypto =
     Ledger.DataHash crypto
 
+datumHashFromBytes
+    :: ByteString
+    -> Maybe DatumHash
+datumHashFromBytes bytes
+    | BS.length bytes == (digestSize @Blake2b_256) =
+        Just (unsafeDatumHashFromBytes bytes)
+    | otherwise =
+        Nothing
+
 unsafeDatumHashFromBytes
     :: forall crypto.
         ( HasCallStack
@@ -715,6 +719,12 @@ datumHashToJson =
 
 type BinaryData =
     Ledger.BinaryData (BabbageEra StandardCrypto)
+
+binaryDataFromBytes
+    :: ByteString
+    -> Maybe BinaryData
+binaryDataFromBytes =
+    either (const Nothing) Just . Ledger.makeBinaryData . toShort
 
 unsafeBinaryDataFromBytes
     :: HasCallStack
