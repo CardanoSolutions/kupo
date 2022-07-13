@@ -154,6 +154,13 @@ data Database (m :: Type -> Type) = Database
         :: [Text]
         -> DBTransaction m ()
 
+    , selectPatterns
+        :: forall result. ()
+        => (Text -> result)
+        -> Text
+        -> (result -> m ())
+        -> DBTransaction m ()
+
     , deletePattern
         :: Text
         -> DBTransaction m Int
@@ -359,13 +366,14 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         fold_ conn "SELECT * FROM patterns" []
             $ \xs (Only x) -> pure (mk x:xs)
 
-    , selectPatterns = \mk -> \addressLike yield -> ReaderT $ \conn -> do
+    , selectPatterns = \mk addressLike yield -> ReaderT $ \conn -> do
         let qry = "SELECT * \
                   \FROM patterns \
                   \WHERE pattern " <> addressLike
 
-        fold_ conn qry []
-            $ \xs (Only x) -> pure (mk x:xs)
+        fold_ conn (Query qry) () $ \() -> \case 
+            [ SQLText address ] -> yield (mk address)
+            (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
 
     , rollbackTo = \slotNo -> ReaderT $ \conn -> do
         execute conn "DELETE FROM inputs WHERE created_at > ?"
