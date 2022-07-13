@@ -22,7 +22,6 @@ module Kupo.Data.Database
     , patternToRow
     , patternFromRow
     , patternToSql
-    , patternContainsSql
 
       -- * Filtering
     , StatusFlag (..)
@@ -34,7 +33,7 @@ module Kupo.Data.Database
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( Block, SlotNo (..), StandardCrypto, getDelegationPartBytes, getPaymentPartBytes )
+    ( Block, SlotNo (..), StandardCrypto)
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
@@ -52,7 +51,6 @@ import Ouroboros.Network.Block
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Kupo.Control.MonadDatabase as DB
 import qualified Network.HTTP.Types.URI as Http
-import qualified Data.Text as Text
 
 --
 -- Checkpoint
@@ -151,42 +149,6 @@ patternToSql = \case
     MatchPaymentAndDelegation payment delegation ->
         "LIKE '__" <> encodeBase16 payment <> encodeBase16 delegation <> "'"
 
-
--- querying whether the given pattern is covered entirely by a pattern stored in the DB
-patternContainsPatterns
-    :: Pattern
-    -> [Text]
-patternContainsPatterns = \case
-    MatchAny IncludingBootstrap ->
-        ["*"]
-    MatchAny OnlyShelley ->
-        "*/*" : (patternContainsPatterns (MatchAny IncludingBootstrap))
-    MatchPayment payment ->
-        encodeBase16 payment <> "/*" : (patternContainsPatterns (MatchAny OnlyShelley))
-    MatchDelegation delegation ->
-        "*/" <> encodeBase16 delegation : (patternContainsPatterns (MatchAny OnlyShelley))
-    MatchPaymentAndDelegation payment delegation ->
-        encodeBase16 payment <> "/" <> encodeBase16 delegation : (
-            patternContainsPatterns (MatchPayment payment) <>
-            patternContainsPatterns (MatchDelegation delegation)
-        )
-    MatchExact addr ->
-        encodeBase16 (Ledger.serialiseAddr addr) :
-        case (getPaymentPartBytes addr) of
-        Nothing ->
-            patternContainsPatterns (MatchAny IncludingBootstrap)
-        Just payment -> 
-             case (getDelegationPartBytes addr) of
-                Nothing ->
-                    patternContainsPatterns (MatchPayment payment)
-                Just delegation -> 
-                    patternContainsPatterns (MatchPaymentAndDelegation payment delegation)
-
-
-patternContainsSql
-    :: Pattern
-    -> Text
-patternContainsSql p = "IN ('" <> Text.intercalate "','" (patternContainsPatterns p) <> "')"
 
 --
 -- Filters

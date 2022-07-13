@@ -12,6 +12,7 @@ module Kupo.Data.Pattern
       Pattern (..)
     , MatchBootstrap (OnlyShelley, IncludingBootstrap)
     , overlaps
+    , included
     , patternFromText
     , patternToText
     , patternFromPath
@@ -108,6 +109,32 @@ overlaps p = \case
             a == a' || b == b'
         _ ->
             False
+
+
+-- | Checks whether a pattern x fully includes pattern y. For instance, (MatchPayment "a") is
+-- considered included in [MatchAny OnlyShelley].
+includes :: Pattern -> Pattern -> Bool
+includes x y = case (x, y) of
+    (MatchAny{}, _) ->
+        True
+    (p, MatchExact addr') ->
+        isJust (matching addr' p)
+    (MatchPayment a, MatchPayment a') ->
+        a == a'
+    (MatchPayment a, MatchPaymentAndDelegation a' _) ->
+        a == a'
+    (MatchDelegation b, MatchDelegation b') ->
+        b == b'
+    (MatchDelegation b, MatchPaymentAndDelegation _ b') ->
+        b == b'
+    (MatchPaymentAndDelegation a b, MatchPaymentAndDelegation a' b') ->
+        a == a' && b == b'
+    _ ->
+        False
+
+-- | All patterns in the list that are fully covering the given pattern
+included :: Pattern -> [Pattern] -> [Pattern]
+included p = filter (`includes` p)
 
 wildcard :: Text
 wildcard = "*"

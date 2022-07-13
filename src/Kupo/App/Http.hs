@@ -38,8 +38,6 @@ import Kupo.Data.Cardano
     )
 import Kupo.Data.Database
     ( applyStatusFlag
-    , patternContainsSql
-    , patternFromRow
     , patternToRow
     , patternToSql
     , pointFromRow
@@ -59,6 +57,7 @@ import Kupo.Data.Http.Status
 import Kupo.Data.Pattern
     ( Pattern (..)
     , Result (..)
+    , included
     , overlaps
     , patternFromPath
     , patternFromText
@@ -173,9 +172,7 @@ app withDatabase patternsVar readHealth req send =
         ("GET", []) ->
             readTVarIO patternsVar >>= send . handleGetPatterns
         ("GET", args) ->
-            withDatabase (send .
-                handleGetMatchingPatterns (patternFromPath args)
-            )
+            readTVarIO patternsVar >>= send . (handleGetMatchingPatterns (patternFromPath args))
         ("PUT", args) ->
             withDatabase (send <=<
                 handlePutPattern patternsVar (patternFromPath args)
@@ -315,16 +312,15 @@ handleGetPatterns patterns = do
 
 handleGetMatchingPatterns
     :: Maybe Text
-    -> Database IO
+    -> [Pattern]
     -> Response
-handleGetMatchingPatterns patternQuery Database{..} = do
+handleGetMatchingPatterns patternQuery patterns = do
     case patternQuery >>= patternFromText of
         Nothing ->
             Errors.invalidPattern
         Just p -> do
-            let query = patternContainsSql p
             responseStreamJson Json.text $ \yield done -> do
-                runTransaction $ selectPatterns patternFromRow query (yield . patternToText)
+                mapM_ (yield . patternToText) (included p patterns)
                 done
 
 handleDeletePattern
