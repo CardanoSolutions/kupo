@@ -22,6 +22,7 @@ module Kupo.Data.Database
     , patternToRow
     , patternFromRow
     , patternToSql
+    , patternContainsSql
 
       -- * Filtering
     , StatusFlag (..)
@@ -33,7 +34,7 @@ module Kupo.Data.Database
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( Block, SlotNo (..), StandardCrypto )
+    ( Block, SlotNo (..), StandardCrypto, getDelegationPartBytes, getPaymentPartBytes )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
@@ -148,6 +149,40 @@ patternToSql = \case
         "LIKE '%" <> encodeBase16 delegation <> "' AND len > 58"
     MatchPaymentAndDelegation payment delegation ->
         "LIKE '__" <> encodeBase16 payment <> encodeBase16 delegation <> "'"
+
+
+-- querying whether the given pattern is covered entirely by a pattern stored in the DB
+patternContainsSql
+    :: Pattern
+    -> Text
+patternContainsSql = \case
+    MatchAny IncludingBootstrap ->
+        "= '*'"
+    MatchAny OnlyShelley ->
+        "= '*/*'"
+        <> " OR " <> patternContainsSql (MatchAny IncludingBootstrap)
+    MatchPayment payment ->
+        "= '" <> encodeBase16 payment <> "/*'"
+        <> " OR " <> patternContainsSql (MatchAny OnlyShelley)
+    MatchDelegation delegation ->
+        "= '*/" <> encodeBase16 delegation <> "'"
+        <> " OR " <> patternContainsSql (MatchAny OnlyShelley)
+    MatchPaymentAndDelegation payment delegation ->
+        "= '" <> encodeBase16 payment <> "/" <> encodeBase16 delegation <> "'"
+        <> " OR " <> patternContainsSql (MatchDelegation delegation)
+        <> " OR " <> patternContainsSql (MatchPayment payment)
+    MatchExact addr ->
+        "= '" <> encodeBase16 (Ledger.serialiseAddr addr) <> "'" <>
+        case (getPaymentPartBytes addr) of
+        Nothing ->
+            " OR " <> patternContainsSql (MatchAny IncludingBootstrap)
+        Just payment -> 
+             case (getDelegationPartBytes addr) of
+                Nothing ->
+                    " OR " <> patternContainsSql (MatchPayment payment)
+                Just delegation -> 
+                    " OR " <> patternContainsSql (MatchPaymentAndDelegation payment delegation)
+            
 
 --
 -- Filters
