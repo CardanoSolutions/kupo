@@ -23,6 +23,11 @@ module Kupo.Data.Database
     , patternFromRow
     , patternToSql
 
+      -- * Datum / BinaryData
+    , datumToRow
+    , datumFromRow
+    , binaryDataToRow
+
       -- * Filtering
     , StatusFlag (..)
     , statusFlagFromQueryParams
@@ -36,10 +41,12 @@ import Kupo.Data.Cardano
     ( BinaryData
     , Block
     , Datum
+    , DatumHash
     , SlotNo (..)
     , StandardCrypto
     , hashDatum
     , noDatum
+    , unsafeBinaryDataFromBytes
     )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
@@ -147,7 +154,7 @@ datumFromRow
     -> Datum
 datumFromRow hash = \case
     Just DB.BinaryData{..} ->
-        unsafeDeserialize' binaryData
+        Ledger.Datum (unsafeBinaryDataFromBytes binaryData)
     Nothing ->
         maybe noDatum (Ledger.DatumHash . unsafeDeserialize') hash
 
@@ -160,14 +167,15 @@ datumToRow = \case
     Ledger.DatumHash{} ->
         Nothing
     Ledger.Datum bin ->
-        Just (binaryDataToRow bin)
+        Just (binaryDataToRow (Ledger.hashBinaryData bin) bin)
 
 binaryDataToRow
-    :: BinaryData
+    :: DatumHash
+    -> BinaryData
     -> DB.BinaryData
-binaryDataToRow bin = DB.BinaryData
-    { DB.binaryDataHash = serialize' (Ledger.hashBinaryData bin)
-    , DB.binaryData = serialize' bin
+binaryDataToRow hash bin = DB.BinaryData
+    { DB.binaryDataHash = serialize' hash
+    , DB.binaryData = serialize' (Ledger.binaryDataToData bin)
     }
 
 --

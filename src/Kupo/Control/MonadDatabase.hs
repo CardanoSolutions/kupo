@@ -170,6 +170,10 @@ data Database (m :: Type -> Type) = Database
         => (Text -> result)
         -> DBTransaction m [result]
 
+    , insertBinaryData
+        :: [BinaryData]
+        -> DBTransaction m ()
+
     , rollbackTo
         :: Word64  -- slot_no
         -> DBTransaction m (Maybe Word64)
@@ -367,6 +371,16 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                     ]
             )
             patterns
+
+    , insertBinaryData = \bin -> ReaderT $ \conn ->
+        mapM_
+            (\BinaryData{..} ->
+                insertRow @"binary_data" conn
+                    [ SQLBlob binaryDataHash
+                    , SQLBlob binaryData
+                    ]
+            )
+            bin
 
     , deletePattern = \p -> ReaderT $ \conn -> do
         execute conn "DELETE FROM patterns WHERE pattern = ?"

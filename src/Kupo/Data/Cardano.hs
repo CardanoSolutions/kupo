@@ -70,9 +70,9 @@ module Kupo.Data.Cardano
 
     -- * Datum
     , Datum
+    , fromBinaryData
+    , fromDatumHash
     , noDatum
-    , unsafeDatumFromBytes
-    , datumToJson
     , hashDatum
 
     -- * DatumHash
@@ -82,6 +82,7 @@ module Kupo.Data.Cardano
 
     -- * BinaryData
     , BinaryData
+    , unsafeBinaryDataFromBytes
 
       -- * Address
     , Address
@@ -212,6 +213,7 @@ import qualified Cardano.Ledger.Alonzo.Data as Ledger
 import qualified Cardano.Ledger.Alonzo.Tx as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxBody as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxSeq as Ledger.Alonzo
+import qualified Cardano.Ledger.Alonzo.TxWitness as Ledger
 import qualified Cardano.Ledger.Babbage.TxBody as Ledger.Babbage
 import qualified Cardano.Ledger.BaseTypes as Ledger
 import qualified Cardano.Ledger.Block as Ledger
@@ -259,6 +261,10 @@ class IsBlock (block :: Type) where
         :: (OutputReference -> Output -> Maybe result)
         -> BlockBody block
         -> [result]
+
+    datums
+        :: BlockBody block
+        -> Map DatumHash BinaryData
 
 -- Block
 
@@ -425,6 +431,25 @@ instance IsBlock Block where
                             results
                         Just result ->
                             result : results
+
+    datums
+        :: Transaction
+        -> Map DatumHash BinaryData
+    datums = \case
+        TransactionByron{} ->
+            mempty
+        TransactionShelley{} ->
+            mempty
+        TransactionAllegra{} ->
+            mempty
+        TransactionMary{} ->
+            mempty
+        TransactionAlonzo tx ->
+            fromAlonzoData <$>
+                Ledger.unTxDats (getField @"txdats" (getField @"wits" tx))
+        TransactionBabbage tx ->
+            fromBabbageData <$>
+                Ledger.unTxDats (getField @"txdats" (getField @"wits" tx))
 
 -- TransactionId
 
@@ -636,22 +661,22 @@ getDatum (Ledger.Babbage.TxOut _address _value datum _refScript) =
 type Datum =
     Ledger.Datum (BabbageEra StandardCrypto)
 
-unsafeDatumFromBytes
-    :: ByteString
-    -> Datum
-unsafeDatumFromBytes =
-    undefined
-
 noDatum
     :: Datum
 noDatum =
     Ledger.NoDatum
 
-datumToJson
-    :: Datum
-    -> Json.Encoding
-datumToJson =
-    undefined
+fromDatumHash
+    :: DatumHash
+    -> Datum
+fromDatumHash =
+    Ledger.DatumHash
+
+fromBinaryData
+    :: BinaryData
+    -> Datum
+fromBinaryData =
+    Ledger.Datum
 
 hashDatum
     :: Datum
@@ -690,6 +715,25 @@ datumHashToJson =
 
 type BinaryData =
     Ledger.BinaryData (BabbageEra StandardCrypto)
+
+unsafeBinaryDataFromBytes
+    :: HasCallStack
+    => ByteString
+    -> BinaryData
+unsafeBinaryDataFromBytes =
+    either (error . toText) identity . Ledger.makeBinaryData . toShort
+
+fromAlonzoData
+    :: Ledger.Data (AlonzoEra StandardCrypto)
+    -> BinaryData
+fromAlonzoData =
+    Ledger.dataToBinaryData . coerce
+
+fromBabbageData
+    :: Ledger.Data (BabbageEra StandardCrypto)
+    -> BinaryData
+fromBabbageData =
+    Ledger.dataToBinaryData
 
 -- Value
 

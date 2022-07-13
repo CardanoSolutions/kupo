@@ -288,6 +288,8 @@ databaseStub = Database
         \_ -> liftIO (abs <$> generate arbitrary)
     , listPatterns = \mk -> lift $ do
         fmap (mk . patternToRow) <$> generate (listOf1 genPattern)
+    , insertBinaryData =
+        \_ -> return ()
     , rollbackTo =
         \_ -> return Nothing
     , runTransaction = \r ->

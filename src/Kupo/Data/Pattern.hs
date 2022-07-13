@@ -21,6 +21,7 @@ module Kupo.Data.Pattern
 
       -- * Matching
     , matching
+    , Codecs (..)
     , matchBlock
 
       -- * Result
@@ -34,10 +35,12 @@ import Codec.Binary.Bech32.TH
     ( humanReadablePart )
 import Kupo.Data.Cardano
     ( Address
+    , BinaryData
     , Blake2b_224
     , Blake2b_256
     , Block
     , Datum
+    , DatumHash
     , Input
     , IsBlock (..)
     , Output
@@ -339,6 +342,16 @@ resultToJson Result{..} = Json.pairs $ mconcat
         )
     ]
 
+-- | Codecs to encode data-type to some target structure. This allows to encode
+-- on-the-fly as we traverse the structure, rather than traversing all results a
+-- second time.
+data Codecs result slotNo input bin = Codecs
+    { toResult :: Result -> result
+    , toSlotNo :: SlotNo -> slotNo
+    , toInput :: Input -> input
+    , toBinaryData :: DatumHash -> BinaryData -> bin
+    }
+
 -- | Match all outputs in transactions from a block that match any of the given
 -- pattern.
 --
@@ -346,31 +359,32 @@ resultToJson Result{..} = Json.pairs $ mconcat
 -- multiple patterns. This is to facilitate building an index of matches to
 -- results.
 matchBlock
-    :: forall block result slotNo input.
+    :: forall block result slotNo input bin.
         ( IsBlock block
         , Ord input
         , Ord slotNo
         )
-    => (Result -> result)
-    -> (SlotNo -> slotNo)
-    -> (Input -> input)
+    => Codecs result slotNo input bin
     -> [Pattern]
     -> block
-    -> (Map slotNo (Set input), [result])
-matchBlock toResult toSlotNo toInput patterns blk =
-    let pt = getPoint blk in foldBlock (fn pt) (mempty, mempty) blk
+    -> (Map slotNo (Set input), [result], [bin])
+matchBlock Codecs{..} patterns blk =
+    let pt = getPoint blk in foldBlock (fn pt) (mempty, mempty, mempty) blk
   where
     fn
         :: Point Block
         -> BlockBody block
-        -> (Map slotNo (Set input), [result])
-        -> (Map slotNo (Set input), [result])
-    fn pt tx (consumed, produced) =
+        -> (Map slotNo (Set input), [result], [bin])
+        -> (Map slotNo (Set input), [result], [bin])
+    fn pt tx (consumed, produced, witnessed) =
         ( Map.alter
             (\st -> Just (Set.foldr (Set.insert . toInput) (fromMaybe mempty st) (spentInputs @block tx)))
             (toSlotNo (getPointSlotNo pt))
             consumed
+
         , concatMap (flip (mapMaybeOutputs @block) tx . match pt) patterns ++ produced
+
+        , Map.foldMapWithKey (\k -> pure . toBinaryData k) (datums @block tx) ++ witnessed
         )
 
     match

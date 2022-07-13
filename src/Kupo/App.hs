@@ -43,9 +43,9 @@ import Kupo.Data.Cardano
 import Kupo.Data.ChainSync
     ( ChainSyncHandler (..), IntersectionNotFoundException (..) )
 import Kupo.Data.Database
-    ( pointToRow, resultToRow )
+    ( binaryDataToRow, pointToRow, resultToRow )
 import Kupo.Data.Pattern
-    ( Pattern, matchBlock )
+    ( Codecs (..), Pattern, matchBlock )
 
 import qualified Data.Map as Map
 import qualified Kupo.App.ChainSync.Direct as Direct
@@ -154,14 +154,22 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} = forever
     let (lastKnownTip, lastKnownBlk) = last blks
     let lastKnownPoint = getPoint lastKnownBlk
     let lastKnownSlot = getPointSlotNo lastKnownPoint
-    let (spentInputs, newInputs) = foldMap (matchBlock resultToRow unSlotNo serialize' patterns . snd) blks
+    let (spentInputs, newInputs, bins) = foldMap (matchBlock codecs patterns . snd) blks
     logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
     notifyTip lastKnownTip (Just lastKnownSlot)
     runTransaction $ do
         insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
         insertInputs newInputs
         onSpentInputs spentInputs
+        insertBinaryData bins
   where
+    codecs = Codecs
+        { toResult = resultToRow
+        , toSlotNo = unSlotNo
+        , toInput = serialize'
+        , toBinaryData = binaryDataToRow
+        }
+
     onSpentInputs = case inputManagement of
         MarkSpentInputs ->
             void . Map.traverseWithKey markInputsByReference
