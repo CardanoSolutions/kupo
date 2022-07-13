@@ -367,7 +367,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
             $ \xs (Only x) -> pure (mk x:xs)
 
     , selectPatterns = \mk addressLike yield -> ReaderT $ \conn -> do
-        let qry = "SELECT pattern, LENGTH(pattern) as len \
+        let qry = "SELECT pattern \
                   \FROM patterns \
                   \WHERE pattern " <> addressLike
 

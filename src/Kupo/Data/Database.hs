@@ -52,6 +52,7 @@ import Ouroboros.Network.Block
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Kupo.Control.MonadDatabase as DB
 import qualified Network.HTTP.Types.URI as Http
+import qualified Data.Text as Text
 
 --
 -- Checkpoint
@@ -152,37 +153,40 @@ patternToSql = \case
 
 
 -- querying whether the given pattern is covered entirely by a pattern stored in the DB
-patternContainsSql
+patternContainsPatterns
     :: Pattern
-    -> Text
-patternContainsSql = \case
+    -> [Text]
+patternContainsPatterns = \case
     MatchAny IncludingBootstrap ->
-        "= '*'"
+        ["*"]
     MatchAny OnlyShelley ->
-        "= '*/*'"
-        <> " OR " <> patternContainsSql (MatchAny IncludingBootstrap)
+        "*/*" : (patternContainsPatterns (MatchAny IncludingBootstrap))
     MatchPayment payment ->
-        "= '" <> encodeBase16 payment <> "/*'"
-        <> " OR " <> patternContainsSql (MatchAny OnlyShelley)
+        encodeBase16 payment <> "/*" : (patternContainsPatterns (MatchAny OnlyShelley))
     MatchDelegation delegation ->
-        "= '*/" <> encodeBase16 delegation <> "'"
-        <> " OR " <> patternContainsSql (MatchAny OnlyShelley)
+        "*/" <> encodeBase16 delegation : (patternContainsPatterns (MatchAny OnlyShelley))
     MatchPaymentAndDelegation payment delegation ->
-        "= '" <> encodeBase16 payment <> "/" <> encodeBase16 delegation <> "'"
-        <> " OR " <> patternContainsSql (MatchDelegation delegation)
-        <> " OR " <> patternContainsSql (MatchPayment payment)
+        encodeBase16 payment <> "/" <> encodeBase16 delegation : (
+            patternContainsPatterns (MatchPayment payment) <>
+            patternContainsPatterns (MatchDelegation delegation)
+        )
     MatchExact addr ->
-        "= '" <> encodeBase16 (Ledger.serialiseAddr addr) <> "'" <>
+        encodeBase16 (Ledger.serialiseAddr addr) :
         case (getPaymentPartBytes addr) of
         Nothing ->
-            " OR " <> patternContainsSql (MatchAny IncludingBootstrap)
+            patternContainsPatterns (MatchAny IncludingBootstrap)
         Just payment -> 
              case (getDelegationPartBytes addr) of
                 Nothing ->
-                    " OR " <> patternContainsSql (MatchPayment payment)
+                    patternContainsPatterns (MatchPayment payment)
                 Just delegation -> 
-                    " OR " <> patternContainsSql (MatchPaymentAndDelegation payment delegation)
-            
+                    patternContainsPatterns (MatchPaymentAndDelegation payment delegation)
+
+
+patternContainsSql
+    :: Pattern
+    -> Text
+patternContainsSql p = "IN ('" <> Text.intercalate "','" (patternContainsPatterns p) <> "')"
 
 --
 -- Filters
