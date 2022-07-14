@@ -81,7 +81,8 @@ import Test.Hspec
     , xcontext
     )
 import Test.Kupo.Fixture
-    ( someNonExistingPoint
+    ( eraBoundaries
+    , someNonExistingPoint
     , someOtherPoint
     , somePoint
     , somePointAncestor
@@ -112,6 +113,21 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 waitUntil (> 21_600)
                 matches <- getAllMatches
                 length matches `shouldSatisfy` (> 10)
+                healthCheck (serverHost cfg) (serverPort cfg)
+            )
+
+    forM_ eraBoundaries $ \(era, point) -> specify ("quick sync through " <> era) $ \(_, tr, cfg) -> do
+        env <- newEnvironment $ cfg
+            { workDir = InMemory
+            , since = Just point
+            , patterns = [MatchAny IncludingBootstrap]
+            }
+        let HttpClient{..} = newHttpClient manager cfg
+        timeoutOrThrow 5 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitForServer
+                waitUntil (> 1_000)
                 healthCheck (serverHost cfg) (serverPort cfg)
             )
 
