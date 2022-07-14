@@ -77,12 +77,14 @@ module Kupo.Data.Cardano
 
     -- * DatumHash
     , DatumHash
+    , datumHashFromText
     , datumHashFromBytes
     , unsafeDatumHashFromBytes
     , datumHashToJson
 
     -- * BinaryData
     , BinaryData
+    , binaryDataToJson
     , binaryDataFromBytes
     , unsafeBinaryDataFromBytes
 
@@ -696,6 +698,14 @@ datumHashFromBytes bytes
     | otherwise =
         Nothing
 
+datumHashFromText
+    :: Text
+    -> Maybe DatumHash
+datumHashFromText str =
+    case datumHashFromBytes <$> decodeBase16 (encodeUtf8 str) of
+        Right (Just hash) -> Just hash
+        _ -> Nothing
+
 unsafeDatumHashFromBytes
     :: forall crypto.
         ( HasCallStack
@@ -719,6 +729,12 @@ datumHashToJson =
 
 type BinaryData =
     Ledger.BinaryData (BabbageEra StandardCrypto)
+
+binaryDataToJson
+    :: BinaryData
+    -> Json.Encoding
+binaryDataToJson =
+    Json.text . encodeBase16 . Ledger.originalBytes
 
 binaryDataFromBytes
     :: ByteString

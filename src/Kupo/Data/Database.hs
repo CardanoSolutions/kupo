@@ -26,7 +26,9 @@ module Kupo.Data.Database
       -- * Datum / BinaryData
     , datumToRow
     , datumFromRow
+    , datumHashToRow
     , binaryDataToRow
+    , binaryDataFromRow
 
       -- * Filtering
     , StatusFlag (..)
@@ -169,14 +171,26 @@ datumToRow = \case
     Ledger.Datum bin ->
         Just (binaryDataToRow (Ledger.hashBinaryData bin) bin)
 
+datumHashToRow
+    :: DatumHash
+    -> ByteString
+datumHashToRow =
+    serialize'
+
 binaryDataToRow
     :: DatumHash
     -> BinaryData
     -> DB.BinaryData
 binaryDataToRow hash bin = DB.BinaryData
-    { DB.binaryDataHash = serialize' hash
+    { DB.binaryDataHash = datumHashToRow hash
     , DB.binaryData = serialize' (Ledger.binaryDataToData bin)
     }
+
+binaryDataFromRow
+    :: DB.BinaryData
+    -> BinaryData
+binaryDataFromRow =
+    unsafeBinaryDataFromBytes . DB.binaryData
 
 --
 -- Pattern

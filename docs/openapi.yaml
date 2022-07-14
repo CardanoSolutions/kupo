@@ -302,6 +302,19 @@ components:
           minLength: 64
           maxLength: 64
 
+    Datum:
+      title: Datum
+      type: object
+      required:
+        - datum
+      additionalProperties: false
+      properties:
+        datum:
+          type: string
+          description: A serialized Plutus' datum.
+          contentEncoding: base16
+          example: d87980
+
     DatumHash:
       oneOf:
         - title: Digest
@@ -345,15 +358,21 @@ components:
         - created_at
         - spent_at
       properties:
-        transaction_id: { "$ref": "#/components/schemas/TransactionId" }
-        output_index: { "$ref": "#/components/schemas/OutputIndex" }
-        address: { "$ref": "#/components/schemas/Address" }
-        value: { "$ref": "#/components/schemas/Value" }
-        datum_hash: { "$ref": "#/components/schemas/DatumHash" }
-        created_at: { "$ref": "#/components/schemas/Point" }
+        transaction_id:
+          $ref: "#/components/schemas/TransactionId"
+        output_index:
+          $ref: "#/components/schemas/OutputIndex"
+        address:
+          $ref: "#/components/schemas/Address"
+        value:
+          $ref: "#/components/schemas/Value"
+        datum_hash:
+          $ref: "#/components/schemas/DatumHash"
+        created_at:
+          $ref: "#/components/schemas/Point"
         spent_at:
           oneOf:
-            - { "$ref": "#/components/schemas/Point" }
+            - $ref: "#/components/schemas/Point"
             - type: "null"
 
     OutputIndex:
@@ -366,9 +385,9 @@ components:
       description: |
           A matching pattern for addresses. See [Pattern](#section/Pattern)
       anyOf:
-        - { "$ref": "#/components/schemas/Wildcard" }
-        - { "$ref": "#/components/schemas/AddressParameter" }
-        - { "$ref": "#/components/schemas/Credential" }
+        - $ref: "#/components/schemas/Wildcard"
+        - $ref: "#/components/schemas/AddressParameter"
+        - $ref: "#/components/schemas/Credential"
 
     Point:
       type: object
@@ -377,8 +396,10 @@ components:
         - slot_no
         - header_hash
       properties:
-        slot_no: { "$ref": "#/components/schemas/SlotNo" }
-        header_hash: { "$ref": "#/components/schemas/HeaderHash" }
+        slot_no:
+          $ref: "#/components/schemas/SlotNo"
+        header_hash:
+          $ref: "#/components/schemas/HeaderHash"
 
     SlotNo: &slotNo
       type: integer
@@ -412,7 +433,7 @@ components:
             type: string
             pattern: ^[a-f0-9]{56}(.[a-f0-9]{2,64})?$
           additionalProperties:
-            x-additionalPropertiesName: "{policy_id}.{asset_name}"
+            x-additionalPropertiesName: "{policy-id}.{asset-name}"
             type: integer
             description: A quantity of some asset.
           example:
@@ -454,19 +475,19 @@ components:
 
   parameters:
     pattern-fragment:
-      name: pattern-fragment
+      name: pattern_fragment
       in: path
       required: true
       schema:
         anyOf:
-          - { "$ref": "#/components/schemas/Wildcard" }
-          - { "$ref": "#/components/schemas/AddressParameter" }
-          - { "$ref": "#/components/schemas/Credential" }
+          - $ref: "#/components/schemas/Wildcard"
+          - $ref: "#/components/schemas/AddressParameter"
+          - $ref: "#/components/schemas/Credential"
       description: |
         A pattern fragment (i.e. a wildcard, an address or a credential). See [Pattern](#section/Pattern) for more details.
 
     slot-no:
-      name: slot-no
+      name: slot_no
       in: path
       required: true
       schema:
@@ -489,7 +510,7 @@ components:
       description: |
         A query flag (i.e. `?unspent`) filter matches by status, to get only 'unspent' matches.
 
-    policy_id:
+    policy-id:
       name: policy_id
       in: query
       required: false
@@ -503,7 +524,7 @@ components:
       example:
         1220099e5e430475c219518179efc7e6c8289db028904834025d5b086
 
-    asset_name:
+    asset-name:
       name: asset_name
       in: query
       required: false
@@ -527,12 +548,26 @@ components:
       description: |
         A query flag (i.e. `?strict`) to only look for checkpoints that strictly match the provided slot. The behavior otherwise is to look for the largest nearest slot smaller or equal to the one provided.
 
+    datum-hash:
+      name: datum_hash
+      in: path
+      required: true
+      schema:
+        type: string
+        contentEncoding: base16
+        minLength: 64
+        maxLength: 64
+        example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
+      description:
+        A datum blake2b-256 hash digest.
+
 tags:
   - name: Matches
   - name: Checkpoints
     description: |
       An API for inspecting checkpoints known of the database. A checkpoint really is a point on-chain that directly references a block. They are comprised of an absolute slot
       number and a block header hash. Kupo records all such points as it processes blocks. In particular, they are also used to resume synchronization upon restart.
+  - name: Datums
   - name: Patterns
   - name: Health
 
@@ -546,10 +581,10 @@ paths:
         Retrieve all matches from the database, in descending `slot_no` order. Results are streamed to the client for more efficiency.
         Note that this is generally a bad idea for indexes built off permissive patterns (e.g. `*`) for the server will yield a large response.
       parameters:
-        - { "$ref": "#/components/parameters/spent" }
-        - { "$ref": "#/components/parameters/unspent" }
-        - { "$ref": "#/components/parameters/policy_id" }
-        - { "$ref": "#/components/parameters/asset_name" }
+        - $ref: "#/components/parameters/spent"
+        - $ref: "#/components/parameters/unspent"
+        - $ref: "#/components/parameters/policy-id"
+        - $ref: "#/components/parameters/asset-name"
       responses:
         200:
           description: OK
@@ -557,7 +592,8 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/components/schemas/Match" }
+                items:
+                  $ref: "#/components/schemas/Match"
 
   /v1/matches/{pattern-fragment}:
     get: &getMatches
@@ -568,11 +604,11 @@ paths:
         Retrieve matches from the database matching the given pattern, in descending `slot_no` order. Results are streamed to the client for more efficiency.
         See [Pattern](#section/Pattern) for more information about constructing patterns.
       parameters:
-        - { "$ref": "#/components/parameters/pattern-fragment" }
-        - { "$ref": "#/components/parameters/spent" }
-        - { "$ref": "#/components/parameters/unspent" }
-        - { "$ref": "#/components/parameters/policy_id" }
-        - { "$ref": "#/components/parameters/asset_name" }
+        - $ref: "#/components/parameters/pattern-fragment"
+        - $ref: "#/components/parameters/spent"
+        - $ref: "#/components/parameters/unspent"
+        - $ref: "#/components/parameters/policy-id"
+        - $ref: "#/components/parameters/asset-name"
       responses:
         200:
           description: OK
@@ -580,30 +616,34 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/components/schemas/Match" }
+                items:
+                  $ref: "#/components/schemas/Match"
         400:
           description: Bad Request
           content:
             "application/json;charset=utf-8":
-              schema: { "$ref": "#/components/schemas/BadRequest" }
+              schema:
+                $ref: "#/components/schemas/BadRequest"
 
     delete: &deleteMatches
       operationId: deleteMatches
       tags: ["Matches"]
       summary: Delete Matches (*)
       description: |
-          Delete all matches matching the given pattern. Note that this operation is only allowed if the provided pattern isn't a currently active pattern.
+        Delete all matches matching the given pattern. Note that this operation is only allowed if the provided pattern isn't a currently active pattern.
       responses:
         200:
           description: OK
           content:
             "application/json;charset=utf-8":
-              schema: { "$ref": "#/components/schemas/Deleted" }
+              schema:
+                $ref: "#/components/schemas/Deleted"
         400:
           description: Bad Request
           content:
             "application/json;charset=utf-8":
-              schema: { "$ref": "#/components/schemas/BadRequest" }
+              schema:
+                $ref: "#/components/schemas/BadRequest"
 
   /v1/matches/{pattern-fragment}/{pattern-fragment}:
     get:
@@ -615,6 +655,32 @@ paths:
       <<: *deleteMatches
       operationId: deleteMatches2Ary
       summary: Delete Matches (*/*)
+
+  /v1/datums/{datum-hash}:
+    get:
+      operationdId: getDatumByHash
+      tags: ["Datums"]
+      summary: Get Datum by Hash
+      description: |
+        Retrieve the datum pre-image (i.e. full resolved datum) associated to a given datum hash digest.
+      parameters:
+        - $ref: "#/components/parameters/datum-hash"
+      responses:
+        200:
+          description: OK
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Datum"
+                  - title: Nothing
+                    type: "null"
+        400:
+          description: Bad Request
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                $ref: "#/components/schemas/BadRequest"
 
   /v1/patterns:
     get:
@@ -630,7 +696,8 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/components/schemas/Pattern" }
+                items:
+                  $ref: "#/components/schemas/Pattern"
 
   /v1/patterns/{pattern-fragment}:
     get: &getPattern
@@ -646,7 +713,7 @@ paths:
         >
         > If all results matched by `y` are also matched by `x`, then `x` is said to include `y`.
       parameters:
-        - { "$ref": "#/components/parameters/pattern-fragment" }
+        - $ref: "#/components/parameters/pattern-fragment"
       responses:
         200:
           description: OK
@@ -655,7 +722,7 @@ paths:
               schema:
                 type: array
                 items:
-                  { "$ref": "#/components/schemas/Pattern" }
+                  $ref: "#/components/schemas/Pattern"
 
     delete: &deletePattern
       operationId: deletePattern1Ary
@@ -666,18 +733,20 @@ paths:
         **NOT** remove the corresponding matches nor will it halt or restart synchronization.
         The server will continue filtering new blocks but, will that pattern removed.
       parameters:
-        - { "$ref": "#/components/parameters/pattern-fragment" }
+        - $ref: "#/components/parameters/pattern-fragment"
       responses:
         200:
           description: OK
           content:
             "application/json;charset=utf-8":
-              schema: { "$ref": "#/components/schemas/Deleted" }
+              schema:
+                $ref: "#/components/schemas/Deleted"
         400:
           description: Bad Request
           content:
             "application/json;charset=utf-8":
-              schema: { "$ref": "#/components/schemas/BadRequest" }
+              schema:
+                $ref: "#/components/schemas/BadRequest"
 
     put: &putPattern
       operationId: putPattern1Ary
@@ -687,7 +756,7 @@ paths:
         Add a new pattern to watch. This **does not** cause the server to re-sync however!
         Only new blocks will be matched against the pattern.
       parameters:
-        - { "$ref": "#/components/parameters/pattern-fragment" }
+        - $ref: "#/components/parameters/pattern-fragment"
       responses:
         200:
           description: OK
@@ -695,12 +764,14 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/components/schemas/Pattern" }
+                items:
+                  $ref: "#/components/schemas/Pattern"
         400:
           description: Bad Request
           content:
             "application/json;charset=utf-8":
-              schema: { "$ref": "#/components/schemas/BadRequest" }
+              schema:
+                $ref: "#/components/schemas/BadRequest"
 
   /v1/patterns/{pattern-fragment}/{pattern-fragment}:
     get:
@@ -734,7 +805,8 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 type: array
-                items: { "$ref": "#/components/schemas/Point" }
+                items:
+                  $ref: "#/components/schemas/Point"
 
   /v1/checkpoints/{slot-no}:
     get:
@@ -746,8 +818,8 @@ paths:
         will for for the closest (i.e. most recent) slot that is **before** the provided slot number. This is particularly useful to find ancestors to known slots
         in order to use them for references on-chain.
       parameters:
-        - { "$ref": "#/components/parameters/slot-no" }
-        - { "$ref": "#/components/parameters/strict" }
+        - $ref: "#/components/parameters/slot-no"
+        - $ref: "#/components/parameters/strict"
       responses:
         200:
           description: OK
@@ -755,7 +827,7 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 oneOf:
-                  - { "$ref": "#/components/schemas/Point" }
+                  - $ref: "#/components/schemas/Point"
                   - type: "null"
 
   /v1/health:
@@ -770,4 +842,5 @@ paths:
           description: OK
           content:
             "application/json;charset=utf-8":
-              schema: { "$ref": "#/components/schemas/Health" }
+              schema:
+                $ref: "#/components/schemas/Health"

@@ -75,6 +75,14 @@ invalidSlotNo =
                  \number. That is, an non-negative integer."
         }
 
+malformedDatumHash :: Response
+malformedDatumHash =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "The given path parameter isn't a well-formed datum hash digest. \
+                 \This must be a blake2b-256 hash digest encoded in base16 (\
+                 \thus, 64 characters once encoded)."
+        }
+
 notFound :: Response
 notFound =
     responseJson status404 Default.headers $ HttpError

@@ -29,7 +29,10 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
-    ( SlotNo (..)
+    ( DatumHash
+    , SlotNo (..)
+    , binaryDataToJson
+    , datumHashFromText
     , getPointSlotNo
     , hasAssetId
     , hasPolicyId
@@ -38,6 +41,8 @@ import Kupo.Data.Cardano
     )
 import Kupo.Data.Database
     ( applyStatusFlag
+    , binaryDataFromRow
+    , datumHashToRow
     , patternToRow
     , patternToSql
     , pointFromRow
@@ -128,6 +133,9 @@ app withDatabase patternsVar readHealth req send =
         ("v1" : "matches" : args) ->
             routeMatches (requestMethod req, args)
 
+        ("v1" : "datums" : args) ->
+            routeDatums (requestMethod req, args)
+
         ("v1" : "patterns" : args) ->
             routePatterns (requestMethod req, args)
 
@@ -168,11 +176,23 @@ app withDatabase patternsVar readHealth req send =
         (_, _) ->
             send Errors.methodNotAllowed
 
+    routeDatums = \case
+        ("GET", [arg]) ->
+            withDatabase (send <=<
+                handleGetDatum (datumHashFromText arg)
+            )
+        ("GET", _) ->
+            send Errors.notFound
+        (_, _) ->
+            send Errors.methodNotAllowed
+
     routePatterns = \case
         ("GET", []) ->
-            readTVarIO patternsVar >>= send . handleGetPatterns
+            readTVarIO patternsVar >>= send .
+                handleGetPatterns
         ("GET", args) ->
-            readTVarIO patternsVar >>= send . (handleGetMatchingPatterns (patternFromPath args))
+            readTVarIO patternsVar >>= send .
+                handleGetMatchingPatterns (patternFromPath args)
         ("PUT", args) ->
             withDatabase (send <=<
                 handlePutPattern patternsVar (patternFromPath args)
@@ -297,6 +317,29 @@ handleDeleteMatches patternsVar query Database{..} = do
                 B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)
                     ]
+
+--
+-- /v1/datums
+--
+
+handleGetDatum
+    :: Maybe DatumHash
+    -> Database IO
+    -> IO Response
+handleGetDatum datumArg Database{..} = do
+    case datumArg of
+        Nothing ->
+            pure Errors.malformedDatumHash
+        Just datumHash -> do
+            datum <- runTransaction $ getBinaryData (datumHashToRow datumHash) binaryDataFromRow
+            pure $ responseLBS status200 Default.headers $
+                B.toLazyByteString $ Json.fromEncoding $ case datum of
+                    Nothing ->
+                        Json.null_
+                    Just d  ->
+                        Json.pairs $ mconcat
+                            [ Json.pair "datum" (binaryDataToJson d)
+                            ]
 
 --
 -- /v1/patterns

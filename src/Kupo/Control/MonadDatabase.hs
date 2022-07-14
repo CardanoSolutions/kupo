@@ -174,6 +174,12 @@ data Database (m :: Type -> Type) = Database
         :: [BinaryData]
         -> DBTransaction m ()
 
+    , getBinaryData
+        :: forall binaryData. ()
+        => ByteString -- binary_data_hash
+        -> (BinaryData -> binaryData)
+        -> DBTransaction m (Maybe binaryData)
+
     , rollbackTo
         :: Word64  -- slot_no
         -> DBTransaction m (Maybe Word64)
@@ -381,6 +387,16 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                     ]
             )
             bin
+
+    , getBinaryData = \binaryDataHash mk -> ReaderT $ \conn -> do
+        let qry = "SELECT binary_data FROM binary_data \
+                  \WHERE binary_data_hash = ? \
+                  \LIMIT 1"
+        Sqlite.query conn qry (Only (SQLBlob binaryDataHash)) <&> \case
+            [[SQLBlob binaryData]] ->
+                Just (mk BinaryData{..})
+            _ ->
+                Nothing
 
     , deletePattern = \p -> ReaderT $ \conn -> do
         execute conn "DELETE FROM patterns WHERE pattern = ?"

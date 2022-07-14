@@ -10,6 +10,7 @@ import Kupo.Prelude
 
 import Kupo.Data.Cardano
     ( Address
+    , BinaryData
     , Blake2b_224
     , Blake2b_256
     , Block
@@ -86,18 +87,20 @@ genDatum :: Gen Datum
 genDatum = frequency
     [ (1, pure noDatum)
     , (5, fromDatumHash <$> genDatumHash)
-    , (5, fromBinaryData <$> elements
-        [ "d87980"
-            & unsafeDecodeBase16
-            & unsafeBinaryDataFromBytes
-        , "0e"
-            & unsafeDecodeBase16
-            & unsafeBinaryDataFromBytes
-        , "9f43666f6fd905239fa0ffff"
-            & unsafeDecodeBase16
-            & unsafeBinaryDataFromBytes
-        ]
-      )
+    , (5, fromBinaryData <$> genBinaryData)
+    ]
+
+genBinaryData :: Gen BinaryData
+genBinaryData = elements
+    [ "d87980"
+        & unsafeDecodeBase16
+        & unsafeBinaryDataFromBytes
+    , "0e"
+        & unsafeDecodeBase16
+        & unsafeBinaryDataFromBytes
+    , "9f43666f6fd905239fa0ffff"
+        & unsafeDecodeBase16
+        & unsafeBinaryDataFromBytes
     ]
 
 genHeaderHash :: Gen (HeaderHash Block)
