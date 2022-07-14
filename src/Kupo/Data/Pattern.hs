@@ -12,6 +12,7 @@ module Kupo.Data.Pattern
       Pattern (..)
     , MatchBootstrap (OnlyShelley, IncludingBootstrap)
     , overlaps
+    , includes
     , included
     , patternFromText
     , patternToText
@@ -111,20 +112,18 @@ overlaps p = \case
             False
 
 
--- | Checks whether a pattern x fully includes pattern y. 
--- If any result matched by y is also matched by x, then the function returns 
+-- | Checks whether a pattern x fully includes pattern y.
+-- If any result matched by y is also matched by x, then the function returns
 -- 'True'. Otherwise it returns 'False'. The converse may not be true:
 -- x may match more results than y.
 includes :: Pattern -> Pattern -> Bool
 includes x y = case (x, y) of
-    (MatchAny IncludingBootstrap, _) ->
-        True
-    (MatchAny OnlyShelley, MatchAny IncludingBootstrap) ->
-        False
-    (MatchAny OnlyShelley, _) ->
-        True
     (p, MatchExact addr') ->
         isJust (matching addr' p)
+    (MatchAny IncludingBootstrap, _) ->
+        True
+    (MatchAny OnlyShelley, _) ->
+        y /= MatchAny IncludingBootstrap
     (MatchPayment a, MatchPayment a') ->
         a == a'
     (MatchPayment a, MatchPaymentAndDelegation a' _) ->

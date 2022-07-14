@@ -11,11 +11,19 @@ import Kupo.Prelude
 import Kupo.Data.Cardano
     ( Address )
 import Kupo.Data.Pattern
-    ( Pattern (..), matching, patternFromText )
+    ( Pattern (..), includes, matching, overlaps, patternFromText )
 import Test.Hspec
     ( Spec, context, parallel, shouldBe, specify )
+import Test.Hspec.QuickCheck
+    ( prop )
+import Test.Kupo.Data.Generators
+    ( genPattern )
 import Test.Kupo.Data.Pattern.Fixture
     ( addresses, patterns )
+import Test.QuickCheck
+    ( counterexample, forAll, (==>) )
+
+import qualified Data.Set as Set
 
 spec :: Spec
 spec = parallel $ do
@@ -26,6 +34,37 @@ spec = parallel $ do
     context "matching" $ forM_ patterns $ \(str, p, sort -> matches) -> do
         specify (toString str) $ do
             (p `matchAll` addresses) `shouldBe` matches
+
+    prop "p1 includes p2 => matches(p2) ⊆ matches(p1)" $
+        forAll genPattern $ \p1 ->
+            forAll genPattern $ \p2 ->
+                p1 `includes` p2 ==>
+                    let
+                        m1 = Set.fromList (p1 `matchAll` addresses)
+                        m2 = Set.fromList (p2 `matchAll` addresses)
+                    in
+                        (m2 `Set.isSubsetOf` m1)
+                            & counterexample ("matches(p2): " <> show m2)
+                            & counterexample ("matches(p1): " <> show m1)
+
+    prop "includes is reflexive" $
+        forAll genPattern $ \p1 ->
+            p1 `includes` p1
+
+    prop "includes is antisymmetric" $
+        forAll genPattern $ \p1 ->
+            forAll genPattern $ \p2 ->
+                p1 `includes` p2 ==>
+                    if p2 `includes` p1 then
+                        p1 == p2
+                    else
+                        p1 /= p2
+
+    prop "p1 includes p2 => p1 overlaps [p2]" $
+        forAll genPattern $ \p1 ->
+            forAll genPattern $ \p2 ->
+                p1 `includes` p2 ==>
+                    p1 `overlaps` [p2]
 
 --
 -- Helper

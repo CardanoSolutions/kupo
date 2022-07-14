@@ -102,6 +102,7 @@ tests:
     - aeson
     - base
     - bytestring
+    - containers
     - directory
     - filepath
     - hspec
