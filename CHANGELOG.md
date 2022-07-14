@@ -24,6 +24,8 @@
 
 - [📌 #24](https://github.com/CardanoSolutions/kupo/issues/24) - Fixed a bug where listing checkpoints would sometimes return duplicate entries. 
 
+- Fixed a bug where the server would systematically reject any request to dynamically remove a pattern (because deemed overlapping with existing patterns). 
+
 #### Removed
 
 - N/A

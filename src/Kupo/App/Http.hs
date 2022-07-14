@@ -289,7 +289,7 @@ handleDeleteMatches patternsVar query Database{..} = do
     case query >>= patternFromText of
         Nothing -> do
             pure Errors.invalidPattern
-        Just p | p `overlaps` patterns -> do
+        Just p | p `overlaps` (patterns \\ [p]) -> do
             pure Errors.stillActivePattern
         Just p -> do
             n <- runImmediateTransaction $ deleteInputsByAddress (patternToSql p)
