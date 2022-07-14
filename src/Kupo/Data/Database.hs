@@ -49,6 +49,7 @@ import Kupo.Data.Cardano
     , hashDatum
     , noDatum
     , unsafeBinaryDataFromBytes
+    , unsafeDatumHashFromBytes
     )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
@@ -66,6 +67,7 @@ import Ouroboros.Network.Block
 
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.Data as Ledger
+import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Kupo.Control.MonadDatabase as DB
 import qualified Network.HTTP.Types.URI as Http
 
@@ -132,7 +134,7 @@ resultToRow Result{..} = DB.Input
     , DB.datum =
         datumToRow datum
     , DB.datumHash =
-        serialize' <$> hashDatum datum
+        datumHashToRow <$> hashDatum datum
     , DB.createdAtSlotNo =
         DB.checkpointSlotNo createdAtRow
     , DB.createdAtHeaderHash =
@@ -158,7 +160,7 @@ datumFromRow hash = \case
     Just DB.BinaryData{..} ->
         Ledger.Datum (unsafeBinaryDataFromBytes binaryData)
     Nothing ->
-        maybe noDatum (Ledger.DatumHash . unsafeDeserialize') hash
+        maybe noDatum (Ledger.DatumHash . unsafeDatumHashFromBytes) hash
 
 datumToRow
     :: Datum
@@ -175,7 +177,7 @@ datumHashToRow
     :: DatumHash
     -> ByteString
 datumHashToRow =
-    serialize'
+    Ledger.originalBytes
 
 binaryDataToRow
     :: DatumHash
@@ -183,7 +185,7 @@ binaryDataToRow
     -> DB.BinaryData
 binaryDataToRow hash bin = DB.BinaryData
     { DB.binaryDataHash = datumHashToRow hash
-    , DB.binaryData = serialize' (Ledger.binaryDataToData bin)
+    , DB.binaryData = Ledger.originalBytes (Ledger.binaryDataToData bin)
     }
 
 binaryDataFromRow
