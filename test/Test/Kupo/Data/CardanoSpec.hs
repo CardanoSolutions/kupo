@@ -13,19 +13,23 @@ import Kupo.Prelude
 import Kupo.Data.Cardano
     ( pattern GenesisPoint
     , SlotNo (..)
+    , datumHashFromText
     , headerHashFromText
     , pointFromText
     , slotNoFromText
     )
+import Kupo.Data.Cardano
+    ( datumHashToText )
 import Test.Hspec
     ( Spec, context, parallel, shouldBe, specify )
 import Test.Hspec.QuickCheck
     ( prop )
+import Test.Kupo.Data.Generators
+    ( genDatumHash )
 import Test.QuickCheck
     ( Gen, arbitrary, forAll, property, vectorOf, (===) )
 
 import qualified Data.ByteString as BS
-
 spec :: Spec
 spec = parallel $ do
     context "pointFromText" $ do
@@ -41,6 +45,11 @@ spec = parallel $ do
     context "slotNoFromText" $ do
         prop "forall (s :: Word64). slotNoFromText (show s) === Just{}" $ \(s :: Word64) ->
             slotNoFromText (show s) === Just (SlotNo s)
+
+    context "datumHashFromText ↔ datumHashToText" $ do
+        prop "forall (x :: DatumHash). datumHashFromText (datumHashToText x) === x" $
+            forAll genDatumHash $ \x ->
+                datumHashFromText (datumHashToText x) === Just x
 
     context "headerHashFromText" $ do
         prop "forall (bs :: ByteString). bs .size 32 => headerHashFromText (base16 bs) === Just{}" $

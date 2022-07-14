@@ -11,7 +11,14 @@ import Kupo.Prelude
 import Kupo.Control.MonadDatabase
     ( Checkpoint (..) )
 import Kupo.Data.Cardano
-    ( Block, pattern GenesisPoint, Point )
+    ( BinaryData
+    , Block
+    , DatumHash
+    , pattern GenesisPoint
+    , Point
+    , unsafeBinaryDataFromBytes
+    , unsafeDatumHashFromBytes
+    )
 import Kupo.Data.Database
     ( pointFromRow )
 
@@ -104,3 +111,12 @@ eraBoundaries =
     , ("Alonzo", lastMaryPoint)
     , ("Babbage", lastAlonzoPoint)
     ]
+
+someDatumHash :: DatumHash
+someDatumHash = unsafeDatumHashFromBytes $ unsafeDecodeBase16
+    "0118AD9F6A79B8DFAB690DCB66EA6244A382891525789B405F7AF7DC61635578"
+
+-- pre-image of 'someDatumHash'
+someDatum :: BinaryData
+someDatum = unsafeBinaryDataFromBytes $ unsafeDecodeBase16
+    "D8799F581C1C0BFECF6C69E1D0D540897ECC0B66844B5FB5030FB488672A47F6FB8040401A001E8480D87980FF"

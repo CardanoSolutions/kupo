@@ -39,10 +39,14 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadTime
     ( DiffTime, timeout )
 import Kupo.Data.Cardano
-    ( Block
+    ( BinaryData
+    , Block
+    , DatumHash
     , pattern GenesisPoint
     , Point
     , SlotNo (..)
+    , binaryDataFromBytes
+    , datumHashToText
     , getPointSlotNo
     , pointFromText
     )
@@ -82,6 +86,9 @@ import Test.Hspec
     )
 import Test.Kupo.Fixture
     ( eraBoundaries
+    , lastAlonzoPoint
+    , someDatum
+    , someDatumHash
     , someNonExistingPoint
     , someOtherPoint
     , somePoint
@@ -292,6 +299,20 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     `shouldReturn` Just somePoint
             )
 
+    specify "Retrieve datum associated to datum-hash" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClient manager cfg
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just lastAlonzoPoint
+            , patterns = [MatchAny OnlyShelley]
+            }
+        timeoutOrThrow 10 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitForServer
+                lookupDatum someDatumHash `shouldReturn` someDatum
+            )
+
 type EndToEndSpec
     =  Manager
     -> SpecWith (FilePath, Tracers IO 'Concrete, Configuration)
@@ -389,6 +410,7 @@ shouldThrowTimeout t action = do
 data HttpClient (m :: Type -> Type) = HttpClient
     { waitForServer :: m ()
     , waitUntil :: (SlotNo -> Bool) -> m ()
+    , lookupDatum :: DatumHash -> m BinaryData
     , listCheckpoints :: m [SlotNo]
     , getCheckpointBySlot :: GetCheckpointMode -> SlotNo -> m (Maybe (Point Block))
     , getAllMatches :: m [Json.Value]
@@ -398,6 +420,7 @@ newHttpClient :: Manager -> Configuration -> HttpClient IO
 newHttpClient manager cfg = HttpClient
     { waitForServer
     , waitUntil
+    , lookupDatum
     , listCheckpoints
     , getCheckpointBySlot
     , getAllMatches
@@ -457,3 +480,19 @@ newHttpClient manager cfg = HttpClient
                 fail (show e)
             Right xs ->
                 pure xs
+
+    lookupDatum :: DatumHash -> IO BinaryData
+    lookupDatum datumHash = do
+        let fragment = toString (datumHashToText datumHash)
+        req <- parseRequest (baseUrl <> "/v1/datums/" <> fragment)
+        res <- httpLbs req manager
+        let body = responseBody res
+        case Json.eitherDecode' body of
+            Left e ->
+                fail (show e)
+            Right Json.Null -> do
+                threadDelay 0.25
+                lookupDatum datumHash
+            Right val -> maybe (fail "failed to decode Datum.") pure $ do
+                bytes <- val ^? key "datum" . _String
+                binaryDataFromBytes (unsafeDecodeBase16 bytes)

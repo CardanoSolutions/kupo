@@ -78,6 +78,7 @@ module Kupo.Data.Cardano
     -- * DatumHash
     , DatumHash
     , datumHashFromText
+    , datumHashToText
     , datumHashFromBytes
     , unsafeDatumHashFromBytes
     , datumHashToJson
@@ -697,6 +698,12 @@ datumHashFromBytes bytes
         Just (unsafeDatumHashFromBytes bytes)
     | otherwise =
         Nothing
+
+datumHashToText
+    :: DatumHash
+    -> Text
+datumHashToText =
+    encodeBase16 . Ledger.originalBytes
 
 datumHashFromText
     :: Text
