@@ -2,20 +2,17 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-module Test.Kupo.Data.Pattern.Fixture
-    ( patterns
-    , addresses
-    , credentials
-    ) where
+module Test.Kupo.Data.Pattern.Fixture where
 
 import Kupo.Prelude
 
+import qualified Data.ByteString as BS
 import Data.List
-    ( delete, (!!) )
+    ( delete, (!!), (\\) )
 import Kupo.Data.Cardano
     ( Address, addressFromBytes )
 import Kupo.Data.Pattern
-    ( MatchBootstrap (..), Pattern (..) )
+    ( MatchBootstrap (..), Pattern (..), overlaps )
 
 patterns :: [(Text, Pattern, [Address])]
 patterns =
@@ -91,6 +88,7 @@ patterns =
       , MatchDelegation (credentials !! 2)
       , []
       )
+
     , ( "script1cda3khwqv60360rp5m7akt50m6ttapacs8rqhn5w342z7r35m37/*"
       , MatchPayment (credentials !! 1)
       , [ addresses !! 1
@@ -133,3 +131,48 @@ credentials =
         , "337b62cfff6403a06a3acbc34f8c46003c69fe79a3628cefa9c47251"
         ]
     ]
+
+fragments :: [(ByteString, Pattern)]
+fragments =
+    [ (encodeUtf8 str, p)
+    | (str, p, _) <- patterns
+    ]
+
+nonOverlappingFragments :: [ByteString]
+nonOverlappingFragments =
+    [ str
+    | (str, p) <- fragments'
+    , not (p `overlaps` ((snd <$> fragments') \\ [p]))
+    ]
+  where
+    fragments' = filter ((`notElem` ["*", "*/*"]) . fst) fragments
+
+unaryFragments :: [ByteString]
+unaryFragments =
+    [ str
+    | (str, _) <- fragments
+    , not ("/" `BS.isInfixOf` str)
+    ]
+
+binaryFragments :: [ByteString]
+binaryFragments =
+    (fst <$> fragments) \\ unaryFragments
+
+nonOverlappingUnaryFragments :: [ByteString]
+nonOverlappingUnaryFragments =
+    [ str
+    | str <- nonOverlappingFragments
+    , not ("/" `BS.isInfixOf` str)
+    ]
+
+overlappingUnaryFragments :: [ByteString]
+overlappingUnaryFragments =
+    unaryFragments \\ nonOverlappingUnaryFragments
+
+nonOverlappingBinaryFragments :: [ByteString]
+nonOverlappingBinaryFragments =
+    nonOverlappingFragments \\ nonOverlappingUnaryFragments
+
+overlappingBinaryFragments :: [ByteString]
+overlappingBinaryFragments =
+    binaryFragments \\ nonOverlappingBinaryFragments

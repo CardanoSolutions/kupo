@@ -364,7 +364,7 @@ components:
 
     Pattern:
       description: |
-          A matching pattern for addresses. See [#Pattern]
+          A matching pattern for addresses. See [Pattern](#section/Pattern)
       anyOf:
         - { "$ref": "#/components/schemas/Wildcard" }
         - { "$ref": "#/components/schemas/AddressParameter" }
@@ -462,6 +462,8 @@ components:
           - { "$ref": "#/components/schemas/Wildcard" }
           - { "$ref": "#/components/schemas/AddressParameter" }
           - { "$ref": "#/components/schemas/Credential" }
+      description: |
+        A pattern fragment (i.e. a wildcard, an address or a credential). See [Pattern](#section/Pattern) for more details.
 
     slot-no:
       name: slot-no
@@ -631,6 +633,30 @@ paths:
                 items: { "$ref": "#/components/schemas/Pattern" }
 
   /v1/patterns/{pattern-fragment}:
+    get: &getPattern
+      operationId: matchPattern1Ary
+      tags: ["Patterns"]
+      summary: Get Pattern (*)
+      description: |
+        Retrieve all patterns that include<sup>*</sup> the provided pattern. Remember that an address is itself a pattern!
+        This endpoint is thereby useful to check is an address is matched by a given pattern configuration (the returned
+        list would be non-empty).
+
+        > **Definition**: `x` include `y`
+        >
+        > If all results matched by `y` are also matched by `x`, then `x` is said to include `y`.
+      parameters:
+        - { "$ref": "#/components/parameters/pattern-fragment" }
+      responses:
+        200:
+          description: OK
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                type: array
+                items:
+                  { "$ref": "#/components/schemas/Pattern" }
+
     delete: &deletePattern
       operationId: deletePattern1Ary
       tags: ["Patterns"]
@@ -677,6 +703,11 @@ paths:
               schema: { "$ref": "#/components/schemas/BadRequest" }
 
   /v1/patterns/{pattern-fragment}/{pattern-fragment}:
+    get:
+      <<: *getPattern
+      operationId: getPattern2Ary
+      summary: Get Pattern (*/*)
+
     delete:
       <<: *deletePattern
       operationId: deletePattern2Ary
