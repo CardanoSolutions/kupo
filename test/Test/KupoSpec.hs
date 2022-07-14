@@ -117,9 +117,9 @@ spec = skippableContext "End-to-end" $ \manager -> do
             (kupo tr `runWith` env)
             (do
                 waitForServer
-                waitUntil (> 21_600)
-                matches <- getAllMatches
-                length matches `shouldSatisfy` (> 10)
+                waitUntilM $ do
+                    matches <- getAllMatches
+                    pure (length matches > 10)
                 healthCheck (serverHost cfg) (serverPort cfg)
             )
 
@@ -410,6 +410,7 @@ shouldThrowTimeout t action = do
 data HttpClient (m :: Type -> Type) = HttpClient
     { waitForServer :: m ()
     , waitUntil :: (SlotNo -> Bool) -> m ()
+    , waitUntilM :: (IO Bool) -> m ()
     , lookupDatum :: DatumHash -> m BinaryData
     , listCheckpoints :: m [SlotNo]
     , getCheckpointBySlot :: GetCheckpointMode -> SlotNo -> m (Maybe (Point Block))
@@ -420,6 +421,7 @@ newHttpClient :: Manager -> Configuration -> HttpClient IO
 newHttpClient manager cfg = HttpClient
     { waitForServer
     , waitUntil
+    , waitUntilM
     , lookupDatum
     , listCheckpoints
     , getCheckpointBySlot
@@ -440,8 +442,18 @@ newHttpClient manager cfg = HttpClient
     waitUntil predicate = do
         checkpoints <- listCheckpoints
         unless (not (null checkpoints) && predicate (maximum checkpoints)) $ do
-            threadDelay 0.1
+            threadDelay 0.25
             waitUntil predicate
+
+    waitUntilM :: IO Bool -> IO ()
+    waitUntilM predicate = do
+        checkpoints <- listCheckpoints
+        predicate >>= \case
+            True ->
+                return ()
+            False -> do
+                threadDelay 0.25
+                waitUntilM predicate
 
     listCheckpoints :: IO [SlotNo]
     listCheckpoints = do

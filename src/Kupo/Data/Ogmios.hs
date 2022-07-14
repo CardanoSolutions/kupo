@@ -288,14 +288,15 @@ decodeOutput = Json.withObject "Output" $ \o -> do
     address <- o .: "address" >>= decodeAddress
     value <- o .: "value" >>= decodeValue
     datumHash <- o .:? "datumHash" >>= traverse (fmap unsafeMakeSafeHash . decodeHash @Blake2b_256)
-    datum <- o .:? "datum" >>= traverse decodeBinaryData
-    case (datumHash, datum) of
-        (Just x, _) ->
-            pure $ mkOutput address value (fromDatumHash x)
-        (Nothing, Just x) ->
-            pure $ mkOutput address value (fromBinaryData x)
-        (Nothing, Nothing) ->
-            pure $ mkOutput address value noDatum
+    datum <- o .:? "datum"
+    mkOutput address value <$>
+        case (datumHash, datum) of
+            (Just x, _) ->
+                pure (fromDatumHash x)
+            (Nothing, Just x) ->
+                fromBinaryData <$> decodeBinaryData x
+            (Nothing, Nothing) ->
+                pure noDatum
 
 decodePartialTransaction
     :: Json.Value
@@ -303,7 +304,8 @@ decodePartialTransaction
 decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     txId <- o .: "id" >>= decodeTransactionId
     inputSource <- o .:? "inputSource"
-    witness <- o .: "witness"
+    -- NOTE: On Byron transactions, witnesses are an array!
+    witness <- o .: "witness" <|> pure KeyMap.empty
     datums <- witness .:? "datums" .!= Json.Object mempty >>= decodeDatums
     case inputSource of
         Just ("collaterals" :: Text) -> do
