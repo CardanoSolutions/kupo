@@ -89,6 +89,8 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> optional sinceOption
                     <*> many patternOption
                     <*> inputManagementOption
+                    <*> pure 43200 -- TODO: should be pulled from genesis parameters
+                    <*> pure 60 -- TOOD: make configurable through CLI
                 )
             <*> (tracersOption <|> Tracers
                     <$> fmap Const (logLevelOption "http-server")

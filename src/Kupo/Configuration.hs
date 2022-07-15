@@ -16,6 +16,7 @@ module Kupo.Configuration
     , WorkDir (..)
     , InputManagement (..)
     , ChainProducer (..)
+    , LongestRollback (..)
 
     -- * NetworkParameters
     , NetworkParameters (..)
@@ -50,7 +51,7 @@ import Data.Time.Clock.POSIX
 import Data.Time.Format.ISO8601
     ( iso8601ParseM )
 import Kupo.Control.MonadDatabase
-    ( Database (..) )
+    ( Database (..), LongestRollback (..) )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
 import Kupo.Control.MonadOuroboros
@@ -72,17 +73,36 @@ import System.FilePath.Posix
 
 import qualified Data.Aeson as Json
 import qualified Data.Yaml as Yaml
+import Kupo.Control.MonadTime
+    ( DiffTime )
 
+-- | Application-level configuration.
 data Configuration = Configuration
     { chainProducer :: !ChainProducer
+        -- ^ Where the data comes from: cardano-node vs ogmios
     , workDir :: !WorkDir
+        -- ^ Where to store the data: in-memory vs specific location on-disk
     , serverHost :: !String
+        -- ^ Hostname for the API HTTP server
     , serverPort :: !Int
+        -- ^ Port for the API HTTP Server
     , since :: !(Maybe (Point Block))
+        -- ^ Point from when a *new* synchronization should start
     , patterns :: ![Pattern]
+        -- ^ List of address patterns to look for when synchronizing
     , inputManagement :: !InputManagement
+        -- ^ Behavior to adopt towards spent inputs (prune or mark-and-leave)
+    , longestRollback :: !LongestRollback
+        -- ^ Number of slots before which data can be considered immutable
+    , pruneThrottleDelay :: !DiffTime
+        -- ^ Delay between each garbage-collection of database data
     } deriving (Generic, Eq, Show)
 
+-- | Where does kupo pulls its data from. Both 'cardano-node' and 'ogmios' are
+-- equivalent in the capabilities and information they offer; a cardano-node
+-- will have to be through a local connection (domain socket) whereas ogmios can
+-- happen _over the wire_ on a remote server but is slower overall. So both have
+-- trade-offs.
 data ChainProducer
     = CardanoNode
         { nodeSocket :: !FilePath
@@ -94,6 +114,8 @@ data ChainProducer
         }
     deriving (Generic, Eq, Show)
 
+-- | Database working directory. 'in-memory' runs the database in hot memory,
+-- only suitable for non-permissive patterns or testing.
 data WorkDir
     = Dir FilePath
     | InMemory

@@ -332,6 +332,8 @@ skippableContext prefix skippableSpec = do
                     , since = Nothing
                     , patterns = []
                     , inputManagement = MarkSpentInputs
+                    , longestRollback = 43200
+                    , pruneThrottleDelay = 60
                     }
             context cardanoNode $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager
@@ -350,6 +352,8 @@ skippableContext prefix skippableSpec = do
                     , since = Nothing
                     , patterns = []
                     , inputManagement = MarkSpentInputs
+                    , longestRollback = 43200
+                    , pruneThrottleDelay = 60
                     }
             context ogmios $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager
@@ -447,7 +451,6 @@ newHttpClient manager cfg = HttpClient
 
     waitUntilM :: IO Bool -> IO ()
     waitUntilM predicate = do
-        checkpoints <- listCheckpoints
         predicate >>= \case
             True ->
                 return ()

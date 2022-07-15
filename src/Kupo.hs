@@ -82,26 +82,10 @@ kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
             , chainProducer
             , workDir
             , inputManagement
+            , longestRollback
             }
         } <- ask
 
-    -- 43200 slots = k/f slots
-    --
-    -- TODO: k and f should be pulled from the protocol parameters (e.g. via
-    -- local-state-query).
-    --
-    -- Otherwise, the current value may start to be insufficient if the values
-    -- of `k` or `f` change in the future. In practice,
-    --
-    -- (a) there's very little chance that it will change significantly;
-    -- (b) this kind of change are announced upfront days, if not weeks / months before
-    --
-    -- Arbitrarily larger values could be used to cope with future changes
-    -- since the only impact is on the 'checkpoints' table in the database. We
-    -- use this value to trim old checkpoints that are not needed for
-    -- re-establishing an intersection. Since checkpoints are small, storing
-    -- more is cheap.
-    let longestRollback = 43200
     let dbFile = case workDir of
             Dir dir  -> dir </> "kupo.sqlite3"
             InMemory -> ":memory:"
