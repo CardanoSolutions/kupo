@@ -20,16 +20,10 @@ import Data.List
     ( maximum )
 import Kupo
     ( kupo, newEnvironment, runWith, version, withTracers )
+import Kupo.App.Configuration
+    ( ConflictingOptionsException, NoStartingPointException )
 import Kupo.App.Http
     ( healthCheck )
-import Kupo.Configuration
-    ( ChainProducer (..)
-    , Configuration (..)
-    , ConflictingOptionsException
-    , InputManagement (..)
-    , NoStartingPointException
-    , WorkDir (..)
-    )
 import Kupo.Control.MonadAsync
     ( race_ )
 import Kupo.Control.MonadDelay
@@ -52,6 +46,12 @@ import Kupo.Data.Cardano
     )
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException )
+import Kupo.Data.Configuration
+    ( ChainProducer (..)
+    , Configuration (..)
+    , InputManagement (..)
+    , WorkDir (..)
+    )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..) )
 import Kupo.Data.Pattern
@@ -184,16 +184,6 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 { workDir = Dir tmp
                 , since = Just somePoint
                 , patterns = [MatchAny IncludingBootstrap]
-                }
-            shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
-          )
-
-        ( do -- Can't restart with different utxo management behavior
-            env <- newEnvironment $ cfg
-                { workDir = Dir tmp
-                , since = Just somePoint
-                , patterns = [MatchAny OnlyShelley]
-                , inputManagement = RemoveSpentInputs
                 }
             shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
           )

@@ -137,7 +137,7 @@ data Database (m :: Type -> Type) = Database
         -> Set ByteString  -- An output reference
         -> DBTransaction m ()
 
-    , countSpentInputs
+    , pruneInputs
         :: DBTransaction m Int
 
     , foldInputs
@@ -183,6 +183,9 @@ data Database (m :: Type -> Type) = Database
         => ByteString -- binary_data_hash
         -> (BinaryData -> binaryData)
         -> DBTransaction m (Maybe binaryData)
+
+    , pruneBinaryData
+        :: DBTransaction m Int
 
     , rollbackTo
         :: Word64  -- slot_no
@@ -285,7 +288,16 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
             inputs
 
     , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
-        execute_ conn (Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike)
+        let qry = Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike
+        execute_ conn qry
+        changes conn
+
+    , pruneInputs = ReaderT $ \conn -> do
+        let qry = "DELETE FROM inputs \
+                  \WHERE spent_at <= ( \
+                  \  (SELECT MAX(slot_no) FROM checkpoints) - ?\
+                  \)"
+        execute conn qry [SQLInteger longestRollback]
         changes conn
 
     , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
@@ -329,14 +341,6 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 , _ -- LENGTH(address)
                 ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
-
-    , countSpentInputs = ReaderT $ \conn -> do
-        let qry = "SELECT COUNT(rowid) FROM inputs WHERE spent_at IS NOT NULL"
-        query_ conn qry >>= \case
-            [[SQLInteger n]] ->
-                return (fromIntegral n)
-            xs ->
-                throwIO $ UnexpectedRow (fromQuery qry) xs
 
     , insertCheckpoints = \cps -> ReaderT $ \conn ->
         mapM_
@@ -401,6 +405,17 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 Just (mk BinaryData{..})
             _ ->
                 Nothing
+
+    , pruneBinaryData = ReaderT $ \conn -> do
+        let qry = " DELETE FROM binary_data \
+                  \ WHERE binary_data_hash IN (\
+                  \   SELECT binary_data_hash FROM binary_data\
+                  \   LEFT JOIN inputs \
+                  \   ON binary_data_hash = inputs.datum_hash \
+                  \   WHERE inputs.output_reference IS NULL\
+                  \ );"
+        execute_ conn qry
+        changes conn
 
     , deletePattern = \p -> ReaderT $ \conn -> do
         execute conn "DELETE FROM patterns WHERE pattern = ?"
@@ -589,6 +604,11 @@ data TraceDatabase where
     DatabaseRunningMigration
         :: { from :: Int, to :: Int }
         -> TraceDatabase
+    DatabaseBeginGarbageCollection
+        :: TraceDatabase
+    DatabaseExitGarbageCollection
+        :: { prunedInputs :: Int, prunedBinaryData :: Int }
+        -> TraceDatabase
     DatabaseRunningInMemory
         :: TraceDatabase
     deriving stock (Generic, Show)
@@ -599,7 +619,9 @@ instance ToJSON TraceDatabase where
 
 instance HasSeverityAnnotation TraceDatabase where
     getSeverityAnnotation = \case
-        DatabaseCurrentVersion{}    -> Info
-        DatabaseNoMigrationNeeded{} -> Debug
-        DatabaseRunningMigration{}  -> Notice
-        DatabaseRunningInMemory{}   -> Warning
+        DatabaseCurrentVersion{}         -> Info
+        DatabaseNoMigrationNeeded{}      -> Debug
+        DatabaseBeginGarbageCollection{} -> Debug
+        DatabaseExitGarbageCollection{}  -> Debug
+        DatabaseRunningMigration{}       -> Notice
+        DatabaseRunningInMemory{}        -> Warning

@@ -31,9 +31,6 @@ module Kupo.Data.Database
     , binaryDataFromRow
 
       -- * Filtering
-    , StatusFlag (..)
-    , statusFlagFromQueryParams
-    , isNoStatusFlag
     , applyStatusFlag
     ) where
 
@@ -51,6 +48,8 @@ import Kupo.Data.Cardano
     , unsafeBinaryDataFromBytes
     , unsafeDatumHashFromBytes
     )
+import Kupo.Data.Http.StatusFlag
+    ( StatusFlag (..) )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
@@ -69,7 +68,6 @@ import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.Data as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Kupo.Control.MonadDatabase as DB
-import qualified Network.HTTP.Types.URI as Http
 
 --
 -- Checkpoint
@@ -234,33 +232,11 @@ patternToSql = \case
 -- Filters
 --
 
-data StatusFlag
-    = NoStatusFlag
-    | StatusFlag (Text -> Text)
-
-isNoStatusFlag :: StatusFlag -> Bool
-isNoStatusFlag = \case
-    NoStatusFlag -> True
-    _ -> False
-
 applyStatusFlag :: StatusFlag -> Text -> Text
 applyStatusFlag = \case
-    NoStatusFlag  -> identity
-    StatusFlag fn -> fn
-
-statusFlagFromQueryParams
-    :: Http.Query
-    -> Maybe StatusFlag
-statusFlagFromQueryParams = \case
-    ("spent", val):rest -> do
-        guard (isNothing val)
-        guardM (isNoStatusFlag <$> statusFlagFromQueryParams rest)
-        pure (StatusFlag (<> " AND spent_at IS NOT NULL"))
-    ("unspent", val):rest -> do
-        guard (isNothing val)
-        guardM (isNoStatusFlag <$> statusFlagFromQueryParams rest)
-        pure (StatusFlag (<> " AND spent_at IS NULL"))
-    [] ->
-        Just NoStatusFlag
-    _:rest ->
-        statusFlagFromQueryParams rest
+    NoStatusFlag ->
+        identity
+    OnlyUnspent ->
+        (<> " AND spent_at IS NULL")
+    OnlySpent ->
+        (<> " AND spent_at IS NOT NULL")

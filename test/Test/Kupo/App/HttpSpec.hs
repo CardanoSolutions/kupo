@@ -40,6 +40,8 @@ import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
+import Kupo.Data.Configuration
+    ( InputManagement (..) )
 import Kupo.Data.Database
     ( binaryDataToRow, patternToRow, pointToRow, resultToRow )
 import Kupo.Data.Health
@@ -277,7 +279,12 @@ spec = do
 newStubbedApplication :: [Pattern] -> IO Application
 newStubbedApplication patterns = do
     patternsVar <- newTVarIO patterns
-    pure $ app (\callback -> callback databaseStub) patternsVar healthStub
+    inputManagement <- generate $ elements [MarkSpentInputs, RemoveSpentInputs]
+    pure $ app
+        inputManagement
+        (\callback -> callback databaseStub)
+        patternsVar
+        healthStub
 
 healthStub :: IO Health
 healthStub =
@@ -296,8 +303,8 @@ databaseStub = Database
         \_ -> return ()
     , markInputsByReference =
         \_ _ -> return ()
-    , countSpentInputs = lift $ do
-        generate arbitrary
+    , pruneInputs =
+        liftIO (generate arbitrary)
     , insertCheckpoints =
         \_ -> return ()
     , listCheckpointsDesc = \mk -> lift $ do
@@ -317,6 +324,8 @@ databaseStub = Database
             binaryDataHash <- genDatumHash
             binaryData <- oneof [pure Nothing, Just <$> genBinaryData]
             pure $ mk . binaryDataToRow binaryDataHash <$> binaryData
+    , pruneBinaryData =
+        liftIO (generate arbitrary)
     , rollbackTo =
         \_ -> return Nothing
     , runTransaction = \r ->

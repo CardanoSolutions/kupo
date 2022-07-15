@@ -132,6 +132,7 @@ module Kupo.Data.Cardano
       -- * Tip
     , Tip (..)
     , getTipSlotNo
+    , distanceToTip
 
       -- * WithOrigin
     , WithOrigin (..)
@@ -949,6 +950,11 @@ getTipSlotNo tip =
     case Ouroboros.getTipSlotNo tip of
         Origin -> SlotNo 0
         At sl  -> sl
+
+distanceToTip :: Tip Block -> SlotNo -> Word64
+distanceToTip (getTipSlotNo -> SlotNo a) (SlotNo b)
+    | a > b = a - b
+    | otherwise = b - a
 
 -- Point
 

@@ -19,6 +19,7 @@ license:        MPL-2.0
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
+    db/fiddle.sql
     db/v1.0.0-beta/001.sql
     db/v1.0.0/001.sql
     db/v1.0.0/002.sql
@@ -45,11 +46,11 @@ library
       Kupo.App.ChainSync
       Kupo.App.ChainSync.Direct
       Kupo.App.ChainSync.Ogmios
+      Kupo.App.Configuration
       Kupo.App.Health
       Kupo.App.Http
       Kupo.App.Http.HealthCheck
       Kupo.App.Mailbox
-      Kupo.Configuration
       Kupo.Control.MonadAsync
       Kupo.Control.MonadCatch
       Kupo.Control.MonadDatabase
@@ -61,6 +62,7 @@ library
       Kupo.Control.MonadTime
       Kupo.Data.Cardano
       Kupo.Data.ChainSync
+      Kupo.Data.Configuration
       Kupo.Data.Database
       Kupo.Data.Health
       Kupo.Data.Http.Default
@@ -69,6 +71,7 @@ library
       Kupo.Data.Http.GetCheckpointMode
       Kupo.Data.Http.Response
       Kupo.Data.Http.Status
+      Kupo.Data.Http.StatusFlag
       Kupo.Data.Ogmios
       Kupo.Data.Pattern
       Kupo.Options
@@ -231,9 +234,9 @@ test-suite unit
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Test.Kupo.App.ConfigurationSpec
       Test.Kupo.App.HttpSpec
       Test.Kupo.App.MailboxSpec
-      Test.Kupo.ConfigurationSpec
       Test.Kupo.Data.CardanoSpec
       Test.Kupo.Data.DatabaseSpec
       Test.Kupo.Data.Generators

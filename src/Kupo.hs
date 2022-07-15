@@ -30,23 +30,25 @@ module Kupo
 import Kupo.Prelude
 
 import Kupo.App
-    ( consumer, withChainProducer )
+    ( consumer, gardener, withChainProducer )
 import Kupo.App.ChainSync
     ( withChainSyncExceptionHandler )
+import Kupo.App.Configuration
+    ( newPatternsCache, startOrResume )
 import Kupo.App.Health
     ( connectionStatusToggle, readHealth, recordCheckpoint )
 import Kupo.App.Http
     ( healthCheck, httpServer )
-import Kupo.Configuration
-    ( Configuration (..), WorkDir (..), newPatternsCache, startOrResume )
 import Kupo.Control.MonadAsync
-    ( concurrently3 )
+    ( concurrently4 )
 import Kupo.Control.MonadDatabase
     ( ConnectionType (..), MonadDatabase (..) )
 import Kupo.Control.MonadLog
     ( TracerDefinition (..), nullTracer, withTracers )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
+import Kupo.Data.Configuration
+    ( Configuration (..), WorkDir (..) )
 import Kupo.Data.Health
     ( Health, emptyHealth )
 import Kupo.Options
@@ -76,7 +78,7 @@ kupo :: Tracers IO Concrete -> Kupo ()
 kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
   hijackSigTerm *> do
     Env { health
-        , configuration = cfg@Configuration
+        , configuration = config@Configuration
             { serverHost
             , serverPort
             , chainProducer
@@ -92,14 +94,15 @@ kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
 
     lock <- liftIO newLock
     liftIO $ withDatabase tracerDatabase LongLived lock longestRollback dbFile $ \db -> do
-        patterns <- newPatternsCache tracerConfiguration cfg db
+        patterns <- newPatternsCache tracerConfiguration config db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
         withChainProducer tracerConfiguration chainProducer $ \mailbox producer -> do
-            concurrently3
+            concurrently4
                 -- HTTP Server
                 ( httpServer
                     tracerHttp
+                    inputManagement
                     -- NOTE: This should / could probably use a resource pool to
                     -- avoid re-creating a new connection on every requests. This is
                     -- however pretty cheap with SQLite anyway and the HTTP server
@@ -116,15 +119,23 @@ kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
                 ( consumer
                     tracerChainSync
                     inputManagement
+                    longestRollback
                     notifyTip
                     mailbox
                     patterns
                     db
                 )
 
+                -- Database garbage-collector
+                ( gardener
+                    tracerDatabase
+                    config
+                    (withDatabase nullTracer ShortLived lock longestRollback dbFile)
+                )
+
                 -- Block producer, fetching blocks from the network
                 ( withChainSyncExceptionHandler tracerChainSync statusToggle $ do
-                    checkpoints <- startOrResume tracerConfiguration cfg db
+                    checkpoints <- startOrResume tracerConfiguration config db
                     producer
                         tracerChainSync
                         checkpoints
