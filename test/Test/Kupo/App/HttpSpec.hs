@@ -55,7 +55,7 @@ import Network.HTTP.Media.RenderHeader
 import Network.Wai
     ( Application )
 import Test.Hspec
-    ( Spec, parallel, runIO, specify )
+    ( Spec, parallel, runIO, specify, shouldContain )
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
@@ -445,6 +445,7 @@ sessionWith patterns specification opL path callback =
 
     assertJson schema res = do
         res & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+        liftIO $ (fst <$> Wai.simpleHeaders res) `shouldContain` ["X-Most-Recent-Checkpoint"]
         case Json.eitherDecode' (Wai.simpleBody res) of
             Left e ->
                 liftIO $ fail (show e)

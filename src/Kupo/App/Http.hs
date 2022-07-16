@@ -38,6 +38,7 @@ import Kupo.Data.Cardano
     , hasPolicyId
     , pointToJson
     , slotNoFromText
+    , slotNoToText
     )
 import Kupo.Data.Configuration
     ( InputManagement )
@@ -51,7 +52,7 @@ import Kupo.Data.Database
     , resultFromRow
     )
 import Kupo.Data.Health
-    ( Health )
+    ( Health (..) )
 import Kupo.Data.Http.FilterMatchesBy
     ( FilterMatchesBy (..), filterMatchesBy )
 import Kupo.Data.Http.GetCheckpointMode
@@ -81,15 +82,14 @@ import Network.Wai
     , pathInfo
     , queryString
     , requestMethod
-    , responseLBS
     , responseStatus
     )
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
-import qualified Data.Binary.Builder as B
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
+import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.URI as Http
 import qualified Network.Wai.Handler.Warp as Warp
 
@@ -148,8 +148,10 @@ app inputManagement withDatabase patternsVar readHealth req send =
             send Errors.notFound
   where
     routeHealth = \case
-        ("GET", []) ->
-            send . handleGetHealth =<< readHealth
+        ("GET", []) -> do
+            health <- readHealth
+            headers <- responseHeaders readHealth
+            send (handleGetHealth headers health)
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
@@ -157,13 +159,17 @@ app inputManagement withDatabase patternsVar readHealth req send =
 
     routeCheckpoints = \case
         ("GET", []) ->
-            withDatabase (send .
-                handleGetCheckpoints
-            )
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth
+                send (handleGetCheckpoints headers db)
         ("GET", [arg]) ->
-            withDatabase (send <=<
-                handleGetCheckpointBySlot (slotNoFromText arg) (queryString req)
-            )
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth
+                send =<< handleGetCheckpointBySlot
+                            headers
+                            (slotNoFromText arg)
+                            (queryString req)
+                            db
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
@@ -171,41 +177,66 @@ app inputManagement withDatabase patternsVar readHealth req send =
 
     routeMatches = \case
         ("GET", args) ->
-            withDatabase (send .
-                handleGetMatches inputManagement (patternFromPath args) (queryString req)
-            )
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth
+                send $ handleGetMatches
+                            headers
+                            inputManagement
+                            (patternFromPath args)
+                            (queryString req)
+                            db
         ("DELETE", args) ->
-            withDatabase (send <=<
-                handleDeleteMatches patternsVar (patternFromPath args)
-            )
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth
+                send =<< handleDeleteMatches
+                            headers
+                            patternsVar
+                            (patternFromPath args)
+                            db
         (_, _) ->
             send Errors.methodNotAllowed
 
     routeDatums = \case
         ("GET", [arg]) ->
-            withDatabase (send <=<
-                handleGetDatum (datumHashFromText arg)
-            )
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth
+                send =<< handleGetDatum
+                            headers
+                            (datumHashFromText arg)
+                            db
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
             send Errors.methodNotAllowed
 
     routePatterns = \case
-        ("GET", []) ->
-            readTVarIO patternsVar >>= send .
-                handleGetPatterns
-        ("GET", args) ->
-            readTVarIO patternsVar >>= send .
-                handleGetMatchingPatterns (patternFromPath args)
+        ("GET", []) -> do
+            res <- handleGetPatterns
+                        <$> responseHeaders readHealth
+                        <*> readTVarIO patternsVar
+            send res
+        ("GET", args) -> do
+            res <- handleGetMatchingPatterns
+                        <$> responseHeaders readHealth
+                        <*> pure (patternFromPath args)
+                        <*> readTVarIO patternsVar
+            send res
         ("PUT", args) ->
-            withDatabase (send <=<
-                handlePutPattern patternsVar (patternFromPath args)
-            )
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth
+                send =<< handlePutPattern
+                            headers
+                            patternsVar
+                            (patternFromPath args)
+                            db
         ("DELETE", args) ->
-            withDatabase (send <=<
-                handleDeletePattern patternsVar (patternFromPath args)
-            )
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth
+                send =<< handleDeletePattern
+                            headers
+                            patternsVar
+                            (patternFromPath args)
+                            db
         (_, _) ->
             send Errors.methodNotAllowed
 
@@ -214,30 +245,33 @@ app inputManagement withDatabase patternsVar readHealth req send =
 --
 
 handleGetHealth
-    :: Health
+    :: [Http.Header]
+    -> Health
     -> Response
 handleGetHealth =
-    responseJson status200 Default.headers
+    responseJson status200
 
 --
 -- /v1/checkpoints
 --
 
 handleGetCheckpoints
-    :: Database IO
+    :: [Http.Header]
+    -> Database IO
     -> Response
-handleGetCheckpoints Database{..} = do
-    responseStreamJson pointToJson $ \yield done -> do
+handleGetCheckpoints headers Database{..} = do
+    responseStreamJson headers pointToJson $ \yield done -> do
         points <- runTransaction (listCheckpointsDesc pointFromRow)
         mapM_ yield points
         done
 
 handleGetCheckpointBySlot
-    :: Maybe SlotNo
+    :: [Http.Header]
+    -> Maybe SlotNo
     -> [Http.QueryItem]
     -> Database IO
     -> IO Response
-handleGetCheckpointBySlot mSlotNo query Database{..} =
+handleGetCheckpointBySlot headers mSlotNo query Database{..} =
     case (mSlotNo, getCheckpointModeFromQuery query) of
         (Nothing, _) ->
             pure Errors.invalidSlotNo
@@ -249,7 +283,7 @@ handleGetCheckpointBySlot mSlotNo query Database{..} =
     handleGetCheckpointBySlot' slotNo mode = do
         let successor = succ (unSlotNo slotNo)
         points <- runTransaction (listAncestorsDesc successor 1 pointFromRow)
-        pure $ responseJsonEncoding status200 Default.headers $
+        pure $ responseJsonEncoding status200 headers $
             case points of
                 [point] ->
                     case mode of
@@ -268,12 +302,13 @@ handleGetCheckpointBySlot mSlotNo query Database{..} =
 --
 
 handleGetMatches
-    :: InputManagement
+    :: [Http.Header]
+    -> InputManagement
     -> Maybe Text
     -> Http.Query
     -> Database IO
     -> Response
-handleGetMatches inputManagement patternQuery queryParams Database{..} = do
+handleGetMatches headers inputManagement patternQuery queryParams Database{..} = do
     case (patternQuery >>= patternFromText, statusFlagFromQueryParams queryParams) of
         (Nothing, _) ->
             Errors.invalidPattern
@@ -287,11 +322,11 @@ handleGetMatches inputManagement patternQuery queryParams Database{..} = do
                 Nothing ->
                     Errors.invalidMatchFilter
                 Just NoFilter ->
-                    responseStreamJson resultToJson $ \yield done -> do
+                    responseStreamJson headers resultToJson $ \yield done -> do
                         runTransaction $ foldInputs query (yield . resultFromRow)
                         done
                 Just (FilterByAssetId assetId) ->
-                    responseStreamJson resultToJson $ \yield done -> do
+                    responseStreamJson headers resultToJson $ \yield done -> do
                         let yieldIf result = do
                                 if hasAssetId (value result) assetId
                                 then yield result
@@ -299,7 +334,7 @@ handleGetMatches inputManagement patternQuery queryParams Database{..} = do
                         runTransaction $ foldInputs query (yieldIf . resultFromRow)
                         done
                 Just (FilterByPolicyId policyId) ->
-                    responseStreamJson resultToJson $ \yield done -> do
+                    responseStreamJson headers resultToJson $ \yield done -> do
                         let yieldIf result = do
                                 if hasPolicyId (value result) policyId
                                 then yield result
@@ -308,11 +343,12 @@ handleGetMatches inputManagement patternQuery queryParams Database{..} = do
                         done
 
 handleDeleteMatches
-    :: TVar IO [Pattern]
+    :: [Http.Header]
+    -> TVar IO [Pattern]
     -> Maybe Text
     -> Database IO
     -> IO Response
-handleDeleteMatches patternsVar query Database{..} = do
+handleDeleteMatches headers patternsVar query Database{..} = do
     patterns <- readTVarIO patternsVar
     case query >>= patternFromText of
         Nothing -> do
@@ -321,8 +357,8 @@ handleDeleteMatches patternsVar query Database{..} = do
             pure Errors.stillActivePattern
         Just p -> do
             n <- runImmediateTransaction $ deleteInputsByAddress (patternToSql p)
-            pure $ responseLBS status200 Default.headers $
-                B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
+            pure $ responseJsonEncoding status200 headers $
+                Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)
                     ]
 
@@ -331,17 +367,18 @@ handleDeleteMatches patternsVar query Database{..} = do
 --
 
 handleGetDatum
-    :: Maybe DatumHash
+    :: [Http.Header]
+    -> Maybe DatumHash
     -> Database IO
     -> IO Response
-handleGetDatum datumArg Database{..} = do
+handleGetDatum headers datumArg Database{..} = do
     case datumArg of
         Nothing ->
             pure Errors.malformedDatumHash
         Just datumHash -> do
             datum <- runTransaction $ getBinaryData (datumHashToRow datumHash) binaryDataFromRow
-            pure $ responseLBS status200 Default.headers $
-                B.toLazyByteString $ Json.fromEncoding $ case datum of
+            pure $ responseJsonEncoding status200 headers $
+                case datum of
                     Nothing ->
                         Json.null_
                     Just d  ->
@@ -354,49 +391,53 @@ handleGetDatum datumArg Database{..} = do
 --
 
 handleGetPatterns
-    :: [Pattern]
+    :: [Http.Header]
+    -> [Pattern]
     -> Response
-handleGetPatterns patterns = do
-    responseStreamJson Json.text $ \yield done -> do
+handleGetPatterns headers patterns = do
+    responseStreamJson headers Json.text $ \yield done -> do
         mapM_ (yield . patternToText) patterns
         done
 
 handleGetMatchingPatterns
-    :: Maybe Text
+    :: [Http.Header]
+    -> Maybe Text
     -> [Pattern]
     -> Response
-handleGetMatchingPatterns patternQuery patterns = do
+handleGetMatchingPatterns headers patternQuery patterns = do
     case patternQuery >>= patternFromText of
         Nothing ->
             Errors.invalidPattern
         Just p -> do
-            responseStreamJson Json.text $ \yield done -> do
+            responseStreamJson headers Json.text $ \yield done -> do
                 mapM_ (yield . patternToText) (included p patterns)
                 done
 
 handleDeletePattern
-    :: TVar IO [Pattern]
+    :: [Http.Header]
+    -> TVar IO [Pattern]
     -> Maybe Text
     -> Database IO
     -> IO Response
-handleDeletePattern patternsVar query Database{..} = do
+handleDeletePattern headers patternsVar query Database{..} = do
     case query >>= patternFromText of
         Nothing ->
             pure Errors.invalidPattern
         Just p -> do
             n <- runImmediateTransaction $ deletePattern (patternToRow p)
             atomically $ modifyTVar' patternsVar (\\ [p])
-            pure $ responseLBS status200 Default.headers $
-                B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
+            pure $ responseJsonEncoding status200 headers $
+                Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)
                     ]
 
 handlePutPattern
-    :: TVar IO [Pattern]
+    :: [Http.Header]
+    -> TVar IO [Pattern]
     -> Maybe Text
     -> Database IO
     -> IO Response
-handlePutPattern patternsVar query Database{..} = do
+handlePutPattern headers patternsVar query Database{..} = do
     case query >>= patternFromText of
         Nothing ->
             pure Errors.invalidPattern
@@ -405,10 +446,26 @@ handlePutPattern patternsVar query Database{..} = do
             patterns <- atomically $ do
                 modifyTVar' patternsVar (nub . (p :))
                 readTVar patternsVar
-            pure $ responseLBS status200 Default.headers $
-                B.toLazyByteString $ Json.fromEncoding $ Json.list
+            pure $ responseJsonEncoding status200 headers $
+                Json.list
                     (Json.text . patternToText)
                     patterns
+
+--
+-- Helpers
+--
+
+responseHeaders
+    :: Applicative m
+    => m Health
+    -> m [Http.Header]
+responseHeaders readHealth =
+    toHeaders . mostRecentCheckpoint <$> readHealth
+  where
+    toHeaders :: Maybe SlotNo -> [Http.Header]
+    toHeaders slot =
+        ("X-Most-Recent-Checkpoint", encodeUtf8 $ slotNoToText $ fromMaybe 0 slot)
+        : Default.headers
 
 --
 -- Tracer

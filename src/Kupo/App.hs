@@ -71,7 +71,7 @@ import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 type ChainSyncClient m block =
        Tracer IO TraceChainSync
     -> [Point Block] -- Checkpoints
-    -> (Tip Block -> Maybe SlotNo -> m ()) -- Tip notifier
+    -> (Tip Block -> Maybe SlotNo -> DBTransaction m ()) -- Tip notifier
     -> ConnectionStatusToggle m
     -> Database m
     -> m ()
@@ -133,17 +133,19 @@ producer
     :: forall m block.
         ( MonadSTM m
         , MonadLog m
+        , Monad (DBTransaction m)
         )
     => Tracer IO TraceChainSync
-    -> (Tip Block -> Maybe SlotNo -> m ())
+    -> (Tip Block -> Maybe SlotNo -> DBTransaction m ())
     -> Mailbox m (Tip Block, block)
     -> Database m
     -> ChainSyncHandler m (Tip Block) (Point Block) block
 producer tr notifyTip mailbox Database{..} = ChainSyncHandler
     { onRollBackward = \tip pt -> do
         logWith tr (ChainSyncRollBackward (getPointSlotNo pt))
-        lastKnownSlot <- runTransaction $ rollbackTo (unSlotNo (getPointSlotNo pt))
-        notifyTip tip (SlotNo <$> lastKnownSlot)
+        runTransaction $ do
+            lastKnownSlot <- rollbackTo (unSlotNo (getPointSlotNo pt))
+            notifyTip tip (SlotNo <$> lastKnownSlot)
     , onRollForward = \tip blk ->
         atomically (putMailbox mailbox (tip, blk))
     }
@@ -158,7 +160,7 @@ consumer
     => Tracer IO TraceChainSync
     -> InputManagement
     -> LongestRollback
-    -> (Tip Block -> Maybe SlotNo -> m ())
+    -> (Tip Block -> Maybe SlotNo -> DBTransaction m ())
     -> Mailbox m (Tip Block, block)
     -> TVar m [Pattern]
     -> Database m
@@ -170,12 +172,12 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
     let lastKnownSlot = getPointSlotNo lastKnownPoint
     let (spentInputs, newInputs, bins) = foldMap (matchBlock codecs patterns . snd) blks
     logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
-    notifyTip lastKnownTip (Just lastKnownSlot)
     runTransaction $ do
         insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
         insertInputs newInputs
         onSpentInputs lastKnownTip lastKnownSlot spentInputs
         insertBinaryData bins
+        notifyTip lastKnownTip (Just lastKnownSlot)
   where
     codecs = Codecs
         { toResult = resultToRow
