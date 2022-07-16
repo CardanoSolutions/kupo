@@ -87,8 +87,10 @@ import Test.Hspec
 import Test.Kupo.Fixture
     ( eraBoundaries
     , lastAlonzoPoint
-    , someDatum
-    , someDatumHash
+    , someDatumHashInOutput
+    , someDatumHashInWitness
+    , someDatumInOutput
+    , someDatumInWitness
     , someNonExistingPoint
     , someOtherPoint
     , somePoint
@@ -289,7 +291,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     `shouldReturn` Just somePoint
             )
 
-    specify "Retrieve datum associated to datum-hash" $ \(tmp, tr, cfg) -> do
+    specify "Retrieve datum(s) associated to datum-hash" $ \(tmp, tr, cfg) -> do
         let HttpClient{..} = newHttpClient manager cfg
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
@@ -300,7 +302,8 @@ spec = skippableContext "End-to-end" $ \manager -> do
             (kupo tr `runWith` env)
             (do
                 waitForServer
-                lookupDatum someDatumHash `shouldReturn` someDatum
+                lookupDatum someDatumHashInWitness `shouldReturn` someDatumInWitness
+                lookupDatum someDatumHashInOutput `shouldReturn` someDatumInOutput
             )
 
 type EndToEndSpec
