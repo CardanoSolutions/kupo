@@ -18,12 +18,12 @@
 <br/>
 
 - [📌 #21](https://github.com/CardanoSolutions/kupo/issues/21) New HTTP endpoint to retrieve Plutus' datum pre-image from a datum hash digest. Behind the scene, Kupo now track any datum found in transactions' witnesses set or output (inline datums). Note that, datums that aren't associated to any existing pattern matches are eventually garbage-collected. 
-  - `GET v1/datums/{datum-hash}` [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getDatumByHash)
+  - `GET v1/datums/{datum-hash}` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getDatumByHash)
 
 <br/>
 
 - [📌 #40](https://github.com/CardanoSolutions/kupo/issues/40) New HTTP endpoint to retrieve patterns that _includes_ a given pattern. Useful to check if an address is matched by a given configuration. 
-  - `GET v1/patterns/{pattern-fragment}[/{pattern-fragment}]` [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/matchPattern1Ary)
+  - `GET v1/patterns/{pattern-fragment}[/{pattern-fragment}]` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/matchPattern1Ary)
 
 <br/>
 
@@ -31,6 +31,10 @@
   of a known point very easily. This is handy in combination with other protocols that leverage on-chain points and intersections (like [Ogmios' chain-sync](https://ogmios.dev/mini-protocols/local-chain-sync/)). 
 
   - `GET v1/checkpoints/{slot-no}[?strict]` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getCheckpointBySlot)
+
+<br/>
+
+- [📌 #35](https://github.com/CardanoSolutions/kupo/issues/35) - New HTTP header `X-Most-Recent-Checkpoint` to every(successful) response which contains the slot number of the current database most recent checkpoint. This allows client to know which slot a certain query is accurate of. 
 
 #### Changed
 

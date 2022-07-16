@@ -17,6 +17,7 @@ import Kupo.Data.Cardano
     , headerHashFromText
     , pointFromText
     , slotNoFromText
+    , slotNoToText
     )
 import Kupo.Data.Cardano
     ( datumHashToText )
@@ -25,7 +26,7 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
-    ( genDatumHash )
+    ( genDatumHash, genSlotNo )
 import Test.QuickCheck
     ( Gen, arbitrary, forAll, property, vectorOf, (===) )
 
@@ -42,9 +43,12 @@ spec = parallel $ do
                     Just{}  -> property True
                     Nothing -> property False
 
-    context "slotNoFromText" $ do
+    context "slotNoFromText ↔ slotNoToText" $ do
         prop "forall (s :: Word64). slotNoFromText (show s) === Just{}" $ \(s :: Word64) ->
             slotNoFromText (show s) === Just (SlotNo s)
+        prop "forall (s :: SlotNo). slotNoFromText (slotNoToText s) === Just{}" $
+            forAll genSlotNo $ \s ->
+                slotNoFromText (slotNoToText s) === Just s
 
     context "datumHashFromText ↔ datumHashToText" $ do
         prop "forall (x :: DatumHash). datumHashFromText (datumHashToText x) === x" $

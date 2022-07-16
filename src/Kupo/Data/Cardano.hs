@@ -104,6 +104,7 @@ module Kupo.Data.Cardano
       -- * SlotNo
     , SlotNo (..)
     , slotNoFromText
+    , slotNoToText
     , slotNoToJson
 
       -- * Hash
@@ -1018,6 +1019,10 @@ slotNoFromText txt = do
     (slotNo, remSlotNo) <- either (const Nothing) Just (T.decimal txt)
     guard (T.null remSlotNo)
     pure (SlotNo slotNo)
+
+slotNoToText :: SlotNo -> Text
+slotNoToText (SlotNo sl) =
+    show sl
 
 -- Hash
 

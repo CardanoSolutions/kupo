@@ -17,8 +17,6 @@ import Network.HTTP.Types.Status
 import Network.Wai
     ( Response, responseLBS, responseStream )
 
-import qualified Kupo.Data.Http.Default as Default
-
 import qualified Data.Aeson as Json
 import qualified Data.Binary.Builder as B
 import qualified Data.ByteString.Lazy as BL
@@ -49,11 +47,12 @@ responseJson status headers a =
 {-# INLINEABLE responseJson #-}
 
 responseStreamJson
-    :: (a -> Json.Encoding)
+    :: [Header]
+    -> (a -> Json.Encoding)
     -> ((a -> IO ()) -> IO () -> IO ())
     -> Response
-responseStreamJson encode callback = do
-    responseStream status200 Default.headers $ \write flush -> do
+responseStreamJson headers encode callback = do
+    responseStream status200 headers $ \write flush -> do
         ref <- newIORef True
         write openBracket
         callback
@@ -69,4 +68,3 @@ responseStreamJson encode callback = do
     separator isFirstResult
         | isFirstResult = mempty
         | otherwise     = B.putCharUtf8 ','
-

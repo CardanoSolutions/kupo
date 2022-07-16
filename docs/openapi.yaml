@@ -225,6 +225,21 @@ info:
     </p>
 
 components:
+  headers: &default-headers
+    Content-Type:
+      schema:
+        type: string
+        enum:
+          - "application/json;charset=utf-8"
+
+    X-Most-Recent-Checkpoint:
+      description: |
+        Kupo's most recent indexed checkpoint's slot number. This allows to know which slot a query is accurate of.
+      schema:
+        type: integer
+        minimum: 0
+
+
   schemas:
     Address_Shelley: &Address_Shelley
       title: Shelley+
@@ -588,6 +603,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
@@ -612,6 +628,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
@@ -634,6 +651,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
@@ -668,6 +686,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
@@ -692,6 +711,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
@@ -717,6 +737,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
@@ -737,6 +758,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
@@ -760,6 +782,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
@@ -801,6 +824,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
@@ -823,6 +847,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
@@ -840,6 +865,7 @@ paths:
       responses:
         200:
           description: OK
+          headers: *default-headers
           content:
             "application/json;charset=utf-8":
               schema:
