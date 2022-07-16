@@ -16,7 +16,7 @@ See the [user-manual 📖](https://cardanosolutions.github.io/kupo).
 
 # Roadmap 
 
-See [projects 🎯](https://github.com/CardanoSolutions/kupo/projects).
+See [projects 🎯](https://github.com/CardanoSolutions/kupo/projects?type=classic).
 
 # System Requirements
 
