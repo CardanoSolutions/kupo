@@ -843,7 +843,7 @@ unsafePolicyIdFromBytes =
 policyIdFromText :: Text -> Maybe PolicyId
 policyIdFromText (encodeUtf8 -> bytes) = do
     -- NOTE: assuming base16 encoding, hence '2 *'
-    guard (BS.length bytes <= 2 * digestSize @Blake2b_224)
+    guard (BS.length bytes == 2 * digestSize @Blake2b_224)
     unsafePolicyIdFromBytes <$> eitherToMaybe (decodeBase16 bytes)
 
 policyIdToText :: PolicyId -> Text
