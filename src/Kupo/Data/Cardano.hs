@@ -42,7 +42,7 @@ module Kupo.Data.Cardano
     , Output
     , mkOutput
     , getAddress
-    , getDatumHash
+    , getDatum
     , getValue
 
     -- * Value
@@ -68,10 +68,26 @@ module Kupo.Data.Cardano
     , assetNameFromText
     , assetNameToText
 
+    -- * Datum
+    , Datum
+    , fromBinaryData
+    , fromDatumHash
+    , noDatum
+    , hashDatum
+
     -- * DatumHash
     , DatumHash
+    , datumHashFromText
+    , datumHashToText
+    , datumHashFromBytes
     , unsafeDatumHashFromBytes
     , datumHashToJson
+
+    -- * BinaryData
+    , BinaryData
+    , binaryDataToJson
+    , binaryDataFromBytes
+    , unsafeBinaryDataFromBytes
 
       -- * Address
     , Address
@@ -116,6 +132,7 @@ module Kupo.Data.Cardano
       -- * Tip
     , Tip (..)
     , getTipSlotNo
+    , distanceToTip
 
       -- * WithOrigin
     , WithOrigin (..)
@@ -156,7 +173,7 @@ import Data.Binary.Put
 import Data.ByteString.Bech32
     ( HumanReadablePart (..), encodeBech32 )
 import Data.Maybe.Strict
-    ( StrictMaybe (..) )
+    ( StrictMaybe (..), strictMaybeToMaybe )
 import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
 import GHC.Records
@@ -202,6 +219,7 @@ import qualified Cardano.Ledger.Alonzo.Data as Ledger
 import qualified Cardano.Ledger.Alonzo.Tx as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxBody as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxSeq as Ledger.Alonzo
+import qualified Cardano.Ledger.Alonzo.TxWitness as Ledger
 import qualified Cardano.Ledger.Babbage.TxBody as Ledger.Babbage
 import qualified Cardano.Ledger.BaseTypes as Ledger
 import qualified Cardano.Ledger.Block as Ledger
@@ -249,6 +267,10 @@ class IsBlock (block :: Type) where
         :: (OutputReference -> Output -> Maybe result)
         -> BlockBody block
         -> [result]
+
+    witnessedDatums
+        :: BlockBody block
+        -> Map DatumHash BinaryData
 
 -- Block
 
@@ -416,6 +438,25 @@ instance IsBlock Block where
                         Just result ->
                             result : results
 
+    witnessedDatums
+        :: Transaction
+        -> Map DatumHash BinaryData
+    witnessedDatums = \case
+        TransactionByron{} ->
+            mempty
+        TransactionShelley{} ->
+            mempty
+        TransactionAllegra{} ->
+            mempty
+        TransactionMary{} ->
+            mempty
+        TransactionAlonzo tx ->
+            fromAlonzoData <$>
+                Ledger.unTxDats (getField @"txdats" (getField @"wits" tx))
+        TransactionBabbage tx ->
+            fromBabbageData <$>
+                Ledger.unTxDats (getField @"txdats" (getField @"wits" tx))
+
 -- TransactionId
 
 type TransactionId =
@@ -538,21 +579,14 @@ type Output' crypto =
 mkOutput
     :: Address
     -> Value
-    -> Maybe DatumHash
+    -> Datum
     -> Output
-mkOutput address value = \case
-    Nothing ->
-        Ledger.Babbage.TxOut
-            address
-            value
-            Ledger.Babbage.NoDatum
-            SNothing
-    Just datumHash ->
-        Ledger.Babbage.TxOut
-            address
-            value
-            (Ledger.Babbage.DatumHash datumHash)
-            SNothing
+mkOutput address value datum =
+    Ledger.Babbage.TxOut
+        address
+        value
+        datum
+        SNothing
 
 fromShelleyOutput
     :: forall (era :: Type -> Type) crypto.
@@ -606,26 +640,48 @@ fromByronOutput (Ledger.Byron.TxOut address value) =
 getAddress
     :: Output
     -> Address
-getAddress (Ledger.Babbage.TxOut address _value _datumHash _refScript) =
+getAddress (Ledger.Babbage.TxOut address _value _datum _refScript) =
     address
 
 getValue
     :: Output
     -> Value
-getValue (Ledger.Babbage.TxOut _address value _datumHash _refScript) =
+getValue (Ledger.Babbage.TxOut _address value _datum _refScript) =
     value
 
-getDatumHash
+getDatum
     :: Output
+    -> Datum
+getDatum (Ledger.Babbage.TxOut _address _value datum _refScript) =
+    datum
+
+-- Datum
+
+type Datum =
+    Ledger.Datum (BabbageEra StandardCrypto)
+
+noDatum
+    :: Datum
+noDatum =
+    Ledger.NoDatum
+
+fromDatumHash
+    :: DatumHash
+    -> Datum
+fromDatumHash =
+    Ledger.DatumHash
+
+fromBinaryData
+    :: BinaryData
+    -> Datum
+fromBinaryData =
+    Ledger.Datum
+
+hashDatum
+    :: Datum
     -> Maybe DatumHash
-getDatumHash (Ledger.Babbage.TxOut _address _value datumHash _refScript) =
-    case datumHash of
-        Ledger.Babbage.NoDatum ->
-            Nothing
-        Ledger.Babbage.Datum{} ->
-            Nothing
-        Ledger.Babbage.DatumHash h ->
-            Just h
+hashDatum =
+    strictMaybeToMaybe . Ledger.datumDataHash
 
 -- DatumHash
 
@@ -634,6 +690,29 @@ type DatumHash =
 
 type DatumHash' crypto =
     Ledger.DataHash crypto
+
+datumHashFromBytes
+    :: ByteString
+    -> Maybe DatumHash
+datumHashFromBytes bytes
+    | BS.length bytes == (digestSize @Blake2b_256) =
+        Just (unsafeDatumHashFromBytes bytes)
+    | otherwise =
+        Nothing
+
+datumHashToText
+    :: DatumHash
+    -> Text
+datumHashToText =
+    encodeBase16 . Ledger.originalBytes
+
+datumHashFromText
+    :: Text
+    -> Maybe DatumHash
+datumHashFromText str =
+    case datumHashFromBytes <$> decodeBase16 (encodeUtf8 str) of
+        Right (Just hash) -> Just hash
+        _ -> Nothing
 
 unsafeDatumHashFromBytes
     :: forall crypto.
@@ -653,6 +732,42 @@ datumHashToJson
     -> Json.Encoding
 datumHashToJson =
     hashToJson . Ledger.extractHash
+
+-- BinaryData
+
+type BinaryData =
+    Ledger.BinaryData (BabbageEra StandardCrypto)
+
+binaryDataToJson
+    :: BinaryData
+    -> Json.Encoding
+binaryDataToJson =
+    Json.text . encodeBase16 . Ledger.originalBytes
+
+binaryDataFromBytes
+    :: ByteString
+    -> Maybe BinaryData
+binaryDataFromBytes =
+    either (const Nothing) Just . Ledger.makeBinaryData . toShort
+
+unsafeBinaryDataFromBytes
+    :: HasCallStack
+    => ByteString
+    -> BinaryData
+unsafeBinaryDataFromBytes =
+    either (error . toText) identity . Ledger.makeBinaryData . toShort
+
+fromAlonzoData
+    :: Ledger.Data (AlonzoEra StandardCrypto)
+    -> BinaryData
+fromAlonzoData =
+    Ledger.dataToBinaryData . coerce
+
+fromBabbageData
+    :: Ledger.Data (BabbageEra StandardCrypto)
+    -> BinaryData
+fromBabbageData =
+    Ledger.dataToBinaryData
 
 -- Value
 
@@ -835,6 +950,11 @@ getTipSlotNo tip =
     case Ouroboros.getTipSlotNo tip of
         Origin -> SlotNo 0
         At sl  -> sl
+
+distanceToTip :: Tip Block -> SlotNo -> Word64
+distanceToTip (getTipSlotNo -> SlotNo a) (SlotNo b)
+    | a > b = a - b
+    | otherwise = b - a
 
 -- Point
 

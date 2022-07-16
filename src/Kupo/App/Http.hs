@@ -29,20 +29,26 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
-    ( SlotNo (..)
+    ( DatumHash
+    , SlotNo (..)
+    , binaryDataToJson
+    , datumHashFromText
     , getPointSlotNo
     , hasAssetId
     , hasPolicyId
     , pointToJson
     , slotNoFromText
     )
+import Kupo.Data.Configuration
+    ( InputManagement )
 import Kupo.Data.Database
     ( applyStatusFlag
+    , binaryDataFromRow
+    , datumHashToRow
     , patternToRow
     , patternToSql
     , pointFromRow
     , resultFromRow
-    , statusFlagFromQueryParams
     )
 import Kupo.Data.Health
     ( Health )
@@ -54,6 +60,8 @@ import Kupo.Data.Http.Response
     ( responseJson, responseJsonEncoding, responseStreamJson )
 import Kupo.Data.Http.Status
     ( Status (..), mkStatus )
+import Kupo.Data.Http.StatusFlag
+    ( hideTransientGhostInputs, statusFlagFromQueryParams )
 import Kupo.Data.Pattern
     ( Pattern (..)
     , Result (..)
@@ -91,16 +99,17 @@ import qualified Network.Wai.Handler.Warp as Warp
 
 httpServer
     :: Tracer IO TraceHttpServer
+    -> InputManagement
     -> (forall a. (Database IO -> IO a) -> IO a)
     -> TVar IO [Pattern]
     -> IO Health
     -> String
     -> Int
     -> IO ()
-httpServer tr withDatabase patternsVar readHealth host port =
+httpServer tr inputManagement withDatabase patternsVar readHealth host port =
     Warp.runSettings settings
         $ tracerMiddleware tr
-        $ app withDatabase patternsVar readHealth
+        $ app inputManagement withDatabase patternsVar readHealth
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -113,11 +122,12 @@ httpServer tr withDatabase patternsVar readHealth host port =
 --
 
 app
-    :: (forall a. (Database IO -> IO a) -> IO a)
+    :: InputManagement
+    -> (forall a. (Database IO -> IO a) -> IO a)
     -> TVar IO [Pattern]
     -> IO Health
     -> Application
-app withDatabase patternsVar readHealth req send =
+app inputManagement withDatabase patternsVar readHealth req send =
     case pathInfo req of
         ("v1" : "health" : args) ->
             routeHealth (requestMethod req, args)
@@ -127,6 +137,9 @@ app withDatabase patternsVar readHealth req send =
 
         ("v1" : "matches" : args) ->
             routeMatches (requestMethod req, args)
+
+        ("v1" : "datums" : args) ->
+            routeDatums (requestMethod req, args)
 
         ("v1" : "patterns" : args) ->
             routePatterns (requestMethod req, args)
@@ -159,7 +172,7 @@ app withDatabase patternsVar readHealth req send =
     routeMatches = \case
         ("GET", args) ->
             withDatabase (send .
-                handleGetMatches (patternFromPath args) (queryString req)
+                handleGetMatches inputManagement (patternFromPath args) (queryString req)
             )
         ("DELETE", args) ->
             withDatabase (send <=<
@@ -168,11 +181,23 @@ app withDatabase patternsVar readHealth req send =
         (_, _) ->
             send Errors.methodNotAllowed
 
+    routeDatums = \case
+        ("GET", [arg]) ->
+            withDatabase (send <=<
+                handleGetDatum (datumHashFromText arg)
+            )
+        ("GET", _) ->
+            send Errors.notFound
+        (_, _) ->
+            send Errors.methodNotAllowed
+
     routePatterns = \case
         ("GET", []) ->
-            readTVarIO patternsVar >>= send . handleGetPatterns
+            readTVarIO patternsVar >>= send .
+                handleGetPatterns
         ("GET", args) ->
-            readTVarIO patternsVar >>= send . (handleGetMatchingPatterns (patternFromPath args))
+            readTVarIO patternsVar >>= send .
+                handleGetMatchingPatterns (patternFromPath args)
         ("PUT", args) ->
             withDatabase (send <=<
                 handlePutPattern patternsVar (patternFromPath args)
@@ -243,18 +268,21 @@ handleGetCheckpointBySlot mSlotNo query Database{..} =
 --
 
 handleGetMatches
-    :: Maybe Text
+    :: InputManagement
+    -> Maybe Text
     -> Http.Query
     -> Database IO
     -> Response
-handleGetMatches patternQuery queryParams Database{..} = do
+handleGetMatches inputManagement patternQuery queryParams Database{..} = do
     case (patternQuery >>= patternFromText, statusFlagFromQueryParams queryParams) of
         (Nothing, _) ->
             Errors.invalidPattern
         (Just{}, Nothing) ->
             Errors.invalidStatusFlag
         (Just p, Just statusFlag) -> do
-            let query = applyStatusFlag statusFlag (patternToSql p)
+            let query = statusFlag
+                    & hideTransientGhostInputs inputManagement
+                    & (`applyStatusFlag` (patternToSql p))
             case filterMatchesBy queryParams of
                 Nothing ->
                     Errors.invalidMatchFilter
@@ -297,6 +325,29 @@ handleDeleteMatches patternsVar query Database{..} = do
                 B.toLazyByteString $ Json.fromEncoding $ Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)
                     ]
+
+--
+-- /v1/datums
+--
+
+handleGetDatum
+    :: Maybe DatumHash
+    -> Database IO
+    -> IO Response
+handleGetDatum datumArg Database{..} = do
+    case datumArg of
+        Nothing ->
+            pure Errors.malformedDatumHash
+        Just datumHash -> do
+            datum <- runTransaction $ getBinaryData (datumHashToRow datumHash) binaryDataFromRow
+            pure $ responseLBS status200 Default.headers $
+                B.toLazyByteString $ Json.fromEncoding $ case datum of
+                    Nothing ->
+                        Json.null_
+                    Just d  ->
+                        Json.pairs $ mconcat
+                            [ Json.pair "datum" (binaryDataToJson d)
+                            ]
 
 --
 -- /v1/patterns

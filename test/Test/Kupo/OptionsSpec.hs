@@ -14,14 +14,14 @@ import Kupo.Prelude
 
 import Data.List
     ( isInfixOf )
-import Kupo.Configuration
+import Kupo.Control.MonadLog
+    ( Severity (..), TracerDefinition (..), defaultTracers )
+import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
     , InputManagement (..)
     , WorkDir (..)
     )
-import Kupo.Control.MonadLog
-    ( Severity (..), TracerDefinition (..), defaultTracers )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..), Pattern (..) )
 import Kupo.Options

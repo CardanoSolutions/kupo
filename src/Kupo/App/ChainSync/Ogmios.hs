@@ -61,9 +61,12 @@ connect
     -> IO ()
 connect ConnectionStatusToggle{toggleConnected} host port action =
     WS.runClientWith host port "/"
-        WS.defaultConnectionOptions
-        [("Sec-WebSocket-Protocol", "ogmios.v1:compact")]
-        (\ws -> toggleConnected >> action ws)
+        -- TODO: Try to negotiate compact mode v2 once available.
+        --
+        -- See [ogmios#237](https://github.com/CardanoSolutions/ogmios/issues/237)
+        --
+        -- [("Sec-WebSocket-Protocol", "ogmios.v1:compact")]
+        WS.defaultConnectionOptions [] (\ws -> toggleConnected >> action ws)
 
 data CannotResolveAddressException = CannotResolveAddress
     { host :: String

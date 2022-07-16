@@ -2,30 +2,12 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-
-module Kupo.Configuration
-    (
-    -- * Configuration
-      Configuration (..)
-    , WorkDir (..)
-    , InputManagement (..)
-    , ChainProducer (..)
-
-    -- * NetworkParameters
-    , NetworkParameters (..)
-    , parseNetworkParameters
-
-    -- ** Parameters Components
-    , NetworkMagic (..)
-    , EpochSlots (..)
-    , SystemStart (..)
-    , mkSystemStart
+module Kupo.App.Configuration
+    ( -- * NetworkParameters
+      parseNetworkParameters
 
     -- * Application Setup
     , startOrResume
@@ -41,108 +23,31 @@ import Kupo.Prelude
 
 import Control.Monad.Trans.Except
     ( throwE, withExceptT )
-import Data.Aeson
-    ( (.:) )
 import Data.Aeson.Lens
     ( key, _String )
-import Data.Time.Clock.POSIX
-    ( posixSecondsToUTCTime )
-import Data.Time.Format.ISO8601
-    ( iso8601ParseM )
 import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
-import Kupo.Control.MonadOuroboros
-    ( EpochSlots (..), NetworkMagic (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
     ( Block, Point (..), SlotNo (..), getPointSlotNo )
+import Kupo.Data.Configuration
+    ( Configuration (..), NetworkParameters (..) )
 import Kupo.Data.Database
     ( patternFromRow, patternToRow, pointFromRow )
 import Kupo.Data.Pattern
     ( Pattern (..), patternToText )
-import Ouroboros.Consensus.BlockchainTime.WallClock.Types
-    ( SystemStart (..) )
 import System.FilePath.Posix
     ( replaceFileName )
 
 import qualified Data.Aeson as Json
 import qualified Data.Yaml as Yaml
 
-data Configuration = Configuration
-    { chainProducer :: !ChainProducer
-    , workDir :: !WorkDir
-    , serverHost :: !String
-    , serverPort :: !Int
-    , since :: !(Maybe (Point Block))
-    , patterns :: ![Pattern]
-    , inputManagement :: !InputManagement
-    } deriving (Generic, Eq, Show)
 
-data ChainProducer
-    = CardanoNode
-        { nodeSocket :: !FilePath
-        , nodeConfig :: !FilePath
-        }
-    | Ogmios
-        { ogmiosHost :: !String
-        , ogmiosPort :: !Int
-        }
-    deriving (Generic, Eq, Show)
-
-data WorkDir
-    = Dir FilePath
-    | InMemory
-    deriving (Generic, Eq, Show)
-
--- | What to do with inputs that are spent. There are two options:
---
--- - 'Mark': keeps all spent inputs in the index, but marks them as spent or
--- unspent. Clients may then query filtered results based on their status.
---
--- - 'Remove': which deletes any spent inputs from the index, keeping it
--- concise.
---
--- There are use-cases for both behavior, hence why is is a user-configured
--- behavior. The default should be the less destructive one, which is 'Mark'.
-data InputManagement
-    = MarkSpentInputs
-    | RemoveSpentInputs
-    deriving (Generic, Eq, Show)
-
-data NetworkParameters = NetworkParameters
-    { networkMagic :: !NetworkMagic
-    , systemStart :: !SystemStart
-    , slotsPerEpoch :: !EpochSlots
-    } deriving stock (Generic, Eq, Show)
-      deriving anyclass (ToJSON)
-
-deriving newtype instance ToJSON EpochSlots
-deriving newtype instance ToJSON SystemStart
-deriving newtype instance ToJSON NetworkMagic
-
-instance FromJSON NetworkParameters where
-    parseJSON = Json.withObject "NetworkParameters" $ \obj -> do
-        nm <- obj .: "networkMagic"
-        ss <- obj .: "systemStart" >>= parseISO8601
-        k  <- obj .: "protocolConsts" >>= Json.withObject "protocolConst" (.: "k")
-        pure NetworkParameters
-            { networkMagic =
-                NetworkMagic (fromIntegral @Integer nm)
-            , systemStart =
-                SystemStart ss
-            , slotsPerEpoch  =
-                EpochSlots (fromIntegral @Integer $ 10 * k)
-            }
-      where
-        parseISO8601 (toString @Text -> str) =
-            case iso8601ParseM str of
-                Nothing -> fail "couldn't parse ISO-8601 date-time."
-                Just t  -> pure t
 
 parseNetworkParameters :: FilePath -> IO NetworkParameters
 parseNetworkParameters configFile = runOrDie $ do
@@ -169,13 +74,6 @@ parseNetworkParameters configFile = runOrDie $ do
 
     decodeYaml :: FromJSON a => FilePath -> ExceptT String IO a
     decodeYaml = withExceptT prettyParseException . ExceptT . Yaml.decodeFileEither
-
--- | Construct a 'SystemStart' from a number of seconds.
-mkSystemStart :: Int -> SystemStart
-mkSystemStart =
-    SystemStart . posixSecondsToUTCTime . toPicoResolution . toEnum
-  where
-    toPicoResolution = (*1000000000000)
 
 --
 -- Application Bootstrapping
@@ -208,14 +106,6 @@ startOrResume tr configuration Database{..} = do
                 , oldestCheckpoint
                 }
 
-    nSpent <- runTransaction countSpentInputs
-    case inputManagement of
-        RemoveSpentInputs | nSpent > 0 -> do
-            logWith tr errConflictingUtxoManagementOption
-            throwIO ConflictingOptionsException
-        _ ->
-            pure ()
-
     case (since, checkpoints) of
         (Nothing, []) -> do
             logWith tr errNoStartingPoint
@@ -232,7 +122,7 @@ startOrResume tr configuration Database{..} = do
             pure [pt]
 
   where
-    Configuration{since, inputManagement} = configuration
+    Configuration{since} = configuration
 
     errNoStartingPoint = ConfigurationInvalidOrMissingOption
         "No '--since' provided and no checkpoints found in the \
@@ -247,17 +137,6 @@ startOrResume tr configuration Database{..} = do
         \--since point? Please dispel the confusion by either choosing \
         \a different starting point (or none at all) or by using a \
         \fresh new database."
-
-    errConflictingUtxoManagementOption = ConfigurationInvalidOrMissingOption
-        "It appears that the application was restarted with a conflicting \
-        \behavior w.r.t. UTxO management. Indeed, `--prune-utxo` indicates \
-        \that inputs should be pruned from the database when spent. However \
-        \inputs marked as 'spent' were found in the database, which suggests \
-        \that it was first constructed without the flag `--prune-utxo`. \
-        \Continuing would lead to a inconsistent state and is therefore \
-        \prevented. \n\nShould you still want to proceed, make sure to first \
-        \prune all spent inputs from the database using the following \
-        \query: \n\n\t DELETE FROM inputs WHERE spent_at IS NOT NULL;"
 
 newPatternsCache
     :: forall m.

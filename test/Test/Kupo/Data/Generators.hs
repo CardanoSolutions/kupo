@@ -10,10 +10,12 @@ import Kupo.Prelude
 
 import Kupo.Data.Cardano
     ( Address
+    , BinaryData
     , Blake2b_224
     , Blake2b_256
     , Block
     , pattern BlockPoint
+    , Datum
     , DatumHash
     , HeaderHash
     , OutputIndex
@@ -24,7 +26,11 @@ import Kupo.Data.Cardano
     , Value
     , assetNameMaxLength
     , digestSize
+    , fromBinaryData
+    , fromDatumHash
     , mkOutputReference
+    , noDatum
+    , unsafeBinaryDataFromBytes
     , unsafeDatumHashFromBytes
     , unsafeHeaderHashFromBytes
     , unsafeTransactionIdFromBytes
@@ -77,6 +83,26 @@ genDatumHash :: Gen DatumHash
 genDatumHash =
     unsafeDatumHashFromBytes . BS.pack <$> vector (digestSize @Blake2b_256)
 
+genDatum :: Gen Datum
+genDatum = frequency
+    [ (1, pure noDatum)
+    , (5, fromDatumHash <$> genDatumHash)
+    , (5, fromBinaryData <$> genBinaryData)
+    ]
+
+genBinaryData :: Gen BinaryData
+genBinaryData = elements
+    [ "d87980"
+        & unsafeDecodeBase16
+        & unsafeBinaryDataFromBytes
+    , "0e"
+        & unsafeDecodeBase16
+        & unsafeBinaryDataFromBytes
+    , "9f43666f6fd905239fa0ffff"
+        & unsafeDecodeBase16
+        & unsafeBinaryDataFromBytes
+    ]
+
 genHeaderHash :: Gen (HeaderHash Block)
 genHeaderHash = do
     unsafeHeaderHashFromBytes . BS.pack <$> vector (digestSize @Blake2b_256)
@@ -126,7 +152,7 @@ genResult = Result
     <$> genOutputReference
     <*> genAddress
     <*> genValue
-    <*> frequency [(1, pure Nothing), (5, Just <$> genDatumHash)]
+    <*> genDatum
     <*> genNonGenesisPoint
     <*> frequency [(1, pure Nothing), (5, Just <$> genNonGenesisPoint)]
 

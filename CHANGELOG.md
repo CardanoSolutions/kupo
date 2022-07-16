@@ -2,6 +2,8 @@
 
 #### Added
 
+- [📌 #28](https://github.com/CardanoSolutions/kupo/issues/28) - Support for the Babbage's era, including inline-datums.
+
 - [📌 #17](https://github.com/CardanoSolutions/kupo/issues/20) - New command-line flag: `--prune-utxo`. When set, inputs that are spent on-chain will be removed from the index. Once-synced, 
   the index therefore only contain the current ledger UTxO set. When not set, spent inputs are kept in the index but are now marked accordingly to record if and when they've spent.
 
@@ -9,14 +11,26 @@
 
   Consequently, there's also a new (possibly `null`) field `spent_at` returned for each match result. When set, it indicates the slot in which the input was found being spent. 
 
-  - `GET v1/matches[?(spent|unspent)]` → [🕮  API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches)
+  - `GET v1/matches[?(spent|unspent)]` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches)
   - `GET v1/matches/{pattern-fragment}[?(spent|unspent)]` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getMatches1Ary)
   - `GET v1/matches/{pattern-fragment}/{pattern-fragment}[?(spent|unspent)]` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getMatches2Ary)
 
-[📌 #24](https://github.com/CardanoSolutions/kupo/issues/24) - New HTTP endpoint to retrieve a point on-chain from a given slot. The endpoint is flexible and allows for retrieving the ancestor 
+<br/>
+
+- [📌 #21](https://github.com/CardanoSolutions/kupo/issues/21) New HTTP endpoint to retrieve Plutus' datum pre-image from a datum hash digest. Behind the scene, Kupo now track any datum found in transactions' witnesses set or output (inline datums). Note that, datums that aren't associated to any existing pattern matches are eventually garbage-collected. 
+  - `GET v1/datums/{datum-hash}` [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getDatumByHash)
+
+<br/>
+
+- [📌 #40](https://github.com/CardanoSolutions/kupo/issues/40) New HTTP endpoint to retrieve patterns that _includes_ a given pattern. Useful to check if an address is matched by a given configuration. 
+  - `GET v1/patterns/{pattern-fragment}[/{pattern-fragment}]` [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/matchPattern1Ary)
+
+<br/>
+
+- [📌 #24](https://github.com/CardanoSolutions/kupo/issues/24) - New HTTP endpoint to retrieve a point on-chain from a given slot. The endpoint is flexible and allows for retrieving the ancestor 
   of a known point very easily. This is handy in combination with other protocols that leverage on-chain points and intersections (like [Ogmios' chain-sync](https://ogmios.dev/mini-protocols/local-chain-sync/)). 
 
-  - `GET v1/checkpoints/{slot-no}[?strict]` → [🕮  API Reference](https://cardanosolutions.github.io/kupo/#operation/getCheckpointBySlot)
+  - `GET v1/checkpoints/{slot-no}[?strict]` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getCheckpointBySlot)
 
 #### Changed
 

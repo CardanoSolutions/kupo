@@ -6,18 +6,19 @@
 -- because it's test code and, having it fail would be instantly caught.
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
-module Test.Kupo.ConfigurationSpec
+module Test.Kupo.App.ConfigurationSpec
     ( spec
     ) where
 
 import Kupo.Prelude
 
-import Kupo.Configuration
+import Kupo.App.Configuration
+    ( parseNetworkParameters )
+import Kupo.Data.Configuration
     ( EpochSlots (..)
     , NetworkMagic (..)
     , NetworkParameters (..)
     , mkSystemStart
-    , parseNetworkParameters
     )
 import Test.Hspec
     ( Spec, context, parallel, shouldBe, specify )

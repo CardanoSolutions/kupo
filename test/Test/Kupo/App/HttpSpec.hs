@@ -40,10 +40,14 @@ import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
+import Kupo.Data.Configuration
+    ( InputManagement (..) )
 import Kupo.Data.Database
-    ( patternToRow, pointToRow, resultToRow )
+    ( binaryDataToRow, patternToRow, pointToRow, resultToRow )
 import Kupo.Data.Health
     ( Health )
+import Kupo.Data.Pattern
+    ( Pattern )
 import Network.HTTP.Media.MediaType
     ( MediaType, (//), (/:) )
 import Network.HTTP.Media.RenderHeader
@@ -55,9 +59,15 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
-    ( genHealth, genNonGenesisPoint, genPattern, genResult )
+    ( genBinaryData
+    , genDatumHash
+    , genHealth
+    , genNonGenesisPoint
+    , genPattern
+    , genResult
+    )
 import Test.QuickCheck
-    ( arbitrary, counterexample, elements, generate, listOf1 )
+    ( arbitrary, counterexample, elements, generate, listOf1, oneof )
 import Test.QuickCheck.Monadic
     ( assert, monadicIO, monitor, run )
 
@@ -65,8 +75,6 @@ import qualified Data.Aeson as Json
 import qualified Data.OpenApi as OpenApi
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
-import Kupo.Data.Pattern
-    ( Pattern )
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.Status as Http
 import qualified Network.Wai as Wai
@@ -156,6 +164,14 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
+        session specification get "/v1/datums/{datum-hash}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "GET" }
+                & flip Wai.setPath "/v1/datums/309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
         session specification get "/v1/patterns" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/patterns"
@@ -240,6 +256,14 @@ spec = do
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "🕱 GET /v1/datums/{datum-hash}" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/v1/datums/foo"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
   where
     noWildcard :: [Pattern]
     noWildcard =
@@ -255,7 +279,12 @@ spec = do
 newStubbedApplication :: [Pattern] -> IO Application
 newStubbedApplication patterns = do
     patternsVar <- newTVarIO patterns
-    pure $ app (\callback -> callback databaseStub) patternsVar healthStub
+    inputManagement <- generate $ elements [MarkSpentInputs, RemoveSpentInputs]
+    pure $ app
+        inputManagement
+        (\callback -> callback databaseStub)
+        patternsVar
+        healthStub
 
 healthStub :: IO Health
 healthStub =
@@ -274,8 +303,8 @@ databaseStub = Database
         \_ -> return ()
     , markInputsByReference =
         \_ _ -> return ()
-    , countSpentInputs = lift $ do
-        generate arbitrary
+    , pruneInputs =
+        liftIO (generate arbitrary)
     , insertCheckpoints =
         \_ -> return ()
     , listCheckpointsDesc = \mk -> lift $ do
@@ -288,6 +317,15 @@ databaseStub = Database
         \_ -> liftIO (abs <$> generate arbitrary)
     , listPatterns = \mk -> lift $ do
         fmap (mk . patternToRow) <$> generate (listOf1 genPattern)
+    , insertBinaryData =
+        \_ -> return ()
+    , getBinaryData =
+        \_ mk -> liftIO $ generate $ do
+            binaryDataHash <- genDatumHash
+            binaryData <- oneof [pure Nothing, Just <$> genBinaryData]
+            pure $ mk . binaryDataToRow binaryDataHash <$> binaryData
+    , pruneBinaryData =
+        liftIO (generate arbitrary)
     , rollbackTo =
         \_ -> return Nothing
     , runTransaction = \r ->

@@ -23,17 +23,33 @@ module Kupo.Data.Database
     , patternFromRow
     , patternToSql
 
+      -- * Datum / BinaryData
+    , datumToRow
+    , datumFromRow
+    , datumHashToRow
+    , binaryDataToRow
+    , binaryDataFromRow
+
       -- * Filtering
-    , StatusFlag (..)
-    , statusFlagFromQueryParams
-    , isNoStatusFlag
     , applyStatusFlag
     ) where
 
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( Block, SlotNo (..), StandardCrypto )
+    ( BinaryData
+    , Block
+    , Datum
+    , DatumHash
+    , SlotNo (..)
+    , StandardCrypto
+    , hashDatum
+    , noDatum
+    , unsafeBinaryDataFromBytes
+    , unsafeDatumHashFromBytes
+    )
+import Kupo.Data.Http.StatusFlag
+    ( StatusFlag (..) )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
@@ -49,8 +65,9 @@ import Ouroboros.Network.Block
     ( pattern BlockPoint, pattern GenesisPoint, Point (..) )
 
 import qualified Cardano.Ledger.Address as Ledger
+import qualified Cardano.Ledger.Alonzo.Data as Ledger
+import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Kupo.Control.MonadDatabase as DB
-import qualified Network.HTTP.Types.URI as Http
 
 --
 -- Checkpoint
@@ -85,12 +102,18 @@ resultFromRow
     => DB.Input
     -> Result
 resultFromRow row = Result
-    { outputReference = unsafeDeserialize' (DB.outputReference row)
-    , address = (unsafeAddressFromBytes . unsafeDecodeBase16)  (DB.address row)
-    , value = unsafeDeserialize' (DB.value row)
-    , datumHash = unsafeDeserialize' <$> (DB.datumHash row)
-    , createdAt = pointFromRow (DB.Checkpoint (DB.createdAtHeaderHash row) (DB.createdAtSlotNo row))
-    , spentAt = pointFromRow <$> (DB.Checkpoint <$> DB.spentAtHeaderHash row <*> DB.spentAtSlotNo row)
+    { outputReference =
+        unsafeDeserialize' (DB.outputReference row)
+    , address =
+        (unsafeAddressFromBytes . unsafeDecodeBase16)  (DB.address row)
+    , value =
+        unsafeDeserialize' (DB.value row)
+    , datum =
+        datumFromRow (DB.datumHash row) (DB.datum row)
+    , createdAt =
+        pointFromRow (DB.Checkpoint (DB.createdAtHeaderHash row) (DB.createdAtSlotNo row))
+    , spentAt =
+        pointFromRow <$> (DB.Checkpoint <$> DB.spentAtHeaderHash row <*> DB.spentAtSlotNo row)
     }
   where
     unsafeAddressFromBytes =
@@ -100,18 +123,74 @@ resultToRow
     :: Result
     -> DB.Input
 resultToRow Result{..} = DB.Input
-    { DB.outputReference = serialize' outputReference
-    , DB.address = encodeBase16 (Ledger.serialiseAddr address)
-    , DB.value = serialize' value
-    , DB.datumHash = serialize' <$> datumHash
-    , DB.createdAtSlotNo = DB.checkpointSlotNo createdAtRow
-    , DB.createdAtHeaderHash = DB.checkpointHeaderHash createdAtRow
-    , DB.spentAtSlotNo = DB.checkpointSlotNo <$> spentAtRow
-    , DB.spentAtHeaderHash = DB.checkpointHeaderHash <$> spentAtRow
+    { DB.outputReference =
+        serialize' outputReference
+    , DB.address =
+        encodeBase16 (Ledger.serialiseAddr address)
+    , DB.value =
+        serialize' value
+    , DB.datum =
+        datumToRow datum
+    , DB.datumHash =
+        datumHashToRow <$> hashDatum datum
+    , DB.createdAtSlotNo =
+        DB.checkpointSlotNo createdAtRow
+    , DB.createdAtHeaderHash =
+        DB.checkpointHeaderHash createdAtRow
+    , DB.spentAtSlotNo =
+        DB.checkpointSlotNo <$> spentAtRow
+    , DB.spentAtHeaderHash =
+        DB.checkpointHeaderHash <$> spentAtRow
     }
   where
     createdAtRow = pointToRow createdAt
     spentAtRow = pointToRow <$> spentAt
+
+--
+-- BinaryData / Datum
+--
+
+datumFromRow
+    :: Maybe ByteString
+    -> Maybe DB.BinaryData
+    -> Datum
+datumFromRow hash = \case
+    Just DB.BinaryData{..} ->
+        Ledger.Datum (unsafeBinaryDataFromBytes binaryData)
+    Nothing ->
+        maybe noDatum (Ledger.DatumHash . unsafeDatumHashFromBytes) hash
+
+datumToRow
+    :: Datum
+    -> Maybe DB.BinaryData
+datumToRow = \case
+    Ledger.NoDatum ->
+        Nothing
+    Ledger.DatumHash{} ->
+        Nothing
+    Ledger.Datum bin ->
+        Just (binaryDataToRow (Ledger.hashBinaryData bin) bin)
+
+datumHashToRow
+    :: DatumHash
+    -> ByteString
+datumHashToRow =
+    Ledger.originalBytes
+
+binaryDataToRow
+    :: DatumHash
+    -> BinaryData
+    -> DB.BinaryData
+binaryDataToRow hash bin = DB.BinaryData
+    { DB.binaryDataHash = datumHashToRow hash
+    , DB.binaryData = Ledger.originalBytes (Ledger.binaryDataToData bin)
+    }
+
+binaryDataFromRow
+    :: DB.BinaryData
+    -> BinaryData
+binaryDataFromRow =
+    unsafeBinaryDataFromBytes . DB.binaryData
 
 --
 -- Pattern
@@ -153,33 +232,11 @@ patternToSql = \case
 -- Filters
 --
 
-data StatusFlag
-    = NoStatusFlag
-    | StatusFlag (Text -> Text)
-
-isNoStatusFlag :: StatusFlag -> Bool
-isNoStatusFlag = \case
-    NoStatusFlag -> True
-    _ -> False
-
 applyStatusFlag :: StatusFlag -> Text -> Text
 applyStatusFlag = \case
-    NoStatusFlag  -> identity
-    StatusFlag fn -> fn
-
-statusFlagFromQueryParams
-    :: Http.Query
-    -> Maybe StatusFlag
-statusFlagFromQueryParams = \case
-    ("spent", val):rest -> do
-        guard (isNothing val)
-        guardM (isNoStatusFlag <$> statusFlagFromQueryParams rest)
-        pure (StatusFlag (<> " AND spent_at IS NOT NULL"))
-    ("unspent", val):rest -> do
-        guard (isNothing val)
-        guardM (isNoStatusFlag <$> statusFlagFromQueryParams rest)
-        pure (StatusFlag (<> " AND spent_at IS NULL"))
-    [] ->
-        Just NoStatusFlag
-    _:rest ->
-        statusFlagFromQueryParams rest
+    NoStatusFlag ->
+        identity
+    OnlyUnspent ->
+        (<> " AND spent_at IS NULL")
+    OnlySpent ->
+        (<> " AND spent_at IS NOT NULL")

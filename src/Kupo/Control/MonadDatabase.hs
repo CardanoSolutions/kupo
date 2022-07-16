@@ -20,6 +20,7 @@ module Kupo.Control.MonadDatabase
       -- * Database Entities
     , Input (..)
     , Checkpoint (..)
+    , BinaryData (..)
 
       -- * Tracer
     , TraceDatabase (..)
@@ -85,22 +86,32 @@ class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) wh
         -> (Database m -> m a)
         -> m a
 
-data ConnectionType = LongLived | ShortLived
-    deriving (Eq, Show)
-
+-- | A thin wrapper around the number of slots we consider to be the _longest
+-- rollback_. This impacts how long we have to keep data in the database before
+-- removing it, as well as how we create checkpoints when looking for chain
+-- intersection with the chain-producer.
 newtype LongestRollback = LongestRollback
     { getLongestRollback :: Word64
-    } deriving newtype (Integral, Real, Num, Enum, Ord, Eq)
+    } deriving newtype (Integral, Real, Num, Enum, Ord, Eq, Show)
+
+data ConnectionType = LongLived | ShortLived
+    deriving (Eq, Show)
 
 data Input = Input
     { outputReference :: ByteString
     , address :: Text
     , value :: ByteString
+    , datum :: Maybe BinaryData
     , datumHash :: Maybe ByteString
     , createdAtSlotNo :: Word64
     , createdAtHeaderHash :: ByteString
     , spentAtSlotNo :: Maybe Word64
     , spentAtHeaderHash :: Maybe ByteString
+    } deriving (Show)
+
+data BinaryData = BinaryData
+    { binaryDataHash :: ByteString
+    , binaryData :: ByteString
     } deriving (Show)
 
 data Checkpoint = Checkpoint
@@ -126,7 +137,7 @@ data Database (m :: Type -> Type) = Database
         -> Set ByteString  -- An output reference
         -> DBTransaction m ()
 
-    , countSpentInputs
+    , pruneInputs
         :: DBTransaction m Int
 
     , foldInputs
@@ -162,6 +173,19 @@ data Database (m :: Type -> Type) = Database
         :: forall result. ()
         => (Text -> result)
         -> DBTransaction m [result]
+
+    , insertBinaryData
+        :: [BinaryData]
+        -> DBTransaction m ()
+
+    , getBinaryData
+        :: forall binaryData. ()
+        => ByteString -- binary_data_hash
+        -> (BinaryData -> binaryData)
+        -> DBTransaction m (Maybe binaryData)
+
+    , pruneBinaryData
+        :: DBTransaction m Int
 
     , rollbackTo
         :: Word64  -- slot_no
@@ -243,20 +267,37 @@ mkDatabase :: LongestRollback -> (forall a. (Connection -> IO a) -> IO a) -> Dat
 mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
     { insertInputs = \inputs -> ReaderT $ \conn ->
         mapM_
-        (\Input{..} ->
-            insertRow @"inputs" conn
-                [ SQLBlob outputReference
-                , SQLText address
-                , SQLBlob value
-                , maybe SQLNull SQLBlob datumHash
-                , SQLInteger (fromIntegral createdAtSlotNo)
-                , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
-                ]
-        )
-        inputs
+            (\Input{..} -> do
+                insertRow @"inputs" conn
+                    [ SQLBlob outputReference
+                    , SQLText address
+                    , SQLBlob value
+                    , maybe SQLNull SQLBlob datumHash
+                    , SQLInteger (fromIntegral createdAtSlotNo)
+                    , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
+                    ]
+                case datum of
+                    Nothing ->
+                        pure ()
+                    Just BinaryData{..} ->
+                        insertRow @"binary_data" conn
+                            [ SQLBlob binaryDataHash
+                            , SQLBlob binaryData
+                            ]
+            )
+            inputs
 
     , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
-        execute_ conn (Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike)
+        let qry = Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike
+        execute_ conn qry
+        changes conn
+
+    , pruneInputs = ReaderT $ \conn -> do
+        let qry = "DELETE FROM inputs \
+                  \WHERE spent_at <= ( \
+                  \  (SELECT MAX(slot_no) FROM checkpoints) - ?\
+                  \)"
+        execute conn qry [SQLInteger longestRollback]
         changes conn
 
     , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
@@ -284,6 +325,10 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                   \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
                   \WHERE address " <> addressLike <> " ORDER BY created_at DESC"
 
+        -- TODO: Allow resolving datums on demand through a LEFT JOIN on binary_data.
+        --
+        -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
+        let datum = Nothing
         fold_ conn (Query qry) () $ \() -> \case
             [ SQLBlob outputReference
                 , SQLText address
@@ -296,14 +341,6 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 , _ -- LENGTH(address)
                 ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
-
-    , countSpentInputs = ReaderT $ \conn -> do
-        let qry = "SELECT COUNT(rowid) FROM inputs WHERE spent_at IS NOT NULL"
-        query_ conn qry >>= \case
-            [[SQLInteger n]] ->
-                return (fromIntegral n)
-            xs ->
-                throwIO $ UnexpectedRow (fromQuery qry) xs
 
     , insertCheckpoints = \cps -> ReaderT $ \conn ->
         mapM_
@@ -348,6 +385,37 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                     ]
             )
             patterns
+
+    , insertBinaryData = \bin -> ReaderT $ \conn ->
+        mapM_
+            (\BinaryData{..} ->
+                insertRow @"binary_data" conn
+                    [ SQLBlob binaryDataHash
+                    , SQLBlob binaryData
+                    ]
+            )
+            bin
+
+    , getBinaryData = \binaryDataHash mk -> ReaderT $ \conn -> do
+        let qry = "SELECT binary_data FROM binary_data \
+                  \WHERE binary_data_hash = ? \
+                  \LIMIT 1"
+        Sqlite.query conn qry (Only (SQLBlob binaryDataHash)) <&> \case
+            [[SQLBlob binaryData]] ->
+                Just (mk BinaryData{..})
+            _ ->
+                Nothing
+
+    , pruneBinaryData = ReaderT $ \conn -> do
+        let qry = " DELETE FROM binary_data \
+                  \ WHERE binary_data_hash IN (\
+                  \   SELECT binary_data_hash FROM binary_data\
+                  \   LEFT JOIN inputs \
+                  \   ON binary_data_hash = inputs.datum_hash \
+                  \   WHERE inputs.output_reference IS NULL\
+                  \ );"
+        execute_ conn qry
+        changes conn
 
     , deletePattern = \p -> ReaderT $ \conn -> do
         execute conn "DELETE FROM patterns WHERE pattern = ?"
@@ -486,6 +554,7 @@ migrations =
         , ( $(embedFile "db/v1.0.1/001.sql"),      mkSchemaMigration   )
         , ( $(embedFile "db/v2.0.0/001.sql"),      mkSchemaMigration   )
         , ( $(embedFile "db/v2.0.0/002.sql"),      mkSettingsMigration )
+        , ( $(embedFile "db/v2.0.0/003.sql"),      mkSchemaMigration   )
         ]
     ]
   where
@@ -535,6 +604,11 @@ data TraceDatabase where
     DatabaseRunningMigration
         :: { from :: Int, to :: Int }
         -> TraceDatabase
+    DatabaseBeginGarbageCollection
+        :: TraceDatabase
+    DatabaseExitGarbageCollection
+        :: { prunedInputs :: Int, prunedBinaryData :: Int }
+        -> TraceDatabase
     DatabaseRunningInMemory
         :: TraceDatabase
     deriving stock (Generic, Show)
@@ -545,7 +619,9 @@ instance ToJSON TraceDatabase where
 
 instance HasSeverityAnnotation TraceDatabase where
     getSeverityAnnotation = \case
-        DatabaseCurrentVersion{}    -> Info
-        DatabaseNoMigrationNeeded{} -> Debug
-        DatabaseRunningMigration{}  -> Notice
-        DatabaseRunningInMemory{}   -> Warning
+        DatabaseCurrentVersion{}         -> Info
+        DatabaseNoMigrationNeeded{}      -> Debug
+        DatabaseBeginGarbageCollection{} -> Debug
+        DatabaseExitGarbageCollection{}  -> Debug
+        DatabaseRunningMigration{}       -> Notice
+        DatabaseRunningInMemory{}        -> Warning

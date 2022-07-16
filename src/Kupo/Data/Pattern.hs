@@ -21,6 +21,7 @@ module Kupo.Data.Pattern
 
       -- * Matching
     , matching
+    , Codecs (..)
     , matchBlock
 
       -- * Result
@@ -34,9 +35,11 @@ import Codec.Binary.Bech32.TH
     ( humanReadablePart )
 import Kupo.Data.Cardano
     ( Address
+    , BinaryData
     , Blake2b_224
     , Blake2b_256
     , Block
+    , Datum
     , DatumHash
     , Input
     , IsBlock (..)
@@ -52,13 +55,14 @@ import Kupo.Data.Cardano
     , digest
     , digestSize
     , getAddress
-    , getDatumHash
+    , getDatum
     , getDelegationPartBytes
     , getOutputIndex
     , getPaymentPartBytes
     , getPointSlotNo
     , getTransactionId
     , getValue
+    , hashDatum
     , headerHashToJson
     , isBootstrap
     , outputIndexToJson
@@ -298,7 +302,7 @@ data Result = Result
     { outputReference :: OutputReference
     , address :: Address
     , value :: Value
-    , datumHash :: Maybe DatumHash
+    , datum :: Datum
     , createdAt :: Point Block
     , spentAt :: Maybe (Point Block)
     } deriving (Show, Eq)
@@ -316,7 +320,7 @@ resultToJson Result{..} = Json.pairs $ mconcat
     , Json.pair "value"
         (valueToJson value)
     , Json.pair "datum_hash"
-        (maybe Json.null_ datumHashToJson datumHash)
+        (maybe Json.null_ datumHashToJson (hashDatum datum))
     , Json.pair "created_at"
         (Json.pairs $ mconcat
             [ Json.pair "slot_no"
@@ -338,6 +342,16 @@ resultToJson Result{..} = Json.pairs $ mconcat
         )
     ]
 
+-- | Codecs to encode data-type to some target structure. This allows to encode
+-- on-the-fly as we traverse the structure, rather than traversing all results a
+-- second time.
+data Codecs result slotNo input bin = Codecs
+    { toResult :: Result -> result
+    , toSlotNo :: SlotNo -> slotNo
+    , toInput :: Input -> input
+    , toBinaryData :: DatumHash -> BinaryData -> bin
+    }
+
 -- | Match all outputs in transactions from a block that match any of the given
 -- pattern.
 --
@@ -345,31 +359,32 @@ resultToJson Result{..} = Json.pairs $ mconcat
 -- multiple patterns. This is to facilitate building an index of matches to
 -- results.
 matchBlock
-    :: forall block result slotNo input.
+    :: forall block result slotNo input bin.
         ( IsBlock block
         , Ord input
         , Ord slotNo
         )
-    => (Result -> result)
-    -> (SlotNo -> slotNo)
-    -> (Input -> input)
+    => Codecs result slotNo input bin
     -> [Pattern]
     -> block
-    -> (Map slotNo (Set input), [result])
-matchBlock toResult toSlotNo toInput patterns blk =
-    let pt = getPoint blk in foldBlock (fn pt) (mempty, mempty) blk
+    -> (Map slotNo (Set input), [result], [bin])
+matchBlock Codecs{..} patterns blk =
+    let pt = getPoint blk in foldBlock (fn pt) (mempty, mempty, mempty) blk
   where
     fn
         :: Point Block
         -> BlockBody block
-        -> (Map slotNo (Set input), [result])
-        -> (Map slotNo (Set input), [result])
-    fn pt tx (consumed, produced) =
+        -> (Map slotNo (Set input), [result], [bin])
+        -> (Map slotNo (Set input), [result], [bin])
+    fn pt tx (consumed, produced, witnessed) =
         ( Map.alter
             (\st -> Just (Set.foldr (Set.insert . toInput) (fromMaybe mempty st) (spentInputs @block tx)))
             (toSlotNo (getPointSlotNo pt))
             consumed
+
         , concatMap (flip (mapMaybeOutputs @block) tx . match pt) patterns ++ produced
+
+        , Map.foldMapWithKey (\k -> pure . toBinaryData k) (witnessedDatums @block tx) ++ witnessed
         )
 
     match
@@ -384,7 +399,7 @@ matchBlock toResult toSlotNo toInput patterns blk =
             { outputReference
             , address = getAddress out
             , value = getValue out
-            , datumHash = getDatumHash out
+            , datum = getDatum out
             , createdAt = pt
             , spentAt = Nothing
             }

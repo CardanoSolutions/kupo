@@ -8,28 +8,26 @@ module Kupo.App
     ( -- * ChainProducer
       withChainProducer
 
-      -- * Producer/Consumer
+      -- * Producer / Consumer / Gardener
     , producer
     , consumer
+    , gardener
     ) where
 
 import Kupo.Prelude
 
+import Control.Monad.Class.MonadTimer
+    ( MonadDelay (..) )
 import Kupo.App.ChainSync
     ( TraceChainSync (..) )
+import Kupo.App.Configuration
+    ( TraceConfiguration (..), parseNetworkParameters )
 import Kupo.App.Mailbox
     ( Mailbox, flushMailbox, newMailbox, putMailbox )
-import Kupo.Configuration
-    ( ChainProducer (..)
-    , InputManagement (..)
-    , NetworkParameters (..)
-    , TraceConfiguration (..)
-    , parseNetworkParameters
-    )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadDatabase
-    ( Database (..), MonadDatabase (..) )
+    ( Database (..), MonadDatabase (DBTransaction), TraceDatabase (..) )
 import Kupo.Control.MonadLog
     ( MonadLog (..), Tracer )
 import Kupo.Control.MonadOuroboros
@@ -39,13 +37,28 @@ import Kupo.Control.MonadSTM
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
-    ( Block, IsBlock, Point, SlotNo (..), Tip, getPoint, getPointSlotNo )
+    ( Block
+    , IsBlock
+    , Point
+    , SlotNo (..)
+    , Tip
+    , distanceToTip
+    , getPoint
+    , getPointSlotNo
+    )
 import Kupo.Data.ChainSync
     ( ChainSyncHandler (..), IntersectionNotFoundException (..) )
+import Kupo.Data.Configuration
+    ( ChainProducer (..)
+    , Configuration (..)
+    , InputManagement (..)
+    , LongestRollback (..)
+    , NetworkParameters (..)
+    )
 import Kupo.Data.Database
-    ( pointToRow, resultToRow )
+    ( binaryDataToRow, pointToRow, resultToRow )
 import Kupo.Data.Pattern
-    ( Pattern, matchBlock )
+    ( Codecs (..), Pattern, matchBlock )
 
 import qualified Data.Map as Map
 import qualified Kupo.App.ChainSync.Direct as Direct
@@ -113,7 +126,7 @@ mailboxSize :: Natural
 mailboxSize = 100
 
 --
--- Producer / Consumer
+-- Producer / Consumer / Gardener
 --
 
 producer
@@ -144,26 +157,90 @@ consumer
         )
     => Tracer IO TraceChainSync
     -> InputManagement
+    -> LongestRollback
     -> (Tip Block -> Maybe SlotNo -> m ())
     -> Mailbox m (Tip Block, block)
     -> TVar m [Pattern]
     -> Database m
-    -> m ()
-consumer tr inputManagement notifyTip mailbox patternsVar Database{..} = forever $ do
+    -> m Void
+consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Database{..} = forever $ do
     (blks, patterns) <- atomically $ (,) <$> flushMailbox mailbox <*> readTVar patternsVar
     let (lastKnownTip, lastKnownBlk) = last blks
     let lastKnownPoint = getPoint lastKnownBlk
     let lastKnownSlot = getPointSlotNo lastKnownPoint
-    let (spentInputs, newInputs) = foldMap (matchBlock resultToRow unSlotNo serialize' patterns . snd) blks
+    let (spentInputs, newInputs, bins) = foldMap (matchBlock codecs patterns . snd) blks
     logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
     notifyTip lastKnownTip (Just lastKnownSlot)
     runTransaction $ do
         insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
         insertInputs newInputs
-        onSpentInputs spentInputs
+        onSpentInputs lastKnownTip lastKnownSlot spentInputs
+        insertBinaryData bins
   where
+    codecs = Codecs
+        { toResult = resultToRow
+        , toSlotNo = unSlotNo
+        , toInput = serialize'
+        , toBinaryData = binaryDataToRow
+        }
+
+    unstableWindow = getLongestRollback longestRollback
+
     onSpentInputs = case inputManagement of
         MarkSpentInputs ->
-            void . Map.traverseWithKey markInputsByReference
+            \_ _ -> void . Map.traverseWithKey markInputsByReference
         RemoveSpentInputs ->
-            traverse_ deleteInputsByReference
+            \lastKnownTip lastKnownSlot ->
+                -- Only delete when safe (i.e. deep enough in the chain).
+                -- Otherwise, mark as 'spent' and leave the pruning to the
+                -- periodic 'gardener' / garbage-collector.
+                if distanceToTip lastKnownTip lastKnownSlot > unstableWindow then
+                    traverse_ deleteInputsByReference
+                else
+                    void . Map.traverseWithKey markInputsByReference
+
+-- | Periodically garbage collect the database from entries that aren't of
+-- interest. This is mainly the case for:
+--
+-- - spent inputs that are _definitely spent_
+-- - binary data stored in the database that isn't associated with any known input
+--
+-- Indeed, when kupo is set in 'RemoveSpentInputs' mode, it trims the database
+-- as inputs get spent. However, Cardano being a decentralized and only
+-- eventually immutable data-source. Indeed, the most recent part of the chain
+-- (i.e. last k blocks) _may change unpredictably. By removing 'spent inputs'
+-- too early, we may take the risk of removing an input which may be reinstatated
+-- later (because the chain forked and the transaction spending that input isn't
+-- included in that fork).
+--
+-- In brief, we can only delete inputs after `k` blocks (or `3*k/f` slots) have
+-- passed (since it is guaranteed to have `k` blocks in a `3*k/f` slot window).
+gardener
+    :: forall m.
+        ( MonadSTM m
+        , MonadLog m
+        , MonadDelay m
+        , Monad (DBTransaction m)
+        )
+    => Tracer IO TraceDatabase
+    -> Configuration
+    -> (forall a. (Database m -> m a) -> m a)
+    -> m Void
+gardener tr config withDatabase = forever $ do
+    threadDelay pruneThrottleDelay
+    logWith tr DatabaseBeginGarbageCollection
+    withDatabase $ \Database{..} -> do
+        (prunedInputs, prunedBinaryData) <- runImmediateTransaction $ do
+            let
+                pruneInputsWhenApplicable =
+                    case inputManagement of
+                        RemoveSpentInputs -> pruneInputs
+                        MarkSpentInputs -> pure 0
+             in
+                (,) <$> pruneInputsWhenApplicable <*> pruneBinaryData
+        logWith tr $ DatabaseExitGarbageCollection { prunedInputs, prunedBinaryData }
+  where
+    Configuration
+        { pruneThrottleDelay
+        , inputManagement
+        } = config

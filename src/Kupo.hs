@@ -30,23 +30,25 @@ module Kupo
 import Kupo.Prelude
 
 import Kupo.App
-    ( consumer, withChainProducer )
+    ( consumer, gardener, withChainProducer )
 import Kupo.App.ChainSync
     ( withChainSyncExceptionHandler )
+import Kupo.App.Configuration
+    ( newPatternsCache, startOrResume )
 import Kupo.App.Health
     ( connectionStatusToggle, readHealth, recordCheckpoint )
 import Kupo.App.Http
     ( healthCheck, httpServer )
-import Kupo.Configuration
-    ( Configuration (..), WorkDir (..), newPatternsCache, startOrResume )
 import Kupo.Control.MonadAsync
-    ( concurrently3 )
+    ( concurrently4 )
 import Kupo.Control.MonadDatabase
     ( ConnectionType (..), MonadDatabase (..) )
 import Kupo.Control.MonadLog
     ( TracerDefinition (..), nullTracer, withTracers )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
+import Kupo.Data.Configuration
+    ( Configuration (..), WorkDir (..) )
 import Kupo.Data.Health
     ( Health, emptyHealth )
 import Kupo.Options
@@ -76,46 +78,31 @@ kupo :: Tracers IO Concrete -> Kupo ()
 kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
   hijackSigTerm *> do
     Env { health
-        , configuration = cfg@Configuration
+        , configuration = config@Configuration
             { serverHost
             , serverPort
             , chainProducer
             , workDir
             , inputManagement
+            , longestRollback
             }
         } <- ask
 
-    -- 43200 slots = k/f slots
-    --
-    -- TODO: k and f should be pulled from the protocol parameters (e.g. via
-    -- local-state-query).
-    --
-    -- Otherwise, the current value may start to be insufficient if the values
-    -- of `k` or `f` change in the future. In practice,
-    --
-    -- (a) there's very little chance that it will change significantly;
-    -- (b) this kind of change are announced upfront days, if not weeks / months before
-    --
-    -- Arbitrarily larger values could be used to cope with future changes
-    -- since the only impact is on the 'checkpoints' table in the database. We
-    -- use this value to trim old checkpoints that are not needed for
-    -- re-establishing an intersection. Since checkpoints are small, storing
-    -- more is cheap.
-    let longestRollback = 43200
     let dbFile = case workDir of
             Dir dir  -> dir </> "kupo.sqlite3"
             InMemory -> ":memory:"
 
     lock <- liftIO newLock
     liftIO $ withDatabase tracerDatabase LongLived lock longestRollback dbFile $ \db -> do
-        patterns <- newPatternsCache tracerConfiguration cfg db
+        patterns <- newPatternsCache tracerConfiguration config db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
         withChainProducer tracerConfiguration chainProducer $ \mailbox producer -> do
-            concurrently3
+            concurrently4
                 -- HTTP Server
                 ( httpServer
                     tracerHttp
+                    inputManagement
                     -- NOTE: This should / could probably use a resource pool to
                     -- avoid re-creating a new connection on every requests. This is
                     -- however pretty cheap with SQLite anyway and the HTTP server
@@ -132,15 +119,23 @@ kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
                 ( consumer
                     tracerChainSync
                     inputManagement
+                    longestRollback
                     notifyTip
                     mailbox
                     patterns
                     db
                 )
 
+                -- Database garbage-collector
+                ( gardener
+                    tracerDatabase
+                    config
+                    (withDatabase nullTracer ShortLived lock longestRollback dbFile)
+                )
+
                 -- Block producer, fetching blocks from the network
                 ( withChainSyncExceptionHandler tracerChainSync statusToggle $ do
-                    checkpoints <- startOrResume tracerConfiguration cfg db
+                    checkpoints <- startOrResume tracerConfiguration config db
                     producer
                         tracerChainSync
                         checkpoints

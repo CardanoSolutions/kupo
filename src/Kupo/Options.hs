@@ -31,21 +31,22 @@ import Data.Char
     ( toUpper )
 import Kupo.App.ChainSync
     ( TraceChainSync )
+import Kupo.App.Configuration
+    ( TraceConfiguration )
 import Kupo.App.Http
     ( TraceHttpServer )
-import Kupo.Configuration
-    ( ChainProducer (..)
-    , Configuration (..)
-    , InputManagement (..)
-    , TraceConfiguration
-    , WorkDir (..)
-    )
 import Kupo.Control.MonadDatabase
     ( TraceDatabase )
 import Kupo.Control.MonadLog
     ( Severity (..), Tracer, TracerDefinition (..), TracerHKD, defaultTracers )
 import Kupo.Data.Cardano
     ( Block, Point (..), pointFromText )
+import Kupo.Data.Configuration
+    ( ChainProducer (..)
+    , Configuration (..)
+    , InputManagement (..)
+    , WorkDir (..)
+    )
 import Kupo.Data.Pattern
     ( Pattern, patternFromText )
 import Options.Applicative.Help.Pretty
@@ -89,6 +90,8 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> optional sinceOption
                     <*> many patternOption
                     <*> inputManagementOption
+                    <*> pure 43200 -- TODO: should be pulled from genesis parameters
+                    <*> pure 120 -- TOOD: make configurable through CLI
                 )
             <*> (tracersOption <|> Tracers
                     <$> fmap Const (logLevelOption "http-server")
