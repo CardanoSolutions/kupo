@@ -6,12 +6,16 @@
 
 module Kupo.App
     ( -- * ChainProducer
-      withChainProducer
+      ChainSyncClient
+    , newChainProducer
 
       -- * Producer / Consumer / Gardener
     , producer
     , consumer
     , gardener
+
+      -- * Internal
+    , mailboxSize
     ) where
 
 import Kupo.Prelude
@@ -76,16 +80,16 @@ type ChainSyncClient m block =
     -> Database m
     -> m ()
 
-withChainProducer
+newChainProducer
     :: Tracer IO TraceConfiguration
     -> ChainProducer
     -> ( forall block. IsBlock block
-            => Mailbox IO (Tip Block, block)
-            -> ChainSyncClient IO block
-            -> IO ()
+        => Mailbox IO (Tip Block, block)
+        -> ChainSyncClient IO block
+        -> IO ()
        )
     -> IO ()
-withChainProducer tracerConfiguration chainProducer callback = do
+newChainProducer tracerConfiguration chainProducer callback = do
     case chainProducer of
         Ogmios{ogmiosHost, ogmiosPort} -> do
             logWith tracerConfiguration ConfigurationOgmios{ogmiosHost, ogmiosPort}

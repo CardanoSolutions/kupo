@@ -22,6 +22,7 @@ module Kupo.Data.Cardano
 
       -- * TransactionId
     , TransactionId
+    , transactionIdToText
     , transactionIdFromHash
     , unsafeTransactionIdFromBytes
     , getTransactionId
@@ -70,6 +71,7 @@ module Kupo.Data.Cardano
 
     -- * Datum
     , Datum
+    , getBinaryData
     , fromBinaryData
     , fromDatumHash
     , noDatum
@@ -85,6 +87,7 @@ module Kupo.Data.Cardano
 
     -- * BinaryData
     , BinaryData
+    , hashBinaryData
     , binaryDataToJson
     , binaryDataFromBytes
     , unsafeBinaryDataFromBytes
@@ -106,6 +109,7 @@ module Kupo.Data.Cardano
     , slotNoFromText
     , slotNoToText
     , slotNoToJson
+    , distanceToSlot
 
       -- * Hash
     , digest
@@ -494,6 +498,10 @@ class HasTransactionId f where
         => f crypto
         -> TransactionId' crypto
 
+transactionIdToText :: TransactionId -> Text
+transactionIdToText =
+    encodeBase16 . (\(UnsafeHash h) -> fromShort h) . Ledger.extractHash . Ledger._unTxId
+
 transactionIdToJson :: TransactionId -> Json.Encoding
 transactionIdToJson =
     hashToJson . Ledger.extractHash . Ledger._unTxId
@@ -661,6 +669,14 @@ getDatum (Ledger.Babbage.TxOut _address _value datum _refScript) =
 type Datum =
     Ledger.Datum (BabbageEra StandardCrypto)
 
+getBinaryData
+    :: Datum
+    -> Maybe BinaryData
+getBinaryData = \case
+    Ledger.Datum bin -> Just bin
+    Ledger.NoDatum -> Nothing
+    Ledger.DatumHash{} -> Nothing
+
 noDatum
     :: Datum
 noDatum =
@@ -738,6 +754,15 @@ datumHashToJson =
 
 type BinaryData =
     Ledger.BinaryData (BabbageEra StandardCrypto)
+
+type BinaryDataHash =
+    DatumHash
+
+hashBinaryData
+    :: BinaryData
+    -> BinaryDataHash
+hashBinaryData  =
+    Ledger.hashBinaryData
 
 binaryDataToJson
     :: BinaryData
@@ -953,9 +978,8 @@ getTipSlotNo tip =
         At sl  -> sl
 
 distanceToTip :: Tip Block -> SlotNo -> Word64
-distanceToTip (getTipSlotNo -> SlotNo a) (SlotNo b)
-    | a > b = a - b
-    | otherwise = b - a
+distanceToTip =
+    distanceToSlot . getTipSlotNo
 
 -- Point
 
@@ -1023,6 +1047,11 @@ slotNoFromText txt = do
 slotNoToText :: SlotNo -> Text
 slotNoToText (SlotNo sl) =
     show sl
+
+distanceToSlot :: SlotNo -> SlotNo -> Word64
+distanceToSlot (SlotNo a) (SlotNo b)
+    | a > b = a - b
+    | otherwise = b - a
 
 -- Hash
 

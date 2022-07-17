@@ -27,7 +27,7 @@ import qualified Data.Set as Set
 data PartialBlock = PartialBlock
     { blockPoint :: (Point Block)
     , blockBody :: [ PartialTransaction ]
-    }
+    } deriving (Eq, Show)
 
 -- | A partial transaction, analogous to 'PartialBlock', trimmed down to the
 -- minimum.
@@ -35,7 +35,7 @@ data PartialTransaction = PartialTransaction
     { inputs :: [ Input ]
     , outputs :: [ (OutputReference, Output) ]
     , datums :: Map DatumHash BinaryData
-    }
+    } deriving (Eq, Show)
 
 instance IsBlock PartialBlock where
     type BlockBody PartialBlock = PartialTransaction

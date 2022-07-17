@@ -8,12 +8,15 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 module Kupo
-    ( -- * Running
-      Kupo (..)
-    , kupo
-    , runWith
+    ( -- * Commands
+      runWith
     , version
     , healthCheck
+
+    -- * Kupo
+    , Kupo (..)
+    , kupo
+    , kupoWith
 
     -- * Environment
     , Env (..)
@@ -30,7 +33,7 @@ module Kupo
 import Kupo.Prelude
 
 import Kupo.App
-    ( consumer, gardener, withChainProducer )
+    ( ChainSyncClient, consumer, gardener, newChainProducer )
 import Kupo.App.ChainSync
     ( withChainSyncExceptionHandler )
 import Kupo.App.Configuration
@@ -39,6 +42,8 @@ import Kupo.App.Health
     ( connectionStatusToggle, readHealth, recordCheckpoint )
 import Kupo.App.Http
     ( healthCheck, httpServer )
+import Kupo.App.Mailbox
+    ( Mailbox )
 import Kupo.Control.MonadAsync
     ( concurrently4 )
 import Kupo.Control.MonadDatabase
@@ -47,6 +52,8 @@ import Kupo.Control.MonadLog
     ( TracerDefinition (..), nullTracer, withTracers )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
+import Kupo.Data.Cardano
+    ( Block, IsBlock, Tip )
 import Kupo.Data.Configuration
     ( Configuration (..), WorkDir (..) )
 import Kupo.Data.Health
@@ -75,13 +82,29 @@ newtype Kupo a = Kupo
 
 -- | Application entry point.
 kupo :: Tracers IO Concrete -> Kupo ()
-kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
+kupo tr = do
+    Env { configuration = Configuration
+            { chainProducer
+            }
+        } <- ask
+    kupoWith tr (newChainProducer (tracerConfiguration tr) chainProducer)
+
+-- | Same as 'kupo', but allows specifying the chain producer component.
+kupoWith
+    :: Tracers IO Concrete
+    -> ( ( forall block. IsBlock block
+          => Mailbox IO (Tip Block, block)
+          -> ChainSyncClient IO block
+          -> IO ()
+         ) -> IO ()
+       )
+    -> Kupo ()
+kupoWith tr withChainProducer =
   hijackSigTerm *> do
     Env { health
         , configuration = config@Configuration
             { serverHost
             , serverPort
-            , chainProducer
             , workDir
             , inputManagement
             , longestRollback
@@ -93,15 +116,15 @@ kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
             InMemory -> "file::memory:?cache=shared"
 
     lock <- liftIO newLock
-    liftIO $ withDatabase tracerDatabase LongLived lock longestRollback dbFile $ \db -> do
-        patterns <- newPatternsCache tracerConfiguration config db
+    liftIO $ withDatabase (tracerDatabase tr) LongLived lock longestRollback dbFile $ \db -> do
+        patterns <- newPatternsCache (tracerConfiguration tr) config db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
-        withChainProducer tracerConfiguration chainProducer $ \mailbox producer -> do
+        withChainProducer $ \mailbox producer -> do
             concurrently4
                 -- HTTP Server
                 ( httpServer
-                    tracerHttp
+                    (tracerHttp tr)
                     inputManagement
                     -- NOTE: This should / could probably use a resource pool to
                     -- avoid re-creating a new connection on every requests. This is
@@ -117,7 +140,7 @@ kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
 
                 -- Block consumer fueling the database
                 ( consumer
-                    tracerChainSync
+                    (tracerChainSync tr)
                     inputManagement
                     longestRollback
                     notifyTip
@@ -128,16 +151,16 @@ kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
 
                 -- Database garbage-collector
                 ( gardener
-                    tracerDatabase
+                    (tracerDatabase tr)
                     config
                     (withDatabase nullTracer ShortLived lock longestRollback dbFile)
                 )
 
                 -- Block producer, fetching blocks from the network
-                ( withChainSyncExceptionHandler tracerChainSync statusToggle $ do
-                    checkpoints <- startOrResume tracerConfiguration config db
+                ( withChainSyncExceptionHandler (tracerChainSync tr) statusToggle $ do
+                    checkpoints <- startOrResume (tracerConfiguration tr) config db
                     producer
-                        tracerChainSync
+                        (tracerChainSync tr)
                         checkpoints
                         notifyTip
                         statusToggle

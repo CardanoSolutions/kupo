@@ -52,8 +52,16 @@ import qualified Data.Aeson as Json
 
 -- | Application-level configuration.
 data Configuration = Configuration
-    { chainProducer :: !ChainProducer
+    { chainProducer :: ChainProducer
         -- ^ Where the data comes from: cardano-node vs ogmios
+        --
+        -- NOTE: There's no bang pattern on this field because we do not want it
+        -- to be unnecessarily evaluated in some test scenarios (e.g. state-machine)
+        -- where we mock the chain producer.
+        --
+        -- This is slightly hacky, but the alternative would be to either split
+        -- this type in two or to introduce some higher-kinded type parameter to
+        -- the record. Both seems overly complicated given the benefits.
     , workDir :: !WorkDir
         -- ^ Where to store the data: in-memory vs specific location on-disk
     , serverHost :: !String

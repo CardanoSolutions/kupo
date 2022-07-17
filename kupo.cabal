@@ -239,6 +239,7 @@ test-suite unit
       Test.Kupo.App.Http.Client
       Test.Kupo.App.HttpSpec
       Test.Kupo.App.MailboxSpec
+      Test.Kupo.AppSpec
       Test.Kupo.Data.CardanoSpec
       Test.Kupo.Data.DatabaseSpec
       Test.Kupo.Data.Generators
@@ -297,6 +298,7 @@ test-suite unit
     , aeson
     , base
     , bytestring
+    , cardano-crypto-class
     , containers
     , directory
     , filepath
@@ -309,6 +311,7 @@ test-suite unit
     , kupo
     , lens-aeson
     , openapi3
+    , quickcheck-state-machine
     , relude
     , sqlite-simple
     , temporary
