@@ -33,9 +33,7 @@ import Kupo.Data.Cardano
     , DatumHash
     , pattern GenesisPoint
     , Input
-    , IsBlock (..)
     , Output
-    , OutputReference
     , Point (..)
     , SlotNo (..)
     , StandardCrypto
@@ -60,6 +58,8 @@ import Kupo.Data.Cardano
     )
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException (..) )
+import Kupo.Data.PartialBlock
+    ( PartialBlock (..), PartialTransaction (..) )
 import Kupo.Data.Pattern
     ( Pattern (..), patternFromText )
 import Ouroboros.Consensus.Cardano.Block
@@ -74,38 +74,7 @@ import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Aeson.Types as Json
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Data.Text as Text
-
--- PartialBlock / PartialTransaction
-
-data PartialBlock = PartialBlock
-    (Point Block)
-    [ PartialTransaction ]
-
-data PartialTransaction = PartialTransaction
-    { inputs :: [ Input ]
-    , outputs :: [ (OutputReference, Output) ]
-    , datums :: Map DatumHash BinaryData
-    }
-
-instance IsBlock PartialBlock where
-    type BlockBody PartialBlock = PartialTransaction
-
-    getPoint (PartialBlock pt _) =
-        pt
-
-    spentInputs PartialTransaction{inputs} =
-        Set.fromList inputs
-
-    foldBlock fn result (PartialBlock _ txs) =
-        foldr fn result txs
-
-    mapMaybeOutputs fn (PartialTransaction{outputs}) =
-        mapMaybe (uncurry fn) outputs
-
-    witnessedDatums PartialTransaction{datums} =
-        datums
 
 -- RequestNextResponse
 
@@ -287,7 +256,8 @@ decodeOutput
 decodeOutput = Json.withObject "Output" $ \o -> do
     address <- o .: "address" >>= decodeAddress
     value <- o .: "value" >>= decodeValue
-    datumHash <- o .:? "datumHash" >>= traverse (fmap unsafeMakeSafeHash . decodeHash @Blake2b_256)
+    datumHash <- o .:? "datumHash" >>=
+        traverse (fmap unsafeMakeSafeHash . decodeHash @Blake2b_256)
     datum <- o .:? "datum"
     mkOutput address value <$>
         case (datumHash, datum) of

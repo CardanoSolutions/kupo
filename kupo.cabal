@@ -73,6 +73,7 @@ library
       Kupo.Data.Http.Status
       Kupo.Data.Http.StatusFlag
       Kupo.Data.Ogmios
+      Kupo.Data.PartialBlock
       Kupo.Data.Pattern
       Kupo.Options
       Kupo.Prelude
