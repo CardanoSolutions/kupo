@@ -18,6 +18,7 @@ import Kupo.Data.Cardano
     , Datum
     , DatumHash
     , HeaderHash
+    , Output
     , OutputIndex
     , OutputReference
     , Point
@@ -28,6 +29,7 @@ import Kupo.Data.Cardano
     , digestSize
     , fromBinaryData
     , fromDatumHash
+    , mkOutput
     , mkOutputReference
     , noDatum
     , unsafeBinaryDataFromBytes
@@ -36,6 +38,8 @@ import Kupo.Data.Cardano
     , unsafeTransactionIdFromBytes
     , unsafeValueFromList
     )
+import Kupo.Data.Configuration
+    ( InputManagement (..) )
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health (..) )
 import Kupo.Data.Pattern
@@ -49,6 +53,7 @@ import Test.QuickCheck
     , choose
     , elements
     , frequency
+    , listOf
     , suchThat
     , vector
     , vectorOf
@@ -144,10 +149,16 @@ genResult :: Gen Result
 genResult = Result
     <$> genOutputReference
     <*> genAddress
-    <*> genValue
+    <*> genOutputValue
     <*> genDatum
     <*> genNonGenesisPoint
     <*> frequency [(1, pure Nothing), (5, Just <$> genNonGenesisPoint)]
+
+genOutput :: Gen Output
+genOutput = mkOutput
+    <$> genAddress
+    <*> genOutputValue
+    <*> genDatum
 
 genSlotNo :: Gen SlotNo
 genSlotNo = do
@@ -157,15 +168,22 @@ genTransactionId :: Gen TransactionId
 genTransactionId =
     unsafeTransactionIdFromBytes . BS.pack <$> vector (digestSize @Blake2b_256)
 
-genValue :: Gen Value
-genValue = do
+-- | Generate values with non-negative quantities. When used for
+-- minting/burning, values' quantities can be negative. When used in outputs,
+-- they can't.
+genOutputValue :: Gen Value
+genOutputValue = do
     ada <- arbitrary `suchThat` (> 0)
     nPolicy <- choose (0, 3)
     nAssets <- choose (nPolicy, 3 * nPolicy)
     fmap (unsafeValueFromList ada) $ zip3
         <$> fmap cycle (vectorOf nPolicy genPolicyId)
         <*> vectorOf nAssets genAssetName
-        <*> arbitrary
+        <*> listOf (arbitrary `suchThat` (> 0))
+
+genInputManagement :: Gen InputManagement
+genInputManagement =
+    elements [MarkSpentInputs, RemoveSpentInputs]
 
 --
 -- Helpers

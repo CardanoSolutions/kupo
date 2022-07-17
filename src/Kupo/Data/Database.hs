@@ -43,6 +43,7 @@ import Kupo.Data.Cardano
     , DatumHash
     , SlotNo (..)
     , StandardCrypto
+    , hashBinaryData
     , hashDatum
     , noDatum
     , unsafeBinaryDataFromBytes
@@ -169,7 +170,7 @@ datumToRow = \case
     Ledger.DatumHash{} ->
         Nothing
     Ledger.Datum bin ->
-        Just (binaryDataToRow (Ledger.hashBinaryData bin) bin)
+        Just (binaryDataToRow (hashBinaryData bin) bin)
 
 datumHashToRow
     :: DatumHash

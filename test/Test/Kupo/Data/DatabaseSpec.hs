@@ -155,10 +155,11 @@ spec = parallel $ do
             waitGroup <- newTVarIO False
             let allow = atomically (writeTVar waitGroup True)
             let await = atomically (readTVar waitGroup >>= check)
+            let filename = "file:concurrent-read-write?cache=shared&mode=memory"
             mapConcurrently_ identity
-                [ longLivedWorker "file::memory:?cache=shared" lock allow
-                , await >> shortLivedWorker "file::memory:?cache=shared" lock
-                , await >> shortLivedWorker "file::memory:?cache=shared" lock
+                [ longLivedWorker filename lock allow
+                , await >> shortLivedWorker filename lock
+                , await >> shortLivedWorker filename lock
                 ]
 
         specify "1 long-lived worker vs 2 short-lived workers (filesystem)" $ do

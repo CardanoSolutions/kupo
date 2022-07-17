@@ -94,7 +94,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             , since = Just GenesisPoint
             , patterns = [MatchAny IncludingBootstrap]
             }
-        HttpClient{..} <- newHttpClientWith manager cfg
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
         let timeLimit = case chainProducer cfg of
                 CardanoNode{} -> 5
                 Ogmios{} -> 10
@@ -113,7 +113,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             , since = Just point
             , patterns = [MatchAny IncludingBootstrap]
             }
-        HttpClient{..} <- newHttpClientWith manager cfg
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
         timeoutOrThrow 5 $ race_
             (kupo tr `runWith` env)
             (do
@@ -122,7 +122,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             )
 
     specify "on disk (start → restart)" $ \(tmp, tr, cfg) -> do
-        HttpClient{..} <- newHttpClientWith manager cfg
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
 
         ( do -- Can start the server on a fresh new db
             env <- newEnvironment $ cfg
@@ -178,7 +178,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         shouldThrowTimeout @NoStartingPointException 1 (kupo tr `runWith` env)
 
     specify "Retry and wait when chain producer isn't available" $ \(tmp, tr, cfg) -> do
-        HttpClient{..} <- newHttpClientWith manager cfg
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just GenesisPoint
@@ -222,7 +222,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
 
     specify "Can prune utxo on-the-fly" $ \(tmp, tr, cfg) -> do
-        HttpClient{..} <- newHttpClientWith manager cfg
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePoint
@@ -239,7 +239,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             )
 
     specify "Retrieve checkpoints and ancestors" $ \(tmp, tr, cfg) -> do
-        HttpClient{..} <- newHttpClientWith manager cfg
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePointAncestor
@@ -265,7 +265,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             )
 
     specify "Retrieve datum(s) associated to datum-hash" $ \(tmp, tr, cfg) -> do
-        HttpClient{..} <- newHttpClientWith manager cfg
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastAlonzoPoint
@@ -274,8 +274,8 @@ spec = skippableContext "End-to-end" $ \manager -> do
         timeoutOrThrow 10 $ race_
             (kupo tr `runWith` env)
             (do
-                lookupDatum someDatumHashInWitness `shouldReturn` someDatumInWitness
-                lookupDatum someDatumHashInOutput `shouldReturn` someDatumInOutput
+                waitDatum someDatumHashInWitness `shouldReturn` someDatumInWitness
+                waitDatum someDatumHashInOutput `shouldReturn` someDatumInOutput
             )
 
 type EndToEndSpec

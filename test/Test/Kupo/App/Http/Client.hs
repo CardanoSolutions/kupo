@@ -41,8 +41,6 @@ import Kupo.Data.Cardano
     , transactionIdFromHash
     , unsafeValueFromList
     )
-import Kupo.Data.Configuration
-    ( Configuration (..) )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..) )
 import Kupo.Data.Http.StatusFlag
@@ -76,8 +74,10 @@ data HttpClient (m :: Type -> Type) = HttpClient
         :: (m Bool) -> m ()
     , waitSlot
         :: (SlotNo -> Bool) -> m ()
-    , lookupDatum
+    , waitDatum
         :: DatumHash -> m BinaryData
+    , lookupDatumByHash
+        :: DatumHash -> m (Maybe BinaryData)
     , listCheckpoints
         :: m [Point Block]
     , getCheckpointBySlot
@@ -87,10 +87,10 @@ data HttpClient (m :: Type -> Type) = HttpClient
         -> m [Result]
     }
 
-newHttpClient :: Configuration -> IO (HttpClient IO)
+newHttpClient :: (String, Int) -> IO (HttpClient IO)
 newHttpClient config = do
     manager <- newManager defaultManagerSettings
-    newHttpClientWith manager config
+    pure (newHttpClientWith manager config)
 
 newHttpClientWith :: Manager -> (String, Int) -> HttpClient IO
 newHttpClientWith manager (serverHost, serverPort) =
@@ -99,8 +99,10 @@ newHttpClientWith manager (serverHost, serverPort) =
             \a0 -> waitForServer >> _waitUntilM a0
         , waitSlot =
             \a0 -> waitForServer >> _waitSlot a0
-        , lookupDatum =
-            \a0 -> waitForServer >> _lookupDatum a0
+        , waitDatum =
+            \a0 -> waitForServer >> _waitDatum a0
+        , lookupDatumByHash =
+            \a0 -> waitForServer >> _lookupDatumByHash a0
         , listCheckpoints =
             waitForServer >> _listCheckpoints
         , getCheckpointBySlot =
@@ -110,14 +112,19 @@ newHttpClientWith manager (serverHost, serverPort) =
         }
   where
     baseUrl :: String
-    baseUrl = "http://" <> serverHost cfg <> ":" <> show (serverPort cfg)
+    baseUrl = "http://" <> serverHost <> ":" <> show serverPort
 
     waitForServer :: IO ()
-    waitForServer = do
-        req <- parseRequest (baseUrl <> "/v1/health")
-        void (httpNoBody req manager) `catch` (\(_ :: HttpException) -> do
-            threadDelay 0.1
-            waitForServer)
+    waitForServer = loop 0
+      where
+        loop (n :: Word)
+            | n > 100 =
+                fail "waitForServer: timeout."
+            | otherwise = do
+                req <- parseRequest (baseUrl <> "/v1/health")
+                void (httpNoBody req manager) `catch` (\(_ :: HttpException) -> do
+                    threadDelay 0.1
+                    loop (succ n))
 
     _waitUntilM :: IO Bool -> IO ()
     _waitUntilM predicate = do
@@ -126,14 +133,14 @@ newHttpClientWith manager (serverHost, serverPort) =
                 return ()
             False -> do
                 threadDelay 0.25
-                waitUntilM predicate
+                _waitUntilM predicate
 
     _waitSlot :: (SlotNo -> Bool) -> IO ()
     _waitSlot predicate = do
         slots <- fmap getPointSlotNo <$> _listCheckpoints
         unless (not (null slots) && predicate (maximum slots)) $ do
             threadDelay 0.25
-            waitSlot predicate
+            _waitSlot predicate
 
     _listCheckpoints :: IO [Point Block]
     _listCheckpoints = do
@@ -171,8 +178,8 @@ newHttpClientWith manager (serverHost, serverPort) =
             Right xs ->
                 pure xs
 
-    _lookupDatum :: DatumHash -> IO BinaryData
-    _lookupDatum datumHash = do
+    _lookupDatumByHash :: DatumHash -> IO (Maybe BinaryData)
+    _lookupDatumByHash datumHash = do
         let fragment = toString (datumHashToText datumHash)
         req <- parseRequest (baseUrl <> "/v1/datums/" <> fragment)
         res <- httpLbs req manager
@@ -181,12 +188,19 @@ newHttpClientWith manager (serverHost, serverPort) =
             Left e ->
                 fail (show e)
             Right Json.Null -> do
-                threadDelay 0.25
-                lookupDatum datumHash
-            Right val -> maybe (fail "failed to decode Datum.") pure $ do
+                pure Nothing
+            Right val -> maybe (fail "failed to decode Datum.") (pure . Just) $ do
                 bytes <- val ^? key "datum" . _String
                 binaryDataFromBytes (unsafeDecodeBase16 bytes)
 
+    _waitDatum :: DatumHash -> IO BinaryData
+    _waitDatum datumHash = do
+        _lookupDatumByHash datumHash >>= \case
+            Nothing -> do
+                threadDelay 0.25
+                _waitDatum datumHash
+            Just bin ->
+                pure bin
 --
 -- Decoders
 --
