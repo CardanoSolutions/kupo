@@ -236,6 +236,7 @@ test-suite unit
   main-is: Spec.hs
   other-modules:
       Test.Kupo.App.ConfigurationSpec
+      Test.Kupo.App.Http.Client
       Test.Kupo.App.HttpSpec
       Test.Kupo.App.MailboxSpec
       Test.Kupo.Data.CardanoSpec

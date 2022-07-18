@@ -13,9 +13,9 @@ module Test.KupoSpec
 import Kupo.Prelude
 
 import Control.Exception
-    ( catch, try )
+    ( try )
 import Data.Aeson.Lens
-    ( key, _Integer, _String, _Value )
+    ( key, _Value )
 import Data.List
     ( maximum )
 import Kupo
@@ -33,17 +33,7 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadTime
     ( DiffTime, timeout )
 import Kupo.Data.Cardano
-    ( BinaryData
-    , Block
-    , DatumHash
-    , pattern GenesisPoint
-    , Point
-    , SlotNo (..)
-    , binaryDataFromBytes
-    , datumHashToText
-    , getPointSlotNo
-    , pointFromText
-    )
+    ( pattern GenesisPoint, getPointSlotNo )
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException )
 import Kupo.Data.Configuration
@@ -59,15 +49,7 @@ import Kupo.Data.Pattern
 import Kupo.Options
     ( Tracers (..) )
 import Network.HTTP.Client
-    ( HttpException
-    , Manager
-    , defaultManagerSettings
-    , httpLbs
-    , httpNoBody
-    , newManager
-    , parseRequest
-    , responseBody
-    )
+    ( Manager, defaultManagerSettings, newManager )
 import System.Environment
     ( lookupEnv )
 import System.IO.Temp
@@ -84,6 +66,8 @@ import Test.Hspec
     , specify
     , xcontext
     )
+import Test.Kupo.App.Http.Client
+    ( HttpClient (..), newHttpClientWith )
 import Test.Kupo.Fixture
     ( eraBoundaries
     , lastAlonzoPoint
@@ -111,14 +95,13 @@ spec = skippableContext "End-to-end" $ \manager -> do
             , since = Just GenesisPoint
             , patterns = [MatchAny IncludingBootstrap]
             }
-        let HttpClient{..} = newHttpClient manager cfg
+        HttpClient{..} <- newHttpClientWith manager cfg
         let timeLimit = case chainProducer cfg of
                 CardanoNode{} -> 5
                 Ogmios{} -> 10
         timeoutOrThrow timeLimit $ race_
             (kupo tr `runWith` env)
             (do
-                waitForServer
                 waitUntilM $ do
                     matches <- getAllMatches
                     pure (length matches > 10)
@@ -131,17 +114,16 @@ spec = skippableContext "End-to-end" $ \manager -> do
             , since = Just point
             , patterns = [MatchAny IncludingBootstrap]
             }
-        let HttpClient{..} = newHttpClient manager cfg
+        HttpClient{..} <- newHttpClientWith manager cfg
         timeoutOrThrow 5 $ race_
             (kupo tr `runWith` env)
             (do
-                waitForServer
-                waitUntil (> 1_000)
+                waitSlot (> 1_000)
                 healthCheck (serverHost cfg) (serverPort cfg)
             )
 
     specify "on disk (start → restart)" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClient manager cfg
+        HttpClient{..} <- newHttpClientWith manager cfg
 
         ( do -- Can start the server on a fresh new db
             env <- newEnvironment $ cfg
@@ -152,8 +134,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             timeoutOrThrow 5 $ race_
                 (kupo tr `runWith` env)
                 (do
-                    waitForServer
-                    waitUntil (> (getPointSlotNo somePoint))
+                    waitSlot (> (getPointSlotNo somePoint))
                 )
           )
 
@@ -166,8 +147,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             timeoutOrThrow 5 $ race_
                 (kupo tr `runWith` env)
                 (do
-                    waitForServer
-                    cps <- listCheckpoints
+                    cps <- fmap getPointSlotNo <$> listCheckpoints
                     maximum cps `shouldSatisfy` (> (getPointSlotNo somePoint))
                 )
           )
@@ -199,7 +179,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         shouldThrowTimeout @NoStartingPointException 1 (kupo tr `runWith` env)
 
     specify "Retry and wait when chain producer isn't available" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClient manager cfg
+        HttpClient{..} <- newHttpClientWith manager cfg
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just GenesisPoint
@@ -220,7 +200,6 @@ spec = skippableContext "End-to-end" $ \manager -> do
         timeoutOrThrow 5 $ race_
             (kupo tr `runWith` env)
             (do
-                waitForServer
                 cps <- listCheckpoints
                 threadDelay 1
                 cps' <- listCheckpoints
@@ -244,7 +223,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
 
     specify "Can prune utxo on-the-fly" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClient manager cfg
+        HttpClient{..} <- newHttpClientWith manager cfg
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePoint
@@ -258,14 +237,13 @@ spec = skippableContext "End-to-end" $ \manager -> do
         timeoutOrThrow 30 $ race_
             (kupo tr `runWith` env)
             (do
-                waitForServer
-                waitUntil (> 50_000)
+                waitSlot (> 50_000)
                 matches <- getAllMatches
                 all isUnspent matches `shouldBe` True
             )
 
     specify "Retrieve checkpoints and ancestors" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClient manager cfg
+        HttpClient{..} <- newHttpClientWith manager cfg
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePointAncestor
@@ -277,8 +255,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         timeoutOrThrow 5 $ race_
             (kupo tr `runWith` env)
             (do
-                waitForServer
-                waitUntil (> (getPointSlotNo somePointSuccessor))
+                waitSlot (> (getPointSlotNo somePointSuccessor))
                 getCheckpointBySlot strict (getPointSlotNo somePoint)
                     `shouldReturn` Just somePoint
                 getCheckpointBySlot strict (pred (getPointSlotNo somePoint))
@@ -292,7 +269,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             )
 
     specify "Retrieve datum(s) associated to datum-hash" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClient manager cfg
+        HttpClient{..} <- newHttpClientWith manager cfg
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastAlonzoPoint
@@ -301,7 +278,6 @@ spec = skippableContext "End-to-end" $ \manager -> do
         timeoutOrThrow 10 $ race_
             (kupo tr `runWith` env)
             (do
-                waitForServer
                 lookupDatum someDatumHashInWitness `shouldReturn` someDatumInWitness
                 lookupDatum someDatumHashInOutput `shouldReturn` someDatumInOutput
             )
@@ -399,108 +375,3 @@ shouldThrowTimeout t action = do
                     pure ()
   where
     exceptionName = tyConName (typeRepTyCon (typeRep @e))
-
---
--- Strawman HTTP DSL
---
-
-data HttpClient (m :: Type -> Type) = HttpClient
-    { waitForServer :: m ()
-    , waitUntil :: (SlotNo -> Bool) -> m ()
-    , waitUntilM :: (IO Bool) -> m ()
-    , lookupDatum :: DatumHash -> m BinaryData
-    , listCheckpoints :: m [SlotNo]
-    , getCheckpointBySlot :: GetCheckpointMode -> SlotNo -> m (Maybe (Point Block))
-    , getAllMatches :: m [Json.Value]
-    }
-
-newHttpClient :: Manager -> Configuration -> HttpClient IO
-newHttpClient manager cfg = HttpClient
-    { waitForServer
-    , waitUntil
-    , waitUntilM
-    , lookupDatum
-    , listCheckpoints
-    , getCheckpointBySlot
-    , getAllMatches
-    }
-  where
-    baseUrl :: String
-    baseUrl = "http://" <> serverHost cfg <> ":" <> show (serverPort cfg)
-
-    waitForServer :: IO ()
-    waitForServer = do
-        req <- parseRequest (baseUrl <> "/v1/health")
-        void (httpNoBody req manager) `catch` (\(_ :: HttpException) -> do
-            threadDelay 0.1
-            waitForServer)
-
-    waitUntil :: (SlotNo -> Bool) -> IO ()
-    waitUntil predicate = do
-        checkpoints <- listCheckpoints
-        unless (not (null checkpoints) && predicate (maximum checkpoints)) $ do
-            threadDelay 0.25
-            waitUntil predicate
-
-    waitUntilM :: IO Bool -> IO ()
-    waitUntilM predicate = do
-        predicate >>= \case
-            True ->
-                return ()
-            False -> do
-                threadDelay 0.25
-                waitUntilM predicate
-
-    listCheckpoints :: IO [SlotNo]
-    listCheckpoints = do
-        req <- parseRequest (baseUrl <> "/v1/checkpoints")
-        res <- httpLbs req manager
-        let body = responseBody res
-        case Json.eitherDecode' body of
-            Left e ->
-                fail (show e)
-            Right (xs :: [Json.Value]) -> do
-                pure $ SlotNo . maybe 0 fromIntegral . (\x -> x ^? key "slot_no" . _Integer) <$> xs
-
-    getCheckpointBySlot :: GetCheckpointMode -> SlotNo -> IO (Maybe (Point Block))
-    getCheckpointBySlot mode (SlotNo slot) = do
-        let qry = case mode of
-                GetCheckpointStrict -> "?strict"
-                GetCheckpointClosestAncestor -> ""
-        req <- parseRequest (baseUrl <> "/v1/checkpoints/" <> show slot <> qry)
-        res <- httpLbs req manager
-        let body = responseBody res
-        case Json.eitherDecode' body of
-            Left e ->
-                fail (show e)
-            Right (val :: Json.Value) -> pure $ do
-                slotNo <- val ^? key "slot_no" . _Integer
-                headerHash <- val ^? key "header_hash" . _String
-                pointFromText (show slotNo <> "." <> toText headerHash)
-
-    getAllMatches :: IO [Json.Value]
-    getAllMatches = do
-        req <- parseRequest (baseUrl <> "/v1/matches")
-        res <- httpLbs req manager
-        let body = responseBody res
-        case Json.eitherDecode' body of
-            Left e ->
-                fail (show e)
-            Right xs ->
-                pure xs
-
-    lookupDatum :: DatumHash -> IO BinaryData
-    lookupDatum datumHash = do
-        let fragment = toString (datumHashToText datumHash)
-        req <- parseRequest (baseUrl <> "/v1/datums/" <> fragment)
-        res <- httpLbs req manager
-        let body = responseBody res
-        case Json.eitherDecode' body of
-            Left e ->
-                fail (show e)
-            Right Json.Null -> do
-                threadDelay 0.25
-                lookupDatum datumHash
-            Right val -> maybe (fail "failed to decode Datum.") pure $ do
-                bytes <- val ^? key "datum" . _String
-                binaryDataFromBytes (unsafeDecodeBase16 bytes)
