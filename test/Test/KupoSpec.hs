@@ -14,8 +14,6 @@ import Kupo.Prelude
 
 import Control.Exception
     ( try )
-import Data.Aeson.Lens
-    ( key, _Value )
 import Data.List
     ( maximum )
 import Kupo
@@ -44,8 +42,10 @@ import Kupo.Data.Configuration
     )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..) )
+import Kupo.Data.Http.StatusFlag
+    ( StatusFlag (..) )
 import Kupo.Data.Pattern
-    ( MatchBootstrap (..), Pattern (..) )
+    ( MatchBootstrap (..), Pattern (..), Result (..) )
 import Kupo.Options
     ( Tracers (..) )
 import Network.HTTP.Client
@@ -84,7 +84,6 @@ import Test.Kupo.Fixture
 import Type.Reflection
     ( tyConName, typeRep, typeRepTyCon )
 
-import qualified Data.Aeson as Json
 import qualified Prelude
 
 spec :: Spec
@@ -103,7 +102,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             (kupo tr `runWith` env)
             (do
                 waitUntilM $ do
-                    matches <- getAllMatches
+                    matches <- getAllMatches NoStatusFlag
                     pure (length matches > 10)
                 healthCheck (serverHost cfg) (serverPort cfg)
             )
@@ -231,15 +230,12 @@ spec = skippableContext "End-to-end" $ \manager -> do
             , inputManagement = RemoveSpentInputs
             }
 
-        let isUnspent :: Json.Value -> Bool
-            isUnspent x = (x ^? key "spent_at" . _Value) == Just Json.Null
-
         timeoutOrThrow 30 $ race_
             (kupo tr `runWith` env)
             (do
                 waitSlot (> 50_000)
-                matches <- getAllMatches
-                all isUnspent matches `shouldBe` True
+                matches <- getAllMatches NoStatusFlag
+                all (isNothing . spentAt) matches `shouldBe` True
             )
 
     specify "Retrieve checkpoints and ancestors" $ \(tmp, tr, cfg) -> do
