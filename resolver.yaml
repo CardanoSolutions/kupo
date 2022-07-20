@@ -171,3 +171,6 @@ packages:
 
 - git: https://github.com/vshabanov/ekg-json
   commit: 00ebe7211c981686e65730b7144fbf5350462608
+
+- git: https://github.com/IreneKnapp/direct-sqlite
+  commit: ab62e1e0e85ca9b92a55265744821ccfb75b0633

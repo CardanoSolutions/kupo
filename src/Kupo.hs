@@ -90,7 +90,7 @@ kupo Tracers{tracerChainSync, tracerConfiguration, tracerHttp, tracerDatabase} =
 
     let dbFile = case workDir of
             Dir dir  -> dir </> "kupo.sqlite3"
-            InMemory -> ":memory:"
+            InMemory -> "file::memory:?cache=shared"
 
     lock <- liftIO newLock
     liftIO $ withDatabase tracerDatabase LongLived lock longestRollback dbFile $ \db -> do

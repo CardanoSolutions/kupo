@@ -1232,6 +1232,17 @@ packages:
   original:
     git: https://github.com/vshabanov/ekg-json
     commit: 00ebe7211c981686e65730b7144fbf5350462608
+- completed:
+    name: direct-sqlite
+    version: 2.3.27
+    git: https://github.com/IreneKnapp/direct-sqlite
+    pantry-tree:
+      size: 1193
+      sha256: c7c4eb7f8ef27129d65ccd0438e8dabb470c973454fc2eb742f421a9e1ed9394
+    commit: ab62e1e0e85ca9b92a55265744821ccfb75b0633
+  original:
+    git: https://github.com/IreneKnapp/direct-sqlite
+    commit: ab62e1e0e85ca9b92a55265744821ccfb75b0633
 snapshots:
 - completed:
     size: 590102
