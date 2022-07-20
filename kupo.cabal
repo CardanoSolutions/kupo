@@ -73,6 +73,7 @@ library
       Kupo.Data.Http.Status
       Kupo.Data.Http.StatusFlag
       Kupo.Data.Ogmios
+      Kupo.Data.PartialBlock
       Kupo.Data.Pattern
       Kupo.Options
       Kupo.Prelude
@@ -235,8 +236,10 @@ test-suite unit
   main-is: Spec.hs
   other-modules:
       Test.Kupo.App.ConfigurationSpec
+      Test.Kupo.App.Http.Client
       Test.Kupo.App.HttpSpec
       Test.Kupo.App.MailboxSpec
+      Test.Kupo.AppSpec
       Test.Kupo.Data.CardanoSpec
       Test.Kupo.Data.DatabaseSpec
       Test.Kupo.Data.Generators
@@ -295,6 +298,7 @@ test-suite unit
     , aeson
     , base
     , bytestring
+    , cardano-crypto-class
     , containers
     , directory
     , filepath
@@ -307,6 +311,7 @@ test-suite unit
     , kupo
     , lens-aeson
     , openapi3
+    , quickcheck-state-machine
     , relude
     , sqlite-simple
     , temporary

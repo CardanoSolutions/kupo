@@ -22,6 +22,7 @@ module Kupo.Control.MonadLog
     , TracerDefinition(..)
     , TracerHKD
     , defaultTracers
+    , configureTracers
     , withTracers
     ) where
 

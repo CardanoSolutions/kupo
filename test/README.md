@@ -10,6 +10,14 @@ Various scenarios are tested, including:
 - restarting the application with various combination of options;
 - in-memory and on-disk indexing...
 
+## State-Machine
+
+In [AppSpec](./Test/Kupo/AppSpec.hs), Kupo implements a state-machine testing strategy to test the application as a black box (or as _John Hughes_ says 'a big ball of mud'), alongside with a model. These tests focuses on how kupo maintains a consistent database index w.r.t to the UTxO set. They do so by mocking the networking side of Kupo and modelling that as arbitrarily generated events (roll-forward / roll-backward).  This generates a sequence of events which can be interpreted by Kupo and that are interleaved with client requests on the API. The observations on the real application are compared against a simple model (i.e. a linked list of the chain) through post-conditions checked on each query.
+
+On failure, the machinery spits a (somewhat minimal) sequence of events that can lead to a discrepancy between the model and the real world (a.k.a a counter-example). All-in-all, it's a very powerful way to test the ugly parts of the applications.
+
+By default, the state-machine tests only run a few sequences but the number of iterations can be increased using the `KUPO_STATE_MACHINE_ITERATIONS` environment variable.
+
 ## Mailbox
 
 The mailbox component (producer/consumer interface) is written using [`io-classes`](https://github.com/input-output-hk/ouroboros-network/tree/master/io-classes) which thereby allows for testing it in simulated IO to look for deadlocks or even, analyze the performance of the pattern: kupo _assumes_ a producer which is much faster than the consumer and [MailboxSpec](./Test/Kupo/App/MailboxSpec.hs) controls that the mailbox patterns performs well with these hypothesis. 
@@ -25,12 +33,6 @@ Patterns parsing from text and matching are tested through [PatternSpec](./Test/
 ## Database
 
 Types are marshalled to and from the database using specific functions. The [DatabaseSpec](./Test/Kupo/Data/DatabaseSpec.hs) defines roundtrip properties checking that arbitrarily generated data can be marshalled to their database representations, and unmarshalled back to their high-level application form. The module also checks that addresses stored in the database can be fetched correctly via their expected text patterns, translated as SQL(ite) queries. 
-
-> TODO: 
-> 
-> 1. It would be nice to define a "simple" state-machine test for the database, modelling it using an MVar and throwing random commands at it using its interface to look for subtle bugs which may happen from unforeseen interleaving of commands.
->
-> 2. The `Kupo.Control.MonadDatabase` modules holds quite a fair amount of complexity. In particular, it defines a simple approach for handling database migrations. This could be tested in isolation. 
 
 ## Command-line & configuration
 

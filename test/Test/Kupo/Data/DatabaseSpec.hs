@@ -27,6 +27,8 @@ import Database.SQLite.Simple
     )
 import Kupo.Control.MonadAsync
     ( mapConcurrently_ )
+import Kupo.Control.MonadCatch
+    ( MonadCatch (..) )
 import Kupo.Control.MonadDatabase
     ( ConnectionType (..)
     , Database (..)
@@ -91,6 +93,8 @@ import Test.QuickCheck.Monadic
 import Test.QuickCheck.Property
     ( Testable )
 
+import Kupo.Control.MonadThrow
+    ( MonadThrow (..) )
 import qualified Prelude
 
 spec :: Spec
@@ -146,7 +150,19 @@ spec = parallel $ do
                 assert (oneByOne == allAtOnce)
 
     context "concurrent read / write" $ do
-        specify "1 long-lived worker vs 2 short-lived workers" $ do
+        specify "1 long-lived worker vs 2 short-lived workers (in-memory)" $ do
+            lock <- newLock
+            waitGroup <- newTVarIO False
+            let allow = atomically (writeTVar waitGroup True)
+            let await = atomically (readTVar waitGroup >>= check)
+            let filename = "file:concurrent-read-write?cache=shared&mode=memory"
+            mapConcurrently_ identity
+                [ longLivedWorker filename lock allow
+                , await >> shortLivedWorker filename lock
+                , await >> shortLivedWorker filename lock
+                ]
+
+        specify "1 long-lived worker vs 2 short-lived workers (filesystem)" $ do
             withSystemTempDirectory "kupo-database-concurrent" $ \dir -> do
                 lock <- newLock
                 waitGroup <- newTVarIO False
@@ -162,9 +178,14 @@ spec = parallel $ do
 -- Workers
 --
 
+loudly :: SomeException -> IO ()
+loudly e = do
+    print e
+    throwIO e
+
 longLivedWorker :: FilePath -> DBLock IO -> IO () -> IO ()
 longLivedWorker dir lock allow =
-    withDatabase nullTracer LongLived lock 42 dir $ \db -> do
+    handle loudly $ withDatabase nullTracer LongLived lock 42 dir $ \db -> do
         allow
         loop db 0
   where
@@ -180,7 +201,7 @@ longLivedWorker dir lock allow =
 
 shortLivedWorker :: FilePath -> DBLock IO -> IO ()
 shortLivedWorker dir lock = do
-    withDatabase nullTracer ShortLived lock 42 dir (`loop` 0)
+    handle loudly $ withDatabase nullTracer ShortLived lock 42 dir (`loop` 0)
   where
     loop :: Database IO -> Int -> IO ()
     loop db@Database{..} = \case

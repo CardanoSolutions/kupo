@@ -89,9 +89,6 @@ startOrResume
     -> Database m
     -> m [Point Block]
 startOrResume tr configuration Database{..} = do
-    -- TODO: include sanity check and fail if '--prune-utxo' is included but
-    -- there exists marked inputs in the database. This would indicate that the
-    -- index was restarted with a different configuration.
     checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
 
     case nonEmpty (sortOn Down (unSlotNo . getPointSlotNo <$> checkpoints)) of

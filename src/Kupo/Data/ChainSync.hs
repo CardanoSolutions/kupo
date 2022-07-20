@@ -28,4 +28,3 @@ data IntersectionNotFoundException = IntersectionNotFound
         -- ^ Current known tip of the chain.
     } deriving (Show)
 instance Exception IntersectionNotFoundException
-

@@ -102,6 +102,7 @@ tests:
     - aeson
     - base
     - bytestring
+    - cardano-crypto-class
     - containers
     - directory
     - filepath
@@ -115,6 +116,7 @@ tests:
     - lens-aeson
     - openapi3
     - QuickCheck
+    - quickcheck-state-machine
     - relude
     - sqlite-simple
     - temporary

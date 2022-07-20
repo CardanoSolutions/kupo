@@ -208,26 +208,14 @@ data Database (m :: Type -> Type) = Database
 
 instance MonadDatabase IO where
     type DBTransaction IO = ReaderT Connection IO
-    data DBLock IO = DBLock (TVar IO Word) (TVar IO Bool) (TMVar IO Connection)
+    data DBLock IO = DBLock (TVar IO Word) (TVar IO Bool)
 
-    newLock = DBLock <$> newTVarIO 0 <*> newTVarIO True <*> newEmptyTMVarIO
+    newLock = DBLock <$> newTVarIO 0 <*> newTVarIO True
 
-    withDatabase tr mode (DBLock readers writer inMemory) k filePath action
-        | filePath == ":memory:" = do
-            traceWith tr DatabaseRunningInMemory
-            case mode of
-                LongLived -> do
-                    withConnection filePath $ \conn -> do
-                        databaseVersion conn >>= runMigrations tr conn
-                        atomically $ putTMVar inMemory conn
-                        action (mkDatabase k (bracketConnection conn))
-                ShortLived -> do
-                    conn <- atomically $ readTMVar inMemory
-                    action (mkDatabase k (bracketConnection conn))
-        | otherwise = do
-            withConnection filePath $ \conn -> do
-                when (mode == LongLived) (databaseVersion conn >>= runMigrations tr conn)
-                action (mkDatabase k (bracketConnection conn))
+    withDatabase tr mode (DBLock readers writer) k filePath action = do
+        withConnection filePath $ \conn -> do
+            when (mode == LongLived) (databaseVersion conn >>= runMigrations tr conn)
+            action (mkDatabase k (bracketConnection conn))
       where
         -- The heuristic below aims at favoring light reader/writer over the main
         -- writer. We assume that there is only one persistent db producer and possibly
@@ -294,7 +282,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
 
     , pruneInputs = ReaderT $ \conn -> do
         let qry = "DELETE FROM inputs \
-                  \WHERE spent_at <= ( \
+                  \WHERE spent_at < ( \
                   \  (SELECT MAX(slot_no) FROM checkpoints) - ?\
                   \)"
         execute conn qry [SQLInteger longestRollback]
@@ -428,11 +416,15 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
             $ \xs (Only x) -> pure (mk x:xs)
 
     , rollbackTo = \slotNo -> ReaderT $ \conn -> do
+        let slotNoVar = SQLInteger (fromIntegral slotNo)
         execute conn "DELETE FROM inputs WHERE created_at > ?"
-            [ SQLInteger (fromIntegral slotNo)
+            [ slotNoVar
+            ]
+        execute conn "UPDATE inputs SET spent_at = NULL WHERE spent_at > ?"
+            [ slotNoVar
             ]
         execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
-            [ SQLInteger (fromIntegral slotNo)
+            [ slotNoVar
             ]
         query_ conn "SELECT MAX(slot_no) FROM checkpoints" >>= \case
             [[SQLInteger slotNo']] ->
@@ -475,6 +467,9 @@ mkPreparedStatement n =
 retryWhenBusy :: IO a -> IO a
 retryWhenBusy action =
     action `catch` (\e@SQLError{sqlError} -> case sqlError of
+        ErrorLocked -> do
+            threadDelay 0.1
+            retryWhenBusy action
         ErrorBusy -> do
             threadDelay 0.1
             retryWhenBusy action
