@@ -24,7 +24,7 @@ RUN cp -r dist/* . && chmod +w dist/bin && chmod +x dist/bin/kupo
 # ----------------------------------- BUILD ---------------------------------- #
 #                                                                              #
 
-FROM busybox as kupo
+FROM busybox:1.35 as kupo
 
 ARG NETWORK=mainnet
 
