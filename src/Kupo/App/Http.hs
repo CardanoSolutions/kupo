@@ -99,17 +99,16 @@ import qualified Network.Wai.Handler.Warp as Warp
 
 httpServer
     :: Tracer IO TraceHttpServer
-    -> InputManagement
     -> (forall a. (Database IO -> IO a) -> IO a)
     -> TVar IO [Pattern]
     -> IO Health
     -> String
     -> Int
     -> IO ()
-httpServer tr inputManagement withDatabase patternsVar readHealth host port =
+httpServer tr withDatabase patternsVar readHealth host port =
     Warp.runSettings settings
         $ tracerMiddleware tr
-        $ app inputManagement withDatabase patternsVar readHealth
+        $ app withDatabase patternsVar readHealth
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -122,12 +121,11 @@ httpServer tr inputManagement withDatabase patternsVar readHealth host port =
 --
 
 app
-    :: InputManagement
-    -> (forall a. (Database IO -> IO a) -> IO a)
+    :: (forall a. (Database IO -> IO a) -> IO a)
     -> TVar IO [Pattern]
     -> IO Health
     -> Application
-app inputManagement withDatabase patternsVar readHealth req send =
+app withDatabase patternsVar readHealth req send =
     case pathInfo req of
         ("v1" : "health" : args) ->
             routeHealth (requestMethod req, args)
@@ -181,7 +179,6 @@ app inputManagement withDatabase patternsVar readHealth req send =
                 headers <- responseHeaders readHealth
                 send $ handleGetMatches
                             headers
-                            inputManagement
                             (patternFromPath args)
                             (queryString req)
                             db
@@ -303,21 +300,18 @@ handleGetCheckpointBySlot headers mSlotNo query Database{..} =
 
 handleGetMatches
     :: [Http.Header]
-    -> InputManagement
     -> Maybe Text
     -> Http.Query
     -> Database IO
     -> Response
-handleGetMatches headers inputManagement patternQuery queryParams Database{..} = do
+handleGetMatches headers patternQuery queryParams Database{..} = do
     case (patternQuery >>= patternFromText, statusFlagFromQueryParams queryParams) of
         (Nothing, _) ->
             Errors.invalidPattern
         (Just{}, Nothing) ->
             Errors.invalidStatusFlag
         (Just p, Just statusFlag) -> do
-            let query = statusFlag
-                    & hideTransientGhostInputs inputManagement
-                    & (`applyStatusFlag` (patternToSql p))
+            let query = applyStatusFlag statusFlag (patternToSql p)
             case filterMatchesBy queryParams of
                 Nothing ->
                     Errors.invalidMatchFilter

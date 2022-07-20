@@ -125,7 +125,6 @@ kupoWith tr withChainProducer =
                 -- HTTP Server
                 ( httpServer
                     (tracerHttp tr)
-                    inputManagement
                     -- NOTE: This should / could probably use a resource pool to
                     -- avoid re-creating a new connection on every requests. This is
                     -- however pretty cheap with SQLite anyway and the HTTP server

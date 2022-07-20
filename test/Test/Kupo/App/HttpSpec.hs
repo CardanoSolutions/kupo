@@ -40,8 +40,6 @@ import Kupo.Control.MonadDatabase
     ( Database (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
-import Kupo.Data.Configuration
-    ( InputManagement (..) )
 import Kupo.Data.Database
     ( binaryDataToRow, patternToRow, pointToRow, resultToRow )
 import Kupo.Data.Health
@@ -279,9 +277,7 @@ spec = do
 newStubbedApplication :: [Pattern] -> IO Application
 newStubbedApplication patterns = do
     patternsVar <- newTVarIO patterns
-    inputManagement <- generate $ elements [MarkSpentInputs, RemoveSpentInputs]
     pure $ app
-        inputManagement
         (\callback -> callback databaseStub)
         patternsVar
         healthStub
