@@ -20,10 +20,10 @@ import Kupo.Prelude
 
 import Data.List
     ( nub, (\\) )
+import Kupo.App.Database
+    ( Database (..) )
 import Kupo.App.Http.HealthCheck
     ( healthCheck )
-import Kupo.Control.MonadDatabase
-    ( Database (..) )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
 import Kupo.Control.MonadSTM
@@ -40,8 +40,6 @@ import Kupo.Data.Cardano
     , slotNoFromText
     , slotNoToText
     )
-import Kupo.Data.Configuration
-    ( InputManagement )
 import Kupo.Data.Database
     ( applyStatusFlag
     , binaryDataFromRow
@@ -62,7 +60,7 @@ import Kupo.Data.Http.Response
 import Kupo.Data.Http.Status
     ( Status (..), mkStatus )
 import Kupo.Data.Http.StatusFlag
-    ( hideTransientGhostInputs, statusFlagFromQueryParams )
+    ( statusFlagFromQueryParams )
 import Kupo.Data.Pattern
     ( Pattern (..)
     , Result (..)
@@ -258,7 +256,7 @@ handleGetCheckpoints
     -> Response
 handleGetCheckpoints headers Database{..} = do
     responseStreamJson headers pointToJson $ \yield done -> do
-        points <- runTransaction (listCheckpointsDesc pointFromRow)
+        points <- runReadOnlyTransaction (listCheckpointsDesc pointFromRow)
         mapM_ yield points
         done
 
@@ -279,7 +277,7 @@ handleGetCheckpointBySlot headers mSlotNo query Database{..} =
   where
     handleGetCheckpointBySlot' slotNo mode = do
         let successor = succ (unSlotNo slotNo)
-        points <- runTransaction (listAncestorsDesc successor 1 pointFromRow)
+        points <- runReadOnlyTransaction (listAncestorsDesc successor 1 pointFromRow)
         pure $ responseJsonEncoding status200 headers $
             case points of
                 [point] ->
@@ -317,7 +315,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
                     Errors.invalidMatchFilter
                 Just NoFilter ->
                     responseStreamJson headers resultToJson $ \yield done -> do
-                        runTransaction $ foldInputs query (yield . resultFromRow)
+                        runReadOnlyTransaction $ foldInputs query (yield . resultFromRow)
                         done
                 Just (FilterByAssetId assetId) ->
                     responseStreamJson headers resultToJson $ \yield done -> do
@@ -325,7 +323,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
                                 if hasAssetId (value result) assetId
                                 then yield result
                                 else pure ()
-                        runTransaction $ foldInputs query (yieldIf . resultFromRow)
+                        runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
                         done
                 Just (FilterByPolicyId policyId) ->
                     responseStreamJson headers resultToJson $ \yield done -> do
@@ -333,7 +331,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
                                 if hasPolicyId (value result) policyId
                                 then yield result
                                 else pure ()
-                        runTransaction $ foldInputs query (yieldIf . resultFromRow)
+                        runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
                         done
 
 handleDeleteMatches
@@ -350,7 +348,7 @@ handleDeleteMatches headers patternsVar query Database{..} = do
         Just p | p `overlaps` (patterns \\ [p]) -> do
             pure Errors.stillActivePattern
         Just p -> do
-            n <- runImmediateTransaction $ deleteInputsByAddress (patternToSql p)
+            n <- runReadWriteTransaction $ deleteInputsByAddress (patternToSql p)
             pure $ responseJsonEncoding status200 headers $
                 Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)
@@ -370,7 +368,8 @@ handleGetDatum headers datumArg Database{..} = do
         Nothing ->
             pure Errors.malformedDatumHash
         Just datumHash -> do
-            datum <- runTransaction $ getBinaryData (datumHashToRow datumHash) binaryDataFromRow
+            datum <- runReadOnlyTransaction $
+                getBinaryData (datumHashToRow datumHash) binaryDataFromRow
             pure $ responseJsonEncoding status200 headers $
                 case datum of
                     Nothing ->
@@ -418,7 +417,7 @@ handleDeletePattern headers patternsVar query Database{..} = do
         Nothing ->
             pure Errors.invalidPattern
         Just p -> do
-            n <- runImmediateTransaction $ deletePattern (patternToRow p)
+            n <- runReadWriteTransaction $ deletePattern (patternToRow p)
             atomically $ modifyTVar' patternsVar (\\ [p])
             pure $ responseJsonEncoding status200 headers $
                 Json.pairs $ mconcat
@@ -436,7 +435,7 @@ handlePutPattern headers patternsVar query Database{..} = do
         Nothing ->
             pure Errors.invalidPattern
         Just p  -> do
-            runImmediateTransaction $ insertPatterns [patternToRow p]
+            runReadWriteTransaction $ insertPatterns [patternToRow p]
             patterns <- atomically $ do
                 modifyTVar' patternsVar (nub . (p :))
                 readTVar patternsVar

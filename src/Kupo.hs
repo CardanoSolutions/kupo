@@ -38,6 +38,8 @@ import Kupo.App.ChainSync
     ( withChainSyncExceptionHandler )
 import Kupo.App.Configuration
     ( newPatternsCache, startOrResume )
+import Kupo.App.Database
+    ( ConnectionType (..), newLock, withDatabase )
 import Kupo.App.Health
     ( connectionStatusToggle, readHealth, recordCheckpoint )
 import Kupo.App.Http
@@ -46,8 +48,6 @@ import Kupo.App.Mailbox
     ( Mailbox )
 import Kupo.Control.MonadAsync
     ( concurrently4 )
-import Kupo.Control.MonadDatabase
-    ( ConnectionType (..), MonadDatabase (..) )
 import Kupo.Control.MonadLog
     ( TracerDefinition (..), nullTracer, withTracers )
 import Kupo.Control.MonadSTM

@@ -25,16 +25,12 @@ import Database.SQLite.Simple
     , withConnection
     , withTransaction
     )
+import Kupo.App.Database
+    ( ConnectionType (..), DBLock, Database (..), newLock, withDatabase )
 import Kupo.Control.MonadAsync
     ( mapConcurrently_ )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
-import Kupo.Control.MonadDatabase
-    ( ConnectionType (..)
-    , Database (..)
-    , LongestRollback (..)
-    , MonadDatabase (..)
-    )
 import Kupo.Control.MonadDelay
     ( threadDelay )
 import Kupo.Control.MonadLog
@@ -52,6 +48,8 @@ import Kupo.Data.Cardano
     , addressToBytes
     , getPointSlotNo
     )
+import Kupo.Data.Configuration
+    ( LongestRollback (..) )
 import Kupo.Data.Database
     ( patternFromRow
     , patternToRow
@@ -121,8 +119,8 @@ spec = parallel $ do
         prop "list checkpoints after inserting them" $
             forAllCheckpoints k $ \pts -> monadicIO $ do
                 cps <- withInMemoryDatabase k $ \Database{..} -> do
-                    runTransaction $ insertCheckpoints (pointToRow <$> pts)
-                    runTransaction $ fmap getPointSlotNo <$> listCheckpointsDesc pointFromRow
+                    runReadOnlyTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    runReadOnlyTransaction $ fmap getPointSlotNo <$> listCheckpointsDesc pointFromRow
                 monitor $ counterexample (show cps)
                 assert $ all (uncurry (>)) (zip cps (drop 1 cps))
                 assert $ Prelude.head cps == maximum (getPointSlotNo <$> pts)
@@ -130,14 +128,14 @@ spec = parallel $ do
         prop "get ancestor of any checkpoint" $
             forAllCheckpoints k $ \pts -> monadicIO $ do
                 oneByOne <- withInMemoryDatabase k $ \Database{..} -> do
-                    runTransaction $ insertCheckpoints (pointToRow <$> pts)
-                    fmap mconcat $ runTransaction $ forM pts $ \pt -> do
+                    runReadOnlyTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    fmap mconcat $ runReadOnlyTransaction $ forM pts $ \pt -> do
                         let slotNo = unSlotNo (getPointSlotNo pt)
                         listAncestorsDesc slotNo 1 pointFromRow
 
                 allAtOnce <- withInMemoryDatabase k $ \Database{..} -> do
-                    runTransaction $ insertCheckpoints (pointToRow <$> pts)
-                    fmap reverse $ runTransaction $ do
+                    runReadOnlyTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    fmap reverse $ runReadOnlyTransaction $ do
                         let slotNo = unSlotNo (maximum (getPointSlotNo <$> pts))
                         listAncestorsDesc slotNo (fromIntegral $ length pts) pointFromRow
 
@@ -194,7 +192,7 @@ longLivedWorker dir lock allow =
         25 -> pure ()
         n   -> do
             result <- generate (chooseVector (100, 500) genResult)
-            runTransaction $ insertInputs (resultToRow <$> result)
+            runReadOnlyTransaction $ insertInputs (resultToRow <$> result)
             ms <- millisecondsToDiffTime <$> generate (choose (1, 15))
             threadDelay ms
             loop db (succ n)
@@ -209,25 +207,25 @@ shortLivedWorker dir lock = do
         n   -> do
             void $ join $ generate $ frequency
                 [ (10, do
-                    pure $ void $ runTransaction $ listCheckpointsDesc pointFromRow
+                    pure $ void $ runReadOnlyTransaction $ listCheckpointsDesc pointFromRow
                   )
                 , (2, do
                     p <- genPattern
                     let q = patternToSql p
-                    pure $ runTransaction $ foldInputs q (\_ -> pure ())
+                    pure $ runReadOnlyTransaction $ foldInputs q (\_ -> pure ())
                   )
                 , (1, do
                     p <- genPattern
                     let q = patternToSql p
-                    pure $ void $ runImmediateTransaction $ deleteInputsByAddress q
+                    pure $ void $ runReadWriteTransaction $ deleteInputsByAddress q
                   )
                 , (1, do
                     p <- genPattern
-                    pure $ runImmediateTransaction $ insertPatterns [patternToRow p]
+                    pure $ runReadWriteTransaction $ insertPatterns [patternToRow p]
                   )
                 , (1, do
                     p <- genPattern
-                    pure $ void $ runImmediateTransaction $ deletePattern (patternToRow p)
+                    pure $ void $ runReadWriteTransaction $ deletePattern (patternToRow p)
                   )
                 ]
             ms <- millisecondsToDiffTime <$> generate (choose (15, 50))
@@ -279,10 +277,9 @@ rowToAddress = \case
         error "rowToAddress: not SQLText"
 
 withInMemoryDatabase
-    :: MonadDatabase m
-    => Word64
-    -> (Database m -> m b)
-    -> PropertyM m b
+    :: Word64
+    -> (Database IO -> IO b)
+    -> PropertyM IO b
 withInMemoryDatabase k action = do
     lock <- run newLock
     run $ withDatabase

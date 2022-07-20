@@ -9,18 +9,19 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Kupo.Control.MonadDatabase
+module Kupo.App.Database
     ( -- * Database DSL
-      MonadDatabase (..)
+      Database (..)
+    , DBTransaction
+
+      -- * Setup
+    , withDatabase
     , ConnectionType (..)
-    , Database (..)
-    , LongestRollback (..)
     , Connection
 
-      -- * Database Entities
-    , Input (..)
-    , Checkpoint (..)
-    , BinaryData (..)
+      -- ** Lock
+    , DBLock
+    , newLock
 
       -- * Tracer
     , TraceDatabase (..)
@@ -63,61 +64,16 @@ import Database.SQLite.Simple.ToField
     ( ToField (..) )
 import GHC.TypeLits
     ( KnownSymbol, symbolVal )
+import Kupo.Data.Configuration
+    ( LongestRollback (..) )
+import Kupo.Data.Database
+    ( BinaryData (..), Checkpoint (..), Input (..) )
 import Numeric
     ( Floating (..) )
 
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
-
-class (Monad m, Monad (DBTransaction m)) => MonadDatabase (m :: Type -> Type) where
-    type DBTransaction m :: (Type -> Type)
-    data DBLock m :: Type
-
-    newLock
-        :: m (DBLock m)
-
-    withDatabase
-        :: Tracer m TraceDatabase
-        -> ConnectionType
-        -> DBLock m
-        -> LongestRollback
-        -> FilePath
-        -> (Database m -> m a)
-        -> m a
-
--- | A thin wrapper around the number of slots we consider to be the _longest
--- rollback_. This impacts how long we have to keep data in the database before
--- removing it, as well as how we create checkpoints when looking for chain
--- intersection with the chain-producer.
-newtype LongestRollback = LongestRollback
-    { getLongestRollback :: Word64
-    } deriving newtype (Integral, Real, Num, Enum, Ord, Eq, Show)
-
-data ConnectionType = LongLived | ShortLived
-    deriving (Eq, Show)
-
-data Input = Input
-    { outputReference :: ByteString
-    , address :: Text
-    , value :: ByteString
-    , datum :: Maybe BinaryData
-    , datumHash :: Maybe ByteString
-    , createdAtSlotNo :: Word64
-    , createdAtHeaderHash :: ByteString
-    , spentAtSlotNo :: Maybe Word64
-    , spentAtHeaderHash :: Maybe ByteString
-    } deriving (Show)
-
-data BinaryData = BinaryData
-    { binaryDataHash :: ByteString
-    , binaryData :: ByteString
-    } deriving (Show)
-
-data Checkpoint = Checkpoint
-    { checkpointHeaderHash :: ByteString
-    , checkpointSlotNo :: Word64
-    } deriving (Show)
 
 data Database (m :: Type -> Type) = Database
     { insertInputs
@@ -191,65 +147,85 @@ data Database (m :: Type -> Type) = Database
         :: Word64  -- slot_no
         -> DBTransaction m (Maybe Word64)
 
-    , runTransaction
+    , runReadOnlyTransaction
         :: forall a. ()
         => DBTransaction m a
         -> m a
 
-    , runImmediateTransaction
+    , runReadWriteTransaction
         :: forall a. ()
         => DBTransaction m a
         -> m a
     }
 
+type family DBTransaction (m :: Type -> Type) :: (Type -> Type) where
+    DBTransaction IO = ReaderT Connection IO
+
+withDatabase
+    :: Tracer IO TraceDatabase
+    -> ConnectionType
+    -> DBLock IO
+    -> LongestRollback
+    -> FilePath
+    -> (Database IO -> IO a)
+    -> IO a
+withDatabase tr mode (DBLock readers writer) k filePath action = do
+    withConnection filePath $ \conn -> do
+        when (mode == LongLived) (databaseVersion conn >>= runMigrations tr conn)
+        action (mkDatabase k (bracketConnection conn))
+  where
+    -- The heuristic below aims at favoring light reader/writer over the main
+    -- writer. We assume that there is only one persistent db producer and possibly
+    -- many short-lived reader/writer. The count of short-lived connection
+    -- is kept in a TVar and each connection increment/decrement it around
+    -- each transaction.
+    --
+    -- Short-lived connection are _mostly_read-only, but they may sometimes
+    -- perform quick writes. Hence, there's a simple fail-over mechanism for
+    -- them, in the (unlikely) case where they'd perform two concurrent
+    -- conflictual requests. There's no need for the LongLived connection
+    -- which is always alone.
+    --
+    -- The persistent process will only attempt writing if there's currently
+    -- no short-lived one. In case where there's at least one busy, it'll let
+    -- them pass and wait until all short-lived are done.
+    bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
+    bracketConnection conn between =
+        case mode of
+            ShortLived -> bracket_
+                (do
+                    atomically (modifyTVar' readers succ)
+                    atomically (readTVar writer >>= check . not)
+                )
+                (atomically (modifyTVar' readers pred))
+                (between conn)
+
+            LongLived -> bracket_
+                (atomically $ do
+                    readTVar readers >>= check . (== 0)
+                    writeTVar writer True
+                )
+                (atomically $ writeTVar writer False)
+                (between conn)
+
+-- ** ConnectionType
+
+data ConnectionType = LongLived | ShortLived
+    deriving (Eq, Show)
+
+-- ** Lock
+
+data DBLock (m :: Type -> Type) = DBLock
+    (TVar m Word)
+    (TVar m Bool)
+
+newLock :: MonadSTM m => m (DBLock m)
+newLock = DBLock
+    <$> newTVarIO 0 <*> newTVarIO True
+
 --
 -- IO
 --
-
-instance MonadDatabase IO where
-    type DBTransaction IO = ReaderT Connection IO
-    data DBLock IO = DBLock (TVar IO Word) (TVar IO Bool)
-
-    newLock = DBLock <$> newTVarIO 0 <*> newTVarIO True
-
-    withDatabase tr mode (DBLock readers writer) k filePath action = do
-        withConnection filePath $ \conn -> do
-            when (mode == LongLived) (databaseVersion conn >>= runMigrations tr conn)
-            action (mkDatabase k (bracketConnection conn))
-      where
-        -- The heuristic below aims at favoring light reader/writer over the main
-        -- writer. We assume that there is only one persistent db producer and possibly
-        -- many short-lived reader/writer. The count of short-lived connection
-        -- is kept in a TVar and each connection increment/decrement it around
-        -- each transaction.
-        --
-        -- Short-lived connection are _mostly_read-only, but they may sometimes
-        -- perform quick writes. Hence, there's a simple fail-over mechanism for
-        -- them, in the (unlikely) case where they'd perform two concurrent
-        -- conflictual requests. There's no need for the LongLived connection
-        -- which is always alone.
-        --
-        -- The persistent process will only attempt writing if there's currently
-        -- no short-lived one. In case where there's at least one busy, it'll let
-        -- them pass and wait until all short-lived are done.
-        bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
-        bracketConnection conn between =
-            case mode of
-                ShortLived -> bracket_
-                    (do
-                        atomically (modifyTVar' readers succ)
-                        atomically (readTVar writer >>= check . not)
-                    )
-                    (atomically (modifyTVar' readers pred))
-                    (between conn)
-
-                LongLived -> bracket_
-                    (atomically $ do
-                        readTVar readers >>= check . (== 0)
-                        writeTVar writer True
-                    )
-                    (atomically $ writeTVar writer False)
-                    (between conn)
 
 mkDatabase :: LongestRollback -> (forall a. (Connection -> IO a) -> IO a) -> Database IO
 mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
@@ -434,10 +410,10 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
             xs ->
                 throwIO $ UnexpectedRow ("MAX(" <> show slotNo <> ")") xs
 
-    , runTransaction = \r -> bracketConnection $ \conn ->
+    , runReadOnlyTransaction = \r -> bracketConnection $ \conn ->
         retryWhenBusy $ withTransaction conn False (runReaderT r conn)
 
-    , runImmediateTransaction = \r -> bracketConnection $ \conn ->
+    , runReadWriteTransaction = \r -> bracketConnection $ \conn ->
         retryWhenBusy $ withTransaction conn True (runReaderT r conn)
     }
 

@@ -8,8 +8,6 @@ module Test.Kupo.Fixture where
 
 import Kupo.Prelude
 
-import Kupo.Control.MonadDatabase
-    ( Checkpoint (..) )
 import Kupo.Data.Cardano
     ( BinaryData
     , Block
@@ -20,7 +18,7 @@ import Kupo.Data.Cardano
     , unsafeDatumHashFromBytes
     )
 import Kupo.Data.Database
-    ( pointFromRow )
+    ( Checkpoint (..), pointFromRow )
 
 someNonExistingPoint :: Point Block
 someNonExistingPoint = pointFromRow $ Checkpoint

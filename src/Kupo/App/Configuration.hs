@@ -25,7 +25,7 @@ import Control.Monad.Trans.Except
     ( throwE, withExceptT )
 import Data.Aeson.Lens
     ( key, _String )
-import Kupo.Control.MonadDatabase
+import Kupo.App.Database
     ( Database (..) )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
@@ -46,7 +46,6 @@ import System.FilePath.Posix
 
 import qualified Data.Aeson as Json
 import qualified Data.Yaml as Yaml
-
 
 
 parseNetworkParameters :: FilePath -> IO NetworkParameters
@@ -89,7 +88,7 @@ startOrResume
     -> Database m
     -> m [Point Block]
 startOrResume tr configuration Database{..} = do
-    checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
+    checkpoints <- runReadOnlyTransaction (listCheckpointsDesc pointFromRow)
 
     case nonEmpty (sortOn Down (unSlotNo . getPointSlotNo <$> checkpoints)) of
         Nothing -> pure ()
@@ -146,12 +145,12 @@ newPatternsCache
     -> Database m
     -> m (TVar m [Pattern])
 newPatternsCache tr configuration Database{..} = do
-    alreadyKnownPatterns <- runTransaction (listPatterns patternFromRow)
+    alreadyKnownPatterns <- runReadOnlyTransaction (listPatterns patternFromRow)
     patterns <- case (alreadyKnownPatterns, configuredPatterns) of
         (x:xs, []) ->
             pure (x:xs)
         ([], y:ys) -> do
-            runTransaction (insertPatterns (patternToRow <$> (y:ys)))
+            runReadWriteTransaction (insertPatterns (patternToRow <$> (y:ys)))
             pure (y:ys)
         ([], []) -> do
             logWith tr errNoPatterns

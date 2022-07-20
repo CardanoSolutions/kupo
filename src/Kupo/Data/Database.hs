@@ -4,17 +4,18 @@
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Kupo.Data.Database
-    ( -- * Point
-      pointToRow
+    ( -- * Point / Checkpoint
+      Checkpoint (..)
+    , pointToRow
     , pointFromRow
 
-      -- * Result
+      -- * Result / Input
+    , Input (..)
     , resultToRow
     , resultFromRow
 
@@ -24,6 +25,7 @@ module Kupo.Data.Database
     , patternToSql
 
       -- * Datum / BinaryData
+    , BinaryData (..)
     , datumToRow
     , datumFromRow
     , datumHashToRow
@@ -36,63 +38,62 @@ module Kupo.Data.Database
 
 import Kupo.Prelude
 
-import Kupo.Data.Cardano
-    ( BinaryData
-    , Block
-    , Datum
-    , DatumHash
-    , SlotNo (..)
-    , StandardCrypto
-    , hashBinaryData
-    , hashDatum
-    , noDatum
-    , unsafeBinaryDataFromBytes
-    , unsafeDatumHashFromBytes
-    )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..) )
-import Kupo.Data.Pattern
-    ( MatchBootstrap (..)
-    , Pattern (..)
-    , Result (..)
-    , patternFromText
-    , patternToText
-    )
 import Ouroboros.Consensus.Block
     ( ConvertRawHash (..) )
-import Ouroboros.Consensus.Cardano.Block
-    ( CardanoBlock )
-import Ouroboros.Network.Block
-    ( pattern BlockPoint, pattern GenesisPoint, Point (..) )
 
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.Data as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
-import qualified Kupo.Control.MonadDatabase as DB
+import qualified Kupo.Data.Cardano as App
+import qualified Kupo.Data.Pattern as App
+
+data Input = Input
+    { outputReference :: ByteString
+    , address :: Text
+    , value :: ByteString
+    , datum :: Maybe BinaryData
+    , datumHash :: Maybe ByteString
+    , createdAtSlotNo :: Word64
+    , createdAtHeaderHash :: ByteString
+    , spentAtSlotNo :: Maybe Word64
+    , spentAtHeaderHash :: Maybe ByteString
+    } deriving (Show)
+
+data BinaryData = BinaryData
+    { binaryDataHash :: ByteString
+    , binaryData :: ByteString
+    } deriving (Show)
+
+data Checkpoint = Checkpoint
+    { checkpointHeaderHash :: ByteString
+    , checkpointSlotNo :: Word64
+    } deriving (Show)
 
 --
 -- Checkpoint
 --
 
 pointFromRow
-    :: DB.Checkpoint
-    -> Point (CardanoBlock StandardCrypto)
-pointFromRow row = BlockPoint
-    (SlotNo (DB.checkpointSlotNo row))
-    (fromShortRawHash (Proxy @Block) $ toShort $ DB.checkpointHeaderHash row)
+    :: Checkpoint
+    -> App.Point App.Block
+pointFromRow row = App.BlockPoint
+    (App.SlotNo (checkpointSlotNo row))
+    (fromShortRawHash (Proxy @App.Block) $ toShort $ checkpointHeaderHash row)
 
 pointToRow
     :: HasCallStack
-    => Point (CardanoBlock StandardCrypto)
-    -> DB.Checkpoint
+    => App.Point App.Block
+    -> Checkpoint
 pointToRow = \case
-    GenesisPoint -> error "pointToRow: genesis point."
-    BlockPoint slotNo headerHash -> DB.Checkpoint
-        { DB.checkpointHeaderHash = toRawHash proxy headerHash
-        , DB.checkpointSlotNo = unSlotNo slotNo
+    App.GenesisPoint -> error "pointToRow: genesis point."
+    App.BlockPoint slotNo headerHash -> Checkpoint
+        { checkpointHeaderHash = toRawHash proxy headerHash
+        , checkpointSlotNo = App.unSlotNo slotNo
         }
   where
-    proxy = Proxy @(CardanoBlock StandardCrypto)
+    proxy = Proxy @App.Block
 
 --
 -- Result
@@ -100,48 +101,48 @@ pointToRow = \case
 
 resultFromRow
     :: HasCallStack
-    => DB.Input
-    -> Result
-resultFromRow row = Result
-    { outputReference =
-        unsafeDeserialize' (DB.outputReference row)
-    , address =
-        (unsafeAddressFromBytes . unsafeDecodeBase16)  (DB.address row)
-    , value =
-        unsafeDeserialize' (DB.value row)
-    , datum =
-        datumFromRow (DB.datumHash row) (DB.datum row)
-    , createdAt =
-        pointFromRow (DB.Checkpoint (DB.createdAtHeaderHash row) (DB.createdAtSlotNo row))
-    , spentAt =
-        pointFromRow <$> (DB.Checkpoint <$> DB.spentAtHeaderHash row <*> DB.spentAtSlotNo row)
+    => Input
+    -> App.Result
+resultFromRow row = App.Result
+    { App.outputReference =
+        unsafeDeserialize' (outputReference row)
+    , App.address =
+        (unsafeAddressFromBytes . unsafeDecodeBase16)  (address row)
+    , App.value =
+        unsafeDeserialize' (value row)
+    , App.datum =
+        datumFromRow (datumHash row) (datum row)
+    , App.createdAt =
+        pointFromRow (Checkpoint (createdAtHeaderHash row) (createdAtSlotNo row))
+    , App.spentAt =
+        pointFromRow <$> (Checkpoint <$> spentAtHeaderHash row <*> spentAtSlotNo row)
     }
   where
     unsafeAddressFromBytes =
         fromMaybe (error "unsafeAddressFromBytes") . Ledger.deserialiseAddr
 
 resultToRow
-    :: Result
-    -> DB.Input
-resultToRow Result{..} = DB.Input
-    { DB.outputReference =
+    :: App.Result
+    -> Input
+resultToRow App.Result{..} = Input
+    { outputReference =
         serialize' outputReference
-    , DB.address =
+    , address =
         encodeBase16 (Ledger.serialiseAddr address)
-    , DB.value =
+    , value =
         serialize' value
-    , DB.datum =
+    , datum =
         datumToRow datum
-    , DB.datumHash =
-        datumHashToRow <$> hashDatum datum
-    , DB.createdAtSlotNo =
-        DB.checkpointSlotNo createdAtRow
-    , DB.createdAtHeaderHash =
-        DB.checkpointHeaderHash createdAtRow
-    , DB.spentAtSlotNo =
-        DB.checkpointSlotNo <$> spentAtRow
-    , DB.spentAtHeaderHash =
-        DB.checkpointHeaderHash <$> spentAtRow
+    , datumHash =
+        datumHashToRow <$> App.hashDatum datum
+    , createdAtSlotNo =
+        checkpointSlotNo createdAtRow
+    , createdAtHeaderHash =
+        checkpointHeaderHash createdAtRow
+    , spentAtSlotNo =
+        checkpointSlotNo <$> spentAtRow
+    , spentAtHeaderHash =
+        checkpointHeaderHash <$> spentAtRow
     }
   where
     createdAtRow = pointToRow createdAt
@@ -153,80 +154,80 @@ resultToRow Result{..} = DB.Input
 
 datumFromRow
     :: Maybe ByteString
-    -> Maybe DB.BinaryData
-    -> Datum
+    -> Maybe BinaryData
+    -> App.Datum
 datumFromRow hash = \case
-    Just DB.BinaryData{..} ->
-        Ledger.Datum (unsafeBinaryDataFromBytes binaryData)
+    Just BinaryData{..} ->
+        Ledger.Datum (App.unsafeBinaryDataFromBytes binaryData)
     Nothing ->
-        maybe noDatum (Ledger.DatumHash . unsafeDatumHashFromBytes) hash
+        maybe App.noDatum (Ledger.DatumHash . App.unsafeDatumHashFromBytes) hash
 
 datumToRow
-    :: Datum
-    -> Maybe DB.BinaryData
+    :: App.Datum
+    -> Maybe BinaryData
 datumToRow = \case
     Ledger.NoDatum ->
         Nothing
     Ledger.DatumHash{} ->
         Nothing
     Ledger.Datum bin ->
-        Just (binaryDataToRow (hashBinaryData bin) bin)
+        Just (binaryDataToRow (App.hashBinaryData bin) bin)
 
 datumHashToRow
-    :: DatumHash
+    :: App.DatumHash
     -> ByteString
 datumHashToRow =
     Ledger.originalBytes
 
 binaryDataToRow
-    :: DatumHash
+    :: App.DatumHash
+    -> App.BinaryData
     -> BinaryData
-    -> DB.BinaryData
-binaryDataToRow hash bin = DB.BinaryData
-    { DB.binaryDataHash = datumHashToRow hash
-    , DB.binaryData = Ledger.originalBytes (Ledger.binaryDataToData bin)
+binaryDataToRow hash bin = BinaryData
+    { binaryDataHash = datumHashToRow hash
+    , binaryData = Ledger.originalBytes (Ledger.binaryDataToData bin)
     }
 
 binaryDataFromRow
-    :: DB.BinaryData
-    -> BinaryData
+    :: BinaryData
+    -> App.BinaryData
 binaryDataFromRow =
-    unsafeBinaryDataFromBytes . DB.binaryData
+    App.unsafeBinaryDataFromBytes . binaryData
 
 --
 -- Pattern
 --
 
 patternToRow
-    :: Pattern
+    :: App.Pattern
     -> Text
 patternToRow =
-    patternToText
+    App.patternToText
 
 patternFromRow
     :: HasCallStack
     => Text
-    -> Pattern
+    -> App.Pattern
 patternFromRow p =
     fromMaybe
         (error $ "patternFromRow: invalid pattern: " <> p)
-        (patternFromText p)
+        (App.patternFromText p)
 
 patternToSql
-    :: Pattern
+    :: App.Pattern
     -> Text
 patternToSql = \case
-    MatchAny IncludingBootstrap ->
+    App.MatchAny App.IncludingBootstrap ->
         "LIKE '%'"
-    MatchAny OnlyShelley ->
+    App.MatchAny App.OnlyShelley ->
         "NOT LIKE '8%'"
-    MatchExact addr ->
+    App.MatchExact addr ->
         "= '" <> encodeBase16 (Ledger.serialiseAddr addr) <> "'"
-    MatchPayment payment ->
+    App.MatchPayment payment ->
         "LIKE '__" <> encodeBase16 payment <> "%'"
-    MatchDelegation delegation ->
+    App.MatchDelegation delegation ->
         "LIKE '%" <> encodeBase16 delegation <> "' AND len > 58"
-    MatchPaymentAndDelegation payment delegation ->
+    App.MatchPaymentAndDelegation payment delegation ->
         "LIKE '__" <> encodeBase16 payment <> encodeBase16 delegation <> "'"
 
 --

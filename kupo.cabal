@@ -47,13 +47,13 @@ library
       Kupo.App.ChainSync.Direct
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
+      Kupo.App.Database
       Kupo.App.Health
       Kupo.App.Http
       Kupo.App.Http.HealthCheck
       Kupo.App.Mailbox
       Kupo.Control.MonadAsync
       Kupo.Control.MonadCatch
-      Kupo.Control.MonadDatabase
       Kupo.Control.MonadDelay
       Kupo.Control.MonadLog
       Kupo.Control.MonadOuroboros

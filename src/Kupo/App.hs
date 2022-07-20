@@ -26,12 +26,12 @@ import Kupo.App.ChainSync
     ( TraceChainSync (..) )
 import Kupo.App.Configuration
     ( TraceConfiguration (..), parseNetworkParameters )
+import Kupo.App.Database
+    ( DBTransaction, Database (..), TraceDatabase (..) )
 import Kupo.App.Mailbox
     ( Mailbox, flushMailbox, newMailbox, putMailbox )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
-import Kupo.Control.MonadDatabase
-    ( Database (..), MonadDatabase (DBTransaction), TraceDatabase (..) )
 import Kupo.Control.MonadLog
     ( MonadLog (..), Tracer )
 import Kupo.Control.MonadOuroboros
@@ -147,7 +147,8 @@ producer
 producer tr notifyTip mailbox Database{..} = ChainSyncHandler
     { onRollBackward = \tip pt -> do
         logWith tr (ChainSyncRollBackward (getPointSlotNo pt))
-        runTransaction $ do
+        -- FIXME: This is in-principle a race-condition with the consumer.
+        runReadWriteTransaction $ do
             lastKnownSlot <- rollbackTo (unSlotNo (getPointSlotNo pt))
             notifyTip tip (SlotNo <$> lastKnownSlot)
     , onRollForward = \tip blk ->
@@ -176,7 +177,7 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
     let lastKnownSlot = getPointSlotNo lastKnownPoint
     let (spentInputs, newInputs, bins) = foldMap (matchBlock codecs patterns . snd) blks
     logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
-    runTransaction $ do
+    runReadWriteTransaction $ do
         insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
         insertInputs newInputs
         onSpentInputs lastKnownTip lastKnownSlot spentInputs
@@ -236,7 +237,7 @@ gardener tr config withDatabase = forever $ do
     threadDelay pruneThrottleDelay
     logWith tr DatabaseBeginGarbageCollection
     withDatabase $ \Database{..} -> do
-        (prunedInputs, prunedBinaryData) <- runImmediateTransaction $ do
+        (prunedInputs, prunedBinaryData) <- runReadWriteTransaction $ do
             let
                 pruneInputsWhenApplicable =
                     case inputManagement of

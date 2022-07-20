@@ -33,10 +33,10 @@ import Kupo.App.ChainSync
     ( TraceChainSync )
 import Kupo.App.Configuration
     ( TraceConfiguration )
+import Kupo.App.Database
+    ( TraceDatabase )
 import Kupo.App.Http
     ( TraceHttpServer )
-import Kupo.Control.MonadDatabase
-    ( TraceDatabase )
 import Kupo.Control.MonadLog
     ( Severity (..), Tracer, TracerDefinition (..), TracerHKD, defaultTracers )
 import Kupo.Data.Cardano

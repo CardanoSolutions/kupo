@@ -34,10 +34,10 @@ import Data.OpenApi
     , schemas
     , validateJSON
     )
+import Kupo.App.Database
+    ( Database (..) )
 import Kupo.App.Http
     ( app )
-import Kupo.Control.MonadDatabase
-    ( Database (..) )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Database
@@ -53,7 +53,7 @@ import Network.HTTP.Media.RenderHeader
 import Network.Wai
     ( Application )
 import Test.Hspec
-    ( Spec, parallel, runIO, specify, shouldContain )
+    ( Spec, parallel, runIO, shouldContain, specify )
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
@@ -324,9 +324,9 @@ databaseStub = Database
         liftIO (generate arbitrary)
     , rollbackTo =
         \_ -> return Nothing
-    , runTransaction = \r ->
+    , runReadOnlyTransaction = \r ->
         runReaderT r (error "Connection")
-    , runImmediateTransaction = \r ->
+    , runReadWriteTransaction = \r ->
         runReaderT r (error "Connection")
     }
 

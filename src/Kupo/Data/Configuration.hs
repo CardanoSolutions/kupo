@@ -35,8 +35,6 @@ import Data.Time.Clock.POSIX
     ( posixSecondsToUTCTime )
 import Data.Time.Format.ISO8601
     ( iso8601ParseM )
-import Kupo.Control.MonadDatabase
-    ( LongestRollback (..) )
 import Kupo.Control.MonadOuroboros
     ( EpochSlots (..), NetworkMagic (..) )
 import Kupo.Control.MonadTime
@@ -49,6 +47,7 @@ import Ouroboros.Consensus.BlockchainTime.WallClock.Types
     ( SystemStart (..) )
 
 import qualified Data.Aeson as Json
+
 
 -- | Application-level configuration.
 data Configuration = Configuration
@@ -117,6 +116,14 @@ data InputManagement
     = MarkSpentInputs
     | RemoveSpentInputs
     deriving (Generic, Eq, Show)
+
+-- | A thin wrapper around the number of slots we consider to be the _longest
+-- rollback_. This impacts how long we have to keep data in the database before
+-- removing it, as well as how we create checkpoints when looking for chain
+-- intersection with the chain-producer.
+newtype LongestRollback = LongestRollback
+    { getLongestRollback :: Word64
+    } deriving newtype (Integral, Real, Num, Enum, Ord, Eq, Show)
 
 data NetworkParameters = NetworkParameters
     { networkMagic :: !NetworkMagic
