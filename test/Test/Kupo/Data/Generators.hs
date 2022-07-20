@@ -40,6 +40,8 @@ import Kupo.Data.Health
     ( ConnectionStatus (..), Health (..) )
 import Kupo.Data.Pattern
     ( Pattern, Result (..) )
+import System.IO.Unsafe
+    ( unsafePerformIO )
 import Test.QuickCheck
     ( Arbitrary (..)
     , Gen
@@ -57,6 +59,7 @@ import Test.QuickCheck.Random
     ( mkQCGen )
 
 import qualified Data.ByteString as BS
+import qualified Data.Text as T
 import qualified Test.Kupo.Data.Pattern.Fixture as Fixture
 
 genAddress :: Gen Address
@@ -91,17 +94,7 @@ genDatum = frequency
     ]
 
 genBinaryData :: Gen BinaryData
-genBinaryData = elements
-    [ "d87980"
-        & unsafeDecodeBase16
-        & unsafeBinaryDataFromBytes
-    , "0e"
-        & unsafeDecodeBase16
-        & unsafeBinaryDataFromBytes
-    , "9f43666f6fd905239fa0ffff"
-        & unsafeDecodeBase16
-        & unsafeBinaryDataFromBytes
-    ]
+genBinaryData = elements plutusDataVectors
 
 genHeaderHash :: Gen (HeaderHash Block)
 genHeaderHash = do
@@ -183,3 +176,14 @@ generateWith seed (MkGen run) = run (mkQCGen seed) 42
 
 chooseVector :: (Int, Int) -> Gen a -> Gen [a]
 chooseVector range genA = choose range >>= (`vectorOf` genA)
+
+plutusDataVectors :: [BinaryData]
+plutusDataVectors = unsafePerformIO $ do
+    let filename = "./test/plutus/data/vectors.csv"
+    rows <- T.splitOn "\n" . decodeUtf8 <$> BS.readFile filename
+    pure
+        [ unsafeBinaryDataFromBytes (unsafeDecodeBase16 bytes)
+        | bytes <- rows
+        , bytes /= ""
+        ]
+{-# NOINLINE plutusDataVectors #-}
