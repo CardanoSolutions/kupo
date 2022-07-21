@@ -29,7 +29,12 @@ import Kupo.App.Configuration
 import Kupo.App.Database
     ( DBTransaction, Database (..), TraceDatabase (..) )
 import Kupo.App.Mailbox
-    ( Mailbox, flushMailbox, newMailbox, putMailbox )
+    ( Mailbox
+    , flushMailbox
+    , newMailbox
+    , putHighFrequencyMessage
+    , putIntermittentMessage
+    )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadLog
@@ -75,16 +80,14 @@ import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 type ChainSyncClient m block =
        Tracer IO TraceChainSync
     -> [Point Block] -- Checkpoints
-    -> (Tip Block -> Maybe SlotNo -> DBTransaction m ()) -- Tip notifier
     -> ConnectionStatusToggle m
-    -> Database m
     -> m ()
 
 newChainProducer
     :: Tracer IO TraceConfiguration
     -> ChainProducer
     -> ( forall block. IsBlock block
-        => Mailbox IO (Tip Block, block)
+        => Mailbox IO (Tip Block, block) (Tip Block, Point Block)
         -> ChainSyncClient IO block
         -> IO ()
        )
@@ -94,8 +97,8 @@ newChainProducer tracerConfiguration chainProducer callback = do
         Ogmios{ogmiosHost, ogmiosPort} -> do
             logWith tracerConfiguration ConfigurationOgmios{ogmiosHost, ogmiosPort}
             mailbox <- atomically (newMailbox mailboxSize)
-            callback mailbox $ \tracerChainSync checkpoints notifyTip statusToggle db -> do
-                let chainSyncHandler = producer tracerChainSync notifyTip mailbox db
+            callback mailbox $ \_tr checkpoints statusToggle -> do
+                let chainSyncHandler = producer mailbox
                 Ogmios.connect statusToggle ogmiosHost ogmiosPort $
                     Ogmios.runChainSyncClient chainSyncHandler checkpoints
 
@@ -107,8 +110,8 @@ newChainProducer tracerConfiguration chainProducer callback = do
                 , slotsPerEpoch
                 } <- liftIO (parseNetworkParameters nodeConfig)
             logWith tracerConfiguration (ConfigurationNetwork network)
-            callback mailbox $ \tracerChainSync checkpoints notifyTip statusToggle db -> do
-                let chainSyncHandler = producer tracerChainSync notifyTip mailbox db
+            callback mailbox $ \tracerChainSync checkpoints statusToggle -> do
+                let chainSyncHandler = producer mailbox
                 withChainSyncServer
                   statusToggle
                   [ NodeToClientV_9 .. maxBound ]
@@ -136,23 +139,14 @@ mailboxSize = 100
 producer
     :: forall m block.
         ( MonadSTM m
-        , MonadLog m
-        , Monad (DBTransaction m)
         )
-    => Tracer IO TraceChainSync
-    -> (Tip Block -> Maybe SlotNo -> DBTransaction m ())
-    -> Mailbox m (Tip Block, block)
-    -> Database m
+    => Mailbox m (Tip Block, block) (Tip Block, Point Block)
     -> ChainSyncHandler m (Tip Block) (Point Block) block
-producer tr notifyTip mailbox Database{..} = ChainSyncHandler
+producer mailbox = ChainSyncHandler
     { onRollBackward = \tip pt -> do
-        logWith tr (ChainSyncRollBackward (getPointSlotNo pt))
-        -- FIXME: This is in-principle a race-condition with the consumer.
-        runReadWriteTransaction $ do
-            lastKnownSlot <- rollbackTo (unSlotNo (getPointSlotNo pt))
-            notifyTip tip (SlotNo <$> lastKnownSlot)
+        atomically (putIntermittentMessage mailbox (tip, pt))
     , onRollForward = \tip blk ->
-        atomically (putMailbox mailbox (tip, blk))
+        atomically (putHighFrequencyMessage mailbox (tip, blk))
     }
 
 consumer
@@ -166,32 +160,45 @@ consumer
     -> InputManagement
     -> LongestRollback
     -> (Tip Block -> Maybe SlotNo -> DBTransaction m ())
-    -> Mailbox m (Tip Block, block)
+    -> Mailbox m (Tip Block, block) (Tip Block, Point Block)
     -> TVar m [Pattern]
     -> Database m
     -> m Void
-consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Database{..} = forever $ do
-    (blks, patterns) <- atomically $ (,) <$> flushMailbox mailbox <*> readTVar patternsVar
-    let (lastKnownTip, lastKnownBlk) = last blks
-    let lastKnownPoint = getPoint lastKnownBlk
-    let lastKnownSlot = getPointSlotNo lastKnownPoint
-    let (spentInputs, newInputs, bins) = foldMap (matchBlock codecs patterns . snd) blks
-    logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
-    runReadWriteTransaction $ do
-        insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
-        insertInputs newInputs
-        onSpentInputs lastKnownTip lastKnownSlot spentInputs
-        insertBinaryData bins
-        notifyTip lastKnownTip (Just lastKnownSlot)
+consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Database{..} =
+    forever $ do
+        atomically ((,) <$> flushMailbox mailbox <*> readTVar patternsVar) >>= \case
+            (Left blks, patterns) ->
+                rollForward blks patterns
+            (Right pt, _) ->
+                rollBackward pt
   where
+    rollForward :: (NonEmpty (Tip Block, block) -> [Pattern] -> m ())
+    rollForward blks patterns = do
+        let (lastKnownTip, lastKnownBlk) = last blks
+        let lastKnownPoint = getPoint lastKnownBlk
+        let lastKnownSlot = getPointSlotNo lastKnownPoint
+        let (spentInputs, newInputs, bins) = foldMap (matchBlock codecs patterns . snd) blks
+        logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
+        runReadWriteTransaction $ do
+            insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
+            insertInputs newInputs
+            onSpentInputs lastKnownTip lastKnownSlot spentInputs
+            insertBinaryData bins
+            notifyTip lastKnownTip (Just lastKnownSlot)
+
+    rollBackward :: (Tip Block, Point Block) -> m ()
+    rollBackward (tip, pt) = do
+        logWith tr (ChainSyncRollBackward (getPointSlotNo pt))
+        runReadWriteTransaction $ do
+            lastKnownSlot <- rollbackTo (unSlotNo (getPointSlotNo pt))
+            notifyTip tip (SlotNo <$> lastKnownSlot)
+
     codecs = Codecs
         { toResult = resultToRow
         , toSlotNo = unSlotNo
         , toInput = serialize'
         , toBinaryData = binaryDataToRow
         }
-
-    unstableWindow = getLongestRollback longestRollback
 
     onSpentInputs = case inputManagement of
         MarkSpentInputs ->
@@ -205,6 +212,9 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
                     traverse_ deleteInputsByReference
                 else
                     void . Map.traverseWithKey markInputsByReference
+      where
+        unstableWindow =
+            getLongestRollback longestRollback
 
 -- | Periodically garbage collect the database from entries that aren't of
 -- interest. This is mainly the case for:

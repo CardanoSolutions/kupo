@@ -741,20 +741,20 @@ semantics pause HttpClient{..} queue = \case
 -- does nothing more than passing information around in the mailbox.
 newMockChainProducer
     :: TBQueue IO RequestNextResponse
-    -> (  Mailbox IO (Tip Block, PartialBlock)
+    -> (  Mailbox IO (Tip Block, PartialBlock) (Tip Block, Point Block)
        -> ChainSyncClient IO PartialBlock
        -> IO ()
        )
     -> IO ()
 newMockChainProducer queue callback = do
     mailbox <- atomically (newMailbox mailboxSize)
-    callback mailbox $ \tr checkpoints notifyTip _statusToggle db -> do
+    callback mailbox $ \_tr checkpoints _statusToggle -> do
         case checkpoints of
             [GenesisPoint] -> do
                 let ChainSyncHandler
                         { onRollForward
                         , onRollBackward
-                        } = producer tr notifyTip mailbox db
+                        } = producer mailbox
                 forever $ do
                     cmd <- atomically (readTBQueue queue)
                     case cmd of

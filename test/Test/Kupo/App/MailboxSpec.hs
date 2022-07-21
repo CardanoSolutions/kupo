@@ -13,7 +13,12 @@ import Kupo.Prelude
 import Control.Monad.IOSim
     ( pattern SimTrace, pattern TraceMainReturn, runSimTrace )
 import Kupo.App.Mailbox
-    ( Mailbox, flushMailbox, newMailbox, putMailbox )
+    ( Mailbox
+    , flushMailbox
+    , newMailbox
+    , putHighFrequencyMessage
+    , putIntermittentMessage
+    )
 import Kupo.Control.MonadAsync
     ( MonadAsync (..) )
 import Kupo.Control.MonadDelay
@@ -23,27 +28,50 @@ import Kupo.Control.MonadSTM
 import Kupo.Control.MonadTime
     ( DiffTime, Time (..), secondsToDiffTime )
 import Test.Hspec
-    ( Spec, context, expectationFailure, parallel, shouldSatisfy, specify )
+    ( Spec
+    , context
+    , expectationFailure
+    , parallel
+    , shouldBe
+    , shouldSatisfy
+    , specify
+    )
 import Test.QuickCheck
-    ( generate, vector )
+    ( arbitrary, frequency, generate, vectorOf )
 
 spec :: Spec
 spec = parallel $ context "Mailbox" $ do
     specify "producer / consumer simulations" $ do
         let n = 10_000
-        msgs <- generate (vector n)
+        msgs <- generate $ vectorOf n $ frequency
+            [ (1, Right <$> arbitrary)
+            , (100, Left <$> arbitrary)
+            ]
+        let flatten = foldMap $ \case
+                Left a -> [a]
+                Right b -> [fromIntegral b]
         let simulation = runSimTrace $ do
                 mailbox <- atomically (newMailbox mailboxCapacity)
-                concurrently (consumer mailbox n) (producer mailbox msgs)
+                (msgs', ()) <- concurrently
+                    (consumer mailbox n)
+                    (producer mailbox msgs)
+                pure msgs'
         let analyze = \case
-                TraceMainReturn t _ _ -> do
-                    let n' = secondsToDiffTime (toInteger n)
-                    let maxTime = n' * producerWorkTime + consumerWorkTime
+                TraceMainReturn t msgs' _ -> do
+                    -- NOTE: The diving factor is 'arbitrary' but it just shows
+                    -- that it is much faster to do this work concurrently than
+                    -- it would be to process all messages one-by-one. We show
+                    -- that the concurrent setup is at least an order of
+                    -- magnitude faster than the time it would take to process
+                    -- messages fully sequentially.
+                    let n' = secondsToDiffTime (toInteger n `div` 20)
+                    let maxTime = n' * (producerWorkTime + consumerWorkTime)
                     t `shouldSatisfy` (<= Time maxTime)
+                    msgs' `shouldBe` flatten msgs
                 SimTrace _time _threadId _label _event next ->
                     analyze next
-                _ ->
-                    expectationFailure "Simulation failed."
+                e ->
+                    expectationFailure ("Simulation failed: " <> show e)
         analyze simulation
 
 -- Producer / Consumer
@@ -52,19 +80,29 @@ spec = parallel $ context "Mailbox" $ do
 -- the consumer at his work, but, it can process multiple messages at once. On
 -- his side, the producer is steadily producing messages at a fixed pace.
 
-consumer :: (MonadDelay m, MonadSTM m) => Mailbox m Int -> Int -> m ()
+consumer :: (MonadDelay m, MonadSTM m) => Mailbox m Int Word -> Int -> m [Int]
 consumer mailbox = \case
-    0 -> pure ()
+    0 -> pure []
     n -> do
-        xs <- atomically (flushMailbox mailbox)
-        threadDelay consumerWorkTime
-        consumer mailbox (n - length xs)
+        atomically (flushMailbox mailbox) >>= \case
+            Left xs -> do
+                threadDelay consumerWorkTime
+                rest <- consumer mailbox (n - length xs)
+                pure (toList xs ++ rest)
+            Right i -> do
+                threadDelay consumerWorkTime
+                rest <- consumer mailbox (n - 1)
+                pure (fromIntegral i : rest)
 
-producer :: (MonadDelay m, MonadSTM m) => Mailbox m Int -> [Int] -> m ()
+producer :: (MonadDelay m, MonadSTM m) => Mailbox m Int Word -> [Either Int Word] -> m ()
 producer mailbox = \case
     []  -> pure ()
     f:r -> do
-        atomically (putMailbox mailbox f)
+        case f of
+            Left a ->
+                atomically (putHighFrequencyMessage mailbox a)
+            Right b ->
+                atomically (putIntermittentMessage mailbox b)
         threadDelay producerWorkTime
         producer mailbox r
 

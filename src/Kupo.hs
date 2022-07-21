@@ -53,7 +53,7 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
-    ( Block, IsBlock, Tip )
+    ( Block, IsBlock, Point, Tip )
 import Kupo.Data.Configuration
     ( Configuration (..), WorkDir (..) )
 import Kupo.Data.Health
@@ -93,7 +93,7 @@ kupo tr = do
 kupoWith
     :: Tracers IO Concrete
     -> ( ( forall block. IsBlock block
-          => Mailbox IO (Tip Block, block)
+          => Mailbox IO (Tip Block, block) (Tip Block, Point Block)
           -> ChainSyncClient IO block
           -> IO ()
          ) -> IO ()
@@ -161,9 +161,7 @@ kupoWith tr withChainProducer =
                     producer
                         (tracerChainSync tr)
                         checkpoints
-                        notifyTip
                         statusToggle
-                        db
                 )
 
 --
