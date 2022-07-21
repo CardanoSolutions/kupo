@@ -12,7 +12,7 @@ import Kupo.Prelude
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
-    ( Block, Point, Tip )
+    ( Point, Tip )
 import Kupo.Data.Ogmios
     ( PartialBlock
     , RequestNextResponse (..)
@@ -35,8 +35,8 @@ runChainSyncClient
         , MonadSTM m
         , MonadThrow m
         )
-    => Mailbox m (Tip Block, PartialBlock) (Tip Block, Point Block)
-    -> [Point Block]
+    => Mailbox m (Tip, PartialBlock) (Tip, Point)
+    -> [Point]
     -> WS.Connection
     -> m ()
 runChainSyncClient mailbox pts ws = do

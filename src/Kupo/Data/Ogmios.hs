@@ -27,17 +27,18 @@ import Kupo.Data.Cardano
     ( Address
     , BinaryData
     , Blake2b_256
-    , Block
     , BlockNo (..)
     , pattern BlockPoint
     , DatumHash
     , pattern GenesisPoint
+    , pattern GenesisTip
     , Input
     , Output
-    , Point (..)
+    , Point
     , SlotNo (..)
     , StandardCrypto
-    , Tip (..)
+    , Tip
+    , pattern Tip
     , TransactionId
     , Value
     , WithOrigin (..)
@@ -79,8 +80,8 @@ import qualified Data.Text as Text
 -- RequestNextResponse
 
 data RequestNextResponse
-    = RollBackward (Tip Block) (Point Block)
-    | RollForward  (Tip Block) PartialBlock
+    = RollBackward Tip Point
+    | RollForward  Tip PartialBlock
 
 
 -- Encoders
@@ -92,7 +93,7 @@ beginWspRequest = mconcat
     , Json.pair "servicename" (Json.text "ogmios")
     ]
 
-encodeFindIntersect :: [Point Block] -> Json.Encoding
+encodeFindIntersect :: [Point] -> Json.Encoding
 encodeFindIntersect pts = Json.pairs $ beginWspRequest
     <> Json.pair "methodname" (Json.text "FindIntersect")
     <> Json.pair "args" (Json.pairs $ Json.pair "points" (Json.list encodePoint pts))
@@ -101,7 +102,7 @@ encodeRequestNext :: Json.Encoding
 encodeRequestNext = Json.pairs $ beginWspRequest
     <> Json.pair "methodname" (Json.text "RequestNext")
 
-encodePoint :: Point Block -> Json.Encoding
+encodePoint :: Point -> Json.Encoding
 encodePoint = \case
     GenesisPoint ->
         Json.text "origin"
@@ -114,7 +115,7 @@ encodePoint = \case
 -- Decoders
 
 decodeFindIntersectResponse
-    :: [Point Block]
+    :: [Point]
     -> Json.Value
     -> Json.Parser (Either IntersectionNotFoundException ())
 decodeFindIntersectResponse (fmap pointSlot -> requestedPoints) json =
@@ -231,7 +232,7 @@ decodeAddress txt =
 
 decodeBlockPoint
     :: Json.Object
-    -> Json.Parser (Point Block)
+    -> Json.Parser Point
 decodeBlockPoint o = do
     headerHash <- o .: "headerHash" >>= decodeOneEraHash
     slot <- o .: "header" >>= (.: "slot")
@@ -341,7 +342,7 @@ decodeInput = Json.withObject "Input" $ \o ->
 
 decodePointOrOrigin
     :: Json.Value
-    -> Json.Parser (Point Block)
+    -> Json.Parser Point
 decodePointOrOrigin json =
     decodeOrigin json <|> decodePoint json
   where
@@ -367,12 +368,12 @@ decodeSlotNoOrOrigin json =
 
 decodeTipOrOrigin
     :: Json.Value
-    -> Json.Parser (Tip Block)
+    -> Json.Parser Tip
 decodeTipOrOrigin json =
     decodeOrigin json <|> decodeTip json
   where
     decodeOrigin = Json.withText "TipOrOrigin" $ \case
-        txt | txt == "origin" -> pure TipGenesis
+        txt | txt == "origin" -> pure GenesisTip
         _ -> empty
     decodeTip = Json.withObject "TipOrOrigin" $ \o -> do
         slot <- o .: "slot"

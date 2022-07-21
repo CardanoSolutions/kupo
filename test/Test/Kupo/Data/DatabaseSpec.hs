@@ -41,7 +41,6 @@ import Kupo.Control.MonadTime
     ( millisecondsToDiffTime )
 import Kupo.Data.Cardano
     ( Address
-    , Block
     , Point
     , SlotNo (..)
     , addressFromBytes
@@ -293,7 +292,7 @@ withInMemoryDatabase k action = do
 forAllCheckpoints
     :: Testable prop
     => Word64
-    -> ([Point Block] -> prop)
+    -> ([Point] -> prop)
     -> Property
 forAllCheckpoints k =
     forAllShow

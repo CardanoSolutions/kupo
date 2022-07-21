@@ -22,7 +22,6 @@ import Kupo.Data.Cardano
     ( Address
     , BinaryData
     , Blake2b_256
-    , Block
     , Datum
     , DatumHash
     , OutputReference
@@ -79,9 +78,9 @@ data HttpClient (m :: Type -> Type) = HttpClient
     , lookupDatumByHash
         :: DatumHash -> m (Maybe BinaryData)
     , listCheckpoints
-        :: m [Point Block]
+        :: m [Point]
     , getCheckpointBySlot
-        :: GetCheckpointMode -> SlotNo -> m (Maybe (Point Block))
+        :: GetCheckpointMode -> SlotNo -> m (Maybe Point)
     , getAllMatches
         :: StatusFlag
         -> m [Result]
@@ -142,7 +141,7 @@ newHttpClientWith manager (serverHost, serverPort) =
             threadDelay 0.25
             _waitSlot predicate
 
-    _listCheckpoints :: IO [Point Block]
+    _listCheckpoints :: IO [Point]
     _listCheckpoints = do
         req <- parseRequest (baseUrl <> "/v1/checkpoints")
         res <- httpLbs req manager
@@ -153,7 +152,7 @@ newHttpClientWith manager (serverHost, serverPort) =
             Right xs ->
                 pure xs
 
-    _getCheckpointBySlot :: GetCheckpointMode -> SlotNo -> IO (Maybe (Point Block))
+    _getCheckpointBySlot :: GetCheckpointMode -> SlotNo -> IO (Maybe Point)
     _getCheckpointBySlot mode (SlotNo slot) = do
         let qry = case mode of
                 GetCheckpointStrict -> "?strict"
@@ -214,7 +213,7 @@ decodeOutputReference o = mkOutputReference
     <$> (o .: "transaction_id" >>= decodeTransactionId)
     <*> o .: "output_index"
 
-decodePoint :: Json.Value -> Json.Parser (Point Block)
+decodePoint :: Json.Value -> Json.Parser Point
 decodePoint = Json.withObject "Point" $ \o -> do
     (slotNo :: Word) <- o .: "slot_no"
     headerHash <- o .: "header_hash"

@@ -77,14 +77,14 @@ data Checkpoint = Checkpoint
 
 pointFromRow
     :: Checkpoint
-    -> App.Point App.Block
+    -> App.Point
 pointFromRow row = App.BlockPoint
     (App.SlotNo (checkpointSlotNo row))
     (fromShortRawHash (Proxy @App.Block) $ toShort $ checkpointHeaderHash row)
 
 pointToRow
     :: HasCallStack
-    => App.Point App.Block
+    => App.Point
     -> Checkpoint
 pointToRow = \case
     App.GenesisPoint -> error "pointToRow: genesis point."

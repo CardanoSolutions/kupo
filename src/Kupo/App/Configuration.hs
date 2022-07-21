@@ -34,7 +34,7 @@ import Kupo.Control.MonadSTM
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
-    ( Block, Point (..), SlotNo (..), getPointSlotNo )
+    ( Point, SlotNo (..), getPointSlotNo )
 import Kupo.Data.Configuration
     ( Configuration (..), NetworkParameters (..) )
 import Kupo.Data.Database
@@ -86,7 +86,7 @@ startOrResume
     => Tracer IO TraceConfiguration
     -> Configuration
     -> Database m
-    -> m [Point Block]
+    -> m [Point]
 startOrResume tr configuration Database{..} = do
     checkpoints <- runReadOnlyTransaction (listCheckpointsDesc pointFromRow)
 

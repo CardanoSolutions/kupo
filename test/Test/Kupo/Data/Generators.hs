@@ -111,11 +111,11 @@ genHealth = Health
     <*> frequency [(1, pure Nothing), (5, Just <$> genSlotNo)]
     <*> frequency [(1, pure Nothing), (5, Just <$> genSlotNo)]
 
-genNonGenesisPoint :: Gen (Point Block)
+genNonGenesisPoint :: Gen Point
 genNonGenesisPoint = do
     BlockPoint <$> genSlotNo <*> genHeaderHash
 
-genPointsBetween :: (SlotNo, SlotNo) -> Gen [Point Block]
+genPointsBetween :: (SlotNo, SlotNo) -> Gen [Point]
 genPointsBetween (inf, sup)
     | inf >= sup = pure []
     | otherwise = do

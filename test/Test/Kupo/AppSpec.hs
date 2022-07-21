@@ -33,17 +33,18 @@ import Kupo.Control.MonadTime
     ( DiffTime )
 import Kupo.Data.Cardano
     ( BinaryData
-    , Block
     , BlockNo (..)
     , pattern BlockPoint
     , DatumHash
     , pattern GenesisPoint
+    , pattern GenesisTip
     , Input
     , Output
     , OutputReference
-    , Point (..)
+    , Point
     , SlotNo (..)
-    , Tip (..)
+    , Tip
+    , pattern Tip
     , binaryDataToJson
     , datumHashToText
     , distanceToTip
@@ -205,8 +206,8 @@ spec = do
 -- apply (e.g. after getting the tip, we should.. actually receive the tip!).
 
 data Event (r :: Type -> Type)
-    = DoRollForward (Tip Block) PartialBlock
-    | DoRollBackward (Tip Block) (Point Block)
+    = DoRollForward Tip PartialBlock
+    | DoRollBackward Tip Point
     | GetMostRecentCheckpoint
     | GetUtxo
     | GetDatumByHash DatumHash
@@ -235,7 +236,7 @@ instance Show (Event r) where
 
 data Response (r :: Type -> Type)
     = Unit ()
-    | MostRecentCheckpoint (Point Block)
+    | MostRecentCheckpoint Point
     | Utxo (Set OutputReference)
     | DatumByHash (Maybe BinaryData)
     deriving stock (Eq, Generic1)
@@ -289,7 +290,7 @@ mock model = \case
 --
 
 data Model (r :: Type -> Type) = Model
-    { networkTip :: Tip Block
+    { networkTip :: Tip
     , currentChain :: [PartialBlock]
     , spentOutputReferences :: Set OutputReference
     , unspentOutputReferences :: Set OutputReference
@@ -315,7 +316,7 @@ instance Show (Model r) where
 initModel :: Model r
 initModel = Model
     { networkTip =
-        TipGenesis
+        GenesisTip
     , currentChain =
         []
     , spentOutputReferences =
@@ -539,7 +540,7 @@ generator inputManagement model =
 -- tip / point. When the local tip is far behind the network tip, we change the
 -- network tip less often. This corresponds to a client catching up after a
 -- rollback, while the network is moving forward -- though not fast.
-genContinuingTip :: Tip Block -> Point Block -> Gen (Tip Block)
+genContinuingTip :: Tip -> Point -> Gen Tip
 genContinuingTip networkTip currentTip
     | getTipSlotNo networkTip > getPointSlotNo currentTip =
         frequency
@@ -550,7 +551,7 @@ genContinuingTip networkTip currentTip
         genTipAfter (getPointSlotNo currentTip)
 
 -- | Generate a tip right after the given slot.
-genTipAfter :: SlotNo -> Gen (Tip Block)
+genTipAfter :: SlotNo -> Gen Tip
 genTipAfter slot = Tip (succ slot)
     <$> genHeaderHash
     <*> pure (coerce $ succ slot)
@@ -582,7 +583,7 @@ genTransactionSublist = \case
 genContinuingBlock
     :: Set OutputReference
     -> [PartialTransaction]
-    -> Point Block
+    -> Point
     -> Gen PartialBlock
 genContinuingBlock utxo txs previousTip = do
     blockPoint <- BlockPoint (succ (getPointSlotNo previousTip)) <$> genHeaderHash
@@ -655,8 +656,8 @@ genOrSelectDatum inputManagement model =
 -- (1/2).
 selectPastPoint
     :: HasCallStack
-    => [Point Block]
-    -> Gen (Point Block)
+    => [Point]
+    -> Gen Point
 selectPastPoint = \case
     [] ->
         error "selectPoint: empty list."
@@ -739,7 +740,7 @@ semantics pause HttpClient{..} queue = \case
 -- does nothing more than passing information around in the mailbox.
 newMockProducer
     :: TBQueue IO RequestNextResponse
-    -> (  Mailbox IO (Tip Block, PartialBlock) (Tip Block, Point Block)
+    -> (  Mailbox IO (Tip, PartialBlock) (Tip, Point)
        -> ChainSyncClient IO PartialBlock
        -> IO ()
        )
@@ -766,11 +767,11 @@ newMockProducer queue callback = do
 --
 -- Some pretty printer to make counter-examples more bearable to read.
 
-showPoint :: Point Block -> Text
+showPoint :: Point -> Text
 showPoint =
     slotNoToText . getPointSlotNo
 
-showTip :: Tip Block -> Text
+showTip :: Tip -> Text
 showTip =
     slotNoToText . getTipSlotNo
 

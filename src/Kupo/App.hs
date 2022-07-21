@@ -42,8 +42,7 @@ import Kupo.Control.MonadSTM
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
-    ( Block
-    , IsBlock
+    ( IsBlock
     , Point
     , SlotNo (..)
     , Tip
@@ -75,7 +74,7 @@ import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 
 type ChainSyncClient m block =
        Tracer IO TraceChainSync
-    -> [Point Block] -- Checkpoints
+    -> [Point] -- Checkpoints
     -> ConnectionStatusToggle m
     -> m ()
 
@@ -83,7 +82,7 @@ newProducer
     :: Tracer IO TraceConfiguration
     -> ChainProducer
     -> ( forall block. IsBlock block
-        => Mailbox IO (Tip Block, block) (Tip Block, Point Block)
+        => Mailbox IO (Tip, block) (Tip, Point)
         -> ChainSyncClient IO block
         -> IO ()
        )
@@ -138,8 +137,8 @@ consumer
     => Tracer IO TraceChainSync
     -> InputManagement
     -> LongestRollback
-    -> (Tip Block -> Maybe SlotNo -> DBTransaction m ())
-    -> Mailbox m (Tip Block, block) (Tip Block, Point Block)
+    -> (Tip -> Maybe SlotNo -> DBTransaction m ())
+    -> Mailbox m (Tip, block) (Tip, Point)
     -> TVar m [Pattern]
     -> Database m
     -> m Void
@@ -151,7 +150,7 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
             (Right pt, _) ->
                 rollBackward pt
   where
-    rollForward :: (NonEmpty (Tip Block, block) -> [Pattern] -> m ())
+    rollForward :: (NonEmpty (Tip, block) -> [Pattern] -> m ())
     rollForward blks patterns = do
         let (lastKnownTip, lastKnownBlk) = last blks
         let lastKnownPoint = getPoint lastKnownBlk
@@ -165,7 +164,7 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
             insertBinaryData bins
             notifyTip lastKnownTip (Just lastKnownSlot)
 
-    rollBackward :: (Tip Block, Point Block) -> m ()
+    rollBackward :: (Tip, Point) -> m ()
     rollBackward (tip, pt) = do
         logWith tr (ChainSyncRollBackward (getPointSlotNo pt))
         runReadWriteTransaction $ do

@@ -40,7 +40,7 @@ import Kupo.App.Http
 import Kupo.Control.MonadLog
     ( Severity (..), Tracer, TracerDefinition (..), TracerHKD, defaultTracers )
 import Kupo.Data.Cardano
-    ( Block, Point (..), pointFromText )
+    ( Point, pointFromText )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
@@ -229,7 +229,7 @@ ogmiosPortOption = option auto $ mempty
     <> help "Ogmios' port."
 
 -- | [--since=POINT]
-sinceOption :: Parser (Point Block)
+sinceOption :: Parser Point
 sinceOption = option (maybeReader rdr) $ mempty
     <> long "since"
     <> metavar "POINT"
@@ -244,7 +244,7 @@ sinceOption = option (maybeReader rdr) $ mempty
             ]
         ])
   where
-    rdr :: String -> Maybe (Point Block)
+    rdr :: String -> Maybe Point
     rdr = pointFromText . toText
 
 -- | [--match=PATTERN]

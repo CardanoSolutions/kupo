@@ -11,13 +11,12 @@ import Kupo.Prelude
 
 import Kupo.Data.Cardano
     ( BinaryData
-    , Block
     , DatumHash
     , Input
     , IsBlock (..)
     , Output
     , OutputReference
-    , Point (..)
+    , Point
     )
 
 import qualified Data.Set as Set
@@ -25,7 +24,7 @@ import qualified Data.Set as Set
 -- | A partial representation of a Cardano Block. This only contains bits that
 -- are relevant to kupo. Rest isn't indexed.
 data PartialBlock = PartialBlock
-    { blockPoint :: (Point Block)
+    { blockPoint :: Point
     , blockBody :: [ PartialTransaction ]
     } deriving (Eq, Show)
 

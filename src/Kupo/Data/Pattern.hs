@@ -38,7 +38,6 @@ import Kupo.Data.Cardano
     , BinaryData
     , Blake2b_224
     , Blake2b_256
-    , Block
     , Datum
     , DatumHash
     , Input
@@ -303,8 +302,8 @@ data Result = Result
     , address :: Address
     , value :: Value
     , datum :: Datum
-    , createdAt :: Point Block
-    , spentAt :: Maybe (Point Block)
+    , createdAt :: Point
+    , spentAt :: Maybe (Point)
     } deriving (Show, Eq)
 
 resultToJson
@@ -372,7 +371,7 @@ matchBlock Codecs{..} patterns blk =
     let pt = getPoint blk in foldBlock (fn pt) (mempty, mempty, mempty) blk
   where
     fn
-        :: Point Block
+        :: Point
         -> BlockBody block
         -> (Map slotNo (Set input), [result], [bin])
         -> (Map slotNo (Set input), [result], [bin])
@@ -388,7 +387,7 @@ matchBlock Codecs{..} patterns blk =
         )
 
     match
-        :: Point Block
+        :: Point
         -> Pattern
         -> OutputReference
         -> Output

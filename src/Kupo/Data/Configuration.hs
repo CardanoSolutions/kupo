@@ -40,7 +40,7 @@ import Kupo.Control.MonadOuroboros
 import Kupo.Control.MonadTime
     ( DiffTime )
 import Kupo.Data.Cardano
-    ( Block, Point (..) )
+    ( Point )
 import Kupo.Data.Pattern
     ( Pattern (..) )
 import Ouroboros.Consensus.BlockchainTime.WallClock.Types
@@ -67,7 +67,7 @@ data Configuration = Configuration
         -- ^ Hostname for the API HTTP server
     , serverPort :: !Int
         -- ^ Port for the API HTTP Server
-    , since :: !(Maybe (Point Block))
+    , since :: !(Maybe Point)
         -- ^ Point from when a *new* synchronization should start
     , patterns :: ![Pattern]
         -- ^ List of address patterns to look for when synchronizing

@@ -10,7 +10,6 @@ import Kupo.Prelude
 
 import Kupo.Data.Cardano
     ( BinaryData
-    , Block
     , DatumHash
     , pattern GenesisPoint
     , Point
@@ -20,7 +19,7 @@ import Kupo.Data.Cardano
 import Kupo.Data.Database
     ( Checkpoint (..), pointFromRow )
 
-someNonExistingPoint :: Point Block
+someNonExistingPoint :: Point
 someNonExistingPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         14141414
@@ -28,7 +27,7 @@ someNonExistingPoint = pointFromRow $ Checkpoint
         "0000000000000000000000000000000000000000000000000000000000000000"
     }
 
-somePoint :: Point Block
+somePoint :: Point
 somePoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         51292637
@@ -36,7 +35,7 @@ somePoint = pointFromRow $ Checkpoint
         "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771"
     }
 
-somePointAncestor :: Point Block
+somePointAncestor :: Point
 somePointAncestor = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         51292617
@@ -44,7 +43,7 @@ somePointAncestor = pointFromRow $ Checkpoint
         "e63797c3982e9af8ab1f9ea1a60bfa47df9ead2e745adcca95ad30c6f49982a0"
     }
 
-somePointSuccessor :: Point Block
+somePointSuccessor :: Point
 somePointSuccessor = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         51292686
@@ -52,7 +51,7 @@ somePointSuccessor = pointFromRow $ Checkpoint
         "0cdb5efde9aba0bbd2f0606d4ab64e4762cf13fe4ee78e0c5d956666fe6c95d3"
     }
 
-someOtherPoint :: Point Block
+someOtherPoint :: Point
 someOtherPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         53392903
@@ -60,7 +59,7 @@ someOtherPoint = pointFromRow $ Checkpoint
         "56ed3689f5a1dce99345c5ec85de8ff307fe0a31dff443e0170b9c21edbeaba5"
     }
 
-lastByronPoint :: Point Block
+lastByronPoint :: Point
 lastByronPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         1598399
@@ -68,7 +67,7 @@ lastByronPoint = pointFromRow $ Checkpoint
         "7e16781b40ebf8b6da18f7b5e8ade855d6738095ef2f1c58c77e88b6e45997a4"
     }
 
-lastShelleyPoint :: Point Block
+lastShelleyPoint :: Point
 lastShelleyPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         13694363
@@ -76,7 +75,7 @@ lastShelleyPoint = pointFromRow $ Checkpoint
         "b596f9739b647ab5af901c8fc6f75791e262b0aeba81994a1d622543459734f2"
     }
 
-lastAllegraPoint :: Point Block
+lastAllegraPoint :: Point
 lastAllegraPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         18014387
@@ -84,7 +83,7 @@ lastAllegraPoint = pointFromRow $ Checkpoint
         "9914c8da22a833a777d8fc1f735d2dbba70b99f15d765b6c6ee45fe322d92d93"
     }
 
-lastMaryPoint :: Point Block
+lastMaryPoint :: Point
 lastMaryPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         36158304
@@ -92,7 +91,7 @@ lastMaryPoint = pointFromRow $ Checkpoint
         "2b95ce628d36c3f8f37a32c2942b48e4f9295ccfe8190bcbc1f012e1e97c79eb"
     }
 
-lastAlonzoPoint :: Point Block
+lastAlonzoPoint :: Point
 lastAlonzoPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
         62510369
@@ -100,7 +99,7 @@ lastAlonzoPoint = pointFromRow $ Checkpoint
         "d931221f9bc4cae34de422d9f4281a2b0344e86aac6b31eb54e2ee90f44a09b9"
     }
 
-eraBoundaries :: [(String, Point Block)]
+eraBoundaries :: [(String, Point)]
 eraBoundaries =
     [ ("Byron", GenesisPoint)
     , ("Shelley", lastByronPoint)

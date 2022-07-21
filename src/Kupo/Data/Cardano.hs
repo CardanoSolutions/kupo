@@ -125,17 +125,19 @@ module Kupo.Data.Cardano
     , unsafeHeaderHashFromBytes
 
       -- * Point
-    , Point (Point)
+    , Point
+    , pattern GenesisPoint
+    , pattern BlockPoint
     , pointFromText
     , pointToJson
     , getPointSlotNo
     , getPointHeaderHash
     , unsafeGetPointHeaderHash
-    , pattern GenesisPoint
-    , pattern BlockPoint
 
       -- * Tip
-    , Tip (..)
+    , Tip
+    , pattern GenesisTip
+    , pattern Tip
     , getTipSlotNo
     , distanceToTip
 
@@ -201,8 +203,6 @@ import Ouroboros.Network.Block
     ( pattern BlockPoint
     , pattern GenesisPoint
     , HeaderHash
-    , Point (Point)
-    , Tip (..)
     , blockPoint
     , pointSlot
     )
@@ -256,7 +256,7 @@ class IsBlock (block :: Type) where
 
     getPoint
         :: block
-        -> Point Block
+        -> Point
 
     foldBlock
         :: (BlockBody block -> result -> result)
@@ -290,7 +290,7 @@ instance IsBlock Block where
 
     getPoint
         :: Block
-        -> Point Block
+        -> Point
     getPoint =
         blockPoint
 
@@ -971,17 +971,36 @@ unsafeHeaderHashFromBytes =
 
 -- Tip
 
-getTipSlotNo :: Tip Block -> SlotNo
+type Tip = Ouroboros.Tip Block
+{-# COMPLETE GenesisTip, Tip #-}
+
+pattern GenesisTip :: Tip
+pattern GenesisTip <-
+    Ouroboros.TipGenesis
+  where
+    GenesisTip =
+        Ouroboros.TipGenesis
+
+pattern Tip :: SlotNo -> HeaderHash Block -> BlockNo -> Tip
+pattern Tip s h b <-
+    Ouroboros.Tip s h b
+  where
+    Tip =
+        Ouroboros.Tip
+
+getTipSlotNo :: Tip -> SlotNo
 getTipSlotNo tip =
     case Ouroboros.getTipSlotNo tip of
         Origin -> SlotNo 0
         At sl  -> sl
 
-distanceToTip :: Tip Block -> SlotNo -> Word64
+distanceToTip :: Tip -> SlotNo -> Word64
 distanceToTip =
     distanceToSlot . getTipSlotNo
 
 -- Point
+
+type Point = Ouroboros.Point Block
 
 -- | Parse a 'Point' from a text string. This alternatively tries two patterns:
 --
@@ -991,7 +1010,7 @@ distanceToTip =
 --                     refers to a specific point on chain identified by this
 --                     slot number and header hash.
 --
-pointFromText :: Text -> Maybe (Point Block)
+pointFromText :: Text -> Maybe (Point)
 pointFromText txt =
     genesisPointFromText <|> blockPointFromText
   where
@@ -1004,23 +1023,23 @@ pointFromText txt =
       where
         (slotNo, headerHash) = T.breakOn "." (T.strip txt)
 
-getPointSlotNo :: Point Block -> SlotNo
+getPointSlotNo :: Point -> SlotNo
 getPointSlotNo pt =
     case pointSlot pt of
         Origin -> SlotNo 0
         At sl  -> sl
 
-getPointHeaderHash :: Point Block -> Maybe (HeaderHash Block)
+getPointHeaderHash :: Point -> Maybe (HeaderHash Block)
 getPointHeaderHash = \case
     GenesisPoint -> Nothing
     BlockPoint _ h -> Just h
 
-unsafeGetPointHeaderHash :: HasCallStack => Point Block -> HeaderHash Block
+unsafeGetPointHeaderHash :: HasCallStack => Point -> HeaderHash Block
 unsafeGetPointHeaderHash =
     fromMaybe (error "Point is 'Origin'") . getPointHeaderHash
 
 pointToJson
-    :: Point Block
+    :: Point
     -> Json.Encoding
 pointToJson = \case
     GenesisPoint ->

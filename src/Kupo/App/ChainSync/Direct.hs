@@ -15,7 +15,7 @@ import Kupo.App.Mailbox
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
-    ( Point (..), Tip (..) )
+    ( Point, Tip )
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException (..) )
 import Network.TypedProtocol.Pipelined
@@ -36,14 +36,14 @@ mkChainSyncClient
         ( MonadThrow m
         , MonadSTM m
         )
-    => Mailbox m (Tip block, block) (Tip block, Point block)
-    -> [Point block]
-    -> ChainSyncClientPipelined block (Point block) (Tip block) m ()
+    => Mailbox m (Tip, block) (Tip, Point)
+    -> [Point]
+    -> ChainSyncClientPipelined block Point Tip m ()
 mkChainSyncClient mailbox pts =
     ChainSyncClientPipelined (pure $ SendMsgFindIntersect pts clientStIntersect)
   where
     clientStIntersect
-        :: ClientPipelinedStIntersect block (Point block) (Tip block) m ()
+        :: ClientPipelinedStIntersect block Point Tip m ()
     clientStIntersect = ClientPipelinedStIntersect
         { recvMsgIntersectFound = \_point _tip -> do
             pure $ clientStIdle Zero
@@ -55,7 +55,7 @@ mkChainSyncClient mailbox pts =
     clientStIdle
         :: forall n. ()
         => Nat n
-        -> ClientPipelinedStIdle n block (Point block) (Tip block) m ()
+        -> ClientPipelinedStIdle n block Point Tip m ()
     clientStIdle n = do
         SendMsgRequestNextPipelined $ CollectResponse
             (guard (natToInt n < maxInFlight) $> pure (clientStIdle $ Succ n))
@@ -64,7 +64,7 @@ mkChainSyncClient mailbox pts =
     clientStNext
         :: forall n. ()
         => Nat n
-        -> ClientStNext n block (Point block) (Tip block) m ()
+        -> ClientStNext n block Point Tip m ()
     clientStNext n =
         ClientStNext
             { recvMsgRollForward = \block tip -> do
