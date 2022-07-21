@@ -86,7 +86,7 @@ startOrResume
     => Tracer IO TraceConfiguration
     -> Configuration
     -> Database m
-    -> m [Point]
+    -> m (Maybe SlotNo, [Point])
 startOrResume tr configuration Database{..} = do
     checkpoints <- runReadOnlyTransaction (listCheckpointsDesc pointFromRow)
 
@@ -111,12 +111,14 @@ startOrResume tr configuration Database{..} = do
                 logWith tr errConflictingSinceOptions
                 throwIO ConflictingOptionsException
             else do
-                pure (sortOn (Down . getPointSlotNo) (point : checkpoints))
-        (Nothing, pts) -> do
-            pure pts
+                pure
+                    ( Just (getPointSlotNo mostRecentCheckpoint)
+                    , sortOn (Down . getPointSlotNo) (point : checkpoints)
+                    )
+        (Nothing, pts@(mostRecentCheckpoint:_)) -> do
+            pure (Just (getPointSlotNo mostRecentCheckpoint), pts)
         (Just pt, []) ->
-            pure [pt]
-
+            pure (Nothing, [pt])
   where
     Configuration{since} = configuration
 

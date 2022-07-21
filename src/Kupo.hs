@@ -41,7 +41,7 @@ import Kupo.App.Configuration
 import Kupo.App.Database
     ( ConnectionType (..), newLock, withDatabase )
 import Kupo.App.Health
-    ( connectionStatusToggle, readHealth, recordCheckpoint )
+    ( connectionStatusToggle, initializeHealth, readHealth, recordCheckpoint )
 import Kupo.App.Http
     ( healthCheck, httpServer )
 import Kupo.App.Mailbox
@@ -157,7 +157,9 @@ kupoWith tr withProducer =
 
                 -- Block producer, fetching blocks from the network
                 ( withChainSyncExceptionHandler (tracerChainSync tr) statusToggle $ do
-                    checkpoints <- startOrResume (tracerConfiguration tr) config db
+                    (mostRecentCheckpoint, checkpoints) <-
+                        startOrResume (tracerConfiguration tr) config db
+                    initializeHealth health mostRecentCheckpoint
                     producer
                         (tracerChainSync tr)
                         checkpoints

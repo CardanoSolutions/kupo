@@ -5,9 +5,9 @@
 module Kupo.App.Health
     ( readHealth
     , recordCheckpoint
+    , initializeHealth
     , connectionStatusToggle
     ) where
-
 
 import Kupo.Prelude
 
@@ -57,4 +57,18 @@ recordCheckpoint health (Just . getTipSlotNo -> mostRecentNodeTip) mostRecentChe
     atomically $ modifyTVar' health $ \h -> h
         { mostRecentNodeTip
         , mostRecentCheckpoint
+        }
+
+-- | A safe setter for the most recent checkpoint.
+initializeHealth
+    :: forall m.
+        ( MonadSTM m
+        )
+    => TVar m Health
+    -> Maybe SlotNo
+    -> m ()
+initializeHealth health mostRecentCheckpoint' =
+    atomically $ modifyTVar' health $ \h -> h
+        { mostRecentCheckpoint =
+            max (mostRecentCheckpoint h) mostRecentCheckpoint'
         }
