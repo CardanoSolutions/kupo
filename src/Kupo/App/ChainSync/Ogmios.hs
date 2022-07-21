@@ -13,8 +13,6 @@ import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
     ( Block, Point, Tip )
-import Kupo.Data.ChainSync
-    ( ChainSyncHandler (..) )
 import Kupo.Data.Ogmios
     ( PartialBlock
     , RequestNextResponse (..)
@@ -24,19 +22,24 @@ import Kupo.Data.Ogmios
     , encodeRequestNext
     )
 
+import Kupo.App.Mailbox
+    ( Mailbox, putHighFrequencyMessage, putIntermittentMessage )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..) )
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
 
 runChainSyncClient
     :: forall m.
         ( MonadIO m
+        , MonadSTM m
         , MonadThrow m
         )
-    => ChainSyncHandler m (Tip Block) (Point Block) PartialBlock
+    => Mailbox m (Tip Block, PartialBlock) (Tip Block, Point Block)
     -> [Point Block]
     -> WS.Connection
     -> m ()
-runChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts ws = do
+runChainSyncClient mailbox pts ws = do
     WS.sendJson ws (encodeFindIntersect pts)
     WS.receiveJson ws (decodeFindIntersectResponse pts) >>= \case
         Left notFound -> throwIO notFound
@@ -46,9 +49,9 @@ runChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts ws = do
     forever $ do
         WS.receiveJson ws decodeRequestNextResponse >>= \case
             RollBackward tip point -> do
-                onRollBackward tip point
+                atomically (putIntermittentMessage mailbox (tip, point))
             RollForward tip block -> do
-                onRollForward tip block
+                atomically (putHighFrequencyMessage mailbox (tip, block))
         WS.sendJson ws encodeRequestNext
 
 -- Connection

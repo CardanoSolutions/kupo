@@ -5,13 +5,14 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App
-    ( -- * ChainProducer
+    ( -- * Producer
       ChainSyncClient
-    , newChainProducer
+    , newProducer
 
-      -- * Producer / Consumer / Gardener
-    , producer
+      -- * Consumer
     , consumer
+
+      -- * Gardener
     , gardener
 
       -- * Internal
@@ -29,12 +30,7 @@ import Kupo.App.Configuration
 import Kupo.App.Database
     ( DBTransaction, Database (..), TraceDatabase (..) )
 import Kupo.App.Mailbox
-    ( Mailbox
-    , flushMailbox
-    , newMailbox
-    , putHighFrequencyMessage
-    , putIntermittentMessage
-    )
+    ( Mailbox, flushMailbox, newMailbox )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadLog
@@ -56,7 +52,7 @@ import Kupo.Data.Cardano
     , getPointSlotNo
     )
 import Kupo.Data.ChainSync
-    ( ChainSyncHandler (..), IntersectionNotFoundException (..) )
+    ( IntersectionNotFoundException (..) )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
@@ -74,7 +70,7 @@ import qualified Kupo.App.ChainSync.Direct as Direct
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 
 --
--- Chain Producer
+-- Producer
 --
 
 type ChainSyncClient m block =
@@ -83,7 +79,7 @@ type ChainSyncClient m block =
     -> ConnectionStatusToggle m
     -> m ()
 
-newChainProducer
+newProducer
     :: Tracer IO TraceConfiguration
     -> ChainProducer
     -> ( forall block. IsBlock block
@@ -92,15 +88,14 @@ newChainProducer
         -> IO ()
        )
     -> IO ()
-newChainProducer tracerConfiguration chainProducer callback = do
+newProducer tracerConfiguration chainProducer callback = do
     case chainProducer of
         Ogmios{ogmiosHost, ogmiosPort} -> do
             logWith tracerConfiguration ConfigurationOgmios{ogmiosHost, ogmiosPort}
             mailbox <- atomically (newMailbox mailboxSize)
             callback mailbox $ \_tr checkpoints statusToggle -> do
-                let chainSyncHandler = producer mailbox
                 Ogmios.connect statusToggle ogmiosHost ogmiosPort $
-                    Ogmios.runChainSyncClient chainSyncHandler checkpoints
+                    Ogmios.runChainSyncClient mailbox checkpoints
 
         CardanoNode{nodeSocket, nodeConfig} -> do
             logWith tracerConfiguration ConfigurationCardanoNode{nodeSocket,nodeConfig}
@@ -111,14 +106,13 @@ newChainProducer tracerConfiguration chainProducer callback = do
                 } <- liftIO (parseNetworkParameters nodeConfig)
             logWith tracerConfiguration (ConfigurationNetwork network)
             callback mailbox $ \tracerChainSync checkpoints statusToggle -> do
-                let chainSyncHandler = producer mailbox
                 withChainSyncServer
                   statusToggle
                   [ NodeToClientV_9 .. maxBound ]
                   networkMagic
                   slotsPerEpoch
                   nodeSocket
-                  (Direct.mkChainSyncClient chainSyncHandler checkpoints)
+                  (Direct.mkChainSyncClient mailbox checkpoints)
                   & handle (\e@IntersectionNotFound{requestedPoints = points} -> do
                       logWith tracerChainSync ChainSyncIntersectionNotFound{points}
                       throwIO e
@@ -132,23 +126,8 @@ newChainProducer tracerConfiguration chainProducer callback = do
 mailboxSize :: Natural
 mailboxSize = 100
 
---
--- Producer / Consumer / Gardener
---
-
-producer
-    :: forall m block.
-        ( MonadSTM m
-        )
-    => Mailbox m (Tip Block, block) (Tip Block, Point Block)
-    -> ChainSyncHandler m (Tip Block) (Point Block) block
-producer mailbox = ChainSyncHandler
-    { onRollBackward = \tip pt -> do
-        atomically (putIntermittentMessage mailbox (tip, pt))
-    , onRollForward = \tip blk ->
-        atomically (putHighFrequencyMessage mailbox (tip, blk))
-    }
-
+-- | Consumer process that is reading messages from the 'Mailbox'. Messages are
+-- enqueued by another process (the producer).
 consumer
     :: forall m block.
         ( MonadSTM m

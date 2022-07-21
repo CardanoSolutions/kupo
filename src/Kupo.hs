@@ -33,7 +33,7 @@ module Kupo
 import Kupo.Prelude
 
 import Kupo.App
-    ( ChainSyncClient, consumer, gardener, newChainProducer )
+    ( ChainSyncClient, consumer, gardener, newProducer )
 import Kupo.App.ChainSync
     ( withChainSyncExceptionHandler )
 import Kupo.App.Configuration
@@ -87,7 +87,7 @@ kupo tr = do
             { chainProducer
             }
         } <- ask
-    kupoWith tr (newChainProducer (tracerConfiguration tr) chainProducer)
+    kupoWith tr (newProducer (tracerConfiguration tr) chainProducer)
 
 -- | Same as 'kupo', but allows specifying the chain producer component.
 kupoWith
@@ -99,7 +99,7 @@ kupoWith
          ) -> IO ()
        )
     -> Kupo ()
-kupoWith tr withChainProducer =
+kupoWith tr withProducer =
   hijackSigTerm *> do
     Env { health
         , configuration = config@Configuration
@@ -120,7 +120,7 @@ kupoWith tr withChainProducer =
         patterns <- newPatternsCache (tracerConfiguration tr) config db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
-        withChainProducer $ \mailbox producer -> do
+        withProducer $ \mailbox producer -> do
             concurrently4
                 -- HTTP Server
                 ( httpServer

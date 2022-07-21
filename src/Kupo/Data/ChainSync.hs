@@ -3,21 +3,13 @@
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 module Kupo.Data.ChainSync
-    ( ChainSyncHandler (..)
-    , IntersectionNotFoundException (..)
+    ( IntersectionNotFoundException (..)
     ) where
 
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
     ( SlotNo, WithOrigin (..) )
-
--- | A message handler for the chain-sync client. Messages are guaranteed (by
--- the protocol) to arrive in order.
-data ChainSyncHandler m tip point block = ChainSyncHandler
-    { onRollBackward :: tip -> point -> m ()
-    , onRollForward :: tip -> block -> m ()
-    }
 
 -- | Exception thrown when creating a chain-sync client from an invalid list of
 -- points.

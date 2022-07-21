@@ -8,12 +8,16 @@ module Kupo.App.ChainSync.Direct
 
 import Kupo.Prelude
 
+import Control.Monad.Class.MonadSTM
+    ( MonadSTM (..) )
+import Kupo.App.Mailbox
+    ( Mailbox, putHighFrequencyMessage, putIntermittentMessage )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
     ( Point (..), Tip (..) )
 import Kupo.Data.ChainSync
-    ( ChainSyncHandler (..), IntersectionNotFoundException (..) )
+    ( IntersectionNotFoundException (..) )
 import Network.TypedProtocol.Pipelined
     ( Nat (..), natToInt )
 import Ouroboros.Network.Block
@@ -30,11 +34,12 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
 mkChainSyncClient
     :: forall m block.
         ( MonadThrow m
+        , MonadSTM m
         )
-    => ChainSyncHandler m (Tip block) (Point block) block
+    => Mailbox m (Tip block, block) (Tip block, Point block)
     -> [Point block]
     -> ChainSyncClientPipelined block (Point block) (Tip block) m ()
-mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts =
+mkChainSyncClient mailbox pts =
     ChainSyncClientPipelined (pure $ SendMsgFindIntersect pts clientStIntersect)
   where
     clientStIntersect
@@ -62,10 +67,12 @@ mkChainSyncClient ChainSyncHandler{onRollBackward, onRollForward} pts =
         -> ClientStNext n block (Point block) (Tip block) m ()
     clientStNext n =
         ClientStNext
-            { recvMsgRollForward = \block tip ->
-                onRollForward tip block $> clientStIdle n
-            , recvMsgRollBackward = \point tip ->
-                onRollBackward tip point $> clientStIdle n
+            { recvMsgRollForward = \block tip -> do
+                atomically (putHighFrequencyMessage mailbox (tip, block))
+                pure (clientStIdle n)
+            , recvMsgRollBackward = \point tip -> do
+                atomically (putIntermittentMessage mailbox (tip, point))
+                pure (clientStIdle n)
             }
 
 -- | Maximum pipelining at any given time. No need to go too high here, it only
