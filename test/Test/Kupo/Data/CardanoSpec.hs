@@ -11,22 +11,31 @@ module Test.Kupo.Data.CardanoSpec
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( pattern GenesisPoint
+    ( Blake2b_224
+    , pattern GenesisPoint
     , SlotNo (..)
     , datumHashFromText
+    , datumHashToText
+    , digest
+    , hashScript
     , headerHashFromText
     , pointFromText
+    , scriptFromBytes
+    , scriptHashFromBytes
+    , scriptHashFromText
+    , scriptHashToBytes
+    , scriptHashToText
+    , scriptToBytes
     , slotNoFromText
     , slotNoToText
+    , unsafeScriptHashFromBytes
     )
-import Kupo.Data.Cardano
-    ( datumHashToText )
 import Test.Hspec
     ( Spec, context, parallel, shouldBe, specify )
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
-    ( genDatumHash, genSlotNo )
+    ( genDatumHash, genScript, genScriptHash, genSlotNo )
 import Test.QuickCheck
     ( Gen, arbitrary, forAll, property, vectorOf, (===) )
 
@@ -43,17 +52,34 @@ spec = parallel $ do
                     Just{}  -> property True
                     Nothing -> property False
 
-    context "slotNoFromText ↔ slotNoToText" $ do
+    context "SlotNo" $ do
         prop "forall (s :: Word64). slotNoFromText (show s) === Just{}" $ \(s :: Word64) ->
             slotNoFromText (show s) === Just (SlotNo s)
         prop "forall (s :: SlotNo). slotNoFromText (slotNoToText s) === Just{}" $
             forAll genSlotNo $ \s ->
                 slotNoFromText (slotNoToText s) === Just s
 
-    context "datumHashFromText ↔ datumHashToText" $ do
+    context "DatumHash" $ do
         prop "forall (x :: DatumHash). datumHashFromText (datumHashToText x) === x" $
             forAll genDatumHash $ \x ->
                 datumHashFromText (datumHashToText x) === Just x
+
+    context "Script" $ do
+        prop "forall (x :: Script). scriptFromBytes (scriptToBytes x) === x" $
+            forAll genScript $ \x ->
+                scriptFromBytes (scriptToBytes x) === Just x
+        prop "forall (x :: Script). digest @Blake2b_224 x === hashScript x" $
+            forAll genScript $ \x ->
+                unsafeScriptHashFromBytes (digest (Proxy @Blake2b_224) (scriptToBytes x))
+                    === hashScript x
+
+    context "ScriptHash" $ do
+        prop "forall (x :: ScriptHash). scriptHashFromBytes (scriptHashToBytes x) === x" $
+            forAll genScriptHash $ \x ->
+                scriptHashFromBytes (scriptHashToBytes x) === Just x
+        prop "forall (x :: ScriptHash). scriptFromText (scriptToText x) === x" $
+            forAll genScriptHash $ \x ->
+                scriptHashFromText (scriptHashToText x) === Just x
 
     context "headerHashFromText" $ do
         prop "forall (bs :: ByteString). bs .size 32 => headerHashFromText (base16 bs) === Just{}" $

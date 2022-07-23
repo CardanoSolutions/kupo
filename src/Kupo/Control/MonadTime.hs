@@ -8,7 +8,6 @@ module Kupo.Control.MonadTime
     , DiffTime
     , addTime
     , diffTime
-    , secondsToTime
     , secondsToDiffTime
     , millisecondsToDiffTime
     , timeout

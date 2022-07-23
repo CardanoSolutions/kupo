@@ -30,6 +30,7 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
     ( DatumHash
+    , ScriptHash
     , SlotNo (..)
     , binaryDataToJson
     , datumHashFromText
@@ -37,6 +38,8 @@ import Kupo.Data.Cardano
     , hasAssetId
     , hasPolicyId
     , pointToJson
+    , scriptHashFromText
+    , scriptToJson
     , slotNoFromText
     , slotNoToText
     )
@@ -48,6 +51,8 @@ import Kupo.Data.Database
     , patternToSql
     , pointFromRow
     , resultFromRow
+    , scriptFromRow
+    , scriptHashToRow
     )
 import Kupo.Data.Health
     ( Health (..) )
@@ -137,6 +142,9 @@ app withDatabase patternsVar readHealth req send =
         ("v1" : "datums" : args) ->
             routeDatums (requestMethod req, args)
 
+        ("v1" : "scripts" : args) ->
+            routeScripts (requestMethod req, args)
+
         ("v1" : "patterns" : args) ->
             routePatterns (requestMethod req, args)
 
@@ -198,6 +206,19 @@ app withDatabase patternsVar readHealth req send =
                 send =<< handleGetDatum
                             headers
                             (datumHashFromText arg)
+                            db
+        ("GET", _) ->
+            send Errors.notFound
+        (_, _) ->
+            send Errors.methodNotAllowed
+
+    routeScripts = \case
+        ("GET", [arg]) ->
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth
+                send =<< handleGetScript
+                            headers
+                            (scriptHashFromText arg)
                             db
         ("GET", _) ->
             send Errors.notFound
@@ -378,6 +399,25 @@ handleGetDatum headers datumArg Database{..} = do
                         Json.pairs $ mconcat
                             [ Json.pair "datum" (binaryDataToJson d)
                             ]
+
+--
+-- /v1/scripts
+--
+
+handleGetScript
+    :: [Http.Header]
+    -> Maybe ScriptHash
+    -> Database IO
+    -> IO Response
+handleGetScript headers scriptArg Database{..} = do
+    case scriptArg of
+        Nothing ->
+            pure Errors.malformedScriptHash
+        Just scriptHash -> do
+            script <- runReadOnlyTransaction $
+                getScript (scriptHashToRow scriptHash) scriptFromRow
+            pure $ responseJsonEncoding status200 headers $
+                maybe Json.null_ scriptToJson script
 
 --
 -- /v1/patterns

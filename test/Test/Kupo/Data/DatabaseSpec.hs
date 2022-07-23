@@ -37,6 +37,8 @@ import Kupo.Control.MonadLog
     ( nullTracer )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
+import Kupo.Control.MonadThrow
+    ( MonadThrow (..) )
 import Kupo.Control.MonadTime
     ( millisecondsToDiffTime )
 import Kupo.Data.Cardano
@@ -50,13 +52,17 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( LongestRollback (..) )
 import Kupo.Data.Database
-    ( patternFromRow
+    ( datumFromRow
+    , datumToRow
+    , patternFromRow
     , patternToRow
     , patternToSql
     , pointFromRow
     , pointToRow
     , resultFromRow
     , resultToRow
+    , scriptReferenceFromRow
+    , scriptReferenceToRow
     )
 import System.FilePath
     ( (</>) )
@@ -68,10 +74,12 @@ import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
     ( chooseVector
+    , genDatum
     , genNonGenesisPoint
     , genPattern
     , genPointsBetween
     , genResult
+    , genScriptReference
     )
 import Test.Kupo.Data.Pattern.Fixture
     ( addresses, patterns )
@@ -103,6 +111,10 @@ spec = parallel $ do
             roundtripFromToRow genNonGenesisPoint pointToRow pointFromRow
         prop "Pattern" $
             roundtripFromToRow genPattern patternToRow patternFromRow
+        prop "Datum" $
+            roundtripFromToRow2 genDatum datumToRow datumFromRow
+        prop "ScriptReference" $
+            roundtripFromToRow2 genScriptReference scriptReferenceToRow scriptReferenceFromRow
 
     context "patternToSql" $ around withFixtureDatabase $ do
         forM_ patterns $ \(_, p, results) -> do
@@ -250,6 +262,25 @@ roundtripFromToRow genA toRow fromRow =
         let row = toRow a in fromRow row == a
         & counterexample ("Row: "  <> show row)
         & counterexample ("Got:  " <> show (fromRow row))
+        & counterexample ("Want: " <> show a)
+
+roundtripFromToRow2
+    :: forall a k v.
+        ( Show a
+        , Show k
+        , Show v
+        , Eq a
+        )
+    => Gen a
+    -> (a -> (k, v))
+    -> (k -> v -> a)
+    -> Property
+roundtripFromToRow2 genA toRow fromRow =
+    forAllBlind genA $ \a ->
+        let (k, v) = toRow a in fromRow k v == a
+        & counterexample ("Row(v): "  <> show v)
+        & counterexample ("Row(k): "  <> show k)
+        & counterexample ("Got:  " <> show (fromRow k v))
         & counterexample ("Want: " <> show a)
 
 --

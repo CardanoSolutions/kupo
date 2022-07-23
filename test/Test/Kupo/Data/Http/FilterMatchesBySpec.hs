@@ -14,7 +14,6 @@ import Kupo.Data.Cardano
     , assetNameToText
     , policyIdToText
     , unsafeAssetNameFromBytes
-    , unsafePolicyIdFromBytes
     )
 import Kupo.Data.Http.FilterMatchesBy
     ( FilterMatchesBy (..), filterMatchesBy )
@@ -83,13 +82,11 @@ spec = parallel $ do
 
 somePolicyId :: PolicyId
 somePolicyId =
-    generateWith 42 $
-        unsafePolicyIdFromBytes <$> genPolicyId
+    generateWith 42 genPolicyId
 
 someOtherPolicyId :: PolicyId
 someOtherPolicyId =
-    generateWith 42 $
-        (unsafePolicyIdFromBytes <$> genPolicyId) `suchThat` (/= somePolicyId)
+    generateWith 42 $ genPolicyId `suchThat` (/= somePolicyId)
 
 someAssetName :: AssetName
 someAssetName =

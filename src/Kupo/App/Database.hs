@@ -67,7 +67,7 @@ import GHC.TypeLits
 import Kupo.Data.Configuration
     ( LongestRollback (..) )
 import Kupo.Data.Database
-    ( BinaryData (..), Checkpoint (..), Input (..) )
+    ( BinaryData (..), Checkpoint (..), Input (..), ScriptReference (..) )
 import Numeric
     ( Floating (..) )
 
@@ -142,6 +142,16 @@ data Database (m :: Type -> Type) = Database
 
     , pruneBinaryData
         :: DBTransaction m Int
+
+    , insertScripts
+        :: [ScriptReference]
+        -> DBTransaction m ()
+
+    , getScript
+        :: forall script. ()
+        => ByteString -- script_hash
+        -> (ScriptReference -> script)
+        -> DBTransaction m (Maybe script)
 
     , rollbackTo
         :: Word64  -- slot_no
@@ -237,6 +247,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                     , SQLText address
                     , SQLBlob value
                     , maybe SQLNull SQLBlob datumHash
+                    , maybe SQLNull SQLBlob refScriptHash
                     , SQLInteger (fromIntegral createdAtSlotNo)
                     , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
                     ]
@@ -247,6 +258,14 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                         insertRow @"binary_data" conn
                             [ SQLBlob binaryDataHash
                             , SQLBlob binaryData
+                            ]
+                case refScript of
+                    Nothing ->
+                        pure ()
+                    Just ScriptReference{..} ->
+                        insertRow @"scripts" conn
+                            [ SQLBlob scriptHash
+                            , SQLBlob script
                             ]
             )
             inputs
@@ -283,21 +302,23 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         let matchMaybeWord64 = \case
                 SQLInteger (fromIntegral -> wrd) -> Just wrd
                 _ -> Nothing
-        let qry = "SELECT output_reference, address, value, datum_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash, LENGTH(address) as len \
+        let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash, LENGTH(address) as len \
                   \FROM inputs \
                   \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
                   \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
                   \WHERE address " <> addressLike <> " ORDER BY created_at DESC"
 
-        -- TODO: Allow resolving datums on demand through a LEFT JOIN on binary_data.
+        -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
         --
         -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
         let datum = Nothing
+        let refScript = Nothing
         fold_ conn (Query qry) () $ \() -> \case
             [ SQLBlob outputReference
                 , SQLText address
                 , SQLBlob value
                 , matchMaybeBytes -> datumHash
+                , matchMaybeBytes -> refScriptHash
                 , SQLInteger (fromIntegral -> createdAtSlotNo)
                 , SQLBlob createdAtHeaderHash
                 , matchMaybeWord64 -> spentAtSlotNo
@@ -380,6 +401,26 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                   \ );"
         execute_ conn qry
         changes conn
+
+    , insertScripts = \scripts -> ReaderT $ \conn ->
+        mapM_
+            (\ScriptReference{..} ->
+                insertRow @"scripts" conn
+                    [ SQLBlob scriptHash
+                    , SQLBlob script
+                    ]
+            )
+            scripts
+
+    , getScript = \scriptHash mk -> ReaderT $ \conn -> do
+        let qry = "SELECT script FROM scripts \
+                  \WHERE script_hash = ? \
+                  \LIMIT 1"
+        Sqlite.query conn qry (Only (SQLBlob scriptHash)) <&> \case
+            [[SQLBlob script]] ->
+                Just (mk ScriptReference{..})
+            _ ->
+                Nothing
 
     , deletePattern = \p -> ReaderT $ \conn -> do
         execute conn "DELETE FROM patterns WHERE pattern = ?"
@@ -525,7 +566,6 @@ migrations =
         , ( $(embedFile "db/v1.0.1/001.sql"),      mkSchemaMigration   )
         , ( $(embedFile "db/v2.0.0/001.sql"),      mkSchemaMigration   )
         , ( $(embedFile "db/v2.0.0/002.sql"),      mkSettingsMigration )
-        , ( $(embedFile "db/v2.0.0/003.sql"),      mkSchemaMigration   )
         ]
     ]
   where

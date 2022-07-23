@@ -45,6 +45,9 @@ import Kupo.Data.Cardano
     , Output
     , OutputReference
     , Point
+    , Script
+    , ScriptHash
+    , ScriptReference (..)
     , SlotNo
     , Value
     , addressFromBytes
@@ -59,16 +62,19 @@ import Kupo.Data.Cardano
     , getOutputIndex
     , getPaymentPartBytes
     , getPointSlotNo
+    , getScript
     , getTransactionId
     , getValue
     , hashDatum
+    , hashScriptReference
     , headerHashToJson
     , isBootstrap
+    , mkScriptReference
     , outputIndexToJson
+    , scriptHashToJson
     , slotNoToJson
     , transactionIdToJson
     , unsafeGetPointHeaderHash
-    , valueToJson
     , valueToJson
     )
 
@@ -302,6 +308,7 @@ data Result = Result
     , address :: Address
     , value :: Value
     , datum :: Datum
+    , scriptReference :: ScriptReference
     , createdAt :: Point
     , spentAt :: Maybe (Point)
     } deriving (Show, Eq)
@@ -320,6 +327,8 @@ resultToJson Result{..} = Json.pairs $ mconcat
         (valueToJson value)
     , Json.pair "datum_hash"
         (maybe Json.null_ datumHashToJson (hashDatum datum))
+    , Json.pair "script_hash"
+        (maybe Json.null_ scriptHashToJson (hashScriptReference scriptReference))
     , Json.pair "created_at"
         (Json.pairs $ mconcat
             [ Json.pair "slot_no"
@@ -344,11 +353,12 @@ resultToJson Result{..} = Json.pairs $ mconcat
 -- | Codecs to encode data-type to some target structure. This allows to encode
 -- on-the-fly as we traverse the structure, rather than traversing all results a
 -- second time.
-data Codecs result slotNo input bin = Codecs
+data Codecs result slotNo input bin script = Codecs
     { toResult :: Result -> result
     , toSlotNo :: SlotNo -> slotNo
     , toInput :: Input -> input
     , toBinaryData :: DatumHash -> BinaryData -> bin
+    , toScript :: ScriptHash -> Script -> script
     }
 
 -- | Match all outputs in transactions from a block that match any of the given
@@ -358,32 +368,41 @@ data Codecs result slotNo input bin = Codecs
 -- multiple patterns. This is to facilitate building an index of matches to
 -- results.
 matchBlock
-    :: forall block result slotNo input bin.
+    :: forall block result slotNo input bin scripts.
         ( IsBlock block
         , Ord input
         , Ord slotNo
         )
-    => Codecs result slotNo input bin
+    => Codecs result slotNo input bin scripts
     -> [Pattern]
     -> block
-    -> (Map slotNo (Set input), [result], [bin])
+    -> (Map slotNo (Set input), [result], [bin], [scripts])
 matchBlock Codecs{..} patterns blk =
-    let pt = getPoint blk in foldBlock (fn pt) (mempty, mempty, mempty) blk
+    let pt = getPoint blk in foldBlock (fn pt) (mempty, mempty, mempty, mempty) blk
   where
     fn
         :: Point
         -> BlockBody block
-        -> (Map slotNo (Set input), [result], [bin])
-        -> (Map slotNo (Set input), [result], [bin])
-    fn pt tx (consumed, produced, witnessed) =
+        -> (Map slotNo (Set input), [result], [bin], [scripts])
+        -> (Map slotNo (Set input), [result], [bin], [scripts])
+    fn pt tx (consumed, produced, datums, scripts) =
         ( Map.alter
             (\st -> Just (Set.foldr (Set.insert . toInput) (fromMaybe mempty st) (spentInputs @block tx)))
             (toSlotNo (getPointSlotNo pt))
             consumed
 
-        , concatMap (flip (mapMaybeOutputs @block) tx . match pt) patterns ++ produced
+        , concatMap (flip (mapMaybeOutputs @block) tx . match pt) patterns
+            ++ produced
 
-        , Map.foldMapWithKey (\k -> pure . toBinaryData k) (witnessedDatums @block tx) ++ witnessed
+        , Map.foldrWithKey
+            (\k v accum -> toBinaryData k v : accum)
+            datums
+            (witnessedDatums @block tx)
+
+        , Map.foldrWithKey
+            (\k v accum -> toScript k v : accum)
+            scripts
+            (witnessedScripts @block tx)
         )
 
     match
@@ -399,6 +418,7 @@ matchBlock Codecs{..} patterns blk =
             , address = getAddress out
             , value = getValue out
             , datum = getDatum out
+            , scriptReference = mkScriptReference (getScript out)
             , createdAt = pt
             , spentAt = Nothing
             }

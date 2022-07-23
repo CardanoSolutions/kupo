@@ -33,8 +33,18 @@ import Kupo.Data.Cardano
     , pattern GenesisPoint
     , pattern GenesisTip
     , Input
+    , KeyHash (..)
+    , NativeScript
     , Output
     , Point
+    , pattern RequireAllOf
+    , pattern RequireAnyOf
+    , pattern RequireMOf
+    , pattern RequireSignature
+    , pattern RequireTimeExpire
+    , pattern RequireTimeStart
+    , Script
+    , ScriptHash
     , SlotNo (..)
     , StandardCrypto
     , Tip
@@ -46,10 +56,14 @@ import Kupo.Data.Cardano
     , datumHashFromBytes
     , fromBinaryData
     , fromDatumHash
+    , fromNativeScript
+    , hashScript
     , headerHashToJson
     , mkOutput
     , mkOutputReference
     , noDatum
+    , scriptFromBytes
+    , scriptHashFromText
     , slotNoToJson
     , transactionIdFromHash
     , transactionIdFromHash
@@ -75,7 +89,9 @@ import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Aeson.Types as Json
 import qualified Data.Map as Map
+import qualified Data.Sequence.Strict as StrictSeq
 import qualified Data.Text as Text
+import qualified Text.Read as T
 
 -- RequestNextResponse
 
@@ -255,19 +271,115 @@ decodeOutput
     :: Json.Value
     -> Json.Parser Output
 decodeOutput = Json.withObject "Output" $ \o -> do
-    address <- o .: "address" >>= decodeAddress
-    value <- o .: "value" >>= decodeValue
     datumHash <- o .:? "datumHash" >>=
         traverse (fmap unsafeMakeSafeHash . decodeHash @Blake2b_256)
     datum <- o .:? "datum"
-    mkOutput address value <$>
-        case (datumHash, datum) of
-            (Just x, _) ->
-                pure (fromDatumHash x)
-            (Nothing, Just x) ->
-                fromBinaryData <$> decodeBinaryData x
-            (Nothing, Nothing) ->
-                pure noDatum
+    mkOutput
+        <$> (o .: "address" >>= decodeAddress)
+        <*> (o .: "value" >>= decodeValue)
+        <*> case (datumHash, datum) of
+                (Just x, _) ->
+                    pure (fromDatumHash x)
+                (Nothing, Just x) ->
+                    fromBinaryData <$> decodeBinaryData x
+                (Nothing, Nothing) ->
+                    pure noDatum
+        <*> (o .:? "script" >>= traverse decodeScript)
+
+decodeScripts'
+    :: Map ScriptHash Script
+    -> [Json.Value]
+    -> Json.Parser (Map ScriptHash Script)
+decodeScripts' m0 =
+    foldr
+        (\json accum -> do
+            script <- decodeScript json
+            Map.insert (hashScript script) script <$> accum
+        )
+        (pure m0)
+
+decodeScripts
+    :: Json.Value
+    -> Json.Parser (Map ScriptHash Script)
+decodeScripts = Json.withObject "Scripts" $
+    KeyMap.foldrWithKey
+        (\k v accum -> Map.insert
+            <$> decodeScriptHash k
+            <*> decodeScript v
+            <*> accum
+        )
+        (pure mempty)
+
+decodeScriptHash
+    :: Json.Key
+    -> Json.Parser ScriptHash
+decodeScriptHash k =
+    case scriptHashFromText (Key.toText k) of
+        Nothing -> fail "decodeScriptHash"
+        Just scriptHash -> pure scriptHash
+
+decodeScript
+    :: Json.Value
+    -> Json.Parser Script
+decodeScript = Json.withObject "Script" $ \o ->
+    decodeNative o <|> decodePlutusV1 o <|> decodePlutusV2 o
+  where
+    decodeNative o = do
+        script <- o .: "native" >>= decodeNativeScript
+        pure (fromNativeScript script)
+
+    decodePlutusV1 o = do
+        script <- o .: "plutus:v1"
+        case scriptFromBytes <$> decodeBase16 (encodeUtf8 @Text ("01" <> script)) of
+            Right (Just s) -> pure s
+            _ -> fail "decodeScript: decodePlutusV1"
+
+    decodePlutusV2 o = do
+        script <- o .: "plutus:v2"
+        case scriptFromBytes <$> decodeBase16 (encodeUtf8 @Text ("02" <> script)) of
+            Right (Just s) -> pure s
+            _ -> fail "decodeScript: decodePlutusV2"
+
+decodeNativeScript
+    :: Json.Value
+    -> Json.Parser NativeScript
+decodeNativeScript json =
+    (decodeRequireSignature json)
+    <|>
+    (Json.withObject "NativeScript::AllOf" decodeAllOf json)
+    <|>
+    (Json.withObject "NativeScript::AnyOf" decodeAnyOf json)
+    <|>
+    (Json.withObject "NativeScript::MOf" decodeMOf json)
+    <|>
+    (Json.withObject "NativeScript::TimeExpire" decodeTimeExpire json)
+    <|>
+    (Json.withObject "NativeScript::TimeStart" decodeTimeStart json)
+  where
+    decodeRequireSignature t = do
+        RequireSignature
+            <$> fmap KeyHash (decodeHash t)
+    decodeAllOf o = do
+        xs <- StrictSeq.fromList <$> (o .: "all")
+        RequireAllOf <$> traverse decodeNativeScript xs
+    decodeAnyOf o = do
+        xs <- StrictSeq.fromList <$> (o .: "any")
+        RequireAnyOf <$> traverse decodeNativeScript xs
+    decodeMOf o =
+        case KeyMap.toList o of
+            [(k, v)] -> do
+                case T.readMaybe (Key.toString k) of
+                    Just n -> do
+                        xs <- StrictSeq.fromList <$> Json.parseJSON v
+                        RequireMOf n <$> traverse decodeNativeScript xs
+                    Nothing ->
+                        fail "cannot decode MOfN constructor, key isn't a natural."
+            _ ->
+                fail "cannot decode MOfN, not a list."
+    decodeTimeExpire o = do
+        RequireTimeExpire . SlotNo <$> (o .: "expiresAt")
+    decodeTimeStart o = do
+        RequireTimeStart . SlotNo <$> (o .: "startsAt")
 
 decodePartialTransaction
     :: Json.Value
@@ -277,7 +389,13 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     inputSource <- o .:? "inputSource"
     -- NOTE: On Byron transactions, witnesses are an array!
     witness <- o .: "witness" <|> pure KeyMap.empty
+    metadata <- o .:? "metadata" .!= KeyMap.empty >>= (\o' -> o' .:? "body" .!= KeyMap.empty)
     datums <- witness .:? "datums" .!= Json.Object mempty >>= decodeDatums
+    scriptsInWitness <- witness .:? "scripts" .!= Json.Object mempty >>= decodeScripts
+    scriptsInAuxiliaryData <- metadata .:? "scripts"
+    scripts <- case scriptsInAuxiliaryData of
+        Just xs -> decodeScripts' scriptsInWitness xs
+        Nothing -> pure scriptsInWitness
     case inputSource of
         Just ("collaterals" :: Text) -> do
             inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "collaterals"))
@@ -285,8 +403,8 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
                 { inputs
                 , outputs = []
                 , datums
+                , scripts
                 }
-
         _ -> do
             inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "inputs"))
             outs <- traverse decodeOutput =<< (o .: "body" >>= (.: "outputs"))
@@ -294,6 +412,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
                 { inputs
                 , outputs = withReferences txId outs
                 , datums
+                , scripts
                 }
 
 decodeDatums

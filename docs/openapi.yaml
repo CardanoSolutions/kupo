@@ -395,7 +395,6 @@ components:
           example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
           minLength: 64
           maxLength: 64
-
         - title: Nothing
           type: "null"
 
@@ -426,6 +425,7 @@ components:
         - address
         - value
         - datum_hash
+        - script_hash
         - created_at
         - spent_at
       properties:
@@ -439,6 +439,8 @@ components:
           $ref: "#/components/schemas/Value"
         datum_hash:
           $ref: "#/components/schemas/DatumHash"
+        script_hash:
+          $ref: "#/components/schemas/ScriptHash"
         created_at:
           $ref: "#/components/schemas/Point"
         spent_at:
@@ -471,6 +473,45 @@ components:
           $ref: "#/components/schemas/SlotNo"
         header_hash:
           $ref: "#/components/schemas/HeaderHash"
+
+    Script:
+      title: Script
+      type: object
+      required:
+        - script
+        - language
+      additionalProperties: false
+      properties:
+        language:
+          type: string
+          description: The type of script. `native` refers to pre-Alonzo scripts made of the native DSL to combine keys.
+          enum:
+            - native
+            - 'plutus:v1'
+            - 'plutus:v2'
+        script:
+          type: string
+          description: A serialized script (native or Plutus).
+          contentEncoding: base16
+          example: 4d01000033222220051200120011
+      examples:
+        - language: 'native'
+          script: 8201838200581c3c07030e36bfffe67e2e2ec09e5293d384637cd2f004356ef320f3fe8204186482051896
+        - language: 'plutus:v1'
+          script: 4d01000033222220051200120011
+
+    ScriptHash:
+      oneOf:
+        - title: Digest
+          type: string
+          description: A blake2b-224 hash digest of a Native or Plutus script.
+          contentEncoding: base16
+          example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded
+          minLength: 56
+          maxLength: 56
+        - title: Nothing
+          type: "null"
+
 
     SlotNo: &slotNo
       type: integer
@@ -589,6 +630,8 @@ components:
       schema:
         type: string
         contentEncoding: base16
+        minLength: 56
+        maxLength: 56
         pattern: ^[a-f0-9]{56}$
       description: |
         Filter matches to only include results whose value carries assets associated with the given `policy_id`.
@@ -628,9 +671,24 @@ components:
         contentEncoding: base16
         minLength: 64
         maxLength: 64
+        pattern: ^[a-f0-9]{64}$
         example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
       description:
         A datum blake2b-256 hash digest.
+
+    script-hash:
+      name: script_hash
+      in: path
+      required: true
+      schema:
+        type: string
+        contentEncoding: base16
+        minLength: 56
+        maxLength: 56
+        pattern: ^[a-f0-9]{56}$
+        example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded
+      description:
+        A script blake2b-224 hash digest of a script.
 
 tags:
   - name: Matches
@@ -639,6 +697,7 @@ tags:
       An API for inspecting checkpoints known of the database. A checkpoint really is a point on-chain that directly references a block. They are comprised of an absolute slot
       number and a block header hash. Kupo records all such points as it processes blocks. In particular, they are also used to resume synchronization upon restart.
   - name: Datums
+  - name: Scripts
   - name: Patterns
   - name: Health
 
@@ -748,6 +807,47 @@ paths:
               schema:
                 oneOf:
                   - $ref: "#/components/schemas/Datum"
+                  - title: Nothing
+                    type: "null"
+        400:
+          description: Bad Request
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+
+  /v1/scripts/{script-hash}:
+    get:
+      operationdId: getScriptByHash
+      tags: ["Scripts"]
+      summary: Get Script by Hash
+      description: |
+        Retrieve the raw script (i.e. full resolved script) associated to a given script hash digest.
+
+        > **NOTE**:
+        >
+        > Raw scripts aren't exact pre-image of their hash digest. Before hashing, scripts are prefixed with a
+        > certain discriminator byte depending on the language. For instance, any native script is prefixed with
+        > `00` before hashing.
+        >
+        > Here's a table summarizing all discriminators:
+        >
+        > | Language    | Discriminator Byte |
+        > | ---         | ---                |
+        > | `native`    | `00`               |
+        > | `plutus:v1` | `01`               |
+        > | `plutus:v2` | `02`               |
+      parameters:
+        - $ref: "#/components/parameters/script-hash"
+      responses:
+        200:
+          description: OK
+          headers: *default-headers
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Script"
                   - title: Nothing
                     type: "null"
         400:

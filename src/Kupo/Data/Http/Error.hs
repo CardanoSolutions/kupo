@@ -83,6 +83,14 @@ malformedDatumHash =
                  \thus, 64 characters once encoded)."
         }
 
+malformedScriptHash :: Response
+malformedScriptHash =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "The given path parameter isn't a well-formed script hash digest. \
+                 \This must be a blake2b-224 hash digest encoded in base16 (\
+                 \thus, 56 characters once encoded)."
+        }
+
 notFound :: Response
 notFound =
     responseJson status404 Default.headers $ HttpError

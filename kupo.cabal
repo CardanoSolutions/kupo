@@ -140,6 +140,7 @@ library
     , cardano-ledger-shelley
     , cardano-ledger-shelley-ma
     , cardano-slotting
+    , cborg
     , containers
     , contra-tracer
     , contra-tracers

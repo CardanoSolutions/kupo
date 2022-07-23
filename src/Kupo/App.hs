@@ -60,7 +60,7 @@ import Kupo.Data.Configuration
     , NetworkParameters (..)
     )
 import Kupo.Data.Database
-    ( binaryDataToRow, pointToRow, resultToRow )
+    ( binaryDataToRow, pointToRow, resultToRow, scriptToRow )
 import Kupo.Data.Pattern
     ( Codecs (..), Pattern, matchBlock )
 
@@ -155,13 +155,14 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
         let (lastKnownTip, lastKnownBlk) = last blks
         let lastKnownPoint = getPoint lastKnownBlk
         let lastKnownSlot = getPointSlotNo lastKnownPoint
-        let (spentInputs, newInputs, bins) = foldMap (matchBlock codecs patterns . snd) blks
+        let (spentInputs, newInputs, bins, scripts) = foldMap (matchBlock codecs patterns . snd) blks
         logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
         runReadWriteTransaction $ do
             insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
             insertInputs newInputs
             onSpentInputs lastKnownTip lastKnownSlot spentInputs
             insertBinaryData bins
+            insertScripts scripts
             notifyTip lastKnownTip (Just lastKnownSlot)
 
     rollBackward :: (Tip, Point) -> m ()
@@ -176,6 +177,7 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
         , toSlotNo = unSlotNo
         , toInput = serialize'
         , toBinaryData = binaryDataToRow
+        , toScript = scriptToRow
         }
 
     onSpentInputs = case inputManagement of
@@ -210,6 +212,11 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
 --
 -- In brief, we can only delete inputs after `k` blocks (or `3*k/f` slots) have
 -- passed (since it is guaranteed to have `k` blocks in a `3*k/f` slot window).
+--
+-- TODO: We should / could also try to prune scripts data. This is a little
+-- trickier than for datums because scripts may also be referenced in addresses.
+-- To cleanup, we would therefore need to remove scripts that are not referenced
+-- in output, nor addresses.
 gardener
     :: forall m.
         ( MonadSTM m

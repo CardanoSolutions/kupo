@@ -41,7 +41,7 @@ import Kupo.App.Http
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Database
-    ( binaryDataToRow, patternToRow, pointToRow, resultToRow )
+    ( binaryDataToRow, patternToRow, pointToRow, resultToRow, scriptToRow )
 import Kupo.Data.Health
     ( Health )
 import Kupo.Data.Pattern
@@ -63,6 +63,8 @@ import Test.Kupo.Data.Generators
     , genNonGenesisPoint
     , genPattern
     , genResult
+    , genScript
+    , genScriptHash
     )
 import Test.QuickCheck
     ( arbitrary, counterexample, elements, generate, listOf1, oneof )
@@ -170,6 +172,14 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
+        session specification get "/v1/scripts/{script-hash}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "GET" }
+                & flip Wai.setPath "/v1/scripts/309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
         session specification get "/v1/patterns" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/patterns"
@@ -262,6 +272,14 @@ spec = do
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "🕱 GET /v1/scripts/{script-hash}" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/v1/scripts/foo"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
   where
     noWildcard :: [Pattern]
     noWildcard =
@@ -322,6 +340,13 @@ databaseStub = Database
             pure $ mk . binaryDataToRow binaryDataHash <$> binaryData
     , pruneBinaryData =
         liftIO (generate arbitrary)
+    , insertScripts =
+        \_ -> return ()
+    , getScript =
+        \_ mk -> liftIO $ generate $ do
+            scriptHash <- genScriptHash
+            script <- oneof [pure Nothing, Just <$> genScript]
+            pure $ mk . scriptToRow scriptHash <$> script
     , rollbackTo =
         \_ -> return Nothing
     , runReadOnlyTransaction = \r ->
