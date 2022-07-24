@@ -23,7 +23,7 @@ See [projects 🎯](https://github.com/CardanoSolutions/kupo/projects?type=class
 | Category         | Value                                      |
 | ---              | ---                                        |
 | Operating System | Linux 64-bit                               |
-| RAM              | 1024MB                                     |
+| RAM              | 1280MB                                     |
 | CPU              | 2 cores                                    |
 | Disk Storage     | Variable, up to 40GB (full index, mainnet) |
 

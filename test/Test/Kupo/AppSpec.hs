@@ -18,7 +18,7 @@ import GHC.Generics
 import Kupo
     ( kupoWith, newEnvironment, runWith )
 import Kupo.App
-    ( ChainSyncClient, mailboxSize )
+    ( ChainSyncClient )
 import Kupo.App.Mailbox
     ( Mailbox, newMailbox, putHighFrequencyMessage, putIntermittentMessage )
 import Kupo.Control.MonadAsync
@@ -71,6 +71,7 @@ import Kupo.Data.Configuration
     , InputManagement (..)
     , LongestRollback (..)
     , WorkDir (..)
+    , mailboxCapacity
     )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..) )
@@ -783,7 +784,7 @@ newMockProducer
        )
     -> IO ()
 newMockProducer queue callback = do
-    mailbox <- atomically (newMailbox mailboxSize)
+    mailbox <- atomically (newMailbox mailboxCapacity)
     callback mailbox $ \_ -> \case
         [GenesisPoint] -> do
             const $ forever $ atomically $ do

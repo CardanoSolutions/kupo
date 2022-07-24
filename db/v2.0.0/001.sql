@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS inputs (
 
 CREATE INDEX IF NOT EXISTS inputsByAddress ON inputs(address, spent_at);
 
+CREATE INDEX IF NOT EXISTS inputsByDatumHash ON inputs(datum_hash);
+
 DELETE FROM checkpoints;
 
 CREATE INDEX IF NOT EXISTS checkpointsBySlotNo ON checkpoints(slot_no);

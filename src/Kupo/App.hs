@@ -18,9 +18,6 @@ module Kupo.App
       -- * Tracers
     , TraceConsumer (..)
     , TraceGardener (..)
-
-      -- * Internal
-    , mailboxSize
     ) where
 
 import Kupo.Prelude
@@ -62,11 +59,12 @@ import Kupo.Data.Configuration
     , InputManagement (..)
     , LongestRollback (..)
     , NetworkParameters (..)
+    , mailboxCapacity
     )
 import Kupo.Data.Database
     ( binaryDataToRow, pointToRow, resultToRow, scriptToRow )
 import Kupo.Data.Pattern
-    ( Codecs (..), Pattern, matchBlock )
+    ( Codecs (..), MatchBootstrap (..), Pattern (..), included, matchBlock )
 
 import qualified Data.Map as Map
 import qualified Kupo.App.ChainSync.Direct as Direct
@@ -95,14 +93,14 @@ newProducer tr chainProducer callback = do
     case chainProducer of
         Ogmios{ogmiosHost, ogmiosPort} -> do
             logWith tr ConfigurationOgmios{ogmiosHost, ogmiosPort}
-            mailbox <- atomically (newMailbox mailboxSize)
+            mailbox <- atomically (newMailbox mailboxCapacity)
             callback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
                 Ogmios.connect statusToggle ogmiosHost ogmiosPort $
                     Ogmios.runChainSyncClient mailbox checkpoints
 
         CardanoNode{nodeSocket, nodeConfig} -> do
             logWith tr ConfigurationCardanoNode{nodeSocket,nodeConfig}
-            mailbox <- atomically (newMailbox mailboxSize)
+            mailbox <- atomically (newMailbox mailboxCapacity)
             network@NetworkParameters
                 { networkMagic
                 , slotsPerEpoch
@@ -120,14 +118,6 @@ newProducer tr chainProducer callback = do
                       logWith tracerChainSync ChainSyncIntersectionNotFound{points}
                       throwIO e
                     )
-
--- TODO: Make the mailbox's size configurable? Larger sizes means larger
--- memory usage at the benefits of slightly faster sync time... Though I
--- am not sure it's worth enough to bother users with this. Between 100
--- and 1000, the heap increases from ~150MB to ~1GB, for a 5-10%
--- synchronization time decrease.
-mailboxSize :: Natural
-mailboxSize = 100
 
 -- | Consumer process that is reading messages from the 'Mailbox'. Messages are
 -- enqueued by another process (the producer).
@@ -160,7 +150,8 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
         let (lastKnownTip, lastKnownBlk) = last blks
         let lastKnownPoint = getPoint lastKnownBlk
         let lastKnownSlot = getPointSlotNo lastKnownPoint
-        let (spentInputs, newInputs, bins, scripts) = foldMap (matchBlock codecs patterns . snd) blks
+        let (spentInputs, newInputs, bins, scripts) =
+                foldMap (matchBlock codecs patterns . snd) blks
         logWith tr $ ConsumerRollForward
             { slotNo = lastKnownSlot
             , inputs = length newInputs
@@ -236,11 +227,13 @@ gardener
         )
     => Tracer IO TraceGardener
     -> Configuration
+    -> TVar m [Pattern]
     -> (forall a. (Database m -> m a) -> m a)
     -> m Void
-gardener tr config withDatabase = forever $ do
+gardener tr config patterns withDatabase = forever $ do
     threadDelay garbageCollectionInterval
     logWith tr GardenerBeginGarbageCollection
+    xs <- readTVarIO patterns
     withDatabase $ \Database{..} -> do
         (prunedInputs, prunedBinaryData) <- runReadWriteTransaction $ do
             let
@@ -248,8 +241,12 @@ gardener tr config withDatabase = forever $ do
                     case inputManagement of
                         RemoveSpentInputs -> pruneInputs
                         MarkSpentInputs -> pure 0
+                pruneBinaryDataWhenApplicable = do
+                    case (inputManagement, MatchAny OnlyShelley `included` xs) of
+                        (MarkSpentInputs, _:_) -> pure 0
+                        _ -> pruneBinaryData
              in
-                (,) <$> pruneInputsWhenApplicable <*> pruneBinaryData
+                (,) <$> pruneInputsWhenApplicable <*> pruneBinaryDataWhenApplicable
         logWith tr $ GardenerExitGarbageCollection { prunedInputs, prunedBinaryData }
   where
     Configuration

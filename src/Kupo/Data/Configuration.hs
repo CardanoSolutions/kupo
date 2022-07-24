@@ -16,6 +16,8 @@ module Kupo.Data.Configuration
     , InputManagement (..)
     , ChainProducer (..)
     , LongestRollback (..)
+    , mailboxCapacity
+    , maxInFlight
 
     -- * NetworkParameters
     , NetworkParameters (..)
@@ -124,6 +126,26 @@ data InputManagement
 newtype LongestRollback = LongestRollback
     { getLongestRollback :: Word64
     } deriving newtype (Integral, Real, Num, Enum, Ord, Eq, Show)
+
+-- Mailbox's capacity, or how many messages can be enqueued in the queue between
+-- the consumer and the producer workers. More means faster synchronization (up
+-- to a certain level) but also higher memory consumption. We try to stay under
+-- ~1GB of RAM so 500-600 seems to be a good number.
+--
+-- Note that this is intrinsically linked to the `-A` runtime flag. Higher
+-- capacity requires a larger allocation area. Because of this, and because
+-- users would in general not necessarily know what to put, this isn't
+-- configurable as such. Sensible numbers were picked.
+mailboxCapacity :: Natural
+mailboxCapacity = 600
+{-# INLINABLE mailboxCapacity #-}
+
+-- | Maximum pipelining at any given time. No need to go too high here, it only
+-- arms performance beyond a certain point. This also goes hand-in-hand with the
+-- 'mailboxCapacity'
+maxInFlight :: Int
+maxInFlight = 100
+{-# INLINABLE maxInFlight #-}
 
 data NetworkParameters = NetworkParameters
     { networkMagic :: !NetworkMagic

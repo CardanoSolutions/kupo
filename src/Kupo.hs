@@ -153,6 +153,7 @@ kupoWith tr withProducer =
                 ( gardener
                     (tracerGardener tr)
                     config
+                    patterns
                     (withDatabase nullTracer ShortLived lock longestRollback dbFile)
                 )
 

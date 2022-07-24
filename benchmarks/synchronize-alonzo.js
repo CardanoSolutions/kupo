@@ -5,12 +5,14 @@ const http = require('http');
 const process = require('process');
 const cp = require('child_process');
 const assert = require('assert');
+const pidUsage = require('pidusage');
 
 const DEFAULT_URL = 'http://localhost:1442';
-const LAST_MARY_POINT = '36158304.2b95ce628d36c3f8f37a32c2942b48e4f9295ccfe8190bcbc1f012e1e97c79eb';
-const LAST_ALONZO_SLOT = 62510369;
+const LAST_MARY_POINT  = '36158304.2b95ce628d36c3f8f37a32c2942b48e4f9295ccfe8190bcbc1f012e1e97c79eb';
+const LAST_ALONZO_SLOT =  62510369;
 
-main().then(console.log);
+console.error(`bench: ${process.argv.slice(3)}`);
+main().then(result => console.error(JSON.stringify(result)))
 
 async function main() {
   const tmp = fs.mkdtempSync('kupo-synchronize-alonzo');
@@ -32,23 +34,36 @@ async function main() {
       , '--since', LAST_MARY_POINT
       ].concat(extraOptions));
 
-    kupo.stdout.on('data', chunk => console.log(chunk.toString()));
-    kupo.stderr.on('data', chunk => console.log(chunk.toString()));
+    kupo.stdout.on('data', chunk => process.stdout.write(chunk.toString()));
+    kupo.stderr.on('data', chunk => process.stderr.write(chunk.toString()));
     kupo.on('close', code => process.exit(code));
+
+    let memoryUsage = 0;
+    const interval = setInterval(() => {
+      pidUsage(kupo.pid, (err, stats) => {
+        if (stats.memory > memoryUsage)  {
+          memoryUsage = stats.memory
+        }
+      });
+    }, 2000);
 
     await waitForSlot(LAST_ALONZO_SLOT);
 
+    clearInterval(interval);
+
+    const databaseSize = cp.execSync(`ls -lh ${tmp}/kupo.sqlite3`).toString().split(" ")[4];
+    const maxMemory = `${memoryUsage / (1024 * 1024)}M`;
+
     const time = (Date.now() - now) / 1000;
     if (time < 1000) {
-      return `${time}s`;
+      return { duration: `${time}s`, databaseSize, maxMemory };
     } else if (time < 3600 * 3) {
-      return `${time / 60}min`;
+      return { duration: `${time / 60}min`, databaseSize, maxMemory };
     } else {
       const hour = Math.floor(time / 3600);
       const min = time - hour * 3600;
-      return `${hour}h${min}min`;
+      return { duration: `${hour}h${min}min`, databaseSize, maxMemory };
     }
-
   } finally {
     fs.rmSync(tmp, { recursive: true });
     if (kupo) {
@@ -58,7 +73,7 @@ async function main() {
 }
 
 function findNodeConfigurationSync() {
-  const out = cp.execSync(`ps -aux | grep 'cardano-node'`).toString().split('\n')[0];
+  const out = cp.execSync(`ps -aux | grep 'cardano-node run'`).toString().split('\n')[0];
   const configFile = out.replace(/.*--config ([^ ]*) ?.*/gm, "$1").trim();
   const socketFile = out.replace(/.*--socket-path ([^ ]*) ?.*/gm, "$1").trim();
 
@@ -69,7 +84,7 @@ function findNodeConfigurationSync() {
 }
 
 async function waitForSlot(target) {
-  const POLL_DELAY = 20000; // ms
+  const POLL_DELAY = 5000; // ms
 
   return new Promise((resolve) => {
     function poll() {

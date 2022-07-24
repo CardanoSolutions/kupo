@@ -292,16 +292,18 @@ mkDatabase tr (fromIntegral -> longestRollback) bracketConnection = Database
     , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
         traceWith tr (DatabaseBeginQuery "deleteInputsByReference")
         let n = length refs
-        unless (n == 0) $ do
-            let qry = "DELETE FROM inputs WHERE output_reference IN " <> mkPreparedStatement n
+        when (n > 0) $ do
+            let qry = "DELETE FROM inputs \
+                      \WHERE output_reference IN " <> mkPreparedStatement n
             execute conn qry refs
         traceWith tr (DatabaseExitQuery "deleteInputsByReference")
 
     , markInputsByReference = \(fromIntegral -> slotNo) refs -> ReaderT $ \conn -> do
         traceWith tr (DatabaseBeginQuery "markInputsByReference")
         let n = length refs
-        unless (n == 0) $ do
-            let qry = "UPDATE inputs SET spent_at = ? WHERE output_reference IN " <> mkPreparedStatement n
+        when (n > 0) $ do
+            let qry = "UPDATE inputs SET spent_at = ? \
+                      \WHERE output_reference IN " <> mkPreparedStatement n
             execute conn qry (SQLInteger slotNo : toRow refs)
         traceWith tr (DatabaseExitQuery "markInputsByReference")
 
@@ -459,6 +461,7 @@ mkDatabase tr (fromIntegral -> longestRollback) bracketConnection = Database
         execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
             [ slotNoVar
             ]
+        execute_ conn "PRAGMA optimize"
         query_ conn "SELECT MAX(slot_no) FROM checkpoints" >>= \case
             [[SQLInteger slotNo']] ->
                 return $ Just (fromIntegral slotNo')
@@ -496,6 +499,7 @@ insertRow conn r =
 mkPreparedStatement :: Int -> Query
 mkPreparedStatement n =
     Query ("(" <> T.intercalate "," (replicate n "?") <> ")")
+{-# INLINABLE mkPreparedStatement #-}
 
 retryWhenBusy :: IO a -> IO a
 retryWhenBusy action =

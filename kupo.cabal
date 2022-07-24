@@ -19,7 +19,6 @@ license:        MPL-2.0
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
-    db/fiddle.sql
     db/v1.0.0-beta/001.sql
     db/v1.0.0/001.sql
     db/v1.0.0/002.sql
@@ -229,7 +228,7 @@ executable kupo
       base >=4.7 && <5
     , kupo
   if flag(production)
-    ghc-options: -O2 -Werror "-with-rtsopts=-T -N2 -I0 -A16m"
+    ghc-options: -O2 -Werror "-with-rtsopts=-T -N2 -I0 -qb -A64m"
   default-language: Haskell2010
 
 test-suite unit
