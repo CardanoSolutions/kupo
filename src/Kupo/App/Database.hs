@@ -85,12 +85,12 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m Int
 
     , deleteInputsByReference
-        :: Set ByteString  -- An output reference
+        :: Set ByteString  -- Output references
         -> DBTransaction m ()
 
     , markInputsByReference
         :: Word64 -- Slot
-        -> Set ByteString  -- An output reference
+        -> Set ByteString  -- Output references
         -> DBTransaction m ()
 
     , pruneInputs
@@ -182,7 +182,7 @@ withDatabase
 withDatabase tr mode (DBLock readers writer) k filePath action = do
     withConnection filePath $ \conn -> do
         when (mode == LongLived) (databaseVersion conn >>= runMigrations tr conn)
-        action (mkDatabase k (bracketConnection conn))
+        action (mkDatabase tr k (bracketConnection conn))
   where
     -- The heuristic below aims at favoring light reader/writer over the main
     -- writer. We assume that there is only one persistent db producer and possibly
@@ -237,9 +237,14 @@ newLock = DBLock
 -- IO
 --
 
-mkDatabase :: LongestRollback -> (forall a. (Connection -> IO a) -> IO a) -> Database IO
-mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
-    { insertInputs = \inputs -> ReaderT $ \conn ->
+mkDatabase
+    :: Tracer IO TraceDatabase
+    -> LongestRollback
+    -> (forall a. (Connection -> IO a) -> IO a)
+    -> Database IO
+mkDatabase tr (fromIntegral -> longestRollback) bracketConnection = Database
+    { insertInputs = \inputs -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "insertInputs")
         mapM_
             (\Input{..} -> do
                 insertRow @"inputs" conn
@@ -269,6 +274,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                             ]
             )
             inputs
+        traceWith tr (DatabaseExitQuery "insertInputs")
 
     , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
         let qry = Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike
@@ -284,16 +290,20 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         changes conn
 
     , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "deleteInputsByReference")
         let n = length refs
         unless (n == 0) $ do
             let qry = "DELETE FROM inputs WHERE output_reference IN " <> mkPreparedStatement n
             execute conn qry refs
+        traceWith tr (DatabaseExitQuery "deleteInputsByReference")
 
     , markInputsByReference = \(fromIntegral -> slotNo) refs -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "markInputsByReference")
         let n = length refs
         unless (n == 0) $ do
             let qry = "UPDATE inputs SET spent_at = ? WHERE output_reference IN " <> mkPreparedStatement n
             execute conn qry (SQLInteger slotNo : toRow refs)
+        traceWith tr (DatabaseExitQuery "markInputsByReference")
 
     , foldInputs = \addressLike yield -> ReaderT $ \conn -> do
         let matchMaybeBytes = \case
@@ -327,15 +337,17 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
 
-    , insertCheckpoints = \cps -> ReaderT $ \conn ->
+    , insertCheckpoints = \cps -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "insertCheckpoints")
         mapM_
-        (\Checkpoint{..} ->
-            insertRow @"checkpoints" conn
-                [ SQLBlob checkpointHeaderHash
-                , SQLInteger (fromIntegral checkpointSlotNo)
-                ]
-        )
-        cps
+            (\Checkpoint{..} ->
+                insertRow @"checkpoints" conn
+                    [ SQLBlob checkpointHeaderHash
+                    , SQLInteger (fromIntegral checkpointSlotNo)
+                    ]
+            )
+            cps
+        traceWith tr (DatabaseExitQuery "insertCheckpoints")
 
     , listCheckpointsDesc = \mk -> ReaderT $ \conn -> do
         let points =
@@ -371,7 +383,8 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
             )
             patterns
 
-    , insertBinaryData = \bin -> ReaderT $ \conn ->
+    , insertBinaryData = \bin -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "insertBinaryData")
         mapM_
             (\BinaryData{..} ->
                 insertRow @"binary_data" conn
@@ -380,6 +393,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                     ]
             )
             bin
+        traceWith tr (DatabaseExitQuery "insertBinaryData")
 
     , getBinaryData = \binaryDataHash mk -> ReaderT $ \conn -> do
         let qry = "SELECT binary_data FROM binary_data \
@@ -402,7 +416,8 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         execute_ conn qry
         changes conn
 
-    , insertScripts = \scripts -> ReaderT $ \conn ->
+    , insertScripts = \scripts -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "insertScripts")
         mapM_
             (\ScriptReference{..} ->
                 insertRow @"scripts" conn
@@ -411,6 +426,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                     ]
             )
             scripts
+        traceWith tr (DatabaseExitQuery "insertScripts")
 
     , getScript = \scriptHash mk -> ReaderT $ \conn -> do
         let qry = "SELECT script FROM scripts \
@@ -610,6 +626,12 @@ data TraceDatabase where
     DatabaseCurrentVersion
         :: { currentVersion :: Int }
         -> TraceDatabase
+    DatabaseBeginQuery
+        :: { beginQuery :: Text }
+        -> TraceDatabase
+    DatabaseExitQuery
+        :: { exitQuery :: Text }
+        -> TraceDatabase
     DatabaseNoMigrationNeeded
         :: TraceDatabase
     DatabaseRunningMigration
@@ -625,7 +647,9 @@ instance ToJSON TraceDatabase where
 
 instance HasSeverityAnnotation TraceDatabase where
     getSeverityAnnotation = \case
-        DatabaseCurrentVersion{}         -> Info
-        DatabaseNoMigrationNeeded{}      -> Debug
-        DatabaseRunningMigration{}       -> Notice
-        DatabaseRunningInMemory{}        -> Warning
+        DatabaseBeginQuery{}        -> Debug
+        DatabaseExitQuery{}         -> Debug
+        DatabaseCurrentVersion{}    -> Info
+        DatabaseNoMigrationNeeded{} -> Debug
+        DatabaseRunningMigration{}  -> Notice
+        DatabaseRunningInMemory{}   -> Warning

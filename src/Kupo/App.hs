@@ -148,6 +148,7 @@ consumer
     -> m Void
 consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Database{..} =
     forever $ do
+        logWith tr ConsumerWaitingForNextBatch
         atomically ((,) <$> flushMailbox mailbox <*> readTVar patternsVar) >>= \case
             (Left blks, patterns) ->
                 rollForward blks patterns
@@ -261,6 +262,8 @@ gardener tr config withDatabase = forever $ do
 --
 
 data TraceConsumer where
+    ConsumerWaitingForNextBatch
+        :: TraceConsumer
     ConsumerRollBackward
         :: { point :: SlotNo }
         -> TraceConsumer
@@ -278,6 +281,8 @@ instance ToJSON TraceConsumer where
 
 instance HasSeverityAnnotation TraceConsumer where
     getSeverityAnnotation = \case
+        ConsumerWaitingForNextBatch{} ->
+            Debug
         ConsumerRollForward{} ->
             Info
         ConsumerRollBackward{} ->
