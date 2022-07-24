@@ -33,7 +33,7 @@ module Kupo
 import Kupo.Prelude
 
 import Kupo.App
-    ( ChainSyncClient, consumer, gardener, newProducer )
+    ( ChainSyncClient, TraceConsumer (..), consumer, gardener, newProducer )
 import Kupo.App.ChainSync
     ( withChainSyncExceptionHandler )
 import Kupo.App.Configuration
@@ -120,6 +120,7 @@ kupoWith tr withProducer =
         patterns <- newPatternsCache (tracerConfiguration tr) config db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
+        let tracerChainSync =  contramap ConsumerChainSync . tracerConsumer
         withProducer $ \mailbox producer -> do
             concurrently4
                 -- HTTP Server
@@ -139,7 +140,7 @@ kupoWith tr withProducer =
 
                 -- Block consumer fueling the database
                 ( consumer
-                    (tracerChainSync tr)
+                    (tracerConsumer tr)
                     inputManagement
                     longestRollback
                     notifyTip
@@ -150,7 +151,7 @@ kupoWith tr withProducer =
 
                 -- Database garbage-collector
                 ( gardener
-                    (tracerDatabase tr)
+                    (tracerGardener tr)
                     config
                     (withDatabase nullTracer ShortLived lock longestRollback dbFile)
                 )

@@ -29,8 +29,8 @@ import Options.Applicative
 
 import Data.Char
     ( toUpper )
-import Kupo.App.ChainSync
-    ( TraceChainSync )
+import Kupo.App
+    ( TraceConsumer, TraceGardener )
 import Kupo.App.Configuration
     ( TraceConfiguration )
 import Kupo.App.Database
@@ -96,7 +96,8 @@ parserInfo = info (helper <*> parser) $ mempty
             <*> (tracersOption <|> Tracers
                     <$> fmap Const (logLevelOption "http-server")
                     <*> fmap Const (logLevelOption "database")
-                    <*> fmap Const (logLevelOption "chain-sync")
+                    <*> fmap Const (logLevelOption "consumer")
+                    <*> fmap Const (logLevelOption "garbage-collector")
                     <*> fmap Const (logLevelOption "configuration")
                 )
         )
@@ -338,8 +339,10 @@ data Tracers m (kind :: TracerDefinition) = Tracers
         :: TracerHKD kind (Tracer m TraceHttpServer)
     , tracerDatabase
         :: TracerHKD kind (Tracer m TraceDatabase)
-    , tracerChainSync
-        :: TracerHKD kind (Tracer m TraceChainSync)
+    , tracerConsumer
+        :: TracerHKD kind (Tracer m TraceConsumer)
+    , tracerGardener
+        :: TracerHKD kind (Tracer m TraceGardener)
     , tracerConfiguration
         :: TracerHKD kind (Tracer m TraceConfiguration)
     } deriving (Generic)

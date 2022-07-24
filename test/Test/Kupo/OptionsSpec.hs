@@ -160,11 +160,13 @@ spec = parallel $ do
           )
         , ( defaultArgs ++
             [ "--log-level-database", "Debug"
-            , "--log-level-chain-sync", "Warning"
+            , "--log-level-consumer", "Warning"
+            , "--log-level-garbage-collector", "Error"
             ]
           , shouldParseTracersConfiguration $ defaultTracersInfo
             { tracerDatabase  = Const (Just Debug)
-            , tracerChainSync = Const (Just Warning)
+            , tracerConsumer = Const (Just Warning)
+            , tracerGardener = Const (Just Error)
             }
           )
         , ( defaultArgs ++

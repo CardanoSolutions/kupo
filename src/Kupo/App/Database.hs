@@ -615,11 +615,6 @@ data TraceDatabase where
     DatabaseRunningMigration
         :: { from :: Int, to :: Int }
         -> TraceDatabase
-    DatabaseBeginGarbageCollection
-        :: TraceDatabase
-    DatabaseExitGarbageCollection
-        :: { prunedInputs :: Int, prunedBinaryData :: Int }
-        -> TraceDatabase
     DatabaseRunningInMemory
         :: TraceDatabase
     deriving stock (Generic, Show)
@@ -632,7 +627,5 @@ instance HasSeverityAnnotation TraceDatabase where
     getSeverityAnnotation = \case
         DatabaseCurrentVersion{}         -> Info
         DatabaseNoMigrationNeeded{}      -> Debug
-        DatabaseBeginGarbageCollection{} -> Debug
-        DatabaseExitGarbageCollection{}  -> Debug
         DatabaseRunningMigration{}       -> Notice
         DatabaseRunningInMemory{}        -> Warning

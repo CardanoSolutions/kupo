@@ -15,6 +15,10 @@ module Kupo.App
       -- * Gardener
     , gardener
 
+      -- * Tracers
+    , TraceConsumer (..)
+    , TraceGardener (..)
+
       -- * Internal
     , mailboxSize
     ) where
@@ -28,13 +32,13 @@ import Kupo.App.ChainSync
 import Kupo.App.Configuration
     ( TraceConfiguration (..), parseNetworkParameters )
 import Kupo.App.Database
-    ( DBTransaction, Database (..), TraceDatabase (..) )
+    ( DBTransaction, Database (..) )
 import Kupo.App.Mailbox
     ( Mailbox, flushMailbox, newMailbox )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadLog
-    ( MonadLog (..), Tracer )
+    ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..) )
 import Kupo.Control.MonadSTM
@@ -87,23 +91,23 @@ newProducer
         -> IO ()
        )
     -> IO ()
-newProducer tracerConfiguration chainProducer callback = do
+newProducer tr chainProducer callback = do
     case chainProducer of
         Ogmios{ogmiosHost, ogmiosPort} -> do
-            logWith tracerConfiguration ConfigurationOgmios{ogmiosHost, ogmiosPort}
+            logWith tr ConfigurationOgmios{ogmiosHost, ogmiosPort}
             mailbox <- atomically (newMailbox mailboxSize)
-            callback mailbox $ \_tr checkpoints statusToggle -> do
+            callback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
                 Ogmios.connect statusToggle ogmiosHost ogmiosPort $
                     Ogmios.runChainSyncClient mailbox checkpoints
 
         CardanoNode{nodeSocket, nodeConfig} -> do
-            logWith tracerConfiguration ConfigurationCardanoNode{nodeSocket,nodeConfig}
+            logWith tr ConfigurationCardanoNode{nodeSocket,nodeConfig}
             mailbox <- atomically (newMailbox mailboxSize)
             network@NetworkParameters
                 { networkMagic
                 , slotsPerEpoch
                 } <- liftIO (parseNetworkParameters nodeConfig)
-            logWith tracerConfiguration (ConfigurationNetwork network)
+            logWith tr (ConfigurationNetwork network)
             callback mailbox $ \tracerChainSync checkpoints statusToggle -> do
                 withChainSyncServer
                   statusToggle
@@ -134,7 +138,7 @@ consumer
         , Monad (DBTransaction m)
         , IsBlock block
         )
-    => Tracer IO TraceChainSync
+    => Tracer IO TraceConsumer
     -> InputManagement
     -> LongestRollback
     -> (Tip -> Maybe SlotNo -> DBTransaction m ())
@@ -156,7 +160,12 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
         let lastKnownPoint = getPoint lastKnownBlk
         let lastKnownSlot = getPointSlotNo lastKnownPoint
         let (spentInputs, newInputs, bins, scripts) = foldMap (matchBlock codecs patterns . snd) blks
-        logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
+        logWith tr $ ConsumerRollForward
+            { slotNo = lastKnownSlot
+            , inputs = length newInputs
+            , binaryData = length bins
+            , scripts = length scripts
+            }
         runReadWriteTransaction $ do
             insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
             insertInputs newInputs
@@ -167,7 +176,7 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
 
     rollBackward :: (Tip, Point) -> m ()
     rollBackward (tip, pt) = do
-        logWith tr (ChainSyncRollBackward (getPointSlotNo pt))
+        logWith tr (ConsumerRollBackward { point = getPointSlotNo pt })
         runReadWriteTransaction $ do
             lastKnownSlot <- rollbackTo (unSlotNo (getPointSlotNo pt))
             notifyTip tip (SlotNo <$> lastKnownSlot)
@@ -224,13 +233,13 @@ gardener
         , MonadDelay m
         , Monad (DBTransaction m)
         )
-    => Tracer IO TraceDatabase
+    => Tracer IO TraceGardener
     -> Configuration
     -> (forall a. (Database m -> m a) -> m a)
     -> m Void
 gardener tr config withDatabase = forever $ do
     threadDelay pruneThrottleDelay
-    logWith tr DatabaseBeginGarbageCollection
+    logWith tr GardenerBeginGarbageCollection
     withDatabase $ \Database{..} -> do
         (prunedInputs, prunedBinaryData) <- runReadWriteTransaction $ do
             let
@@ -240,9 +249,55 @@ gardener tr config withDatabase = forever $ do
                         MarkSpentInputs -> pure 0
              in
                 (,) <$> pruneInputsWhenApplicable <*> pruneBinaryData
-        logWith tr $ DatabaseExitGarbageCollection { prunedInputs, prunedBinaryData }
+        logWith tr $ GardenerExitGarbageCollection { prunedInputs, prunedBinaryData }
   where
     Configuration
         { pruneThrottleDelay
         , inputManagement
         } = config
+
+--
+-- Tracer
+--
+
+data TraceConsumer where
+    ConsumerRollBackward
+        :: { point :: SlotNo }
+        -> TraceConsumer
+    ConsumerRollForward
+        :: { slotNo :: SlotNo, inputs :: Int, binaryData :: Int, scripts :: Int }
+        -> TraceConsumer
+    ConsumerChainSync
+        :: { chainSync :: TraceChainSync }
+        -> TraceConsumer
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceConsumer where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance HasSeverityAnnotation TraceConsumer where
+    getSeverityAnnotation = \case
+        ConsumerRollForward{} ->
+            Info
+        ConsumerRollBackward{} ->
+            Notice
+        ConsumerChainSync{chainSync} ->
+            getSeverityAnnotation chainSync
+
+data TraceGardener where
+    GardenerBeginGarbageCollection
+        :: TraceGardener
+    GardenerExitGarbageCollection
+        :: { prunedInputs :: Int, prunedBinaryData :: Int }
+        -> TraceGardener
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceGardener where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance HasSeverityAnnotation TraceGardener where
+    getSeverityAnnotation = \case
+        GardenerBeginGarbageCollection{} -> Info
+        GardenerExitGarbageCollection{}  -> Info
