@@ -75,7 +75,7 @@ data Configuration = Configuration
         -- ^ Behavior to adopt towards spent inputs (prune or mark-and-leave)
     , longestRollback :: !LongestRollback
         -- ^ Number of slots before which data can be considered immutable
-    , pruneThrottleDelay :: !DiffTime
+    , garbageCollectionInterval :: !DiffTime
         -- ^ Delay between each garbage-collection of database data
     } deriving (Generic, Eq, Show)
 

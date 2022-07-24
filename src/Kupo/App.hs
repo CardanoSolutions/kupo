@@ -239,7 +239,7 @@ gardener
     -> (forall a. (Database m -> m a) -> m a)
     -> m Void
 gardener tr config withDatabase = forever $ do
-    threadDelay pruneThrottleDelay
+    threadDelay garbageCollectionInterval
     logWith tr GardenerBeginGarbageCollection
     withDatabase $ \Database{..} -> do
         (prunedInputs, prunedBinaryData) <- runReadWriteTransaction $ do
@@ -253,7 +253,7 @@ gardener tr config withDatabase = forever $ do
         logWith tr $ GardenerExitGarbageCollection { prunedInputs, prunedBinaryData }
   where
     Configuration
-        { pruneThrottleDelay
+        { garbageCollectionInterval
         , inputManagement
         } = config
 

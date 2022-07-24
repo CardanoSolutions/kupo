@@ -133,6 +133,17 @@ spec = parallel $ do
         , ( defaultArgs ++ [ "--match", "NOT-A-PATTERN" ]
           , shouldFail
           )
+        , ( defaultArgs ++ [ "--gc-interval", "42" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { garbageCollectionInterval = 42
+            }
+          )
+        , ( defaultArgs ++ [ "--gc-interval", "foo" ]
+          , shouldFail
+          )
+        , ( defaultArgs ++ [ "--gc-interval", "14.42" ]
+          , shouldFail
+          )
         ]
         ++
         [ ( defaultArgs ++ [ "--log-level", str ]

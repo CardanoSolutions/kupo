@@ -325,7 +325,7 @@ skippableContext prefix skippableSpec = do
                     , patterns = []
                     , inputManagement = MarkSpentInputs
                     , longestRollback = 43200
-                    , pruneThrottleDelay = 60
+                    , garbageCollectionInterval = 180
                     }
             context cardanoNode $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager
@@ -345,7 +345,7 @@ skippableContext prefix skippableSpec = do
                     , patterns = []
                     , inputManagement = MarkSpentInputs
                     , longestRollback = 43200
-                    , pruneThrottleDelay = 60
+                    , garbageCollectionInterval = 180
                     }
             context ogmios $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager

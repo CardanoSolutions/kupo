@@ -150,7 +150,7 @@ spec = do
                     Nothing
                     (generator inputManagement)
                     shrinker
-                    (semantics pruneThrottleDelay httpClient queue)
+                    (semantics garbageCollectionInterval httpClient queue)
                     mock
                     (cleanup queue)
             forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
@@ -163,7 +163,7 @@ spec = do
                         , patterns = [MatchAny IncludingBootstrap]
                         , inputManagement
                         , longestRollback
-                        , pruneThrottleDelay
+                        , garbageCollectionInterval
                         }
                 env <- run (newEnvironment config)
                 let producer = newMockProducer queue
@@ -195,7 +195,7 @@ spec = do
     serverHost = "127.0.0.1"
     serverPort = 1442
     longestRollback = 10
-    pruneThrottleDelay = 0.4
+    garbageCollectionInterval = 0.4
     tracers = configureTracers (defaultTracers Nothing) nullTracer
 
 --------------------------------------------------------------------------------
