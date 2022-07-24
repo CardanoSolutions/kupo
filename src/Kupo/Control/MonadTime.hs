@@ -22,8 +22,5 @@ import Control.Monad.Class.MonadTimer
 import Data.Time.Clock
     ( DiffTime, secondsToDiffTime )
 
-secondsToTime :: Integer -> Time
-secondsToTime = Time . secondsToDiffTime
-
 millisecondsToDiffTime :: Integer -> DiffTime
 millisecondsToDiffTime = toEnum . fromInteger . (* 1_000_000_000)

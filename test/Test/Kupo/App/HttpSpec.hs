@@ -245,6 +245,23 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
+        session' "🕱 GET /v1/matches?spent&unspent" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/v1/matches?spent&unspent"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "🕱 GET /v1/matches?asset_name=... (no policy)" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/v1/matches?asset_name=40bd"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+
         session' "🕱 DELETE /v1/matches/{pattern-fragment}" $ do
             overlappingFragment <- liftIO $ generate (elements Fixture.overlappingUnaryFragments)
             resBadRequest <- Wai.request $ Wai.defaultRequest
@@ -260,6 +277,22 @@ spec = do
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
                 & flip Wai.setPath ("/v1/matches/" <> overlappingFragment)
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "🕱 GET /v1/checkpoints/42?foo" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/v1/checkpoints/42?foo"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "🕱 GET /v1/checkpoints/foo" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/v1/checkpoints/foo"
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest

@@ -18,7 +18,7 @@ import Network.Wai
 import qualified Kupo.Data.Http.Default as Default
 
 data HttpError = HttpError
-    { hint :: Text }
+    { hint :: !Text }
     deriving stock (Generic)
     deriving anyclass (ToJSON)
 

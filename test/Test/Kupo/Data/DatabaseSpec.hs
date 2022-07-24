@@ -98,8 +98,6 @@ import Test.QuickCheck.Monadic
 import Test.QuickCheck.Property
     ( Testable )
 
-import Kupo.Control.MonadThrow
-    ( MonadThrow (..) )
 import qualified Prelude
 
 spec :: Spec

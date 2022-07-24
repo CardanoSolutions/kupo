@@ -115,30 +115,10 @@ info:
     ```
 
     Points are given as `{slot_no}.{header_hash}` and defines an exclusive
-    boundary. Said differently, kupo will start synchronizing from the next block
-    following the given point. In case you need them, here are a few points of
-    interest:
-
-    ##### Mainnet
-
-    | Era Bound          | SlotNo   | Hash                                                             |
-    | ---                | ---      | ---                                                              |
-    | Last Byron Block   | 4492799  | f8084c61b6a238acec985b59310b6ecec49c0ab8352249afd7268da5cff2a457 |
-    | Last Shelley Block | 16588737 | 4e9bbbb67e3ae262133d94c3da5bffce7b1127fc436e7433b87668dba34c354a |
-    | Last Allegra Block | 23068793 | 69c44ac1dda2ec74646e4223bc804d9126f719b1c245dadc2ad65e8de1b276d7 |
-    | Last Mary Block    | 39916796 | e72579ff89dc9ed325b723a33624b596c08141c7bd573ecfff56a1f7229e4d09 |
-    | Last Alonzo Block  | N/A      | N/A                                                              |
-
-    ##### Testnet
-
-    | Era Bound          | SlotNo   | Hash                                                             |
-    | ---                | ---      | ---                                                              |
-    | Last Byron block   | 1598399  | 7e16781b40ebf8b6da18f7b5e8ade855d6738095ef2f1c58c77e88b6e45997a4 |
-    | Last Shelley block | 13694363 | b596f9739b647ab5af901c8fc6f75791e262b0aeba81994a1d622543459734f2 |
-    | Last Allegra block | 18014387 | 9914c8da22a833a777d8fc1f735d2dbba70b99f15d765b6c6ee45fe322d92d93 |
-    | Last Mary block    | 36158304 | 2b95ce628d36c3f8f37a32c2942b48e4f9295ccfe8190bcbc1f012e1e97c79eb |
-    | Last Alonzo block  | 62510369 | d931221f9bc4cae34de422d9f4281a2b0344e86aac6b31eb54e2ee90f44a09b9 |
-    | Last Babbage Block | N/A      | N/A                                                              |
+    boundary. Said differently, kupo will start synchronizing from the next
+    block following the given point. In case you need them, see the section
+    [#era-boundaries] which references points at which era ends for mainnet and
+    testnet; useful to start syncing from a specific era.
 
     #### --match \<pattern>
 
@@ -272,13 +252,48 @@ info:
     $ curl http://localhost:1442/v1/matches/addr1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgz4xq9p
     ```
 
+    Optionally, you can query only `unspent` or `spent` results using the respective query flags:
+
+    ```console
+    $ curl http://localhost:1442/v1/matches/*/*?unspent
+    ```
+
     The complete API reference is available below.
+
+    # Era Boundaries
+
+    ### Mainnet
+
+    | Era Bound          | SlotNo   | Hash                                                             |
+    | ---                | ---      | ---                                                              |
+    | Last Byron Block   | 4492799  | f8084c61b6a238acec985b59310b6ecec49c0ab8352249afd7268da5cff2a457 |
+    | Last Shelley Block | 16588737 | 4e9bbbb67e3ae262133d94c3da5bffce7b1127fc436e7433b87668dba34c354a |
+    | Last Allegra Block | 23068793 | 69c44ac1dda2ec74646e4223bc804d9126f719b1c245dadc2ad65e8de1b276d7 |
+    | Last Mary Block    | 39916796 | e72579ff89dc9ed325b723a33624b596c08141c7bd573ecfff56a1f7229e4d09 |
+    | Last Alonzo Block  | N/A      | N/A                                                              |
+
+    ### Testnet
+
+    | Era Bound          | SlotNo   | Hash                                                             |
+    | ---                | ---      | ---                                                              |
+    | Last Byron block   | 1598399  | 7e16781b40ebf8b6da18f7b5e8ade855d6738095ef2f1c58c77e88b6e45997a4 |
+    | Last Shelley block | 13694363 | b596f9739b647ab5af901c8fc6f75791e262b0aeba81994a1d622543459734f2 |
+    | Last Allegra block | 18014387 | 9914c8da22a833a777d8fc1f735d2dbba70b99f15d765b6c6ee45fe322d92d93 |
+    | Last Mary block    | 36158304 | 2b95ce628d36c3f8f37a32c2942b48e4f9295ccfe8190bcbc1f012e1e97c79eb |
+    | Last Alonzo block  | 62510369 | d931221f9bc4cae34de422d9f4281a2b0344e86aac6b31eb54e2ee90f44a09b9 |
+    | Last Babbage Block | N/A      | N/A                                                              |
+
 
     <br/><br/>
 
-    <p align="center">
-    （✿ ͡◕ ᴗ◕ )つ━━✫ ✧･ﾟ* enjoy *:･ﾟ✧*:･ﾟ💖
-    </p>
+    <div align="center">
+    <pre style="background: none; border: none; color: inherit; display: inline-block; text-align: left;">
+               ●
+            /\__\__/\
+           /✿        \
+        \ (ﾐ  ⌒ ● ⌒  ﾐ) つ ━✫ ✧･ﾟ* KUPO! *:･ﾟ✧*:･ﾟ💖
+      </pre>
+    </div>
 
 components:
   headers: &default-headers
@@ -294,7 +309,6 @@ components:
       schema:
         type: integer
         minimum: 0
-
 
   schemas:
     Address_Shelley: &Address_Shelley

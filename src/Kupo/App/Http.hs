@@ -75,6 +75,7 @@ import Kupo.Data.Pattern
     , patternFromText
     , patternToText
     , resultToJson
+    , wildcard
     )
 import Network.HTTP.Types.Status
     ( status200 )
@@ -229,10 +230,11 @@ app withDatabase patternsVar readHealth req send =
         ("GET", []) -> do
             res <- handleGetPatterns
                         <$> responseHeaders readHealth
+                        <*> pure (Just wildcard)
                         <*> readTVarIO patternsVar
             send res
         ("GET", args) -> do
-            res <- handleGetMatchingPatterns
+            res <- handleGetPatterns
                         <$> responseHeaders readHealth
                         <*> pure (patternFromPath args)
                         <*> readTVarIO patternsVar
@@ -425,19 +427,10 @@ handleGetScript headers scriptArg Database{..} = do
 
 handleGetPatterns
     :: [Http.Header]
-    -> [Pattern]
-    -> Response
-handleGetPatterns headers patterns = do
-    responseStreamJson headers Json.text $ \yield done -> do
-        mapM_ (yield . patternToText) patterns
-        done
-
-handleGetMatchingPatterns
-    :: [Http.Header]
     -> Maybe Text
     -> [Pattern]
     -> Response
-handleGetMatchingPatterns headers patternQuery patterns = do
+handleGetPatterns headers patternQuery patterns = do
     case patternQuery >>= patternFromText of
         Nothing ->
             Errors.invalidPattern
