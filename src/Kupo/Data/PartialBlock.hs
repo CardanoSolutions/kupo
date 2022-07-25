@@ -17,6 +17,8 @@ import Kupo.Data.Cardano
     , Output
     , OutputReference
     , Point
+    , Script
+    , ScriptHash
     )
 
 import qualified Data.Set as Set
@@ -34,6 +36,7 @@ data PartialTransaction = PartialTransaction
     { inputs :: [ Input ]
     , outputs :: [ (OutputReference, Output) ]
     , datums :: Map DatumHash BinaryData
+    , scripts :: Map ScriptHash Script
     } deriving (Eq, Show)
 
 instance IsBlock PartialBlock where
@@ -53,3 +56,6 @@ instance IsBlock PartialBlock where
 
     witnessedDatums =
         datums
+
+    witnessedScripts =
+        scripts

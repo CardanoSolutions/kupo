@@ -45,6 +45,7 @@ module Kupo.Data.Cardano
     , getAddress
     , getDatum
     , getValue
+    , getScript
 
     -- * Value
     , Value
@@ -91,6 +92,41 @@ module Kupo.Data.Cardano
     , binaryDataToJson
     , binaryDataFromBytes
     , unsafeBinaryDataFromBytes
+
+    -- * ScriptReference
+    , ScriptReference (..)
+    , mkScriptReference
+    , hashScriptReference
+
+    -- * Script
+    , Script
+    , unsafeScriptFromBytes
+    , scriptToBytes
+    , scriptFromBytes
+    , scriptToJson
+    , hashScript
+    , fromNativeScript
+
+    -- * NativeScript
+    , NativeScript
+    , pattern Ledger.RequireSignature
+    , pattern Ledger.RequireAllOf
+    , pattern Ledger.RequireAnyOf
+    , pattern Ledger.RequireMOf
+    , pattern Ledger.RequireTimeExpire
+    , pattern Ledger.RequireTimeStart
+
+    -- * ScriptHash
+    , ScriptHash
+    , unsafeScriptHashFromBytes
+    , scriptHashFromBytes
+    , scriptHashToBytes
+    , scriptHashToText
+    , scriptHashFromText
+    , scriptHashToJson
+
+    -- * KeyHash
+    , Ledger.KeyHash (..)
 
       -- * Address
     , Address
@@ -147,6 +183,8 @@ module Kupo.Data.Cardano
 
 import Kupo.Prelude
 
+import Cardano.Binary
+    ( DecoderError (..), FromCBOR (..), decodeAnnotator )
 import Cardano.Crypto.Hash
     ( Blake2b_224
     , Blake2b_256
@@ -175,12 +213,14 @@ import Cardano.Slotting.Block
     ( BlockNo (..) )
 import Cardano.Slotting.Slot
     ( SlotNo (..) )
+import Control.Arrow
+    ( left )
 import Data.Binary.Put
     ( runPut )
 import Data.ByteString.Bech32
     ( HumanReadablePart (..), encodeBech32 )
 import Data.Maybe.Strict
-    ( StrictMaybe (..), strictMaybeToMaybe )
+    ( StrictMaybe (..), maybeToStrictMaybe, strictMaybe, strictMaybeToMaybe )
 import Data.Sequence.Strict
     ( pattern (:<|), pattern Empty, StrictSeq )
 import GHC.Records
@@ -216,11 +256,14 @@ import Ouroboros.Consensus.Protocol.Praos.Translate
 import Ouroboros.Consensus.Shelley.Ledger.SupportsProtocol
     ()
 
+import qualified Cardano.Binary as Cbor
 import qualified Cardano.Chain.Common as Ledger.Byron
 import qualified Cardano.Chain.UTxO as Ledger.Byron
 import qualified Cardano.Crypto as Ledger.Byron
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.Data as Ledger
+import qualified Cardano.Ledger.Alonzo.Language as Ledger
+import qualified Cardano.Ledger.Alonzo.Scripts as Ledger
 import qualified Cardano.Ledger.Alonzo.Tx as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxBody as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxSeq as Ledger.Alonzo
@@ -228,17 +271,23 @@ import qualified Cardano.Ledger.Alonzo.TxWitness as Ledger
 import qualified Cardano.Ledger.Babbage.TxBody as Ledger.Babbage
 import qualified Cardano.Ledger.BaseTypes as Ledger
 import qualified Cardano.Ledger.Block as Ledger
+import qualified Cardano.Ledger.Coin as Ledger
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Credential as Ledger
 import qualified Cardano.Ledger.Era as Ledger.Era
+import qualified Cardano.Ledger.Era as Ledger
 import qualified Cardano.Ledger.Hashes as Ledger
+import qualified Cardano.Ledger.Keys as Ledger
 import qualified Cardano.Ledger.Mary.Value as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
-import qualified Cardano.Ledger.Shelley.API as Ledger
 import qualified Cardano.Ledger.Shelley.BlockChain as Ledger.Shelley
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
+import qualified Cardano.Ledger.ShelleyMA.AuxiliaryData as Ledger.MaryAllegra
+import qualified Cardano.Ledger.ShelleyMA.Timelocks as Ledger.MaryAllegra
+import qualified Cardano.Ledger.ShelleyMA.Timelocks as Ledger
 import qualified Cardano.Ledger.ShelleyMA.TxBody as Ledger.MaryAllegra
 import qualified Cardano.Ledger.TxIn as Ledger
+import qualified Codec.CBOR.Read as Cbor
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Key as Json
 import qualified Data.ByteString as BS
@@ -276,6 +325,10 @@ class IsBlock (block :: Type) where
     witnessedDatums
         :: BlockBody block
         -> Map DatumHash BinaryData
+
+    witnessedScripts
+        :: BlockBody block
+        -> Map ScriptHash Script
 
 -- Block
 
@@ -462,6 +515,35 @@ instance IsBlock Block where
             fromBabbageData <$>
                 Ledger.unTxDats (getField @"txdats" (getField @"wits" tx))
 
+    witnessedScripts
+        :: Transaction
+        -> Map ScriptHash Script
+    witnessedScripts = \case
+        TransactionByron{} ->
+            mempty
+        TransactionShelley{} ->
+            mempty
+        TransactionAllegra tx ->
+            ( fromAllegraScript
+                <$> getField @"scriptWits" tx
+            ) & strictMaybe identity (fromAllegraAuxiliaryData fromAllegraScript)
+                    (getField @"auxiliaryData" tx)
+        TransactionMary tx ->
+            ( fromMaryScript
+                <$> getField @"scriptWits" tx
+            ) & strictMaybe identity (fromAllegraAuxiliaryData fromMaryScript)
+                    (getField @"auxiliaryData" tx)
+        TransactionAlonzo tx ->
+            ( fromAlonzoScript
+                <$> getField @"txscripts" (getField @"wits" tx)
+            ) & strictMaybe identity (fromAlonzoAuxiliaryData fromAlonzoScript)
+                    (getField @"auxiliaryData" tx)
+        TransactionBabbage tx ->
+            ( fromBabbageScript
+                <$> getField @"txscripts" (getField @"wits" tx)
+            ) & strictMaybe identity (fromAlonzoAuxiliaryData fromBabbageScript)
+                    (getField @"auxiliaryData" tx)
+
 -- TransactionId
 
 type TransactionId =
@@ -513,6 +595,7 @@ type OutputIndex = Word64
 getOutputIndex :: OutputReference' crypto -> OutputIndex
 getOutputIndex (Ledger.TxIn _ (Ledger.TxIx ix)) =
     ix
+{-# INLINABLE getOutputIndex #-}
 
 outputIndexToJson :: OutputIndex -> Json.Encoding
 outputIndexToJson =
@@ -559,6 +642,7 @@ mkOutputReference
     -> OutputReference
 mkOutputReference i =
     Ledger.TxIn i . Ledger.TxIx
+{-# INLINABLE mkOutputReference #-}
 
 withReferences
     :: TransactionId
@@ -589,13 +673,14 @@ mkOutput
     :: Address
     -> Value
     -> Datum
+    -> Maybe Script
     -> Output
-mkOutput address value datum =
+mkOutput address value datum script =
     Ledger.Babbage.TxOut
         address
         value
         datum
-        SNothing
+        (maybeToStrictMaybe script)
 
 fromShelleyOutput
     :: forall (era :: Type -> Type) crypto.
@@ -632,7 +717,6 @@ fromAlonzoOutput (Ledger.Alonzo.TxOut addr value datum) =
                 (Ledger.Babbage.DatumHash datumHash)
                 SNothing
 
-
 fromByronOutput
     :: forall crypto.
         ( Crypto crypto
@@ -651,18 +735,228 @@ getAddress
     -> Address
 getAddress (Ledger.Babbage.TxOut address _value _datum _refScript) =
     address
+{-# INLINABLE getAddress #-}
 
 getValue
     :: Output
     -> Value
 getValue (Ledger.Babbage.TxOut _address value _datum _refScript) =
     value
+{-# INLINABLE getValue #-}
 
 getDatum
     :: Output
     -> Datum
 getDatum (Ledger.Babbage.TxOut _address _value datum _refScript) =
     datum
+{-# INLINABLE getDatum #-}
+
+getScript
+    :: Output
+    -> Maybe Script
+getScript (Ledger.Babbage.TxOut _address _value _datum refScript) =
+    strictMaybeToMaybe refScript
+{-# INLINABLE getScript #-}
+
+-- ScriptReference
+
+data ScriptReference
+    = NoScript
+    | ReferencedScript ScriptHash
+    | InlineScript Script
+    deriving (Eq, Show)
+
+mkScriptReference
+    :: Maybe Script
+    -> ScriptReference
+mkScriptReference =
+    maybe NoScript InlineScript
+
+hashScriptReference
+    :: ScriptReference
+    -> Maybe ScriptHash
+hashScriptReference = \case
+    NoScript ->
+        Nothing
+    ReferencedScript hash ->
+        Just hash
+    InlineScript script ->
+        Just (hashScript script)
+
+-- Script
+
+type Script =
+    Ledger.Script (BabbageEra StandardCrypto)
+
+fromAllegraAuxiliaryData
+    :: forall era. (Ledger.Core.Script era ~ Ledger.Timelock StandardCrypto)
+    => (Ledger.Core.Script era -> Script)
+    -> Ledger.MaryAllegra.AuxiliaryData era
+    -> Map ScriptHash Script
+    -> Map ScriptHash Script
+fromAllegraAuxiliaryData liftScript (Ledger.MaryAllegra.AuxiliaryData _ scripts) m0 =
+    foldr
+        (\(liftScript -> s) -> Map.insert (hashScript s) s)
+        m0
+        scripts
+
+fromAllegraScript
+    :: Ledger.MaryAllegra.Timelock StandardCrypto
+    -> Script
+fromAllegraScript =
+    Ledger.TimelockScript
+{-# INLINABLE fromAllegraScript  #-}
+
+fromMaryScript
+    :: Ledger.MaryAllegra.Timelock StandardCrypto
+    -> Script
+fromMaryScript =
+    Ledger.TimelockScript
+{-# INLINABLE fromMaryScript  #-}
+
+fromAlonzoScript
+    :: Ledger.Script (AlonzoEra StandardCrypto)
+    -> Script
+fromAlonzoScript = \case
+    Ledger.TimelockScript script ->
+        Ledger.TimelockScript script
+    Ledger.PlutusScript lang bytes ->
+        Ledger.PlutusScript lang bytes
+
+fromAlonzoAuxiliaryData
+    :: forall era.
+        ( Ledger.Era era
+        , Ledger.Core.Script era ~ Ledger.Script era
+        )
+    => (Ledger.Script era -> Script)
+    -> Ledger.AuxiliaryData era
+    -> Map ScriptHash Script
+    -> Map ScriptHash Script
+fromAlonzoAuxiliaryData liftScript Ledger.AuxiliaryData{Ledger.scripts} m0 =
+    foldr
+        (\(liftScript -> s) -> Map.insert (hashScript s) s)
+        m0
+        scripts
+
+fromBabbageScript
+    :: Ledger.Script (BabbageEra StandardCrypto)
+    -> Script
+fromBabbageScript =
+    identity
+{-# INLINABLE fromBabbageScript #-}
+
+scriptToJson
+    :: Script
+    -> Json.Encoding
+scriptToJson script = Json.pairs $ mconcat
+    [ Json.pair "script" $
+        byteStringToJson (Ledger.originalBytes script)
+    , Json.pair "language" $ case script of
+        Ledger.TimelockScript{} ->
+          Json.text "native"
+        Ledger.PlutusScript Ledger.PlutusV1 _ ->
+          Json.text "plutus:v1"
+        Ledger.PlutusScript Ledger.PlutusV2 _ ->
+          Json.text "plutus:v2"
+    ]
+
+scriptToBytes
+    :: Script
+    -> ByteString
+scriptToBytes = \case
+    script@Ledger.TimelockScript{} ->
+        BS.singleton 0 <> Ledger.originalBytes script
+    script@(Ledger.PlutusScript Ledger.PlutusV1 _) ->
+        BS.singleton 1 <> Ledger.originalBytes script
+    script@(Ledger.PlutusScript Ledger.PlutusV2 _) ->
+        BS.singleton 2 <> Ledger.originalBytes script
+
+unsafeScriptFromBytes
+    :: HasCallStack
+    => ByteString
+    -> Script
+unsafeScriptFromBytes =
+    fromMaybe (error "unsafeScriptFromBytes") . scriptFromBytes
+
+scriptFromBytes
+    :: ByteString
+    -> Maybe Script
+scriptFromBytes (toLazy -> bytes) =
+    eitherToMaybe $ do
+        (script, tag) <- left (DecoderErrorDeserialiseFailure "Script") $
+            Cbor.deserialiseFromBytes Cbor.decodeWord8 bytes
+        case tag of
+            0 -> Ledger.TimelockScript <$> decodeAnnotator "Timelock" fromCBOR script
+            1 -> pure $ Ledger.PlutusScript Ledger.PlutusV1 (toShort $ toStrict script)
+            2 -> pure $ Ledger.PlutusScript Ledger.PlutusV2 (toShort $ toStrict script)
+            t -> Left (DecoderErrorUnknownTag "Script" t)
+
+fromNativeScript
+    :: NativeScript
+    -> Script
+fromNativeScript =
+    Ledger.TimelockScript
+{-# INLINABLE fromNativeScript #-}
+
+hashScript
+    :: Script
+    -> ScriptHash
+hashScript =
+    Ledger.hashScript @(BabbageEra StandardCrypto)
+{-# INLINABLE hashScript #-}
+
+-- NativeScript
+
+type NativeScript = Ledger.Timelock StandardCrypto
+
+-- ScriptHash
+
+type ScriptHash =
+    Ledger.ScriptHash StandardCrypto
+
+unsafeScriptHashFromBytes
+    :: HasCallStack
+    => ByteString
+    -> ScriptHash
+unsafeScriptHashFromBytes =
+    fromMaybe (error "unsafeScriptFromBytes") . scriptHashFromBytes
+
+scriptHashFromBytes
+    :: ByteString
+    -> Maybe ScriptHash
+scriptHashFromBytes bytes
+    | BS.length bytes == digestSize @Blake2b_224 =
+        Just $ Ledger.ScriptHash (UnsafeHash (toShort bytes))
+    | otherwise =
+        Nothing
+
+scriptHashToBytes
+    :: ScriptHash
+    -> ByteString
+scriptHashToBytes (Ledger.ScriptHash (UnsafeHash scriptHash)) =
+    fromShort scriptHash
+
+scriptHashToText
+    :: ScriptHash
+    -> Text
+scriptHashToText (Ledger.ScriptHash (UnsafeHash scriptHash)) =
+    encodeBase16 (fromShort scriptHash)
+
+scriptHashFromText
+    :: Text
+    -> Maybe ScriptHash
+scriptHashFromText txt =
+    case decodeBase16 (encodeUtf8 txt) of
+        Right bytes ->
+            scriptHashFromBytes bytes
+        Left{} ->
+            Nothing
+
+scriptHashToJson
+    :: ScriptHash
+    -> Json.Encoding
+scriptHashToJson =
+    Json.text . scriptHashToText
 
 -- Datum
 
@@ -681,18 +975,21 @@ noDatum
     :: Datum
 noDatum =
     Ledger.NoDatum
+{-# INLINEABLE noDatum #-}
 
 fromDatumHash
     :: DatumHash
     -> Datum
 fromDatumHash =
     Ledger.DatumHash
+{-# INLINEABLE fromDatumHash #-}
 
 fromBinaryData
     :: BinaryData
     -> Datum
 fromBinaryData =
     Ledger.Datum
+{-# INLINEABLE fromBinaryData #-}
 
 hashDatum
     :: Datum
@@ -763,6 +1060,7 @@ hashBinaryData
     -> BinaryDataHash
 hashBinaryData  =
     Ledger.hashBinaryData
+{-# INLINEABLE hashBinaryData #-}
 
 binaryDataToJson
     :: BinaryData
@@ -788,12 +1086,14 @@ fromAlonzoData
     -> BinaryData
 fromAlonzoData =
     Ledger.dataToBinaryData . coerce
+{-# INLINEABLE fromAlonzoData #-}
 
 fromBabbageData
     :: Ledger.Data (BabbageEra StandardCrypto)
     -> BinaryData
 fromBabbageData =
     Ledger.dataToBinaryData
+{-# INLINEABLE fromBabbageData #-}
 
 -- Value
 
@@ -860,21 +1160,15 @@ type PolicyId = Ledger.PolicyID StandardCrypto
 
 unsafePolicyIdFromBytes :: ByteString -> PolicyId
 unsafePolicyIdFromBytes =
-    Ledger.PolicyID
-    . Ledger.ScriptHash
-    . UnsafeHash
-    . toShort
-    . sizeInvariant (== (digestSize @Blake2b_224))
+    maybe (error "unsafePolicyIdFromBytes") Ledger.PolicyID . scriptHashFromBytes
 
 policyIdFromText :: Text -> Maybe PolicyId
-policyIdFromText (encodeUtf8 -> bytes) = do
-    -- NOTE: assuming base16 encoding, hence '2 *'
-    guard (BS.length bytes == 2 * digestSize @Blake2b_224)
-    unsafePolicyIdFromBytes <$> eitherToMaybe (decodeBase16 bytes)
+policyIdFromText =
+    fmap Ledger.PolicyID . scriptHashFromText
 
 policyIdToText :: PolicyId -> Text
-policyIdToText (Ledger.PolicyID (Ledger.ScriptHash (UnsafeHash scriptHash))) =
-    encodeBase16 (fromShort scriptHash)
+policyIdToText =
+    scriptHashToText . Ledger.policyID
 
 -- AssetName
 
@@ -919,18 +1213,19 @@ addressToJson = \case
         Ledger.Testnet -> HumanReadablePart "addr_test"
 
 addressToBytes :: Address -> ByteString
-addressToBytes = Ledger.serialiseAddr
-{-# INLINEABLE addressToBytes #-}
+addressToBytes =
+    Ledger.serialiseAddr
+{-# INLINABLE addressToBytes #-}
 
 addressFromBytes :: ByteString -> Maybe Address
-addressFromBytes = Ledger.deserialiseAddr
-{-# INLINEABLE addressFromBytes #-}
+addressFromBytes =
+    Ledger.deserialiseAddr
+{-# INLINABLE addressFromBytes #-}
 
 isBootstrap :: Address -> Bool
 isBootstrap = \case
     Ledger.AddrBootstrap{} -> True
     Ledger.Addr{} -> False
-{-# INLINEABLE isBootstrap #-}
 
 getPaymentPartBytes :: Address -> Maybe ByteString
 getPaymentPartBytes = \case
@@ -1075,7 +1370,8 @@ distanceToSlot (SlotNo a) (SlotNo b)
 -- Hash
 
 hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding
-hashToJson (UnsafeHash h) = byteStringToJson (fromShort h)
+hashToJson (UnsafeHash h) =
+    byteStringToJson (fromShort h)
 
 -- Digest
 

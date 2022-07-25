@@ -26,6 +26,9 @@ import Kupo.Data.Cardano
     , DatumHash
     , OutputReference
     , Point
+    , Script
+    , ScriptHash
+    , ScriptReference (..)
     , SlotNo (..)
     , TransactionId
     , Value
@@ -37,6 +40,9 @@ import Kupo.Data.Cardano
     , mkOutputReference
     , noDatum
     , pointFromText
+    , scriptFromBytes
+    , scriptHashFromBytes
+    , scriptHashToText
     , transactionIdFromHash
     , unsafeValueFromList
     )
@@ -73,10 +79,14 @@ data HttpClient (m :: Type -> Type) = HttpClient
         :: (m Bool) -> m ()
     , waitSlot
         :: (SlotNo -> Bool) -> m ()
-    , waitDatum
-        :: DatumHash -> m BinaryData
     , lookupDatumByHash
         :: DatumHash -> m (Maybe BinaryData)
+    , waitDatum
+        :: DatumHash -> m BinaryData
+    , lookupScriptByHash
+        :: ScriptHash -> m (Maybe Script)
+    , waitScript
+        :: ScriptHash -> m Script
     , listCheckpoints
         :: m [Point]
     , getCheckpointBySlot
@@ -98,10 +108,14 @@ newHttpClientWith manager (serverHost, serverPort) =
             \a0 -> waitForServer >> _waitUntilM a0
         , waitSlot =
             \a0 -> waitForServer >> _waitSlot a0
-        , waitDatum =
-            \a0 -> waitForServer >> _waitDatum a0
         , lookupDatumByHash =
             \a0 -> waitForServer >> _lookupDatumByHash a0
+        , waitDatum =
+            \a0 -> waitForServer >> _waitDatum a0
+        , lookupScriptByHash =
+            \a0 -> waitForServer >> _lookupScriptByHash a0
+        , waitScript =
+            \a0 -> waitForServer >> _waitScript a0
         , listCheckpoints =
             waitForServer >> _listCheckpoints
         , getCheckpointBySlot =
@@ -200,6 +214,37 @@ newHttpClientWith manager (serverHost, serverPort) =
                 _waitDatum datumHash
             Just bin ->
                 pure bin
+
+    _lookupScriptByHash :: ScriptHash -> IO (Maybe Script)
+    _lookupScriptByHash scriptHash = do
+        let fragment = toString (scriptHashToText scriptHash)
+        req <- parseRequest (baseUrl <> "/v1/scripts/" <> fragment)
+        res <- httpLbs req manager
+        let body = responseBody res
+        case Json.eitherDecode' body of
+            Left e ->
+                fail (show e)
+            Right Json.Null -> do
+                pure Nothing
+            Right val -> maybe (fail "failed to decode Script.") (pure . Just) $ do
+                bytes <- val ^? key "script" . _String
+                lang <- val ^? key "language" . _String
+                prefix <- case lang of
+                    "native" -> Just "00"
+                    "plutus:v1" -> Just "01"
+                    "plutus:v2" -> Just "02"
+                    _ -> Nothing
+                scriptFromBytes (unsafeDecodeBase16 (prefix <> bytes))
+
+    _waitScript :: ScriptHash -> IO Script
+    _waitScript scriptHash = do
+        _lookupScriptByHash scriptHash >>= \case
+            Nothing -> do
+                threadDelay 0.25
+                _waitScript scriptHash
+            Just script ->
+                pure script
+
 --
 -- Decoders
 --
@@ -252,6 +297,27 @@ decodeDatum = \case
     Just str ->
         fromDatumHash <$> decodeDatumHash str
 
+decodeScriptHash
+    :: Text
+    -> Json.Parser ScriptHash
+decodeScriptHash k = do
+    case scriptHashFromBytes <$> decodeBase16 (encodeUtf8 k) of
+        Right (Just hash) ->
+            pure hash
+        Right Nothing ->
+            fail "decodeScriptHash: scriptHashFromBytes failed."
+        Left e ->
+            fail (toString e)
+
+decodeScriptReference
+    :: Maybe Text
+    -> Json.Parser ScriptReference
+decodeScriptReference = \case
+    Nothing ->
+        pure NoScript
+    Just str ->
+        ReferencedScript <$> decodeScriptHash str
+
 decodeTransactionId
     :: Text
     -> Json.Parser TransactionId
@@ -295,5 +361,6 @@ decodeResult = Json.withObject "Result" $ \o -> Result
     <*> (decodeAddress =<< (o .: "address"))
     <*> (decodeValue =<< (o .: "value"))
     <*> (decodeDatum =<< (o .:? "datum_hash"))
+    <*> (decodeScriptReference =<< (o .:? "script_hash"))
     <*> (decodePoint =<< (o .: "created_at"))
     <*> (traverse decodePoint =<< (o .:? "spent_at"))

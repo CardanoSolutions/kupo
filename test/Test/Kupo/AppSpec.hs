@@ -18,7 +18,7 @@ import GHC.Generics
 import Kupo
     ( kupoWith, newEnvironment, runWith )
 import Kupo.App
-    ( ChainSyncClient, mailboxSize )
+    ( ChainSyncClient )
 import Kupo.App.Mailbox
     ( Mailbox, newMailbox, putHighFrequencyMessage, putIntermittentMessage )
 import Kupo.Control.MonadAsync
@@ -42,6 +42,8 @@ import Kupo.Data.Cardano
     , Output
     , OutputReference
     , Point
+    , Script
+    , ScriptHash
     , SlotNo (..)
     , Tip
     , pattern Tip
@@ -52,10 +54,14 @@ import Kupo.Data.Cardano
     , getDatum
     , getOutputIndex
     , getPointSlotNo
+    , getScript
     , getTipSlotNo
     , getTransactionId
     , hashBinaryData
     , hashDatum
+    , hashScript
+    , scriptHashToText
+    , scriptToJson
     , slotNoToText
     , transactionIdToText
     , withReferences
@@ -65,6 +71,7 @@ import Kupo.Data.Configuration
     , InputManagement (..)
     , LongestRollback (..)
     , WorkDir (..)
+    , mailboxCapacity
     )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..) )
@@ -89,6 +96,7 @@ import Test.Kupo.Data.Generators
     , genInputManagement
     , genOutput
     , genOutputReference
+    , genScriptHash
     , genTransactionId
     , generateWith
     )
@@ -143,7 +151,7 @@ spec = do
                     Nothing
                     (generator inputManagement)
                     shrinker
-                    (semantics pruneThrottleDelay httpClient queue)
+                    (semantics garbageCollectionInterval httpClient queue)
                     mock
                     (cleanup queue)
             forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
@@ -156,7 +164,7 @@ spec = do
                         , patterns = [MatchAny IncludingBootstrap]
                         , inputManagement
                         , longestRollback
-                        , pruneThrottleDelay
+                        , garbageCollectionInterval
                         }
                 env <- run (newEnvironment config)
                 let producer = newMockProducer queue
@@ -188,7 +196,7 @@ spec = do
     serverHost = "127.0.0.1"
     serverPort = 1442
     longestRollback = 10
-    pruneThrottleDelay = 0.4
+    garbageCollectionInterval = 0.4
     tracers = configureTracers (defaultTracers Nothing) nullTracer
 
 --------------------------------------------------------------------------------
@@ -211,6 +219,7 @@ data Event (r :: Type -> Type)
     | GetMostRecentCheckpoint
     | GetUtxo
     | GetDatumByHash DatumHash
+    | GetScriptByHash ScriptHash
     | Pause
         -- ^ Pauses makes the overall state-machine run a lot longer, but they
         -- allow to let the internal garbage-collector to run and possibly
@@ -231,6 +240,8 @@ instance Show (Event r) where
             "GetUtxo"
         GetDatumByHash hash ->
             toString $ "(GetDatumByHash " <> showDatumHash hash <> ")"
+        GetScriptByHash hash ->
+            toString $ "(GetScriptByHash " <> showScriptHash hash <> ")"
         Pause ->
             "Pause"
 
@@ -239,6 +250,7 @@ data Response (r :: Type -> Type)
     | MostRecentCheckpoint Point
     | Utxo (Set OutputReference)
     | DatumByHash (Maybe BinaryData)
+    | ScriptByHash (Maybe Script)
     deriving stock (Eq, Generic1)
     deriving anyclass (Rank2.Foldable)
 
@@ -252,29 +264,8 @@ instance Show (Response r) where
             toString $ "(Utxo " <> T.intercalate "," (showOutputReference <$> Set.toList outRefs) <> ")"
         DatumByHash bin ->
             toString $ "(DatumByHash " <> showBinaryData bin <> ")"
-
--- | Here we mock the server behavior using our model; this is used within the
--- generator itself, to advance the state-machine. Because the model is our
--- making, the mock should be trivial to implement.
-mock
-    :: Model r
-    -> Event r
-    -> GenSym (Response r)
-mock model = \case
-    DoRollForward{} ->
-        pure (Unit ())
-    DoRollBackward{} ->
-        pure (Unit ())
-    GetMostRecentCheckpoint ->
-        case currentChain model of
-            [] -> pure (MostRecentCheckpoint GenesisPoint)
-            h:_ -> pure (MostRecentCheckpoint (blockPoint h))
-    GetUtxo ->
-        pure (Utxo (unspentOutputReferences model Set.\\ genesisUtxo))
-    GetDatumByHash hash ->
-        pure (DatumByHash (Map.lookup hash (knownBinaryData model)))
-    Pause ->
-        pure (Unit ())
+        ScriptByHash script ->
+            toString $ "(ScriptByHash " <> showScript script <> ")"
 
 --------------------------------------------------------------------------------
 ---- Model
@@ -331,6 +322,10 @@ knownBinaryData :: Model r -> Map DatumHash BinaryData
 knownBinaryData =
     foldMap collectDatumInBlock . currentChain
 
+knownScripts :: Model r -> Map ScriptHash Script
+knownScripts =
+    foldMap collectScriptInBlock . currentChain
+
 -- | A set of initial utxo to start from. This is pre-defined to allow filtering
 -- it out. Kupo has no notion of genesis utxo anyway. This allows to create
 -- valid sequences of blocks using utxos produced by previous transactions.
@@ -379,6 +374,8 @@ precondition (LongestRollback k) model = \case
         Top
     GetDatumByHash{} ->
         Top
+    GetScriptByHash{} ->
+        Top
     Pause ->
         Top
 
@@ -412,7 +409,6 @@ transition model cmd _res =
                             (not . hasConflictingInput nextSpentOutputReferences)
                             (mempool model)
                     }
-
         DoRollBackward nextTip point ->
             let
                 isRolledBack =
@@ -436,16 +432,14 @@ transition model cmd _res =
                             (hasConflictingInput unspentOutputReferences)
                             (mempool model <> foldMap blockBody (reverse dropped))
                     }
-
         GetMostRecentCheckpoint ->
             model
-
         GetUtxo ->
             model
-
         GetDatumByHash{} ->
             model
-
+        GetScriptByHash{} ->
+            model
         Pause ->
             model
 
@@ -510,6 +504,7 @@ generator inputManagement model =
             [ (1, pure GetMostRecentCheckpoint)
             , (1, pure GetUtxo)
             , (1, GetDatumByHash <$> genOrSelectDatum inputManagement model)
+            , (1, GetScriptByHash <$> genOrSelectScript model)
             , (5, DoRollForward
                 <$> genContinuingTip (networkTip model) GenesisPoint
                 <*> genContinuingBlock
@@ -522,6 +517,7 @@ generator inputManagement model =
             [ (5, pure GetMostRecentCheckpoint)
             , (5, pure GetUtxo)
             , (5, GetDatumByHash <$> genOrSelectDatum inputManagement model)
+            , (3, GetScriptByHash <$> genOrSelectScript model)
             , (15, DoRollForward
                 <$> genContinuingTip (networkTip model) (blockPoint tip)
                 <*> genContinuingBlock
@@ -563,7 +559,9 @@ genTipAfter slot = Tip (succ slot)
 --
 -- The final state represents the final utxo set obtained by applying those
 -- transactions to an initial utxo state.
-genTransactionSublist :: [PartialTransaction] -> StateT (Set OutputReference) Gen [PartialTransaction]
+genTransactionSublist
+    :: [PartialTransaction]
+    -> StateT (Set OutputReference) Gen [PartialTransaction]
 genTransactionSublist = \case
     [] -> pure []
     tx:rest -> do
@@ -620,14 +618,18 @@ genPartialTransaction = do
     datums <-
         replicateM nDatums (lift genBinaryData)
         & fmap (foldMap (\v -> Map.singleton (hashBinaryData v) v))
-    pure PartialTransaction { inputs = Set.toList inputSet, outputs, datums }
+    -- FIXME: Generate some scripts and have post-conditions about them.
+    let scripts = mempty
+    pure PartialTransaction { inputs = Set.toList inputSet, outputs, datums, scripts }
   where
     maxNumberOfInputs = 3
     maxNumberOfOutputs = 3
 
--- | Generate an arbitrary datum hash (for which we expect to not exist) or a
--- known datum. Note that for known datums, we only consider datums hashes that
--- are present in matched inputs (although they may have been resolved or not).
+-- | Generate an arbitrary datum hash (for which we expect no associated binary
+-- data to be known) or a known datum.
+--
+-- For known datums, we only consider datums hashes that are present in matched
+-- inputs (although they may have been resolved or not).
 --
 -- Kupo does indeed keep track of all possible datums, even those for which
 -- there's no (or no longer) a matching input. They are eventually
@@ -650,6 +652,15 @@ genOrSelectDatum inputManagement model =
                     )
      in
         oneof $ genDatumHash : [ elements xs | not (null xs) ]
+
+-- | Generate an arbitrary script hash (for which we expect no associated script
+-- to be known or a known script)
+genOrSelectScript :: Model r -> Gen ScriptHash
+genOrSelectScript model =
+    let
+        xs = Map.keys (knownScripts model)
+     in
+        oneof $ genScriptHash : [ elements xs | not (null xs) ]
 
 -- | Select a point from the list, after the first one, in order. The
 -- probability of getting a point far in the fast is decreasing exponentially
@@ -727,6 +738,8 @@ semantics pause HttpClient{..} queue = \case
         Utxo . foldMap (Set.singleton . outputReference) <$> getAllMatches OnlyUnspent
     GetDatumByHash hash ->
         DatumByHash <$> lookupDatumByHash hash
+    GetScriptByHash hash ->
+        ScriptByHash <$> lookupScriptByHash hash
     Pause -> do
         Unit <$> threadDelay pause
   where
@@ -734,6 +747,31 @@ semantics pause HttpClient{..} queue = \case
         listCheckpoints <&> \case
             [] -> GenesisPoint
             h:_ -> h
+
+-- | Here we mock the server behavior using our model; this is used within the
+-- generator itself, to advance the state-machine. Because the model is our
+-- making, the mock should be trivial to implement.
+mock
+    :: Model r
+    -> Event r
+    -> GenSym (Response r)
+mock model = \case
+    DoRollForward{} ->
+        pure (Unit ())
+    DoRollBackward{} ->
+        pure (Unit ())
+    GetMostRecentCheckpoint ->
+        case currentChain model of
+            [] -> pure (MostRecentCheckpoint GenesisPoint)
+            h:_ -> pure (MostRecentCheckpoint (blockPoint h))
+    GetUtxo ->
+        pure (Utxo (unspentOutputReferences model Set.\\ genesisUtxo))
+    GetDatumByHash hash ->
+        pure (DatumByHash (Map.lookup hash (knownBinaryData model)))
+    GetScriptByHash hash ->
+        pure (ScriptByHash (Map.lookup hash (knownScripts model)))
+    Pause ->
+        pure (Unit ())
 
 -- | A mock chain producer that we plugged into Kupo. It is fully driven by a
 -- bounded queue of events that are generated by the quickcheck machinery. It
@@ -746,7 +784,7 @@ newMockProducer
        )
     -> IO ()
 newMockProducer queue callback = do
-    mailbox <- atomically (newMailbox mailboxSize)
+    mailbox <- atomically (newMailbox mailboxCapacity)
     callback mailbox $ \_ -> \case
         [GenesisPoint] -> do
             const $ forever $ atomically $ do
@@ -826,12 +864,24 @@ showOutput (outRef, out) =
 
 showBinaryData :: Maybe BinaryData -> Text
 showBinaryData =
+    showLongByteString (maybe Json.null_ binaryDataToJson)
+
+showScriptHash :: ScriptHash -> Text
+showScriptHash =
+    T.take 8 . scriptHashToText
+
+showScript :: Maybe Script -> Text
+showScript =
+    showLongByteString (maybe Json.null_ scriptToJson)
+
+showLongByteString :: (a -> Json.Encoding) -> a -> Text
+showLongByteString toJsonEncoding =
     ellipse 20
     . T.drop 1
     . T.dropEnd 1
     . decodeUtf8
     . Json.encodingToLazyByteString
-    . maybe Json.null_ binaryDataToJson
+    . toJsonEncoding
   where
     ellipse n txt
         | T.length txt > n = T.take 20 txt <> "..."
@@ -874,3 +924,23 @@ collectKnownDatumHashInBlock =
     collectKnownDatumHashInOutput :: (OutputReference, Output) -> [(OutputReference, DatumHash)]
     collectKnownDatumHashInOutput (ref, o) = do
         [ (ref, k) | Just k <- [ hashDatum (getDatum o) ] ]
+
+-- | Collect all resolved scripts coming from outputs (reference scripts),
+-- auxiliary data or transactions' witness set.
+collectScriptInBlock :: PartialBlock -> Map ScriptHash Script
+collectScriptInBlock =
+    foldMap collectScriptInTransaction . blockBody
+  where
+    collectScriptInTransaction :: PartialTransaction -> Map ScriptHash Script
+    collectScriptInTransaction tx =
+        scripts tx
+        <>
+        foldMap collectScriptInOutput (snd <$> outputs tx)
+
+    collectScriptInOutput :: Output -> Map ScriptHash Script
+    collectScriptInOutput o = do
+        Map.fromList
+            [ (k, v)
+            | Just k <- [ hashScript <$> getScript o ]
+            , Just v <- [ getScript o ]
+            ]

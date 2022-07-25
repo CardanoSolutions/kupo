@@ -22,6 +22,10 @@ import Kupo.Data.Cardano
     , OutputIndex
     , OutputReference
     , Point
+    , PolicyId
+    , Script
+    , ScriptHash
+    , ScriptReference (..)
     , SlotNo (..)
     , TransactionId
     , Value
@@ -32,9 +36,13 @@ import Kupo.Data.Cardano
     , mkOutput
     , mkOutputReference
     , noDatum
+    , scriptHashToBytes
     , unsafeBinaryDataFromBytes
     , unsafeDatumHashFromBytes
     , unsafeHeaderHashFromBytes
+    , unsafePolicyIdFromBytes
+    , unsafeScriptFromBytes
+    , unsafeScriptHashFromBytes
     , unsafeTransactionIdFromBytes
     , unsafeValueFromList
     )
@@ -98,6 +106,24 @@ genDatum = frequency
     , (5, fromBinaryData <$> genBinaryData)
     ]
 
+genScript :: Gen Script
+genScript = elements plutusScriptVectors
+
+genScriptReference :: Gen ScriptReference
+genScriptReference = frequency
+    [ (1, pure NoScript)
+    , (5, ReferencedScript <$> genScriptHash)
+    , (3, InlineScript <$> genScript)
+    ]
+
+genScriptHash :: Gen ScriptHash
+genScriptHash =
+    unsafeScriptHashFromBytes . BS.pack <$> vector (digestSize @Blake2b_224)
+
+genPolicyId :: Gen PolicyId
+genPolicyId =
+    unsafePolicyIdFromBytes . scriptHashToBytes <$> genScriptHash
+
 genBinaryData :: Gen BinaryData
 genBinaryData = elements plutusDataVectors
 
@@ -139,18 +165,13 @@ genPattern :: Gen Pattern
 genPattern = elements
     [ p | (_, p, _) <- Fixture.patterns ]
 
-genPolicyId :: Gen ByteString
-genPolicyId = elements
-    [ generateWith seed (BS.pack <$> vector (digestSize @Blake2b_224))
-    | seed <- [ 0 .. 10 ]
-    ]
-
 genResult :: Gen Result
 genResult = Result
     <$> genOutputReference
     <*> genAddress
     <*> genOutputValue
     <*> genDatum
+    <*> genScriptReference
     <*> genNonGenesisPoint
     <*> frequency [(1, pure Nothing), (5, Just <$> genNonGenesisPoint)]
 
@@ -159,6 +180,7 @@ genOutput = mkOutput
     <$> genAddress
     <*> genOutputValue
     <*> genDatum
+    <*> frequency [(5, pure Nothing), (1, Just <$> genScript)]
 
 genSlotNo :: Gen SlotNo
 genSlotNo = do
@@ -177,9 +199,15 @@ genOutputValue = do
     nPolicy <- choose (0, 3)
     nAssets <- choose (nPolicy, 3 * nPolicy)
     fmap (unsafeValueFromList ada) $ zip3
-        <$> fmap cycle (vectorOf nPolicy genPolicyId)
+        <$> fmap cycle (vectorOf nPolicy genPolicyIdWithSmallEntropy)
         <*> vectorOf nAssets genAssetName
         <*> listOf (arbitrary `suchThat` (> 0))
+  where
+    genPolicyIdWithSmallEntropy :: Gen ByteString
+    genPolicyIdWithSmallEntropy = elements
+        [ generateWith seed (BS.pack <$> vector (digestSize @Blake2b_224))
+        | seed <- [ 0 .. 10 ]
+        ]
 
 genInputManagement :: Gen InputManagement
 genInputManagement =
@@ -197,7 +225,7 @@ chooseVector range genA = choose range >>= (`vectorOf` genA)
 
 plutusDataVectors :: [BinaryData]
 plutusDataVectors = unsafePerformIO $ do
-    let filename = "./test/plutus/data/vectors.csv"
+    let filename = "./test/vectors/binary_data.csv"
     rows <- T.splitOn "\n" . decodeUtf8 <$> BS.readFile filename
     pure
         [ unsafeBinaryDataFromBytes (unsafeDecodeBase16 bytes)
@@ -205,3 +233,14 @@ plutusDataVectors = unsafePerformIO $ do
         , bytes /= ""
         ]
 {-# NOINLINE plutusDataVectors #-}
+
+plutusScriptVectors :: [Script]
+plutusScriptVectors = unsafePerformIO $ do
+    let filename = "./test/vectors/scripts.csv"
+    rows <- T.splitOn "\n" . decodeUtf8 <$> BS.readFile filename
+    pure
+        [ unsafeScriptFromBytes (unsafeDecodeBase16 bytes)
+        | bytes <- rows
+        , bytes /= ""
+        ]
+{-# NOINLINE plutusScriptVectors #-}

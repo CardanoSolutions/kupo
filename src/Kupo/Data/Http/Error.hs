@@ -18,7 +18,7 @@ import Network.Wai
 import qualified Kupo.Data.Http.Default as Default
 
 data HttpError = HttpError
-    { hint :: Text }
+    { hint :: !Text }
     deriving stock (Generic)
     deriving anyclass (ToJSON)
 
@@ -81,6 +81,14 @@ malformedDatumHash =
         { hint = "The given path parameter isn't a well-formed datum hash digest. \
                  \This must be a blake2b-256 hash digest encoded in base16 (\
                  \thus, 64 characters once encoded)."
+        }
+
+malformedScriptHash :: Response
+malformedScriptHash =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "The given path parameter isn't a well-formed script hash digest. \
+                 \This must be a blake2b-224 hash digest encoded in base16 (\
+                 \thus, 56 characters once encoded)."
         }
 
 notFound :: Response

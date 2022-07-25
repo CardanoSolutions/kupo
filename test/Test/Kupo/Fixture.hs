@@ -13,8 +13,12 @@ import Kupo.Data.Cardano
     , DatumHash
     , pattern GenesisPoint
     , Point
+    , Script
+    , ScriptHash
     , unsafeBinaryDataFromBytes
     , unsafeDatumHashFromBytes
+    , unsafeScriptFromBytes
+    , unsafeScriptHashFromBytes
     )
 import Kupo.Data.Database
     ( Checkpoint (..), pointFromRow )
@@ -57,6 +61,14 @@ someOtherPoint = pointFromRow $ Checkpoint
         53392903
     , checkpointHeaderHash = unsafeDecodeBase16
         "56ed3689f5a1dce99345c5ec85de8ff307fe0a31dff443e0170b9c21edbeaba5"
+    }
+
+somePointNearScripts :: Point
+somePointNearScripts = pointFromRow $ Checkpoint
+    { checkpointSlotNo =
+        62637303
+    , checkpointHeaderHash = unsafeDecodeBase16
+        "1d29ed9e913c88593f0827b7579909e164541498e302da349047496d7360c74a"
     }
 
 lastByronPoint :: Point
@@ -120,9 +132,46 @@ someDatumHashInOutput = unsafeDatumHashFromBytes $ unsafeDecodeBase16
 -- pre-image of 'someDatumHashInWitness'
 someDatumInWitness :: BinaryData
 someDatumInWitness = unsafeBinaryDataFromBytes $ unsafeDecodeBase16
-    "D8799F581C1C0BFECF6C69E1D0D540897ECC0B66844B5FB5030FB488672A47F6FB8040401A001E8480D87980FF"
+    "D8799F581C1C0BFECF6C69E1D0D540897ECC0B66844B5FB5030FB488672A47F6\
+    \FB8040401A001E8480D87980FF"
 
--- pre-image of 'SomeDatumHashInOutput'
+-- pre-image of 'someDatumHashInOutput'
 someDatumInOutput :: BinaryData
 someDatumInOutput = unsafeBinaryDataFromBytes $ unsafeDecodeBase16
     "51616E6F746865722063686F636F6C617465"
+
+someScriptHashInMetadata :: ScriptHash
+someScriptHashInMetadata = unsafeScriptHashFromBytes $ unsafeDecodeBase16
+    "1EBA0CF9DE6B645BA679BEBCD414FB3CCE6A1F3B3DD565BF60489D2D"
+
+-- pre-image of 'someScriptHashInMetadata'
+someScriptInMetadata :: Script
+someScriptInMetadata = unsafeScriptFromBytes $ unsafeDecodeBase16
+    "0082018282051A0A7E63608200581C0FCDF16CBF1AEB749C10A1AEDEEDBDB642\
+    \E03C6F51CA92F4514B9070"
+
+someScriptHashInOutput :: ScriptHash
+someScriptHashInOutput = unsafeScriptHashFromBytes $ unsafeDecodeBase16
+    "945886F2DF73D41D1387D421ACFA5399DE9788BD491AA715B3679867"
+
+-- pre-image of 'someScriptHashInOutput'
+someScriptInOutput :: Script
+someScriptInOutput = unsafeScriptFromBytes $ unsafeDecodeBase16
+    "015840010000332233322222253353004333573466EBC00C00801801440204C9\
+    \8D4C01CCD5CE2481094E6F7420457175616C0000849848800848800480044800\
+    \480041"
+
+someScriptHashInWitness :: ScriptHash
+someScriptHashInWitness = unsafeScriptHashFromBytes $ unsafeDecodeBase16
+    "B5F64911ECF7F2E99F52B7F8519DCC4CAC23A0711597068894538337"
+
+-- pre-image of 'someScriptHashInWitness'
+someScriptInWitness :: Script
+someScriptInWitness = unsafeScriptFromBytes $ unsafeDecodeBase16
+    "00830304868200581C1D240D05167CC83F78CC57609607A552BE117E7737B8BD\
+    \F20817C7B28200581C9DF98CBE67E25AAD5D1AA7FF895998FC44E6ED6DB2B1D4\
+    \03A21C4C358200581C61729ADA10CB50F189CEE642C4EE84D35384EFCF6C4338\
+    \57D56769298200581C282E27CA11BD3E4BE1A65AAE24C7BE5BF4B33E9DE338C8\
+    \5ED76DBB6D8200581C1905A56D43DF143519B1B89CE9AF7188343410EE9F41C3\
+    \3D97F50BFC8200581CB481306EE8B782E044726452C8E68FC2D649577A2A4972\
+    \BFD61A8FB9"

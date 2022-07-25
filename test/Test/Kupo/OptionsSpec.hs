@@ -133,6 +133,17 @@ spec = parallel $ do
         , ( defaultArgs ++ [ "--match", "NOT-A-PATTERN" ]
           , shouldFail
           )
+        , ( defaultArgs ++ [ "--gc-interval", "42" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { garbageCollectionInterval = 42
+            }
+          )
+        , ( defaultArgs ++ [ "--gc-interval", "foo" ]
+          , shouldFail
+          )
+        , ( defaultArgs ++ [ "--gc-interval", "14.42" ]
+          , shouldFail
+          )
         ]
         ++
         [ ( defaultArgs ++ [ "--log-level", str ]
@@ -160,11 +171,13 @@ spec = parallel $ do
           )
         , ( defaultArgs ++
             [ "--log-level-database", "Debug"
-            , "--log-level-chain-sync", "Warning"
+            , "--log-level-consumer", "Warning"
+            , "--log-level-garbage-collector", "Error"
             ]
           , shouldParseTracersConfiguration $ defaultTracersInfo
             { tracerDatabase  = Const (Just Debug)
-            , tracerChainSync = Const (Just Warning)
+            , tracerConsumer = Const (Just Warning)
+            , tracerGardener = Const (Just Error)
             }
           )
         , ( defaultArgs ++

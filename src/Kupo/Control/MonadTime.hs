@@ -8,7 +8,6 @@ module Kupo.Control.MonadTime
     , DiffTime
     , addTime
     , diffTime
-    , secondsToTime
     , secondsToDiffTime
     , millisecondsToDiffTime
     , timeout
@@ -22,9 +21,6 @@ import Control.Monad.Class.MonadTimer
     ( timeout )
 import Data.Time.Clock
     ( DiffTime, secondsToDiffTime )
-
-secondsToTime :: Integer -> Time
-secondsToTime = Time . secondsToDiffTime
 
 millisecondsToDiffTime :: Integer -> DiffTime
 millisecondsToDiffTime = toEnum . fromInteger . (* 1_000_000_000)

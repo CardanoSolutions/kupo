@@ -9,10 +9,16 @@ module Kupo.App.ChainSync.Ogmios
 
 import Kupo.Prelude
 
+import Kupo.App.Mailbox
+    ( Mailbox, putHighFrequencyMessage, putIntermittentMessage )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..) )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
     ( Point, Tip )
+import Kupo.Data.Configuration
+    ( maxInFlight )
 import Kupo.Data.Ogmios
     ( PartialBlock
     , RequestNextResponse (..)
@@ -22,10 +28,6 @@ import Kupo.Data.Ogmios
     , encodeRequestNext
     )
 
-import Kupo.App.Mailbox
-    ( Mailbox, putHighFrequencyMessage, putIntermittentMessage )
-import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
 
@@ -45,7 +47,7 @@ runChainSyncClient mailbox pts ws = do
         Left notFound -> throwIO notFound
         Right () -> pure ()
     -- NOTE: burst the server with some initial requests, to leverage pipelining.
-    replicateM_ 100 (WS.sendJson ws encodeRequestNext)
+    replicateM_ maxInFlight (WS.sendJson ws encodeRequestNext)
     forever $ do
         WS.receiveJson ws decodeRequestNextResponse >>= \case
             RollBackward tip point -> do

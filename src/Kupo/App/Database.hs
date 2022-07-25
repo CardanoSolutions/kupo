@@ -67,7 +67,7 @@ import GHC.TypeLits
 import Kupo.Data.Configuration
     ( LongestRollback (..) )
 import Kupo.Data.Database
-    ( BinaryData (..), Checkpoint (..), Input (..) )
+    ( BinaryData (..), Checkpoint (..), Input (..), ScriptReference (..) )
 import Numeric
     ( Floating (..) )
 
@@ -85,12 +85,12 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m Int
 
     , deleteInputsByReference
-        :: Set ByteString  -- An output reference
+        :: Set ByteString  -- Output references
         -> DBTransaction m ()
 
     , markInputsByReference
         :: Word64 -- Slot
-        -> Set ByteString  -- An output reference
+        -> Set ByteString  -- Output references
         -> DBTransaction m ()
 
     , pruneInputs
@@ -143,6 +143,16 @@ data Database (m :: Type -> Type) = Database
     , pruneBinaryData
         :: DBTransaction m Int
 
+    , insertScripts
+        :: [ScriptReference]
+        -> DBTransaction m ()
+
+    , getScript
+        :: forall script. ()
+        => ByteString -- script_hash
+        -> (ScriptReference -> script)
+        -> DBTransaction m (Maybe script)
+
     , rollbackTo
         :: Word64  -- slot_no
         -> DBTransaction m (Maybe Word64)
@@ -172,7 +182,7 @@ withDatabase
 withDatabase tr mode (DBLock readers writer) k filePath action = do
     withConnection filePath $ \conn -> do
         when (mode == LongLived) (databaseVersion conn >>= runMigrations tr conn)
-        action (mkDatabase k (bracketConnection conn))
+        action (mkDatabase tr k (bracketConnection conn))
   where
     -- The heuristic below aims at favoring light reader/writer over the main
     -- writer. We assume that there is only one persistent db producer and possibly
@@ -227,9 +237,14 @@ newLock = DBLock
 -- IO
 --
 
-mkDatabase :: LongestRollback -> (forall a. (Connection -> IO a) -> IO a) -> Database IO
-mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
-    { insertInputs = \inputs -> ReaderT $ \conn ->
+mkDatabase
+    :: Tracer IO TraceDatabase
+    -> LongestRollback
+    -> (forall a. (Connection -> IO a) -> IO a)
+    -> Database IO
+mkDatabase tr (fromIntegral -> longestRollback) bracketConnection = Database
+    { insertInputs = \inputs -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "insertInputs")
         mapM_
             (\Input{..} -> do
                 insertRow @"inputs" conn
@@ -237,6 +252,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                     , SQLText address
                     , SQLBlob value
                     , maybe SQLNull SQLBlob datumHash
+                    , maybe SQLNull SQLBlob refScriptHash
                     , SQLInteger (fromIntegral createdAtSlotNo)
                     , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
                     ]
@@ -248,8 +264,17 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                             [ SQLBlob binaryDataHash
                             , SQLBlob binaryData
                             ]
+                case refScript of
+                    Nothing ->
+                        pure ()
+                    Just ScriptReference{..} ->
+                        insertRow @"scripts" conn
+                            [ SQLBlob scriptHash
+                            , SQLBlob script
+                            ]
             )
             inputs
+        traceWith tr (DatabaseExitQuery "insertInputs")
 
     , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
         let qry = Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike
@@ -265,16 +290,22 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         changes conn
 
     , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "deleteInputsByReference")
         let n = length refs
-        unless (n == 0) $ do
-            let qry = "DELETE FROM inputs WHERE output_reference IN " <> mkPreparedStatement n
+        when (n > 0) $ do
+            let qry = "DELETE FROM inputs \
+                      \WHERE output_reference IN " <> mkPreparedStatement n
             execute conn qry refs
+        traceWith tr (DatabaseExitQuery "deleteInputsByReference")
 
     , markInputsByReference = \(fromIntegral -> slotNo) refs -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "markInputsByReference")
         let n = length refs
-        unless (n == 0) $ do
-            let qry = "UPDATE inputs SET spent_at = ? WHERE output_reference IN " <> mkPreparedStatement n
+        when (n > 0) $ do
+            let qry = "UPDATE inputs SET spent_at = ? \
+                      \WHERE output_reference IN " <> mkPreparedStatement n
             execute conn qry (SQLInteger slotNo : toRow refs)
+        traceWith tr (DatabaseExitQuery "markInputsByReference")
 
     , foldInputs = \addressLike yield -> ReaderT $ \conn -> do
         let matchMaybeBytes = \case
@@ -283,21 +314,23 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         let matchMaybeWord64 = \case
                 SQLInteger (fromIntegral -> wrd) -> Just wrd
                 _ -> Nothing
-        let qry = "SELECT output_reference, address, value, datum_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash, LENGTH(address) as len \
+        let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash, LENGTH(address) as len \
                   \FROM inputs \
                   \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
                   \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
                   \WHERE address " <> addressLike <> " ORDER BY created_at DESC"
 
-        -- TODO: Allow resolving datums on demand through a LEFT JOIN on binary_data.
+        -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
         --
         -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
         let datum = Nothing
+        let refScript = Nothing
         fold_ conn (Query qry) () $ \() -> \case
             [ SQLBlob outputReference
                 , SQLText address
                 , SQLBlob value
                 , matchMaybeBytes -> datumHash
+                , matchMaybeBytes -> refScriptHash
                 , SQLInteger (fromIntegral -> createdAtSlotNo)
                 , SQLBlob createdAtHeaderHash
                 , matchMaybeWord64 -> spentAtSlotNo
@@ -306,15 +339,17 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                 ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
 
-    , insertCheckpoints = \cps -> ReaderT $ \conn ->
+    , insertCheckpoints = \cps -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "insertCheckpoints")
         mapM_
-        (\Checkpoint{..} ->
-            insertRow @"checkpoints" conn
-                [ SQLBlob checkpointHeaderHash
-                , SQLInteger (fromIntegral checkpointSlotNo)
-                ]
-        )
-        cps
+            (\Checkpoint{..} ->
+                insertRow @"checkpoints" conn
+                    [ SQLBlob checkpointHeaderHash
+                    , SQLInteger (fromIntegral checkpointSlotNo)
+                    ]
+            )
+            cps
+        traceWith tr (DatabaseExitQuery "insertCheckpoints")
 
     , listCheckpointsDesc = \mk -> ReaderT $ \conn -> do
         let points =
@@ -350,7 +385,8 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
             )
             patterns
 
-    , insertBinaryData = \bin -> ReaderT $ \conn ->
+    , insertBinaryData = \bin -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "insertBinaryData")
         mapM_
             (\BinaryData{..} ->
                 insertRow @"binary_data" conn
@@ -359,6 +395,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
                     ]
             )
             bin
+        traceWith tr (DatabaseExitQuery "insertBinaryData")
 
     , getBinaryData = \binaryDataHash mk -> ReaderT $ \conn -> do
         let qry = "SELECT binary_data FROM binary_data \
@@ -381,6 +418,28 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         execute_ conn qry
         changes conn
 
+    , insertScripts = \scripts -> ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "insertScripts")
+        mapM_
+            (\ScriptReference{..} ->
+                insertRow @"scripts" conn
+                    [ SQLBlob scriptHash
+                    , SQLBlob script
+                    ]
+            )
+            scripts
+        traceWith tr (DatabaseExitQuery "insertScripts")
+
+    , getScript = \scriptHash mk -> ReaderT $ \conn -> do
+        let qry = "SELECT script FROM scripts \
+                  \WHERE script_hash = ? \
+                  \LIMIT 1"
+        Sqlite.query conn qry (Only (SQLBlob scriptHash)) <&> \case
+            [[SQLBlob script]] ->
+                Just (mk ScriptReference{..})
+            _ ->
+                Nothing
+
     , deletePattern = \p -> ReaderT $ \conn -> do
         execute conn "DELETE FROM patterns WHERE pattern = ?"
             [ SQLText p
@@ -402,6 +461,7 @@ mkDatabase (fromIntegral -> longestRollback) bracketConnection = Database
         execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
             [ slotNoVar
             ]
+        execute_ conn "PRAGMA optimize"
         query_ conn "SELECT MAX(slot_no) FROM checkpoints" >>= \case
             [[SQLInteger slotNo']] ->
                 return $ Just (fromIntegral slotNo')
@@ -439,6 +499,7 @@ insertRow conn r =
 mkPreparedStatement :: Int -> Query
 mkPreparedStatement n =
     Query ("(" <> T.intercalate "," (replicate n "?") <> ")")
+{-# INLINABLE mkPreparedStatement #-}
 
 retryWhenBusy :: IO a -> IO a
 retryWhenBusy action =
@@ -525,7 +586,6 @@ migrations =
         , ( $(embedFile "db/v1.0.1/001.sql"),      mkSchemaMigration   )
         , ( $(embedFile "db/v2.0.0/001.sql"),      mkSchemaMigration   )
         , ( $(embedFile "db/v2.0.0/002.sql"),      mkSettingsMigration )
-        , ( $(embedFile "db/v2.0.0/003.sql"),      mkSchemaMigration   )
         ]
     ]
   where
@@ -570,15 +630,16 @@ data TraceDatabase where
     DatabaseCurrentVersion
         :: { currentVersion :: Int }
         -> TraceDatabase
+    DatabaseBeginQuery
+        :: { beginQuery :: Text }
+        -> TraceDatabase
+    DatabaseExitQuery
+        :: { exitQuery :: Text }
+        -> TraceDatabase
     DatabaseNoMigrationNeeded
         :: TraceDatabase
     DatabaseRunningMigration
         :: { from :: Int, to :: Int }
-        -> TraceDatabase
-    DatabaseBeginGarbageCollection
-        :: TraceDatabase
-    DatabaseExitGarbageCollection
-        :: { prunedInputs :: Int, prunedBinaryData :: Int }
         -> TraceDatabase
     DatabaseRunningInMemory
         :: TraceDatabase
@@ -590,9 +651,9 @@ instance ToJSON TraceDatabase where
 
 instance HasSeverityAnnotation TraceDatabase where
     getSeverityAnnotation = \case
-        DatabaseCurrentVersion{}         -> Info
-        DatabaseNoMigrationNeeded{}      -> Debug
-        DatabaseBeginGarbageCollection{} -> Debug
-        DatabaseExitGarbageCollection{}  -> Debug
-        DatabaseRunningMigration{}       -> Notice
-        DatabaseRunningInMemory{}        -> Warning
+        DatabaseBeginQuery{}        -> Debug
+        DatabaseExitQuery{}         -> Debug
+        DatabaseCurrentVersion{}    -> Info
+        DatabaseNoMigrationNeeded{} -> Debug
+        DatabaseRunningMigration{}  -> Notice
+        DatabaseRunningInMemory{}   -> Warning

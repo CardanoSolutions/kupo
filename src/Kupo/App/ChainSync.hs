@@ -82,12 +82,6 @@ withChainSyncExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
 --
 
 data TraceChainSync where
-    ChainSyncRollBackward
-        :: { point :: SlotNo }
-        -> TraceChainSync
-    ChainSyncRollForward
-        :: { slotNo :: SlotNo, matches :: Int }
-        -> TraceChainSync
     ChainSyncIntersectionNotFound
         :: { points :: [WithOrigin SlotNo] }
         -> TraceChainSync
@@ -105,10 +99,6 @@ instance ToJSON TraceChainSync where
 
 instance HasSeverityAnnotation TraceChainSync where
     getSeverityAnnotation = \case
-        ChainSyncRollForward{} ->
-            Debug
-        ChainSyncRollBackward{} ->
-            Notice
         ChainSyncFailedToConnectOrConnectionLost{} ->
             Warning
         ChainSyncIntersectionNotFound{} ->

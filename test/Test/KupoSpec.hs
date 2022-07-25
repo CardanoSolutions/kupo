@@ -79,7 +79,14 @@ import Test.Kupo.Fixture
     , someOtherPoint
     , somePoint
     , somePointAncestor
+    , somePointNearScripts
     , somePointSuccessor
+    , someScriptHashInMetadata
+    , someScriptHashInOutput
+    , someScriptHashInWitness
+    , someScriptInMetadata
+    , someScriptInOutput
+    , someScriptInWitness
     )
 import Type.Reflection
     ( tyConName, typeRep, typeRepTyCon )
@@ -264,7 +271,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     `shouldReturn` Just somePoint
             )
 
-    specify "Retrieve datum(s) associated to datum-hash" $ \(tmp, tr, cfg) -> do
+    specify "Retrieve datums associated with datum hashes" $ \(tmp, tr, cfg) -> do
         let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
@@ -274,8 +281,28 @@ spec = skippableContext "End-to-end" $ \manager -> do
         timeoutOrThrow 10 $ race_
             (kupo tr `runWith` env)
             (do
-                waitDatum someDatumHashInWitness `shouldReturn` someDatumInWitness
-                waitDatum someDatumHashInOutput `shouldReturn` someDatumInOutput
+                waitDatum someDatumHashInWitness
+                    `shouldReturn` someDatumInWitness
+                waitDatum someDatumHashInOutput
+                    `shouldReturn` someDatumInOutput
+            )
+
+    specify "Retrieve scripts associated with script hashes" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just somePointNearScripts
+            , patterns = [MatchAny OnlyShelley]
+            }
+        timeoutOrThrow 10 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitScript someScriptHashInWitness
+                    `shouldReturn` someScriptInWitness
+                waitScript someScriptHashInMetadata
+                    `shouldReturn` someScriptInMetadata
+                waitScript someScriptHashInOutput
+                    `shouldReturn` someScriptInOutput
             )
 
 type EndToEndSpec
@@ -298,7 +325,7 @@ skippableContext prefix skippableSpec = do
                     , patterns = []
                     , inputManagement = MarkSpentInputs
                     , longestRollback = 43200
-                    , pruneThrottleDelay = 60
+                    , garbageCollectionInterval = 180
                     }
             context cardanoNode $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager
@@ -318,7 +345,7 @@ skippableContext prefix skippableSpec = do
                     , patterns = []
                     , inputManagement = MarkSpentInputs
                     , longestRollback = 43200
-                    , pruneThrottleDelay = 60
+                    , garbageCollectionInterval = 180
                     }
             context ogmios $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager

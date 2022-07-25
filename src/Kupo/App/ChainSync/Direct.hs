@@ -18,6 +18,8 @@ import Kupo.Data.Cardano
     ( Point, Tip )
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException (..) )
+import Kupo.Data.Configuration
+    ( maxInFlight )
 import Network.TypedProtocol.Pipelined
     ( Nat (..), natToInt )
 import Ouroboros.Network.Block
@@ -74,10 +76,3 @@ mkChainSyncClient mailbox pts =
                 atomically (putIntermittentMessage mailbox (tip, point))
                 pure (clientStIdle n)
             }
-
--- | Maximum pipelining at any given time. No need to go too high here, it only
--- arms performance beyond a certain point.
---
--- TODO: Make this configurable as it depends on available machine's resources.
-maxInFlight :: Int
-maxInFlight = 100

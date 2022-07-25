@@ -30,6 +30,7 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
     ( DatumHash
+    , ScriptHash
     , SlotNo (..)
     , binaryDataToJson
     , datumHashFromText
@@ -37,6 +38,8 @@ import Kupo.Data.Cardano
     , hasAssetId
     , hasPolicyId
     , pointToJson
+    , scriptHashFromText
+    , scriptToJson
     , slotNoFromText
     , slotNoToText
     )
@@ -48,6 +51,8 @@ import Kupo.Data.Database
     , patternToSql
     , pointFromRow
     , resultFromRow
+    , scriptFromRow
+    , scriptHashToRow
     )
 import Kupo.Data.Health
     ( Health (..) )
@@ -70,6 +75,7 @@ import Kupo.Data.Pattern
     , patternFromText
     , patternToText
     , resultToJson
+    , wildcard
     )
 import Network.HTTP.Types.Status
     ( status200 )
@@ -136,6 +142,9 @@ app withDatabase patternsVar readHealth req send =
 
         ("v1" : "datums" : args) ->
             routeDatums (requestMethod req, args)
+
+        ("v1" : "scripts" : args) ->
+            routeScripts (requestMethod req, args)
 
         ("v1" : "patterns" : args) ->
             routePatterns (requestMethod req, args)
@@ -204,14 +213,28 @@ app withDatabase patternsVar readHealth req send =
         (_, _) ->
             send Errors.methodNotAllowed
 
+    routeScripts = \case
+        ("GET", [arg]) ->
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth
+                send =<< handleGetScript
+                            headers
+                            (scriptHashFromText arg)
+                            db
+        ("GET", _) ->
+            send Errors.notFound
+        (_, _) ->
+            send Errors.methodNotAllowed
+
     routePatterns = \case
         ("GET", []) -> do
             res <- handleGetPatterns
                         <$> responseHeaders readHealth
+                        <*> pure (Just wildcard)
                         <*> readTVarIO patternsVar
             send res
         ("GET", args) -> do
-            res <- handleGetMatchingPatterns
+            res <- handleGetPatterns
                         <$> responseHeaders readHealth
                         <*> pure (patternFromPath args)
                         <*> readTVarIO patternsVar
@@ -380,24 +403,34 @@ handleGetDatum headers datumArg Database{..} = do
                             ]
 
 --
+-- /v1/scripts
+--
+
+handleGetScript
+    :: [Http.Header]
+    -> Maybe ScriptHash
+    -> Database IO
+    -> IO Response
+handleGetScript headers scriptArg Database{..} = do
+    case scriptArg of
+        Nothing ->
+            pure Errors.malformedScriptHash
+        Just scriptHash -> do
+            script <- runReadOnlyTransaction $
+                getScript (scriptHashToRow scriptHash) scriptFromRow
+            pure $ responseJsonEncoding status200 headers $
+                maybe Json.null_ scriptToJson script
+
+--
 -- /v1/patterns
 --
 
 handleGetPatterns
     :: [Http.Header]
-    -> [Pattern]
-    -> Response
-handleGetPatterns headers patterns = do
-    responseStreamJson headers Json.text $ \yield done -> do
-        mapM_ (yield . patternToText) patterns
-        done
-
-handleGetMatchingPatterns
-    :: [Http.Header]
     -> Maybe Text
     -> [Pattern]
     -> Response
-handleGetMatchingPatterns headers patternQuery patterns = do
+handleGetPatterns headers patternQuery patterns = do
     case patternQuery >>= patternFromText of
         Nothing ->
             Errors.invalidPattern

@@ -15,8 +15,9 @@ module Kupo.App
       -- * Gardener
     , gardener
 
-      -- * Internal
-    , mailboxSize
+      -- * Tracers
+    , TraceConsumer (..)
+    , TraceGardener (..)
     ) where
 
 import Kupo.Prelude
@@ -28,13 +29,13 @@ import Kupo.App.ChainSync
 import Kupo.App.Configuration
     ( TraceConfiguration (..), parseNetworkParameters )
 import Kupo.App.Database
-    ( DBTransaction, Database (..), TraceDatabase (..) )
+    ( DBTransaction, Database (..) )
 import Kupo.App.Mailbox
     ( Mailbox, flushMailbox, newMailbox )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..) )
 import Kupo.Control.MonadLog
-    ( MonadLog (..), Tracer )
+    ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..), NodeToClientVersion (..) )
 import Kupo.Control.MonadSTM
@@ -58,11 +59,12 @@ import Kupo.Data.Configuration
     , InputManagement (..)
     , LongestRollback (..)
     , NetworkParameters (..)
+    , mailboxCapacity
     )
 import Kupo.Data.Database
-    ( binaryDataToRow, pointToRow, resultToRow )
+    ( binaryDataToRow, pointToRow, resultToRow, scriptToRow )
 import Kupo.Data.Pattern
-    ( Codecs (..), Pattern, matchBlock )
+    ( Codecs (..), MatchBootstrap (..), Pattern (..), included, matchBlock )
 
 import qualified Data.Map as Map
 import qualified Kupo.App.ChainSync.Direct as Direct
@@ -87,23 +89,23 @@ newProducer
         -> IO ()
        )
     -> IO ()
-newProducer tracerConfiguration chainProducer callback = do
+newProducer tr chainProducer callback = do
     case chainProducer of
         Ogmios{ogmiosHost, ogmiosPort} -> do
-            logWith tracerConfiguration ConfigurationOgmios{ogmiosHost, ogmiosPort}
-            mailbox <- atomically (newMailbox mailboxSize)
-            callback mailbox $ \_tr checkpoints statusToggle -> do
+            logWith tr ConfigurationOgmios{ogmiosHost, ogmiosPort}
+            mailbox <- atomically (newMailbox mailboxCapacity)
+            callback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
                 Ogmios.connect statusToggle ogmiosHost ogmiosPort $
                     Ogmios.runChainSyncClient mailbox checkpoints
 
         CardanoNode{nodeSocket, nodeConfig} -> do
-            logWith tracerConfiguration ConfigurationCardanoNode{nodeSocket,nodeConfig}
-            mailbox <- atomically (newMailbox mailboxSize)
+            logWith tr ConfigurationCardanoNode{nodeSocket,nodeConfig}
+            mailbox <- atomically (newMailbox mailboxCapacity)
             network@NetworkParameters
                 { networkMagic
                 , slotsPerEpoch
                 } <- liftIO (parseNetworkParameters nodeConfig)
-            logWith tracerConfiguration (ConfigurationNetwork network)
+            logWith tr (ConfigurationNetwork network)
             callback mailbox $ \tracerChainSync checkpoints statusToggle -> do
                 withChainSyncServer
                   statusToggle
@@ -117,14 +119,6 @@ newProducer tracerConfiguration chainProducer callback = do
                       throwIO e
                     )
 
--- TODO: Make the mailbox's size configurable? Larger sizes means larger
--- memory usage at the benefits of slightly faster sync time... Though I
--- am not sure it's worth enough to bother users with this. Between 100
--- and 1000, the heap increases from ~150MB to ~1GB, for a 5-10%
--- synchronization time decrease.
-mailboxSize :: Natural
-mailboxSize = 100
-
 -- | Consumer process that is reading messages from the 'Mailbox'. Messages are
 -- enqueued by another process (the producer).
 consumer
@@ -134,7 +128,7 @@ consumer
         , Monad (DBTransaction m)
         , IsBlock block
         )
-    => Tracer IO TraceChainSync
+    => Tracer IO TraceConsumer
     -> InputManagement
     -> LongestRollback
     -> (Tip -> Maybe SlotNo -> DBTransaction m ())
@@ -144,6 +138,7 @@ consumer
     -> m Void
 consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Database{..} =
     forever $ do
+        logWith tr ConsumerWaitingForNextBatch
         atomically ((,) <$> flushMailbox mailbox <*> readTVar patternsVar) >>= \case
             (Left blks, patterns) ->
                 rollForward blks patterns
@@ -155,18 +150,25 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
         let (lastKnownTip, lastKnownBlk) = last blks
         let lastKnownPoint = getPoint lastKnownBlk
         let lastKnownSlot = getPointSlotNo lastKnownPoint
-        let (spentInputs, newInputs, bins) = foldMap (matchBlock codecs patterns . snd) blks
-        logWith tr (ChainSyncRollForward lastKnownSlot (length newInputs))
+        let (spentInputs, newInputs, bins, scripts) =
+                foldMap (matchBlock codecs patterns . snd) blks
+        logWith tr $ ConsumerRollForward
+            { slotNo = lastKnownSlot
+            , inputs = length newInputs
+            , binaryData = length bins
+            , scripts = length scripts
+            }
         runReadWriteTransaction $ do
             insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
             insertInputs newInputs
             onSpentInputs lastKnownTip lastKnownSlot spentInputs
             insertBinaryData bins
+            insertScripts scripts
             notifyTip lastKnownTip (Just lastKnownSlot)
 
     rollBackward :: (Tip, Point) -> m ()
     rollBackward (tip, pt) = do
-        logWith tr (ChainSyncRollBackward (getPointSlotNo pt))
+        logWith tr (ConsumerRollBackward { point = getPointSlotNo pt })
         runReadWriteTransaction $ do
             lastKnownSlot <- rollbackTo (unSlotNo (getPointSlotNo pt))
             notifyTip tip (SlotNo <$> lastKnownSlot)
@@ -176,6 +178,7 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
         , toSlotNo = unSlotNo
         , toInput = serialize'
         , toBinaryData = binaryDataToRow
+        , toScript = scriptToRow
         }
 
     onSpentInputs = case inputManagement of
@@ -210,6 +213,11 @@ consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Databa
 --
 -- In brief, we can only delete inputs after `k` blocks (or `3*k/f` slots) have
 -- passed (since it is guaranteed to have `k` blocks in a `3*k/f` slot window).
+--
+-- TODO: We should / could also try to prune scripts data. This is a little
+-- trickier than for datums because scripts may also be referenced in addresses.
+-- To cleanup, we would therefore need to remove scripts that are not referenced
+-- in output, nor addresses.
 gardener
     :: forall m.
         ( MonadSTM m
@@ -217,13 +225,15 @@ gardener
         , MonadDelay m
         , Monad (DBTransaction m)
         )
-    => Tracer IO TraceDatabase
+    => Tracer IO TraceGardener
     -> Configuration
+    -> TVar m [Pattern]
     -> (forall a. (Database m -> m a) -> m a)
     -> m Void
-gardener tr config withDatabase = forever $ do
-    threadDelay pruneThrottleDelay
-    logWith tr DatabaseBeginGarbageCollection
+gardener tr config patterns withDatabase = forever $ do
+    threadDelay garbageCollectionInterval
+    logWith tr GardenerBeginGarbageCollection
+    xs <- readTVarIO patterns
     withDatabase $ \Database{..} -> do
         (prunedInputs, prunedBinaryData) <- runReadWriteTransaction $ do
             let
@@ -231,11 +241,65 @@ gardener tr config withDatabase = forever $ do
                     case inputManagement of
                         RemoveSpentInputs -> pruneInputs
                         MarkSpentInputs -> pure 0
+                pruneBinaryDataWhenApplicable = do
+                    case (inputManagement, MatchAny OnlyShelley `included` xs) of
+                        (MarkSpentInputs, _:_) -> pure 0
+                        _ -> pruneBinaryData
              in
-                (,) <$> pruneInputsWhenApplicable <*> pruneBinaryData
-        logWith tr $ DatabaseExitGarbageCollection { prunedInputs, prunedBinaryData }
+                (,) <$> pruneInputsWhenApplicable <*> pruneBinaryDataWhenApplicable
+        logWith tr $ GardenerExitGarbageCollection { prunedInputs, prunedBinaryData }
   where
     Configuration
-        { pruneThrottleDelay
+        { garbageCollectionInterval
         , inputManagement
         } = config
+
+--
+-- Tracer
+--
+
+data TraceConsumer where
+    ConsumerWaitingForNextBatch
+        :: TraceConsumer
+    ConsumerRollBackward
+        :: { point :: SlotNo }
+        -> TraceConsumer
+    ConsumerRollForward
+        :: { slotNo :: SlotNo, inputs :: Int, binaryData :: Int, scripts :: Int }
+        -> TraceConsumer
+    ConsumerChainSync
+        :: { chainSync :: TraceChainSync }
+        -> TraceConsumer
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceConsumer where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance HasSeverityAnnotation TraceConsumer where
+    getSeverityAnnotation = \case
+        ConsumerWaitingForNextBatch{} ->
+            Debug
+        ConsumerRollForward{} ->
+            Info
+        ConsumerRollBackward{} ->
+            Notice
+        ConsumerChainSync{chainSync} ->
+            getSeverityAnnotation chainSync
+
+data TraceGardener where
+    GardenerBeginGarbageCollection
+        :: TraceGardener
+    GardenerExitGarbageCollection
+        :: { prunedInputs :: Int, prunedBinaryData :: Int }
+        -> TraceGardener
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceGardener where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance HasSeverityAnnotation TraceGardener where
+    getSeverityAnnotation = \case
+        GardenerBeginGarbageCollection{} -> Info
+        GardenerExitGarbageCollection{}  -> Info

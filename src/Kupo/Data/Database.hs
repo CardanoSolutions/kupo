@@ -32,6 +32,15 @@ module Kupo.Data.Database
     , binaryDataToRow
     , binaryDataFromRow
 
+      -- * Script / ScriptReference
+    , ScriptReference (..)
+    , scriptToRow
+    , scriptFromRow
+    , scriptHashToRow
+    , scriptHashFromRow
+    , scriptReferenceToRow
+    , scriptReferenceFromRow
+
       -- * Filtering
     , applyStatusFlag
     ) where
@@ -49,31 +58,14 @@ import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Kupo.Data.Cardano as App
 import qualified Kupo.Data.Pattern as App
 
-data Input = Input
-    { outputReference :: ByteString
-    , address :: Text
-    , value :: ByteString
-    , datum :: Maybe BinaryData
-    , datumHash :: Maybe ByteString
-    , createdAtSlotNo :: Word64
-    , createdAtHeaderHash :: ByteString
-    , spentAtSlotNo :: Maybe Word64
-    , spentAtHeaderHash :: Maybe ByteString
-    } deriving (Show)
-
-data BinaryData = BinaryData
-    { binaryDataHash :: ByteString
-    , binaryData :: ByteString
-    } deriving (Show)
+--
+-- Checkpoint
+--
 
 data Checkpoint = Checkpoint
     { checkpointHeaderHash :: ByteString
     , checkpointSlotNo :: Word64
     } deriving (Show)
-
---
--- Checkpoint
---
 
 pointFromRow
     :: Checkpoint
@@ -81,6 +73,7 @@ pointFromRow
 pointFromRow row = App.BlockPoint
     (App.SlotNo (checkpointSlotNo row))
     (fromShortRawHash (Proxy @App.Block) $ toShort $ checkpointHeaderHash row)
+{-# INLINABLE pointFromRow #-}
 
 pointToRow
     :: HasCallStack
@@ -94,10 +87,25 @@ pointToRow = \case
         }
   where
     proxy = Proxy @App.Block
+{-# INLINABLE pointToRow #-}
 
 --
 -- Result
 --
+
+data Input = Input
+    { outputReference :: ByteString
+    , address :: Text
+    , value :: ByteString
+    , datum :: Maybe BinaryData
+    , datumHash :: Maybe ByteString
+    , refScript :: Maybe ScriptReference
+    , refScriptHash :: Maybe ByteString
+    , createdAtSlotNo :: Word64
+    , createdAtHeaderHash :: ByteString
+    , spentAtSlotNo :: Maybe Word64
+    , spentAtHeaderHash :: Maybe ByteString
+    } deriving (Show)
 
 resultFromRow
     :: HasCallStack
@@ -112,6 +120,8 @@ resultFromRow row = App.Result
         unsafeDeserialize' (value row)
     , App.datum =
         datumFromRow (datumHash row) (datum row)
+    , App.scriptReference =
+        scriptReferenceFromRow (refScriptHash row) (refScript row)
     , App.createdAt =
         pointFromRow (Checkpoint (createdAtHeaderHash row) (createdAtSlotNo row))
     , App.spentAt =
@@ -124,33 +134,40 @@ resultFromRow row = App.Result
 resultToRow
     :: App.Result
     -> Input
-resultToRow App.Result{..} = Input
-    { outputReference =
-        serialize' outputReference
-    , address =
-        encodeBase16 (Ledger.serialiseAddr address)
-    , value =
-        serialize' value
-    , datum =
-        datumToRow datum
-    , datumHash =
-        datumHashToRow <$> App.hashDatum datum
-    , createdAtSlotNo =
-        checkpointSlotNo createdAtRow
-    , createdAtHeaderHash =
-        checkpointHeaderHash createdAtRow
-    , spentAtSlotNo =
-        checkpointSlotNo <$> spentAtRow
-    , spentAtHeaderHash =
-        checkpointHeaderHash <$> spentAtRow
-    }
+resultToRow x =
+    Input {..}
   where
-    createdAtRow = pointToRow createdAt
-    spentAtRow = pointToRow <$> spentAt
+    outputReference =
+        serialize' (App.outputReference x)
+
+    address =
+        encodeBase16 (Ledger.serialiseAddr (App.address x))
+
+    value =
+        serialize' (App.value x)
+
+    (datumHash, datum) =
+        datumToRow (App.datum x)
+
+    (refScriptHash, refScript) =
+        scriptReferenceToRow (App.scriptReference x)
+
+    (createdAtSlotNo, createdAtHeaderHash) =
+        let row = pointToRow (App.createdAt x)
+         in (checkpointSlotNo row, checkpointHeaderHash row)
+
+    (spentAtSlotNo, spentAtHeaderHash) =
+        let row = pointToRow <$> (App.spentAt x)
+         in (checkpointSlotNo <$> row, checkpointHeaderHash <$> row)
 
 --
 -- BinaryData / Datum
 --
+
+data BinaryData = BinaryData
+    { binaryDataHash :: ByteString
+    , binaryData :: ByteString
+    } deriving (Show)
 
 datumFromRow
     :: Maybe ByteString
@@ -161,23 +178,27 @@ datumFromRow hash = \case
         Ledger.Datum (App.unsafeBinaryDataFromBytes binaryData)
     Nothing ->
         maybe App.noDatum (Ledger.DatumHash . App.unsafeDatumHashFromBytes) hash
+{-# INLINABLE datumFromRow #-}
 
 datumToRow
     :: App.Datum
-    -> Maybe BinaryData
+    -> (Maybe ByteString, Maybe BinaryData)
 datumToRow = \case
     Ledger.NoDatum ->
-        Nothing
-    Ledger.DatumHash{} ->
-        Nothing
+        (Nothing, Nothing)
+    Ledger.DatumHash h ->
+        (Just (datumHashToRow h), Nothing)
     Ledger.Datum bin ->
-        Just (binaryDataToRow (App.hashBinaryData bin) bin)
+        let h = App.hashBinaryData bin
+         in (Just (datumHashToRow h), Just (binaryDataToRow h bin))
+{-# INLINABLE datumToRow #-}
 
 datumHashToRow
     :: App.DatumHash
     -> ByteString
 datumHashToRow =
     Ledger.originalBytes
+{-# INLINABLE datumHashToRow #-}
 
 binaryDataToRow
     :: App.DatumHash
@@ -187,12 +208,78 @@ binaryDataToRow hash bin = BinaryData
     { binaryDataHash = datumHashToRow hash
     , binaryData = Ledger.originalBytes (Ledger.binaryDataToData bin)
     }
+{-# INLINABLE binaryDataToRow #-}
 
 binaryDataFromRow
     :: BinaryData
     -> App.BinaryData
 binaryDataFromRow =
     App.unsafeBinaryDataFromBytes . binaryData
+{-# INLINABLE binaryDataFromRow #-}
+
+--
+-- Script / ScriptHash
+--
+
+data ScriptReference = ScriptReference
+    { scriptHash :: ByteString
+    , script :: ByteString
+    } deriving (Show)
+
+scriptHashToRow
+    :: App.ScriptHash
+    -> ByteString
+scriptHashToRow =
+    App.scriptHashToBytes
+{-# INLINABLE scriptHashToRow #-}
+
+scriptHashFromRow
+    :: ByteString
+    -> App.ScriptHash
+scriptHashFromRow =
+    App.unsafeScriptHashFromBytes
+{-# INLINABLE scriptHashFromRow #-}
+
+scriptToRow
+    :: App.ScriptHash
+    -> App.Script
+    -> ScriptReference
+scriptToRow hash s = ScriptReference
+    { scriptHash = scriptHashToRow hash
+    , script = App.scriptToBytes s
+    }
+{-# INLINABLE scriptToRow  #-}
+
+scriptFromRow
+    :: ScriptReference
+    -> App.Script
+scriptFromRow ScriptReference{..} =
+    App.unsafeScriptFromBytes script
+{-# INLINABLE scriptFromRow #-}
+
+scriptReferenceToRow
+    :: App.ScriptReference
+    -> (Maybe ByteString, Maybe ScriptReference)
+scriptReferenceToRow = \case
+    App.NoScript ->
+        (Nothing, Nothing)
+    App.ReferencedScript h ->
+        (Just (scriptHashToRow h), Nothing)
+    App.InlineScript s ->
+        let h = App.hashScript s
+         in (Just (scriptHashToRow h), Just (scriptToRow h s))
+{-# INLINABLE scriptReferenceToRow #-}
+
+scriptReferenceFromRow
+    :: Maybe ByteString
+    -> Maybe ScriptReference
+    -> App.ScriptReference
+scriptReferenceFromRow hash = \case
+    Just s ->
+        App.InlineScript (scriptFromRow s)
+    Nothing ->
+        maybe App.NoScript (App.ReferencedScript . scriptHashFromRow) hash
+{-# INLINABLE scriptReferenceFromRow  #-}
 
 --
 -- Pattern
@@ -203,6 +290,7 @@ patternToRow
     -> Text
 patternToRow =
     App.patternToText
+{-# INLINABLE patternToRow #-}
 
 patternFromRow
     :: HasCallStack
@@ -212,6 +300,7 @@ patternFromRow p =
     fromMaybe
         (error $ "patternFromRow: invalid pattern: " <> p)
         (App.patternFromText p)
+{-# INLINABLE patternFromRow #-}
 
 patternToSql
     :: App.Pattern

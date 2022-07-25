@@ -29,8 +29,8 @@ import Options.Applicative
 
 import Data.Char
     ( toUpper )
-import Kupo.App.ChainSync
-    ( TraceChainSync )
+import Kupo.App
+    ( TraceConsumer, TraceGardener )
 import Kupo.App.Configuration
     ( TraceConfiguration )
 import Kupo.App.Database
@@ -39,6 +39,8 @@ import Kupo.App.Http
     ( TraceHttpServer )
 import Kupo.Control.MonadLog
     ( Severity (..), Tracer, TracerDefinition (..), TracerHKD, defaultTracers )
+import Kupo.Control.MonadTime
+    ( DiffTime, millisecondsToDiffTime )
 import Kupo.Data.Cardano
     ( Point, pointFromText )
 import Kupo.Data.Configuration
@@ -53,6 +55,9 @@ import Options.Applicative.Help.Pretty
     ( Doc, align, fillSep, hardline, indent, softbreak, string, text, vsep )
 import Safe
     ( readMay )
+
+import qualified Data.Text as T
+import qualified Data.Text.Read as T
 
 data Command
     = Run Configuration (Tracers IO MinSeverities)
@@ -91,12 +96,13 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> many patternOption
                     <*> inputManagementOption
                     <*> pure 43200 -- TODO: should be pulled from genesis parameters
-                    <*> pure 120 -- TOOD: make configurable through CLI
+                    <*> garbageCollectionIntervalOption
                 )
             <*> (tracersOption <|> Tracers
                     <$> fmap Const (logLevelOption "http-server")
                     <*> fmap Const (logLevelOption "database")
-                    <*> fmap Const (logLevelOption "chain-sync")
+                    <*> fmap Const (logLevelOption "consumer")
+                    <*> fmap Const (logLevelOption "garbage-collector")
                     <*> fmap Const (logLevelOption "configuration")
                 )
         )
@@ -263,10 +269,19 @@ inputManagementOption = flag MarkSpentInputs RemoveSpentInputs $ mempty
     doc =
         string "Remove inputs from the index when spent, instead of marking them as 'spent'."
 
+-- | [--gc-interval=SECONDS]
+garbageCollectionIntervalOption :: Parser DiffTime
+garbageCollectionIntervalOption = option diffTime $ mempty
+    <> long "gc-interval"
+    <> metavar "SECONDS"
+    <> help "Number of seconds between background database garbage collections pruning obsolete or unnecessary data."
+    <> value 180
+    <> showDefault
+
 -- | [--log-level-{COMPONENT}=SEVERITY], default: Info
 logLevelOption :: Text -> Parser (Maybe Severity)
 logLevelOption component =
-    option readSeverityM $ mempty
+    option severity $ mempty
         <> long ("log-level-" <> toString component)
         <> metavar "SEVERITY"
         <> helpDoc (Just doc)
@@ -279,7 +294,7 @@ logLevelOption component =
 
 -- | [--log-level=SEVERITY]
 tracersOption :: Parser (Tracers m MinSeverities)
-tracersOption = fmap defaultTracers $ option readSeverityM $ mempty
+tracersOption = fmap defaultTracers $ option severity $ mempty
     <> long "log-level"
     <> metavar "SEVERITY"
     <> helpDoc (Just doc)
@@ -338,8 +353,10 @@ data Tracers m (kind :: TracerDefinition) = Tracers
         :: TracerHKD kind (Tracer m TraceHttpServer)
     , tracerDatabase
         :: TracerHKD kind (Tracer m TraceDatabase)
-    , tracerChainSync
-        :: TracerHKD kind (Tracer m TraceChainSync)
+    , tracerConsumer
+        :: TracerHKD kind (Tracer m TraceConsumer)
+    , tracerGardener
+        :: TracerHKD kind (Tracer m TraceGardener)
     , tracerConfiguration
         :: TracerHKD kind (Tracer m TraceConfiguration)
     } deriving (Generic)
@@ -358,11 +375,17 @@ severities :: [String]
 severities =
     show @_ @Severity <$> [minBound .. maxBound]
 
-readSeverityM :: ReadM (Maybe Severity)
-readSeverityM = maybeReader $ \case
+severity :: ReadM (Maybe Severity)
+severity = maybeReader $ \case
     [] -> Nothing
     (toUpper -> h):q ->
         if h:q == "Off" then
             Just Nothing
         else
             Just <$> readMay (h:q)
+
+diffTime :: ReadM DiffTime
+diffTime = eitherReader $ \s -> do
+    (n, remainder) <- T.decimal (toText s)
+    unless (T.null remainder) $ Left "Invalid number of seconds, must be a positive integer with no decimals."
+    pure (millisecondsToDiffTime (n * 1_000))
