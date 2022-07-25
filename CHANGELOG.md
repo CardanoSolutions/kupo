@@ -1,8 +1,18 @@
 ### [2.0.0] - UNRELEASED
 
+> ⚠️  Breaking-Changes ⚠️ 
+>
+> This release contains important changes in the database structure and is
+> therefore not compatible with previous releases. A full re-synchronization of
+> the index will be needed. 
+>
+> Note also that any intermediate work from `master` isn't guaranteed to be 
+> compatible with `v2.0.0`. Should you have been using intermediate edge versions, 
+> you will need, in all likelihood, to drop and reconstruct the database as well.
+
 #### Added
 
-- [📌 #28](https://github.com/CardanoSolutions/kupo/issues/28) - Support for the Babbage's era, including inline-datums.
+- [📌 #28](https://github.com/CardanoSolutions/kupo/issues/28) - Support for the Babbage's era, including inline-datums & reference scripts. 
 
 - [📌 #17](https://github.com/CardanoSolutions/kupo/issues/20) - New command-line flag: `--prune-utxo`. When set, inputs that are spent on-chain will be removed from the index. Once-synced, 
   the index therefore only contain the current ledger UTxO set. When not set, spent inputs are kept in the index but are now marked accordingly to record if and when they've spent.
@@ -22,8 +32,18 @@
 
 <br/>
 
+- [📌 #21](https://github.com/CardanoSolutions/kupo/issues/28) New HTTP endpoint to retrieve native & Plutus' script pre-image from a script hash digest. Behind the scene, Kupo now track any script found in transactions' witnesses set, auxiliary data and/or outputs (reference scripts).
+  - `GET v1/scripts/{script-hash}` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getScriptByHash)
+
+<br/>
+
 - [📌 #40](https://github.com/CardanoSolutions/kupo/issues/40) New HTTP endpoint to retrieve patterns that _includes_ a given pattern. Useful to check if an address is matched by a given configuration. 
   - `GET v1/patterns/{pattern-fragment}[/{pattern-fragment}]` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/matchPattern1Ary)
+
+<br/>
+
+- [📌 #40](https://github.com/CardanoSolutions/kupo/issues/21) New optional command-line option `--gc-interval` to tweak the interval between database's garbage collection. Each garbage collection takes a bit of time (few seconds) and pauses the indexer while doing so; A too short interval may have a strong impact on overall performance. A too long interval may greatly
+increase the time needed for collecting garbage. Optimal value depends on your use-case, but the default (3 minute) is seemingly a sensible default.
 
 <br/>
 
@@ -34,7 +54,7 @@
 
 <br/>
 
-- [📌 #35](https://github.com/CardanoSolutions/kupo/issues/35) - New HTTP header `X-Most-Recent-Checkpoint` to every(successful) response which contains the slot number of the current database most recent checkpoint. This allows client to know which slot a certain query is accurate of. 
+- [📌 #35](https://github.com/CardanoSolutions/kupo/issues/35) - New HTTP header `X-Most-Recent-Checkpoint` to every (successful) response. It contains the slot number of the current database most recent checkpoint. This allows client to know which slot a certain query is accurate of. 
 
 #### Changed
 
