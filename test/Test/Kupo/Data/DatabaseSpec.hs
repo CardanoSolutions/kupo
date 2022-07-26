@@ -12,8 +12,6 @@ import Kupo.Prelude
 
 import Data.List
     ( maximum )
-import Data.Maybe
-    ( fromJust )
 import Database.SQLite.Simple
     ( Connection
     , Only (..)
@@ -42,17 +40,13 @@ import Kupo.Control.MonadThrow
 import Kupo.Control.MonadTime
     ( millisecondsToDiffTime )
 import Kupo.Data.Cardano
-    ( Address
-    , Point
-    , SlotNo (..)
-    , addressFromBytes
-    , addressToBytes
-    , getPointSlotNo
-    )
+    ( Address, Point, SlotNo (..), getPointSlotNo )
 import Kupo.Data.Configuration
     ( LongestRollback (..) )
 import Kupo.Data.Database
-    ( datumFromRow
+    ( addressFromRow
+    , addressToRow
+    , datumFromRow
     , datumToRow
     , patternFromRow
     , patternToRow
@@ -74,6 +68,7 @@ import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
     ( chooseVector
+    , genAddress
     , genDatum
     , genNonGenesisPoint
     , genPattern
@@ -103,6 +98,8 @@ import qualified Prelude
 spec :: Spec
 spec = parallel $ do
     context "fromRow ↔ toRow" $ do
+        prop "Address" $
+            roundtripFromToRow genAddress addressToRow addressFromRow
         prop "Result" $
             roundtripFromToRow genResult resultToRow resultFromRow
         prop "Checkpoint" $
@@ -294,13 +291,13 @@ withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
             \)"
         executeMany conn
             "INSERT INTO addresses VALUES (?)"
-            (Only . SQLText . encodeBase16 . addressToBytes <$> addresses)
+            (Only . SQLText . addressToRow <$> addresses)
     action conn
 
 rowToAddress :: HasCallStack => [SQLData] -> Address
 rowToAddress = \case
     [SQLText txt, _] ->
-        fromJust (addressFromBytes (unsafeDecodeBase16 txt))
+        addressFromRow txt
     _ ->
         error "rowToAddress: not SQLText"
 

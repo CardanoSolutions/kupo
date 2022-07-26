@@ -2,7 +2,7 @@ DROP TABLE inputs;
 
 CREATE TABLE IF NOT EXISTS inputs (
   output_reference BLOB NOT NULL,
-  address TEXT NOT NULL,
+  address TEXT COLLATE NOCASE NOT NULL,
   value BLOB NOT NULL,
   datum_hash BLOB,
   script_hash BLOB,
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS inputs (
   PRIMARY KEY (output_reference)
 );
 
-CREATE INDEX IF NOT EXISTS inputsByAddress ON inputs(address, spent_at);
+CREATE INDEX IF NOT EXISTS inputsByAddress ON inputs(address COLLATE NOCASE, spent_at);
 
 CREATE INDEX IF NOT EXISTS inputsByDatumHash ON inputs(datum_hash);
 

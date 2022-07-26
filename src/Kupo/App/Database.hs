@@ -277,7 +277,7 @@ mkDatabase tr (fromIntegral -> longestRollback) bracketConnection = Database
         traceWith tr (DatabaseExitQuery "insertInputs")
 
     , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
-        let qry = Query $ "DELETE FROM inputs WHERE address " <> T.replace "len" "LENGTH(address)" addressLike
+        let qry = Query $ "DELETE FROM inputs WHERE address " <> addressLike
         execute_ conn qry
         changes conn
 
@@ -314,7 +314,7 @@ mkDatabase tr (fromIntegral -> longestRollback) bracketConnection = Database
         let matchMaybeWord64 = \case
                 SQLInteger (fromIntegral -> wrd) -> Just wrd
                 _ -> Nothing
-        let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash, LENGTH(address) as len \
+        let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash \
                   \FROM inputs \
                   \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
                   \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
@@ -335,7 +335,6 @@ mkDatabase tr (fromIntegral -> longestRollback) bracketConnection = Database
                 , SQLBlob createdAtHeaderHash
                 , matchMaybeWord64 -> spentAtSlotNo
                 , matchMaybeBytes -> spentAtHeaderHash
-                , _ -- LENGTH(address)
                 ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
 

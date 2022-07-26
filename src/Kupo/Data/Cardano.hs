@@ -83,6 +83,7 @@ module Kupo.Data.Cardano
     , datumHashFromText
     , datumHashToText
     , datumHashFromBytes
+    , datumHashToBytes
     , unsafeDatumHashFromBytes
     , datumHashToJson
 
@@ -90,6 +91,7 @@ module Kupo.Data.Cardano
     , BinaryData
     , hashBinaryData
     , binaryDataToJson
+    , binaryDataToBytes
     , binaryDataFromBytes
     , unsafeBinaryDataFromBytes
 
@@ -130,9 +132,10 @@ module Kupo.Data.Cardano
 
       -- * Address
     , Address
+    , unsafeAddressFromBytes
     , addressFromBytes
-    , addressToJson
     , addressToBytes
+    , addressToJson
     , isBootstrap
     , getPaymentPartBytes
     , getDelegationPartBytes
@@ -148,7 +151,9 @@ module Kupo.Data.Cardano
     , distanceToSlot
 
       -- * Hash
-    , digest
+    , Hash
+    , HashAlgorithm (..)
+    , hashFromBytes
     , digestSize
     , Blake2b_224
     , Blake2b_256
@@ -191,6 +196,7 @@ import Cardano.Crypto.Hash
     , Hash
     , HashAlgorithm (..)
     , pattern UnsafeHash
+    , hashFromBytes
     , hashFromTextAsHex
     , hashToBytesShort
     , sizeHash
@@ -1005,6 +1011,13 @@ type DatumHash =
 type DatumHash' crypto =
     Ledger.DataHash crypto
 
+datumHashToBytes
+    :: DatumHash
+    -> ByteString
+datumHashToBytes =
+    Ledger.originalBytes
+{-# INLINABLE datumHashToBytes #-}
+
 datumHashFromBytes
     :: ByteString
     -> Maybe DatumHash
@@ -1067,12 +1080,21 @@ binaryDataToJson
     -> Json.Encoding
 binaryDataToJson =
     Json.text . encodeBase16 . Ledger.originalBytes
+{-# INLINABLE binaryDataToJson #-}
+
+binaryDataToBytes
+    :: BinaryData
+    -> ByteString
+binaryDataToBytes =
+    Ledger.originalBytes . Ledger.binaryDataToData
+{-# INLINABLE binaryDataToBytes #-}
 
 binaryDataFromBytes
     :: ByteString
     -> Maybe BinaryData
 binaryDataFromBytes =
     either (const Nothing) Just . Ledger.makeBinaryData . toShort
+{-# INLINABLE binaryDataFromBytes #-}
 
 unsafeBinaryDataFromBytes
     :: HasCallStack
@@ -1216,6 +1238,11 @@ addressToBytes :: Address -> ByteString
 addressToBytes =
     Ledger.serialiseAddr
 {-# INLINABLE addressToBytes #-}
+
+unsafeAddressFromBytes :: HasCallStack => ByteString -> Address
+unsafeAddressFromBytes =
+    fromMaybe (error "unsafeAddressFromBytes") . addressFromBytes
+{-# INLINABLE unsafeAddressFromBytes #-}
 
 addressFromBytes :: ByteString -> Maybe Address
 addressFromBytes =
