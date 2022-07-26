@@ -138,6 +138,6 @@ executables:
       ghc-options:
       - -O2
       - -Werror
-      - '"-with-rtsopts=-T -N2 -I0 -qb -A64m"'
+      - '"-with-rtsopts=-N2 -I0 -A16m -qb"'
     dependencies:
     - kupo

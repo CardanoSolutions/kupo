@@ -6,16 +6,18 @@ const process = require('process');
 const cp = require('child_process');
 const assert = require('assert');
 const pidUsage = require('pidusage');
+const path = require('path');
 
 const DEFAULT_URL = 'http://localhost:1442';
-const LAST_MARY_POINT  = '36158304.2b95ce628d36c3f8f37a32c2942b48e4f9295ccfe8190bcbc1f012e1e97c79eb';
-const LAST_ALONZO_SLOT =  62510369;
 
-console.error(`bench: ${process.argv.slice(3)}`);
+const SINCE = "origin";
+const UNTIL =  64361263;
+
 main().then(result => console.error(JSON.stringify(result)))
 
 async function main() {
   const tmp = fs.mkdtempSync('kupo-synchronize-alonzo');
+  console.error(`bench (${tmp}): ${process.argv.slice(3)}`);
   let kupo;
   try {
     const cmd = process.argv[2];
@@ -29,27 +31,32 @@ async function main() {
     kupo = cp.spawn(cmd,
       [ '--node-socket', socketFile
       , '--node-config', configFile
-      , '--match', '*/*'
+      , '--match', '*'
       , '--workdir', tmp
-      , '--since', LAST_MARY_POINT
+      , '--since', SINCE
       ].concat(extraOptions));
 
     kupo.stdout.on('data', chunk => process.stdout.write(chunk.toString()));
     kupo.stderr.on('data', chunk => process.stderr.write(chunk.toString()));
     kupo.on('close', code => process.exit(code));
 
+    const memoryStream = fs.createWriteStream(path.join(tmp, 'memory.log'));
+
     let memoryUsage = 0;
-    const interval = setInterval(() => {
+    let ix = 0;
+    const watchMemory = setInterval(() => {
       pidUsage(kupo.pid, (err, stats) => {
+        memoryStream.write(ix + ' ' + stats.memory + '\n');
         if (stats.memory > memoryUsage)  {
-          memoryUsage = stats.memory
+          memoryUsage = stats.memory;
         }
+        ix += 1;
       });
     }, 2000);
 
-    await waitForSlot(LAST_ALONZO_SLOT);
-
-    clearInterval(interval);
+    await waitForSlot(UNTIL);
+    memoryStream.close();
+    clearInterval(watchMemory);
 
     const databaseSize = cp.execSync(`ls -lh ${tmp}/kupo.sqlite3`).toString().split(" ")[4];
     const maxMemory = `${memoryUsage / (1024 * 1024)}M`;
@@ -64,8 +71,10 @@ async function main() {
       const min = time - hour * 3600;
       return { duration: `${hour}h${min}min`, databaseSize, maxMemory };
     }
-  } finally {
+  } catch (e) {
     fs.rmSync(tmp, { recursive: true });
+    throw e;
+  } finally {
     if (kupo) {
       process.kill(kupo.pid);
     }

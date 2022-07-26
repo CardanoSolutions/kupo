@@ -569,6 +569,7 @@ transactionIdFromHash
     -> TransactionId
 transactionIdFromHash =
     Ledger.TxId . Ledger.unsafeMakeSafeHash
+{-# INLINABLE transactionIdFromHash #-}
 
 unsafeTransactionIdFromBytes
     :: HasCallStack
@@ -579,6 +580,7 @@ unsafeTransactionIdFromBytes =
     . UnsafeHash
     . toShort
     . sizeInvariant (== (digestSize @Blake2b_256))
+{-# INLINABLE unsafeTransactionIdFromBytes #-}
 
 class HasTransactionId f where
     getTransactionId
@@ -589,10 +591,12 @@ class HasTransactionId f where
 transactionIdToText :: TransactionId -> Text
 transactionIdToText =
     encodeBase16 . (\(UnsafeHash h) -> fromShort h) . Ledger.extractHash . Ledger._unTxId
+{-# INLINABLE transactionIdToText #-}
 
 transactionIdToJson :: TransactionId -> Json.Encoding
 transactionIdToJson =
     hashToJson . Ledger.extractHash . Ledger._unTxId
+{-# INLINABLE transactionIdToJson #-}
 
 -- OutputIndex
 
@@ -606,6 +610,7 @@ getOutputIndex (Ledger.TxIn _ (Ledger.TxIx ix)) =
 outputIndexToJson :: OutputIndex -> Json.Encoding
 outputIndexToJson =
     Json.integer . toInteger
+{-# INLINABLE outputIndexToJson #-}
 
 -- Transaction
 
@@ -687,6 +692,21 @@ mkOutput address value datum script =
         value
         datum
         (maybeToStrictMaybe script)
+{-# INLINABLE mkOutput #-}
+
+fromByronOutput
+    :: forall crypto.
+        ( Crypto crypto
+        )
+    => Ledger.Byron.TxOut
+    -> Ledger.Core.TxOut (BabbageEra crypto)
+fromByronOutput (Ledger.Byron.TxOut address value) =
+    Ledger.Babbage.TxOut
+        (Ledger.AddrBootstrap (Ledger.BootstrapAddress address))
+        (inject $ Ledger.Coin $ toInteger $ Ledger.Byron.unsafeGetLovelace value)
+        Ledger.Babbage.NoDatum
+        SNothing
+{-# INLINABLE fromByronOutput #-}
 
 fromShelleyOutput
     :: forall (era :: Type -> Type) crypto.
@@ -700,6 +720,7 @@ fromShelleyOutput
     -> Ledger.Core.TxOut (BabbageEra crypto)
 fromShelleyOutput liftValue (Ledger.Shelley.TxOut addr value) =
     Ledger.Babbage.TxOut addr (liftValue value) Ledger.Babbage.NoDatum SNothing
+{-# INLINABLE fromShelleyOutput #-}
 
 fromAlonzoOutput
     :: forall crypto.
@@ -722,19 +743,6 @@ fromAlonzoOutput (Ledger.Alonzo.TxOut addr value datum) =
                 value
                 (Ledger.Babbage.DatumHash datumHash)
                 SNothing
-
-fromByronOutput
-    :: forall crypto.
-        ( Crypto crypto
-        )
-    => Ledger.Byron.TxOut
-    -> Ledger.Core.TxOut (BabbageEra crypto)
-fromByronOutput (Ledger.Byron.TxOut address value) =
-    Ledger.Babbage.TxOut
-        (Ledger.AddrBootstrap (Ledger.BootstrapAddress address))
-        (inject $ Ledger.Coin $ toInteger $ Ledger.Byron.unsafeGetLovelace value)
-        Ledger.Babbage.NoDatum
-        SNothing
 
 getAddress
     :: Output
@@ -805,13 +813,14 @@ fromAllegraAuxiliaryData liftScript (Ledger.MaryAllegra.AuxiliaryData _ scripts)
         (\(liftScript -> s) -> Map.insert (hashScript s) s)
         m0
         scripts
+{-# INLINABLE fromAllegraAuxiliaryData #-}
 
 fromAllegraScript
     :: Ledger.MaryAllegra.Timelock StandardCrypto
     -> Script
 fromAllegraScript =
     Ledger.TimelockScript
-{-# INLINABLE fromAllegraScript  #-}
+{-# INLINABLE fromAllegraScript #-}
 
 fromMaryScript
     :: Ledger.MaryAllegra.Timelock StandardCrypto
@@ -843,6 +852,7 @@ fromAlonzoAuxiliaryData liftScript Ledger.AuxiliaryData{Ledger.scripts} m0 =
         (\(liftScript -> s) -> Map.insert (hashScript s) s)
         m0
         scripts
+{-# INLINABLE fromAlonzoAuxiliaryData #-}
 
 fromBabbageScript
     :: Ledger.Script (BabbageEra StandardCrypto)
@@ -883,6 +893,7 @@ unsafeScriptFromBytes
     -> Script
 unsafeScriptFromBytes =
     fromMaybe (error "unsafeScriptFromBytes") . scriptFromBytes
+{-# INLINABLE unsafeScriptFromBytes #-}
 
 scriptFromBytes
     :: ByteString
@@ -926,6 +937,7 @@ unsafeScriptHashFromBytes
     -> ScriptHash
 unsafeScriptHashFromBytes =
     fromMaybe (error "unsafeScriptFromBytes") . scriptHashFromBytes
+{-# INLINABLE unsafeScriptHashFromBytes #-}
 
 scriptHashFromBytes
     :: ByteString
@@ -941,12 +953,14 @@ scriptHashToBytes
     -> ByteString
 scriptHashToBytes (Ledger.ScriptHash (UnsafeHash scriptHash)) =
     fromShort scriptHash
+{-# INLINABLE scriptHashToBytes #-}
 
 scriptHashToText
     :: ScriptHash
     -> Text
 scriptHashToText (Ledger.ScriptHash (UnsafeHash scriptHash)) =
     encodeBase16 (fromShort scriptHash)
+{-# INLINABLE scriptHashToText #-}
 
 scriptHashFromText
     :: Text
@@ -963,6 +977,7 @@ scriptHashToJson
     -> Json.Encoding
 scriptHashToJson =
     Json.text . scriptHashToText
+{-# INLINABLE scriptHashToJson #-}
 
 -- Datum
 
@@ -1002,6 +1017,7 @@ hashDatum
     -> Maybe DatumHash
 hashDatum =
     strictMaybeToMaybe . Ledger.datumDataHash
+{-# INLINABLE hashDatum #-}
 
 -- DatumHash
 
@@ -1032,6 +1048,7 @@ datumHashToText
     -> Text
 datumHashToText =
     encodeBase16 . Ledger.originalBytes
+{-# INLINABLE datumHashToText #-}
 
 datumHashFromText
     :: Text
@@ -1053,12 +1070,14 @@ unsafeDatumHashFromBytes =
     . UnsafeHash
     . toShort
     . sizeInvariant (== (digestSize @Blake2b_256))
+{-# INLINABLE unsafeDatumHashFromBytes #-}
 
 datumHashToJson
     :: DatumHash
     -> Json.Encoding
 datumHashToJson =
     hashToJson . Ledger.extractHash
+{-# INLINABLE datumHashToJson #-}
 
 -- BinaryData
 
@@ -1102,6 +1121,7 @@ unsafeBinaryDataFromBytes
     -> BinaryData
 unsafeBinaryDataFromBytes =
     either (error . toText) identity . Ledger.makeBinaryData . toShort
+{-# INLINABLE unsafeBinaryDataFromBytes #-}
 
 fromAlonzoData
     :: Ledger.Data (AlonzoEra StandardCrypto)
@@ -1183,14 +1203,17 @@ type PolicyId = Ledger.PolicyID StandardCrypto
 unsafePolicyIdFromBytes :: ByteString -> PolicyId
 unsafePolicyIdFromBytes =
     maybe (error "unsafePolicyIdFromBytes") Ledger.PolicyID . scriptHashFromBytes
+{-# INLINABLE unsafePolicyIdFromBytes #-}
 
 policyIdFromText :: Text -> Maybe PolicyId
 policyIdFromText =
     fmap Ledger.PolicyID . scriptHashFromText
+{-# INLINABLE policyIdFromText #-}
 
 policyIdToText :: PolicyId -> Text
 policyIdToText =
     scriptHashToText . Ledger.policyID
+{-# INLINABLE policyIdToText #-}
 
 -- AssetName
 
@@ -1198,12 +1221,14 @@ type AssetName = Ledger.AssetName
 
 assetNameMaxLength :: Int
 assetNameMaxLength = 32
+{-# INLINABLE assetNameMaxLength #-}
 
 unsafeAssetNameFromBytes :: ByteString -> Ledger.AssetName
 unsafeAssetNameFromBytes =
     Ledger.AssetName
     . toShort
     . sizeInvariant (<= assetNameMaxLength)
+{-# INLINABLE unsafeAssetNameFromBytes #-}
 
 assetNameFromText :: Text -> Maybe AssetName
 assetNameFromText (encodeUtf8 -> bytes) = do
@@ -1212,8 +1237,9 @@ assetNameFromText (encodeUtf8 -> bytes) = do
     unsafeAssetNameFromBytes <$> eitherToMaybe (decodeBase16 bytes)
 
 assetNameToText :: AssetName -> Text
-assetNameToText (Ledger.AssetName assetName) =
-    encodeBase16 (fromShort assetName)
+assetNameToText =
+    encodeBase16 . fromShort . Ledger.assetName
+{-# INLINABLE assetNameToText #-}
 
 -- Address
 
@@ -1278,18 +1304,21 @@ headerHashFromText
     -> Maybe (HeaderHash Block)
 headerHashFromText =
     fmap (OneEraHash . hashToBytesShort) . hashFromTextAsHex @Blake2b_256
+{-# INLINABLE headerHashFromText #-}
 
 headerHashToJson
     :: HeaderHash Block
     -> Json.Encoding
 headerHashToJson =
     byteStringToJson . fromShort . toShortRawHash (Proxy @Block)
+{-# INLINABLE headerHashToJson #-}
 
 unsafeHeaderHashFromBytes
     :: ByteString
     -> HeaderHash Block
 unsafeHeaderHashFromBytes =
     fromRawHash (Proxy @Block)
+{-# INLINABLE unsafeHeaderHashFromBytes #-}
 
 -- Tip
 
@@ -1319,6 +1348,7 @@ getTipSlotNo tip =
 distanceToTip :: Tip -> SlotNo -> Word64
 distanceToTip =
     distanceToSlot . getTipSlotNo
+{-# INLINABLE distanceToTip #-}
 
 -- Point
 
@@ -1359,6 +1389,7 @@ getPointHeaderHash = \case
 unsafeGetPointHeaderHash :: HasCallStack => Point -> HeaderHash Block
 unsafeGetPointHeaderHash =
     fromMaybe (error "Point is 'Origin'") . getPointHeaderHash
+{-# INLINABLE unsafeGetPointHeaderHash #-}
 
 pointToJson
     :: Point
@@ -1377,6 +1408,7 @@ pointToJson = \case
 slotNoToJson :: SlotNo -> Json.Encoding
 slotNoToJson =
     Json.integer . toInteger . unSlotNo
+{-# INLINABLE slotNoToJson #-}
 
 -- | Parse a slot number from a text string.
 slotNoFromText :: Text -> Maybe SlotNo
@@ -1386,8 +1418,9 @@ slotNoFromText txt = do
     pure (SlotNo slotNo)
 
 slotNoToText :: SlotNo -> Text
-slotNoToText (SlotNo sl) =
-    show sl
+slotNoToText =
+    show . unSlotNo
+{-# INLINABLE slotNoToText #-}
 
 distanceToSlot :: SlotNo -> SlotNo -> Word64
 distanceToSlot (SlotNo a) (SlotNo b)
@@ -1405,6 +1438,7 @@ hashToJson (UnsafeHash h) =
 digestSize :: forall alg. HashAlgorithm alg => Int
 digestSize =
     fromIntegral (sizeHash (Proxy @alg))
+{-# INLINABLE digestSize #-}
 
 -- WithOrigin
 
