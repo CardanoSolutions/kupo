@@ -25,7 +25,6 @@ extra-source-files:
     db/v1.0.1/001.sql
     db/v2.0.0/001.sql
     db/v2.0.0/002.sql
-    db/v2.0.0/003.sql
 data-files:
     docs/openapi.yaml
 

@@ -16,11 +16,12 @@ CREATE TABLE `inputs` (
   `address` TEXT NOT NULL,
   `value` BLOB NOT NULL,
   `datum_hash` BLOB,
+  `script_hash` BLOB,
   `created_at` INTEGER NOT NULL,
   `spent_at` INTEGER
 );
-CREATE INDEX `inputsByAddress` ON `inputs` (`address`, `spent_at`);
-
+CREATE INDEX `inputsByAddress`   ON `inputs` (`address`, `spent_at`);
+CREATE INDEX `inputsByDatumHash` ON `inputs` (`datum_hash`);
 
 CREATE TABLE `checkpoints` (
   `header_hash` BLOB NOT NULL,
@@ -34,6 +35,12 @@ CREATE TABLE `binary_data` (
 );
 CREATE INDEX `binaryDataByHash` ON `binary_data` (`binary_data_hash`);
 
+CREATE TABLE `scripts` (
+  `script_hash` BLOB PRIMARY KEY NOT NULL,
+  `script` BLOB NOT NULL
+);
+CREATE INDEX `scriptByHash` ON `scripts` (`script_hash`);
+
 CREATE TABLE `patterns` (
   `pattern` TEXT PRIMARY KEY NOT NULL
 );
@@ -45,21 +52,24 @@ CREATE TABLE `patterns` (
 <p align="right"><code>v2.0.0</code></p>
 <hr/>
 
-### Migration to `version=7`
-
-- New table `binary_data` indexing binary data by hashes.
-
 ### Migration to `version=6`
 
 - Set `synchronous = normal` 
 
 ### Migration to `version=5`
 
-- Add columns `spent_at`;
-- Rename column `slot_no` into `created_at`;
-- Remove column `header_hash` (now obtain via joining on the `checkpoints` table);
-- Add compound index (address, spent_at) for `inputs`;
-- Add index on `slot_no` for `checkpoints`.
+- Add columns `inputs.spent_at`;
+- Rename column `inputs.slot_no` into `inputs.created_at`;
+- Remove column `inputs.header_hash` (now obtained via joining on the `checkpoints` table);
+- Add compound index `inputsByAddress` for `inputs`;
+- Add index `checkpointsBySlotNo` on `checkpoints`;
+- New table `binary_data` indexing binary data by hashes;
+- New table `scripts` indexing scripts (Plutus & native) by hashes;
+- New columns `inputs.datum_hash` & `inputs.script_hash` with foreign references to `binary_data` and `scripts` respectively;
+- Add index `inputsByDatumHash` on `inputs`;
+- Mark `inputs.address` columns as `COLLATE NOCASE`;
+- Addresses in `inputs.address` are stored differently (see [bf5e98a6](https://github.com/CardanoSolutions/kupo/commit/bf5e98a6a57eaacf21d3e0ab0fecbac5c5af8028)).
+
 
 <p align="right"><code>v1.0.1</code></p>
 <hr/>
