@@ -2,6 +2,8 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE PatternSynonyms #-}
+
 module Test.Kupo.App.Http.Client where
 
 import Kupo.Prelude
@@ -24,6 +26,7 @@ import Kupo.Data.Cardano
     , Blake2b_256
     , Datum
     , DatumHash
+    , pattern GenesisPoint
     , OutputReference
     , Point
     , Script
@@ -259,12 +262,20 @@ decodeOutputReference o = mkOutputReference
     <*> o .: "output_index"
 
 decodePoint :: Json.Value -> Json.Parser Point
-decodePoint = Json.withObject "Point" $ \o -> do
-    (slotNo :: Word) <- o .: "slot_no"
-    headerHash <- o .: "header_hash"
-    case pointFromText (show slotNo <> "." <> headerHash) of
-        Nothing -> fail "decodePoint"
-        Just pt -> pure pt
+decodePoint v = decodePointSlot v <|> decodeGenesisPoint v
+  where
+    decodeGenesisPoint =
+        Json.withText "GenesisPoint" $ \t -> do
+            guard (t == "origin")
+            pure GenesisPoint
+
+    decodePointSlot =
+        Json.withObject "Point" $ \o -> do
+            (slotNo :: Word) <- o .: "slot_no"
+            headerHash <- o .: "header_hash"
+            case pointFromText (show slotNo <> "." <> headerHash) of
+                Nothing -> fail "decodePoint"
+                Just pt -> pure pt
 
 decodeAddress
     :: Text

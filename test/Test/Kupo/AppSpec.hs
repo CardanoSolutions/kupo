@@ -73,6 +73,8 @@ import Kupo.Data.Configuration
     , WorkDir (..)
     , mailboxCapacity
     )
+import Kupo.Data.Http.GetCheckpointMode
+    ( GetCheckpointMode (..) )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..) )
 import Kupo.Data.Ogmios
@@ -96,6 +98,7 @@ import Test.Kupo.Data.Generators
     , genInputManagement
     , genOutput
     , genOutputReference
+    , genScript
     , genScriptHash
     , genTransactionId
     , generateWith
@@ -217,6 +220,7 @@ data Event (r :: Type -> Type)
     = DoRollForward Tip PartialBlock
     | DoRollBackward Tip Point
     | GetMostRecentCheckpoint
+    | GetPreviousCheckpoint SlotNo
     | GetUtxo
     | GetDatumByHash DatumHash
     | GetScriptByHash ScriptHash
@@ -236,6 +240,8 @@ instance Show (Event r) where
             toString $ "(DoRollBackward " <> showPoint pt <> ")"
         GetMostRecentCheckpoint ->
             "GetMostRecentCheckpoint"
+        GetPreviousCheckpoint sl ->
+            toString $ "(GetPreviousCheckpoint " <> showSlotNo sl <> ")"
         GetUtxo ->
             "GetUtxo"
         GetDatumByHash hash ->
@@ -247,7 +253,7 @@ instance Show (Event r) where
 
 data Response (r :: Type -> Type)
     = Unit ()
-    | MostRecentCheckpoint Point
+    | Checkpoint Point
     | Utxo (Set OutputReference)
     | DatumByHash (Maybe BinaryData)
     | ScriptByHash (Maybe Script)
@@ -258,8 +264,8 @@ instance Show (Response r) where
     show = \case
         Unit () ->
             "()"
-        MostRecentCheckpoint pt ->
-            toString $ "(MostRecentCheckpoint " <> showPoint pt <> ")"
+        Checkpoint pt ->
+            toString $ "(Checkpoint " <> showPoint pt <> ")"
         Utxo outRefs ->
             toString $ "(Utxo " <> T.intercalate "," (showOutputReference <$> Set.toList outRefs) <> ")"
         DatumByHash bin ->
@@ -368,6 +374,8 @@ precondition (LongestRollback k) model = \case
                     if point `elem` points && point /= tip && d <= k
                     then Top
                     else Bot
+    GetPreviousCheckpoint{} ->
+        Top
     GetMostRecentCheckpoint ->
         Top
     GetUtxo ->
@@ -433,6 +441,8 @@ transition model cmd _res =
                             (mempool model <> foldMap blockBody (reverse dropped))
                     }
         GetMostRecentCheckpoint ->
+            model
+        GetPreviousCheckpoint{} ->
             model
         GetUtxo ->
             model
@@ -514,7 +524,8 @@ generator inputManagement model =
               )
             ]
         blocks@(tip:_) -> Just $ frequency
-            [ (5, pure GetMostRecentCheckpoint)
+            [ (3, pure GetMostRecentCheckpoint)
+            , (3, GetPreviousCheckpoint <$> elements (getPointSlotNo . blockPoint <$> blocks))
             , (5, pure GetUtxo)
             , (5, GetDatumByHash <$> genOrSelectDatum inputManagement model)
             , (3, GetScriptByHash <$> genOrSelectScript model)
@@ -618,8 +629,10 @@ genPartialTransaction = do
     datums <-
         replicateM nDatums (lift genBinaryData)
         & fmap (foldMap (\v -> Map.singleton (hashBinaryData v) v))
-    -- FIXME: Generate some scripts and have post-conditions about them.
-    let scripts = mempty
+    nScripts <- lift $ elements [0, 1, 2]
+    scripts <-
+        replicateM nScripts (lift genScript)
+        & fmap (foldMap (\v -> Map.singleton (hashScript v) v))
     pure PartialTransaction { inputs = Set.toList inputSet, outputs, datums, scripts }
   where
     maxNumberOfInputs = 3
@@ -733,7 +746,9 @@ semantics pause HttpClient{..} queue = \case
             cp' <- getMostRecentCheckpoint
             pure (cp' < cp)
     GetMostRecentCheckpoint -> do
-        MostRecentCheckpoint <$> getMostRecentCheckpoint
+        Checkpoint <$> getMostRecentCheckpoint
+    GetPreviousCheckpoint sl -> do
+        Checkpoint <$> getPreviousCheckpoint sl
     GetUtxo -> do
         Utxo . foldMap (Set.singleton . outputReference) <$> getAllMatches OnlyUnspent
     GetDatumByHash hash ->
@@ -748,6 +763,11 @@ semantics pause HttpClient{..} queue = \case
             [] -> GenesisPoint
             h:_ -> h
 
+    getPreviousCheckpoint =
+        getCheckpointBySlot GetCheckpointClosestAncestor
+        >=>
+        maybe (fail "getPreviousCheckpoint: no previous checkpoint") pure
+
 -- | Here we mock the server behavior using our model; this is used within the
 -- generator itself, to advance the state-machine. Because the model is our
 -- making, the mock should be trivial to implement.
@@ -761,9 +781,19 @@ mock model = \case
     DoRollBackward{} ->
         pure (Unit ())
     GetMostRecentCheckpoint ->
-        case currentChain model of
-            [] -> pure (MostRecentCheckpoint GenesisPoint)
-            h:_ -> pure (MostRecentCheckpoint (blockPoint h))
+        pure $ Checkpoint $ case currentChain model of
+            []  -> GenesisPoint
+            h:_ -> blockPoint h
+    GetPreviousCheckpoint sl ->
+        let
+            search = \case
+                [] -> GenesisPoint
+                (blockPoint -> h):rest ->
+                    if getPointSlotNo h <= sl
+                    then h
+                    else search rest
+         in
+            pure $ Checkpoint $ search (currentChain model)
     GetUtxo ->
         pure (Utxo (unspentOutputReferences model Set.\\ genesisUtxo))
     GetDatumByHash hash ->
@@ -807,11 +837,15 @@ newMockProducer queue callback = do
 
 showPoint :: Point -> Text
 showPoint =
-    slotNoToText . getPointSlotNo
+    showSlotNo . getPointSlotNo
 
 showTip :: Tip -> Text
 showTip =
-    slotNoToText . getTipSlotNo
+    showSlotNo . getTipSlotNo
+
+showSlotNo :: SlotNo -> Text
+showSlotNo =
+    slotNoToText
 
 showOutputReference :: OutputReference -> Text
 showOutputReference o = mconcat

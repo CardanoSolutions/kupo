@@ -2,6 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App.Http
@@ -30,6 +31,7 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
     ( DatumHash
+    , pattern GenesisPoint
     , ScriptHash
     , SlotNo (..)
     , binaryDataToJson
@@ -301,19 +303,21 @@ handleGetCheckpointBySlot headers mSlotNo query Database{..} =
     handleGetCheckpointBySlot' slotNo mode = do
         let successor = succ (unSlotNo slotNo)
         points <- runReadOnlyTransaction (listAncestorsDesc successor 1 pointFromRow)
-        pure $ responseJsonEncoding status200 headers $
-            case points of
-                [point] ->
-                    case mode of
-                        GetCheckpointStrict
-                            | getPointSlotNo point == slotNo ->
-                                pointToJson point
-                            | otherwise ->
-                                Json.null_
-                        GetCheckpointClosestAncestor ->
-                            pointToJson point
-                _ ->
-                    Json.null_
+        pure $ responseJsonEncoding status200 headers $ case mode of
+            GetCheckpointStrict ->
+                case points of
+                    [point] | getPointSlotNo point == slotNo ->
+                        pointToJson point
+                    _ | slotNo == 1 ->
+                        pointToJson GenesisPoint
+                    _ ->
+                        Json.null_
+            GetCheckpointClosestAncestor ->
+                case points of
+                    [point] ->
+                        pointToJson point
+                    _ ->
+                        pointToJson GenesisPoint
 
 --
 -- /v1/matches
