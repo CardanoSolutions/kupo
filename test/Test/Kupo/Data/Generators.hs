@@ -184,7 +184,7 @@ genOutput = mkOutput
 
 genSlotNo :: Gen SlotNo
 genSlotNo = do
-    SlotNo <$> arbitrary
+    SlotNo <$> choose (1, maxBound `div` 2  - 1)
 
 genTransactionId :: Gen TransactionId
 genTransactionId =

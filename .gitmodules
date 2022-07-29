@@ -2,5 +2,5 @@
 	path = config
 	url = git@github.com:input-output-hk/cardano-configurations.git
 [submodule "test/ogmios"]
-	path = test/ogmios
+	path = test/vectors/ogmios
 	url = git@github.com:cardanosolutions/ogmios.git

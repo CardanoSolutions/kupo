@@ -1415,6 +1415,7 @@ slotNoFromText :: Text -> Maybe SlotNo
 slotNoFromText txt = do
     (slotNo, remSlotNo) <- either (const Nothing) Just (T.decimal txt)
     guard (T.null remSlotNo)
+    guard (slotNo < maxBound `div` 2 - 1)
     pure (SlotNo slotNo)
 
 slotNoToText :: SlotNo -> Text
