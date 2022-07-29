@@ -1,5 +1,3 @@
-PRAGMA journal_mode = WAL;
-
 CREATE TABLE IF NOT EXISTS inputs (
   output_reference BLOB NOT NULL,
   address TEXT NOT NULL,

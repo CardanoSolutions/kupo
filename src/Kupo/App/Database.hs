@@ -181,7 +181,10 @@ withDatabase
     -> IO a
 withDatabase tr mode (DBLock readers writer) k filePath action = do
     withConnection filePath $ \conn -> do
-        when (mode == LongLived) (databaseVersion conn >>= runMigrations tr conn)
+        when (mode == LongLived) $ do
+            databaseVersion conn >>= runMigrations tr conn
+            execute_ conn "PRAGMA synchronous = NORMAL"
+            execute_ conn "PRAGMA journal_mode = WAL"
         action (mkDatabase tr k (bracketConnection conn))
   where
     -- The heuristic below aims at favoring light reader/writer over the main
@@ -542,7 +545,7 @@ withTransaction conn immediate action =
 
 type MigrationRevision = Int
 
-data Migration = SchemaMigration [Query] | SettingsMigration Query
+type Migration = [Query]
 
 databaseVersion :: Connection -> IO MigrationRevision
 databaseVersion conn =
@@ -567,35 +570,27 @@ runMigrations tr conn currentVersion = do
     executeMigrations = \case
         [] -> do
             pure ()
-        (SchemaMigration instructions):rest -> do
+        (instructions):rest -> do
             void $ withTransaction conn True $ traverse (execute_ conn) instructions
-            executeMigrations rest
-        (SettingsMigration instruction):rest -> do
-            execute_ conn instruction
             executeMigrations rest
 
 migrations :: [Migration]
 migrations =
     [ mkMigration ix (decodeUtf8 migration)
-    | (ix, (migration, mkMigration)) <- zip
+    | (ix, migration) <- zip
         [1..]
-        [ ( $(embedFile "db/v1.0.0-beta/001.sql"), mkSchemaMigration   )
-        , ( $(embedFile "db/v1.0.0/001.sql"),      mkSchemaMigration   )
-        , ( $(embedFile "db/v1.0.0/002.sql"),      mkSchemaMigration   )
-        , ( $(embedFile "db/v1.0.1/001.sql"),      mkSchemaMigration   )
-        , ( $(embedFile "db/v2.0.0/001.sql"),      mkSchemaMigration   )
-        , ( $(embedFile "db/v2.0.0/002.sql"),      mkSettingsMigration )
+        [ $(embedFile "db/v1.0.0-beta/001.sql")
+        , $(embedFile "db/v1.0.0/001.sql")
+        , $(embedFile "db/v1.0.0/002.sql")
+        , $(embedFile "db/v1.0.1/001.sql")
+        , $(embedFile "db/v2.0.0/001.sql")
         ]
     ]
   where
-    mkSchemaMigration :: Int -> Text -> Migration
-    mkSchemaMigration i sql = SchemaMigration $
+    mkMigration :: Int -> Text -> Migration
+    mkMigration i sql =
         ("PRAGMA user_version = " <> show i <> ";")
         : (fmap Query . filter (not . T.null . T.strip) . T.splitOn ";") sql
-
-    mkSettingsMigration :: Int -> Text -> Migration
-    mkSettingsMigration i sql = SettingsMigration $
-        ("PRAGMA user_version = " <> show i <> ";") <> " " <> Query sql
 
 --
 -- Exceptions

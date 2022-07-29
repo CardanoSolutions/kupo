@@ -137,7 +137,7 @@ newtype LongestRollback = LongestRollback
 -- users would in general not necessarily know what to put, this isn't
 -- configurable as such. Sensible numbers were picked.
 mailboxCapacity :: Natural
-mailboxCapacity = 400
+mailboxCapacity = 200
 {-# INLINABLE mailboxCapacity #-}
 
 -- | Maximum pipelining at any given time. No need to go too high here, it only
