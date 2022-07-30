@@ -66,7 +66,6 @@ import Kupo.Data.Cardano
     , scriptHashFromText
     , slotNoToJson
     , transactionIdFromHash
-    , transactionIdFromHash
     , unsafeMakeSafeHash
     , unsafeValueFromList
     , withReferences

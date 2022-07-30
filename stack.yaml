@@ -5,3 +5,9 @@ compiler: ghc-8.10.7 # Simply for reference, already inferred from the resolver.
 packages:
 - .
 - modules/websockets-json
+
+# Uncomment compile with profiling enabled.
+#
+# ghc-options:
+#   plutus-core:
+#     -fexternal-interpreter

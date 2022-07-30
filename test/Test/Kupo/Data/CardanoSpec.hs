@@ -13,7 +13,6 @@ import Kupo.Prelude
 import Kupo.Data.Cardano
     ( Blake2b_224
     , pattern GenesisPoint
-    , SlotNo (..)
     , datumHashFromText
     , datumHashToText
     , digest

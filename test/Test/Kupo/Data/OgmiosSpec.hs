@@ -31,12 +31,12 @@ import Data.Aeson.Types as Json
 spec :: Spec
 spec = parallel $ context "can decode relevant Ogmios' test vectors" $ do
     context "decodeFindIntersectResponse" $ do
-        let dir = "./test/ogmios/server/test/vectors/ChainSync/Response/FindIntersect"
+        let dir = "./test/vectors/ogmios/server/test/vectors/ChainSync/Response/FindIntersect"
         vectors <- runIO (listDirectory dir)
         propVector ((dir </>) <$> vectors) (decodeFindIntersectResponse [])
 
     context "decodeRequestNextResponse" $ do
-        let dir = "./test/ogmios/server/test/vectors/ChainSync/Response/RequestNext"
+        let dir = "./test/vectors/ogmios/server/test/vectors/ChainSync/Response/RequestNext"
         vectors <- runIO (listDirectory dir)
         propVector ((dir </>) <$> vectors) decodeRequestNextResponse
 
