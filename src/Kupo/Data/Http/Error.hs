@@ -11,7 +11,7 @@ import Kupo.Prelude
 import Kupo.Data.Http.Response
     ( responseJson )
 import Network.HTTP.Types.Status
-    ( status400, status404, status406 )
+    ( status400, status404, status406, status500 )
 import Network.Wai
     ( Response )
 
@@ -89,6 +89,51 @@ malformedScriptHash =
         { hint = "The given path parameter isn't a well-formed script hash digest. \
                  \This must be a blake2b-224 hash digest encoded in base16 (\
                  \thus, 56 characters once encoded)."
+        }
+
+malformedPoint :: Response
+malformedPoint =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Couldn't decode the provided point (or slot); Either it is \
+                 \missing from the request body or it is not well-formed. You \
+                 \can provide either a slot, or a slot and a header hash (a.k.a \
+                 \a point). Please refer to the API reference for details <https://cardanosolutions.github.io/kupo>."
+        }
+
+unsafeRollbackBeyondSafeZone :: Response
+unsafeRollbackBeyondSafeZone =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Beware! The point you have provided is beyond the safe zone. \
+                 \It means that while the server is synchronizing, the content \
+                 \of the database may not fully reflect the state of the chain \
+                 \at that point in time. This is only a transient state and the \
+                 \server will eventually recover the latest state. You can go \
+                 \as far as 36h in the past without issue (the safe zone), but \
+                 \beyond this limit, the server can't guarantee data integrity \
+                 \during syncing. If you still want to proceed, pass 'unsafe_allow_beyond_safe_zone' \
+                 \as 'limit' to the request. See also the API reference for more \
+                 \details about the safe zone: <https://cardanosolutions.github.io/kupo#putPattern1Ary>."
+        }
+
+nonExistingPoint :: Response
+nonExistingPoint =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "The provided point (or slot) is unknown. Please provide an \
+                 \existing point from the past. Note that if you provide a very \
+                 \recent point (e.g. 1-3 blocks old), it can happen that the \
+                 \point disappear should a rollback happen between the moment \
+                 \you looked it up and the moment you make this query."
+        }
+
+failedToRollback :: Response
+failedToRollback =
+    responseJson status500 Default.headers $ HttpError
+        { hint = "Whoops, the server was unable to rollback to the given point. \
+                 \This can happen in rare cases (especially on recent points) \
+                 \when the target point 'disappeared' from the chain while \
+                 \trying to rollback to it. This is a transient error, retrying \
+                 \should work. In the meantime, the server has restarted syncing \
+                 \back where it was and your request has had no effect."
         }
 
 notFound :: Response

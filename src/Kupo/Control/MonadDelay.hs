@@ -11,7 +11,9 @@ import Kupo.Prelude
 
 import Control.Monad.Class.MonadTimer
     ( MonadDelay (..) )
+import Kupo.Control.MonadTime
+    ( DiffTime )
 
-foreverCalmly :: (MonadDelay m) => m a -> m a
+foreverCalmly :: (MonadDelay m) => m DiffTime -> m Void
 foreverCalmly a = do
-    let a' = a *> threadDelay 5 *> a' in a'
+    let a' = a >>= threadDelay >> a' in a'

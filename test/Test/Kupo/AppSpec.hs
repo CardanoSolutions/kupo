@@ -66,6 +66,8 @@ import Kupo.Data.Cardano
     , transactionIdToText
     , withReferences
     )
+import Kupo.Data.ChainSync
+    ( ForcedRollbackHandler )
 import Kupo.Data.Configuration
     ( Configuration (..)
     , InputManagement (..)
@@ -808,14 +810,15 @@ mock model = \case
 -- does nothing more than passing information around in the mailbox.
 newMockProducer
     :: TBQueue IO RequestNextResponse
-    -> (  Mailbox IO (Tip, PartialBlock) (Tip, Point)
+    -> (  (Point -> ForcedRollbackHandler IO -> IO ())
+       -> Mailbox IO (Tip, PartialBlock) (Tip, Point)
        -> ChainSyncClient IO PartialBlock
        -> IO ()
        )
     -> IO ()
 newMockProducer queue callback = do
     mailbox <- atomically (newMailbox mailboxCapacity)
-    callback mailbox $ \_ -> \case
+    callback forcedRollbackCallback mailbox $ \_ -> \case
         [GenesisPoint] -> do
             const $ forever $ atomically $ do
                 readTBQueue queue >>= \case
@@ -829,6 +832,9 @@ newMockProducer queue callback = do
                 \Indeed, the goal is to test arbitrary sequences \
                 \of execution, for which starting 'from scratch' is \
                 \therefore not only sufficient but necessary."
+  where
+    forcedRollbackCallback _point _handler =
+        fail "Mock producer cannot force rollback."
 
 --------------------------------------------------------------------------------
 ---- Pretty Printers

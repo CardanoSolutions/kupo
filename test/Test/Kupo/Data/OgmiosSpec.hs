@@ -10,6 +10,8 @@ import Kupo.Prelude
 
 import Data.List
     ( (!!) )
+import Kupo.App.ChainSync.Ogmios
+    ( intersectionNotFound )
 import Kupo.Data.Ogmios
     ( decodeFindIntersectResponse, decodeRequestNextResponse )
 import System.Directory
@@ -33,7 +35,7 @@ spec = parallel $ context "can decode relevant Ogmios' test vectors" $ do
     context "decodeFindIntersectResponse" $ do
         let dir = "./test/vectors/ogmios/server/test/vectors/ChainSync/Response/FindIntersect"
         vectors <- runIO (listDirectory dir)
-        propVector ((dir </>) <$> vectors) (decodeFindIntersectResponse [])
+        propVector ((dir </>) <$> vectors) (decodeFindIntersectResponse $ intersectionNotFound [])
 
     context "decodeRequestNextResponse" $ do
         let dir = "./test/vectors/ogmios/server/test/vectors/ChainSync/Response/RequestNext"

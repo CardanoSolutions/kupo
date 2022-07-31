@@ -171,6 +171,7 @@ module Kupo.Data.Cardano
     , pattern BlockPoint
     , pointFromText
     , pointToJson
+    , pointSlot
     , getPointSlotNo
     , getPointHeaderHash
     , unsafeGetPointHeaderHash

@@ -65,6 +65,7 @@ library
       Kupo.Data.Http.Default
       Kupo.Data.Http.Error
       Kupo.Data.Http.FilterMatchesBy
+      Kupo.Data.Http.ForcedRollback
       Kupo.Data.Http.GetCheckpointMode
       Kupo.Data.Http.Response
       Kupo.Data.Http.Status

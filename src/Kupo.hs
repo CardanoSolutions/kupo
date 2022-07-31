@@ -54,6 +54,8 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
     ( IsBlock, Point, Tip )
+import Kupo.Data.ChainSync
+    ( ForcedRollbackHandler )
 import Kupo.Data.Configuration
     ( Configuration (..), WorkDir (..) )
 import Kupo.Data.Health
@@ -93,7 +95,8 @@ kupo tr = do
 kupoWith
     :: Tracers IO Concrete
     -> ( ( forall block. IsBlock block
-          => Mailbox IO (Tip, block) (Tip, Point)
+          => (Point -> ForcedRollbackHandler IO -> IO ())
+          -> Mailbox IO (Tip, block) (Tip, Point)
           -> ChainSyncClient IO block
           -> IO ()
          ) -> IO ()
@@ -121,7 +124,7 @@ kupoWith tr withProducer =
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
         let tracerChainSync =  contramap ConsumerChainSync . tracerConsumer
-        withProducer $ \mailbox producer -> do
+        withProducer $ \forceRollback mailbox producer -> do
             concurrently4
                 -- HTTP Server
                 ( httpServer
@@ -132,6 +135,7 @@ kupoWith tr withProducer =
                     -- isn't meant to be a public-facing web server serving millions
                     -- of clients.
                     (withDatabase nullTracer ShortLived lock longestRollback dbFile)
+                    forceRollback
                     patterns
                     (readHealth health)
                     serverHost
@@ -142,7 +146,6 @@ kupoWith tr withProducer =
                 ( consumer
                     (tracerConsumer tr)
                     inputManagement
-                    longestRollback
                     notifyTip
                     mailbox
                     patterns

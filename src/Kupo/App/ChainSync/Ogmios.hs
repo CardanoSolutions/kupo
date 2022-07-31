@@ -5,6 +5,10 @@
 module Kupo.App.ChainSync.Ogmios
     ( connect
     , runChainSyncClient
+
+      -- * Internal
+    , intersectionNotFound
+    , forcedIntersectionNotFound
     ) where
 
 import Kupo.Prelude
@@ -16,7 +20,7 @@ import Kupo.Control.MonadSTM
 import Kupo.Control.MonadThrow
     ( MonadThrow (..) )
 import Kupo.Data.Cardano
-    ( Point, Tip )
+    ( Point, SlotNo, Tip, WithOrigin, pointSlot )
 import Kupo.Data.Configuration
     ( maxInFlight )
 import Kupo.Data.Ogmios
@@ -28,6 +32,8 @@ import Kupo.Data.Ogmios
     , encodeRequestNext
     )
 
+import Kupo.Data.ChainSync
+    ( ForcedRollbackHandler (..), IntersectionNotFoundException (..) )
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
 
@@ -37,24 +43,57 @@ runChainSyncClient
         , MonadSTM m
         , MonadThrow m
         )
-    => Mailbox m (Tip, PartialBlock) (Tip, Point)
+    => TMVar m (Point, ForcedRollbackHandler m)
+    -> Mailbox m (Tip, PartialBlock) (Tip, Point)
     -> [Point]
     -> WS.Connection
     -> m ()
-runChainSyncClient mailbox pts ws = do
+runChainSyncClient forcedRollbackVar mailbox pts ws = do
     WS.sendJson ws (encodeFindIntersect pts)
-    WS.receiveJson ws (decodeFindIntersectResponse pts) >>= \case
+    WS.receiveJson ws (decodeFindIntersectResponse (intersectionNotFound pts)) >>= \case
         Left notFound -> throwIO notFound
-        Right () -> pure ()
-    -- NOTE: burst the server with some initial requests, to leverage pipelining.
-    replicateM_ maxInFlight (WS.sendJson ws encodeRequestNext)
-    forever $ do
-        WS.receiveJson ws decodeRequestNextResponse >>= \case
-            RollBackward tip point -> do
-                atomically (putIntermittentMessage mailbox (tip, point))
-            RollForward tip block -> do
-                atomically (putHighFrequencyMessage mailbox (tip, block))
-        WS.sendJson ws encodeRequestNext
+        Right () -> burst
+    forever $ atomically (tryTakeTMVar forcedRollbackVar) >>= \case
+        Nothing -> do
+            WS.receiveJson ws decodeRequestNextResponse >>= \case
+                RollBackward tip point -> do
+                    atomically (putIntermittentMessage mailbox (tip, point))
+                RollForward tip block -> do
+                    atomically (putHighFrequencyMessage mailbox (tip, block))
+            WS.sendJson ws encodeRequestNext
+
+        Just (pt, handler) -> do
+            replicateM_ maxInFlight (WS.receiveJson ws decodeRequestNextResponse)
+            WS.sendJson ws (encodeFindIntersect [pt])
+            WS.receiveJson ws (decodeFindIntersectResponse (forcedIntersectionNotFound pt)) >>= \case
+                Left notFound -> do
+                    onFailure handler
+                    throwIO notFound
+                Right () -> do
+                    onSuccess handler
+                    burst
+  where
+    -- Burst the server with some initial requests, to leverage pipelining.
+    burst :: m ()
+    burst = replicateM_ maxInFlight (WS.sendJson ws encodeRequestNext)
+
+--
+-- Exceptions
+--
+
+intersectionNotFound
+    :: [Point]
+    -> WithOrigin SlotNo
+    -> IntersectionNotFoundException
+intersectionNotFound (fmap pointSlot -> requestedPoints) tip =
+    IntersectionNotFound { requestedPoints, tip }
+
+forcedIntersectionNotFound
+    :: Point
+    -> WithOrigin SlotNo
+    -> IntersectionNotFoundException
+forcedIntersectionNotFound (pointSlot -> point) _tip =
+    ForcedIntersectionNotFound { point }
 
 -- Connection
 
