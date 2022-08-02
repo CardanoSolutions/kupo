@@ -66,13 +66,10 @@ import Kupo.Data.Cardano
     , scriptHashFromText
     , slotNoToJson
     , transactionIdFromHash
-    , transactionIdFromHash
     , unsafeMakeSafeHash
     , unsafeValueFromList
     , withReferences
     )
-import Kupo.Data.ChainSync
-    ( IntersectionNotFoundException (..) )
 import Kupo.Data.PartialBlock
     ( PartialBlock (..), PartialTransaction (..) )
 import Kupo.Data.Pattern
@@ -81,8 +78,6 @@ import Ouroboros.Consensus.Cardano.Block
     ( CardanoEras )
 import Ouroboros.Consensus.HardFork.Combinator
     ( OneEraHash (..) )
-import Ouroboros.Network.Block
-    ( pointSlot )
 
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Key as Key
@@ -131,10 +126,10 @@ encodePoint = \case
 -- Decoders
 
 decodeFindIntersectResponse
-    :: [Point]
+    :: (WithOrigin SlotNo -> e)
     -> Json.Value
-    -> Json.Parser (Either IntersectionNotFoundException ())
-decodeFindIntersectResponse (fmap pointSlot -> requestedPoints) json =
+    -> Json.Parser (Either e ())
+decodeFindIntersectResponse wrapException json =
     decodeIntersectionFound json <|> decodeIntersectionNotFound json
   where
     decodeIntersectionFound = Json.withObject "FindIntersectResponse" $ \o -> do
@@ -143,7 +138,7 @@ decodeFindIntersectResponse (fmap pointSlot -> requestedPoints) json =
 
     decodeIntersectionNotFound = Json.withObject "FindIntersectResponse" $ \o -> do
         tip <- o .: "result" >>= (.: "IntersectionNotFound") >>= (.: "tip") >>= decodeSlotNoOrOrigin
-        return (Left IntersectionNotFound{requestedPoints, tip})
+        return (Left (wrapException tip))
 
 decodeRequestNextResponse
     :: Json.Value

@@ -2,6 +2,8 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE PatternSynonyms #-}
+
 module Test.Kupo.App.HttpSpec
     ( spec
     ) where
@@ -40,10 +42,14 @@ import Kupo.App.Http
     ( app )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
+import Kupo.Data.Cardano
+    ( pattern BlockPoint, SlotNo (..), unsafeHeaderHashFromBytes )
+import Kupo.Data.ChainSync
+    ( ForcedRollbackHandler (..) )
 import Kupo.Data.Database
     ( binaryDataToRow, patternToRow, pointToRow, resultToRow, scriptToRow )
 import Kupo.Data.Health
-    ( Health )
+    ( ConnectionStatus (..), Health (..) )
 import Kupo.Data.Pattern
     ( Pattern )
 import Network.HTTP.Media.MediaType
@@ -59,7 +65,6 @@ import Test.Hspec.QuickCheck
 import Test.Kupo.Data.Generators
     ( genBinaryData
     , genDatumHash
-    , genHealth
     , genNonGenesisPoint
     , genPattern
     , genResult
@@ -67,7 +72,15 @@ import Test.Kupo.Data.Generators
     , genScriptHash
     )
 import Test.QuickCheck
-    ( arbitrary, counterexample, elements, generate, listOf1, oneof )
+    ( Gen
+    , arbitrary
+    , counterexample
+    , elements
+    , frequency
+    , generate
+    , listOf1
+    , oneof
+    )
 import Test.QuickCheck.Monadic
     ( assert, monadicIO, monitor, run )
 
@@ -206,17 +219,27 @@ spec = do
 
         session specification put "/v1/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.defaultRequest
-                { Wai.requestMethod = "PUT" }
-                & flip Wai.setPath "/v1/patterns/*"
+            reqBody <- liftIO $ generate genPutPatternRequestBody
+            res <- Wai.srequest $ Wai.SRequest
+                { Wai.simpleRequest = Wai.defaultRequest
+                    { Wai.requestMethod = "PUT" }
+                    & flip Wai.setPath "/v1/patterns/*"
+                , Wai.simpleRequestBody =
+                    reqBody
+                }
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
         session specification put "/v1/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.defaultRequest
-                { Wai.requestMethod = "PUT" }
-                & flip Wai.setPath "/v1/patterns/*/*"
+            reqBody <- liftIO $ generate genPutPatternRequestBody
+            res <- Wai.srequest $ Wai.SRequest
+                { Wai.simpleRequest = Wai.defaultRequest
+                    { Wai.requestMethod = "PUT" }
+                    & flip Wai.setPath "/v1/patterns/*"
+                , Wai.simpleRequestBody =
+                    reqBody
+                }
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
@@ -260,7 +283,6 @@ spec = do
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
-
 
         session' "🕱 DELETE /v1/matches/{pattern-fragment}" $ do
             overlappingFragment <- liftIO $ generate (elements Fixture.overlappingUnaryFragments)
@@ -313,6 +335,25 @@ spec = do
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "🕱 PUT /v1/patterns/{pattern-fragment} (invalid / no request body)" $ do
+            resBadRequest <-
+                liftIO (generate genInvalidPutPatternRequestBody) >>= \case
+                    Nothing ->
+                        Wai.request $ Wai.defaultRequest
+                            { Wai.requestMethod = "PUT" }
+                            & flip Wai.setPath "/v1/patterns/*"
+                    Just reqBody ->
+                        Wai.srequest $ Wai.SRequest
+                            { Wai.simpleRequest = Wai.defaultRequest
+                                { Wai.requestMethod = "PUT" }
+                                & flip Wai.setPath "/v1/patterns/*"
+                            , Wai.simpleRequestBody = reqBody
+                            }
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
   where
     noWildcard :: [Pattern]
     noWildcard =
@@ -330,16 +371,23 @@ newStubbedApplication patterns = do
     patternsVar <- newTVarIO patterns
     pure $ app
         (\callback -> callback databaseStub)
+        (\_point ForcedRollbackHandler{onSuccess} -> onSuccess)
         patternsVar
         healthStub
 
 healthStub :: IO Health
 healthStub =
-    generate genHealth
+    pure $ Health
+        { connectionStatus = Connected
+        , mostRecentCheckpoint = Just 42
+        , mostRecentNodeTip = Just 42
+        }
 
 databaseStub :: Database IO
 databaseStub = Database
-    { insertInputs =
+    { longestRollback =
+        10
+    , insertInputs =
         \_ -> return ()
     , foldInputs = \_ callback -> lift $ do
         rows <- fmap resultToRow <$> generate (listOf1 genResult)
@@ -356,8 +404,15 @@ databaseStub = Database
         \_ -> return ()
     , listCheckpointsDesc = \mk -> lift $ do
         fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
-    , listAncestorsDesc = \_ _ mk -> lift $ do
-        fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
+    , listAncestorsDesc = \sl n mk -> lift $ do
+        case n of
+            1 -> do
+                let headerHash = unsafeHeaderHashFromBytes $ unsafeDecodeBase16
+                        "0000000000000000000000000000000000000000000000000000000000000000"
+                let point = BlockPoint (SlotNo (pred sl)) headerHash
+                pure [mk (pointToRow point)]
+            _otherwise -> do
+                fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
     , insertPatterns =
         \_ -> return ()
     , deletePattern =
@@ -516,3 +571,48 @@ session' path s = do
 
 oops :: (HasCallStack, Applicative f) => Text -> Maybe a -> f a
 oops str = maybe (error str) pure
+
+--
+-- Generators
+--
+
+genPutPatternRequestBody :: Gen LByteString
+genPutPatternRequestBody = elements
+    [ "{ \"rollback_to\": { \"slot_no\": 42 }\
+      \}"
+
+    , "{ \"rollback_to\": { \"slot_no\": 42, \"header_hash\": \"0000000000000000000000000000000000000000000000000000000000000000\" }\
+      \}"
+
+    , "{ \"rollback_to\": { \"slot_no\": 42 }\
+      \, \"limit\": \"within_safe_zone\"\
+      \}"
+
+    , "{ \"rollback_to\": { \"slot_no\": 42, \"header_hash\": \"0000000000000000000000000000000000000000000000000000000000000000\" }\
+      \, \"limit\": \"within_safe_zone\"\
+      \}"
+
+    , "{ \"rollback_to\": { \"slot_no\": 14 }\
+      \, \"limit\": \"unsafe_allow_beyond_safe_zone\"\
+      \}"
+
+    , "{ \"rollback_to\": { \"slot_no\": 14, \"header_hash\": \"0000000000000000000000000000000000000000000000000000000000000000\" }\
+      \, \"limit\": \"unsafe_allow_beyond_safe_zone\"\
+      \}"
+    ]
+
+genInvalidPutPatternRequestBody :: Gen (Maybe LByteString)
+genInvalidPutPatternRequestBody = frequency
+    [ (1, pure Nothing)
+    , (5, Just <$> elements
+        [ "{}"
+        , "{ \"rollback_to\": { \"slot_no\": 14 }\
+          \}"
+        , "{ \"rollback_to\": { \"slot_no\": 14 }\
+          \, \"limit\": \"within_safe_zone\"\
+          \}"
+        , "{ \"foo\": { \"slot_no\": 42 }\
+          \}"
+        ]
+      )
+    ]

@@ -3,7 +3,8 @@
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 module Kupo.Data.ChainSync
-    ( IntersectionNotFoundException (..)
+    ( ForcedRollbackHandler (..)
+    , IntersectionNotFoundException (..)
     ) where
 
 import Kupo.Prelude
@@ -11,12 +12,23 @@ import Kupo.Prelude
 import Kupo.Data.Cardano
     ( SlotNo, WithOrigin (..) )
 
+data ForcedRollbackHandler (m :: Type -> Type) = ForcedRollbackHandler
+    { onSuccess :: m ()
+    , onFailure :: m ()
+    }
+
 -- | Exception thrown when creating a chain-sync client from an invalid list of
 -- points.
-data IntersectionNotFoundException = IntersectionNotFound
-    { requestedPoints :: [WithOrigin SlotNo]
-        -- ^ Provided points for intersection.
-    , tip :: WithOrigin SlotNo
-        -- ^ Current known tip of the chain.
-    } deriving (Show)
+data IntersectionNotFoundException
+    = IntersectionNotFound
+        { requestedPoints :: [WithOrigin SlotNo]
+            -- ^ Provided points for intersection.
+        , tip :: WithOrigin SlotNo
+            -- ^ Current known tip of the chain.
+        }
+    | ForcedIntersectionNotFound
+        { point :: WithOrigin SlotNo
+            -- ^ Forced intersection point
+        }
+    deriving (Show)
 instance Exception IntersectionNotFoundException

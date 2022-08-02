@@ -422,6 +422,63 @@ components:
           type: integer
           minimum: 0
 
+    ForcedRollback:
+      type: object
+      additionalProperties: false
+      required:
+        - rollback_to
+      properties:
+        rollback_to:
+          type: object
+          required:
+            - slot_no
+          description: |
+            A mandatory point to rollback the synchronization to.
+            Note that the synchronization will therefore begin starting from the point **immediately after** the provided point!
+
+            > <sup><strong>NOTE (1)</strong></sup> <br/>
+            > If you need to query ancestors from any given known point, see [GET /v1/checkpoints/{slot-no}](http://localhost:8000/#operation/getCheckpointBySlot)
+
+            > <sup><strong>NOTE (2)</strong></sup> <br/>
+            > The `header_hash` is **optional**! However if provided, Kupo will check that it rolls back exactly to the specified point by comparing header hashes.
+          properties:
+            slot_no:
+              $ref: "#/components/schemas/SlotNo"
+            header_hash:
+              $ref: "#/components/schemas/HeaderHash"
+        limit:
+          type: string
+          description: |
+            Specify the server behavior when rolling back out of the _safe
+            zone_. As mentioned in the user manual, when running Kupo with
+            `--prune-utxo` enabled, the server gets rid of spent UTxOs, but it
+            only does so after a certain time. That time is exactly `129600`
+            slots (or 36h on Mainnet/Testnet). This is because the core
+            protocol cannot roll back further than this particular depth and it
+            is the point after which it is 100% safe to remove data from the
+            database.
+
+            However, this endpoint allows you to break this invariant and
+            rollback to points that are even older in the past. As a
+            consequence, while syncing, the index may be in a somewhat
+            inconsistent state because some inputs spent at a later time may
+            not have been recovered during the rollback. This may be surprising
+            if you're expecting to see and query those transient inputs after
+            rolling back.
+
+            By default, you won't be allowed to rollback beyond the safe zone.
+            If, however, you know what you're doing, you're kindly asked to
+            pass `unsafe_allow_beyond_safe_zone` as a token of acknowledgment.
+            Passing `within_safe_zone` has no effects other than the default.
+
+            Note that, once synchronized again, the index will always be in the
+            expected state and problems reflecting reality only occurs _while
+            catching up_, after a long rollback.
+          default: within_safe_zone
+          enum:
+          - unsafe_allow_beyond_safe_zone
+          - within_safe_zone
+
     HeaderHash:
       type: string
       description: A blake2b-256 hash digest of a block header.
@@ -600,6 +657,36 @@ components:
               description: Absolute slot number of the current tip of the node.
 
   parameters:
+    asset-name:
+      name: asset_name
+      in: query
+      required: false
+      allowEmptyValue: false
+      schema:
+        type: string
+        contentEncoding: base16
+        pattern: ^[a-f0-9]{2,64}$
+      description: |
+        Filter matches to only include results whose value carries assets associated with the given asset id (i.e. (`policy_id`, `asset_name`)).
+
+        This filter can only be used **in conjunction with `policy_id`.**
+      example:
+        08661220099e
+
+    datum-hash:
+      name: datum_hash
+      in: path
+      required: true
+      schema:
+        type: string
+        contentEncoding: base16
+        minLength: 64
+        maxLength: 64
+        pattern: ^[a-f0-9]{64}$
+        example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
+      description:
+        A datum blake2b-256 hash digest.
+
     pattern-fragment:
       name: pattern_fragment
       in: path
@@ -611,30 +698,6 @@ components:
           - $ref: "#/components/schemas/Credential"
       description: |
         A pattern fragment (i.e. a wildcard, an address or a credential). See [Pattern](#section/Pattern) for more details.
-
-    slot-no:
-      name: slot_no
-      in: path
-      required: true
-      schema:
-        type: integer
-        minimum: 0
-
-    spent:
-      name: spent
-      in: query
-      required: false
-      allowEmptyValue: true
-      description: |
-        A query flag (i.e. `?spent`) to filter matches by status, to get only 'spent' matches.  Note that, when running kupo with `--prune-utxo`, this will always return an empty list of results.
-
-    unspent:
-      name: unspent
-      in: query
-      required: false
-      allowEmptyValue: true
-      description: |
-        A query flag (i.e. `?unspent`) filter matches by status, to get only 'unspent' matches.
 
     policy-id:
       name: policy_id
@@ -652,44 +715,6 @@ components:
       example:
         1220099e5e430475c219518179efc7e6c8289db028904834025d5b086
 
-    asset-name:
-      name: asset_name
-      in: query
-      required: false
-      allowEmptyValue: false
-      schema:
-        type: string
-        contentEncoding: base16
-        pattern: ^[a-f0-9]{2,64}$
-      description: |
-        Filter matches to only include results whose value carries assets associated with the given asset id (i.e. (`policy_id`, `asset_name`)).
-
-        This filter can only be used **in conjunction with `policy_id`.**
-      example:
-        08661220099e
-
-    strict:
-      name: strict
-      in: query
-      required: false
-      allowEmptyValue: true
-      description: |
-        A query flag (i.e. `?strict`) to only look for checkpoints that strictly match the provided slot. The behavior otherwise is to look for the largest nearest slot smaller or equal to the one provided.
-
-    datum-hash:
-      name: datum_hash
-      in: path
-      required: true
-      schema:
-        type: string
-        contentEncoding: base16
-        minLength: 64
-        maxLength: 64
-        pattern: ^[a-f0-9]{64}$
-        example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
-      description:
-        A datum blake2b-256 hash digest.
-
     script-hash:
       name: script_hash
       in: path
@@ -703,6 +728,38 @@ components:
         example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded
       description:
         A script blake2b-224 hash digest of a script.
+
+    slot-no:
+      name: slot_no
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+
+    spent:
+      name: spent
+      in: query
+      required: false
+      allowEmptyValue: true
+      description: |
+        A query flag (i.e. `?spent`) to filter matches by status, to get only 'spent' matches.  Note that, when running kupo with `--prune-utxo`, this will always return an empty list of results.
+
+    strict:
+      name: strict
+      in: query
+      required: false
+      allowEmptyValue: true
+      description: |
+        A query flag (i.e. `?strict`) to only look for checkpoints that strictly match the provided slot. The behavior otherwise is to look for the largest nearest slot smaller or equal to the one provided.
+
+    unspent:
+      name: unspent
+      in: query
+      required: false
+      allowEmptyValue: true
+      description: |
+        A query flag (i.e. `?unspent`) filter matches by status, to get only 'unspent' matches.
 
 tags:
   - name: Matches
@@ -949,6 +1006,11 @@ paths:
         Only new blocks will be matched against the pattern.
       parameters:
         - $ref: "#/components/parameters/pattern-fragment"
+      requestBody:
+        content:
+          "application/json;charset=utf-8":
+            schema:
+              $ref: "#/components/schemas/ForcedRollback"
       responses:
         200:
           description: OK

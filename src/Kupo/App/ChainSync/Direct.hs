@@ -17,7 +17,7 @@ import Kupo.Control.MonadThrow
 import Kupo.Data.Cardano
     ( Point, Tip )
 import Kupo.Data.ChainSync
-    ( IntersectionNotFoundException (..) )
+    ( ForcedRollbackHandler (..), IntersectionNotFoundException (..) )
 import Kupo.Data.Configuration
     ( maxInFlight )
 import Network.TypedProtocol.Pipelined
@@ -38,30 +38,81 @@ mkChainSyncClient
         ( MonadThrow m
         , MonadSTM m
         )
-    => Mailbox m (Tip, block) (Tip, Point)
+    => TMVar m (Point, ForcedRollbackHandler m)
+    -> Mailbox m (Tip, block) (Tip, Point)
     -> [Point]
     -> ChainSyncClientPipelined block Point Tip m ()
-mkChainSyncClient mailbox pts =
-    ChainSyncClientPipelined (pure $ SendMsgFindIntersect pts clientStIntersect)
+mkChainSyncClient forcedRollbackVar mailbox pts =
+    ChainSyncClientPipelined $ pure $
+        SendMsgFindIntersect pts (clientStIntersect Nothing)
   where
     clientStIntersect
-        :: ClientPipelinedStIntersect block Point Tip m ()
-    clientStIntersect = ClientPipelinedStIntersect
+        :: Maybe (Point, ForcedRollbackHandler m)
+        -> ClientPipelinedStIntersect block Point Tip m ()
+    clientStIntersect forcedRollback = ClientPipelinedStIntersect
         { recvMsgIntersectFound = \_point _tip -> do
-            pure $ clientStIdle Zero
+            whenJust forcedRollback $ \(_, ForcedRollbackHandler{onSuccess}) ->
+                onSuccess
+            clientStIdle Zero
         , recvMsgIntersectNotFound = \(getTipSlotNo -> tip) -> do
-            let requestedPoints = pointSlot <$> pts
-            throwIO $ IntersectionNotFound{requestedPoints,tip}
+            case forcedRollback of
+                Just (pointSlot -> point, ForcedRollbackHandler{onFailure}) -> do
+                    onFailure
+                    throwIO $ ForcedIntersectionNotFound{point}
+                Nothing ->
+                    throwIO $ IntersectionNotFound{requestedPoints,tip}
+                  where
+                    requestedPoints = pointSlot <$> pts
         }
 
     clientStIdle
         :: forall n. ()
         => Nat n
-        -> ClientPipelinedStIdle n block Point Tip m ()
+        -> m (ClientPipelinedStIdle n block Point Tip m ())
     clientStIdle n = do
-        SendMsgRequestNextPipelined $ CollectResponse
-            (guard (natToInt n < maxInFlight) $> pure (clientStIdle $ Succ n))
-            (clientStNext n)
+        atomically (tryTakeTMVar forcedRollbackVar) >>= \case
+            Nothing ->
+                pure $ SendMsgRequestNextPipelined $ CollectResponse
+                    (guard (natToInt n < maxInFlight) $> clientStIdle (Succ n))
+                    (clientStNext n)
+            Just (pt, handler) ->
+                pure (clientStWrapUp (pt, handler) n)
+
+    -- | When receiving a 'forcedRollback' request, we simply collect and drop
+    -- all messages in flight and look for the requested intersection. Note
+    -- that, there's a chance here that the given point do not exist and that
+    -- finding an intersection would fail. Handling this case is beyond the
+    -- client scope and we mitigate this in two ways:
+    --
+    -- (1) The provider of the point is expected to check upfront that the point
+    -- exists. This doesn't guarantee that the finding the intersection will
+    -- succeed because for recent enough points, a chain switch / rollback could
+    -- happen between the moment we check and the moment we look for an
+    -- intersection. Yet, this should happen rarely;
+    --
+    -- (2) In case the intersection can't be found, an exception is thrown, we
+    -- expect the whole client to be restarted with the latest known
+    -- checkpoints, as normal. This means that in the worse case scenario, we
+    -- interrupt the chain-sync client for a short bit and we continue back
+    -- where we were at.
+    clientStWrapUp
+        :: forall n. ()
+        => (Point, ForcedRollbackHandler m)
+        -> Nat n
+        -> ClientPipelinedStIdle n block Point Tip m ()
+    clientStWrapUp (pt, handler) = \case
+        Zero ->
+            SendMsgFindIntersect [pt] (clientStIntersect (Just (pt, handler)))
+        Succ n ->
+            CollectResponse
+                Nothing
+                ( ClientStNext
+                    { recvMsgRollForward = \_block _tip -> do
+                        pure $ clientStWrapUp (pt, handler) n
+                    , recvMsgRollBackward = \_point _tip -> do
+                        pure $ clientStWrapUp (pt, handler) n
+                    }
+                )
 
     clientStNext
         :: forall n. ()
@@ -71,8 +122,8 @@ mkChainSyncClient mailbox pts =
         ClientStNext
             { recvMsgRollForward = \block tip -> do
                 atomically (putHighFrequencyMessage mailbox (tip, block))
-                pure (clientStIdle n)
+                clientStIdle n
             , recvMsgRollBackward = \point tip -> do
                 atomically (putIntermittentMessage mailbox (tip, point))
-                pure (clientStIdle n)
+                clientStIdle n
             }

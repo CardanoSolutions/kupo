@@ -2,7 +2,6 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App.Http
@@ -31,11 +30,12 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..) )
 import Kupo.Data.Cardano
     ( DatumHash
-    , pattern GenesisPoint
+    , Point
     , ScriptHash
     , SlotNo (..)
     , binaryDataToJson
     , datumHashFromText
+    , distanceToSlot
     , getPointSlotNo
     , hasAssetId
     , hasPolicyId
@@ -45,6 +45,10 @@ import Kupo.Data.Cardano
     , slotNoFromText
     , slotNoToText
     )
+import Kupo.Data.ChainSync
+    ( ForcedRollbackHandler (..) )
+import Kupo.Data.Configuration
+    ( LongestRollback (..) )
 import Kupo.Data.Database
     ( applyStatusFlag
     , binaryDataFromRow
@@ -60,6 +64,8 @@ import Kupo.Data.Health
     ( Health (..) )
 import Kupo.Data.Http.FilterMatchesBy
     ( FilterMatchesBy (..), filterMatchesBy )
+import Kupo.Data.Http.ForcedRollback
+    ( ForcedRollback (..), ForcedRollbackLimit (..), decodeForcedRollback )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..), getCheckpointModeFromQuery )
 import Kupo.Data.Http.Response
@@ -84,15 +90,18 @@ import Network.HTTP.Types.Status
 import Network.Wai
     ( Application
     , Middleware
+    , Request
     , Response
     , pathInfo
     , queryString
     , requestMethod
     , responseStatus
+    , strictRequestBody
     )
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
+import qualified Data.Aeson.Types as Json
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
 import qualified Network.HTTP.Types.Header as Http
@@ -106,15 +115,16 @@ import qualified Network.Wai.Handler.Warp as Warp
 httpServer
     :: Tracer IO TraceHttpServer
     -> (forall a. (Database IO -> IO a) -> IO a)
+    -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> TVar IO [Pattern]
     -> IO Health
     -> String
     -> Int
     -> IO ()
-httpServer tr withDatabase patternsVar readHealth host port =
+httpServer tr withDatabase forceRollback patternsVar readHealth host port =
     Warp.runSettings settings
         $ tracerMiddleware tr
-        $ app withDatabase patternsVar readHealth
+        $ app withDatabase forceRollback patternsVar readHealth
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -128,10 +138,11 @@ httpServer tr withDatabase patternsVar readHealth host port =
 
 app
     :: (forall a. (Database IO -> IO a) -> IO a)
+    -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> TVar IO [Pattern]
     -> IO Health
     -> Application
-app withDatabase patternsVar readHealth req send =
+app withDatabase forceRollback patternsVar readHealth req send =
     case pathInfo req of
         ("v1" : "health" : args) ->
             routeHealth (requestMethod req, args)
@@ -233,20 +244,24 @@ app withDatabase patternsVar readHealth req send =
             res <- handleGetPatterns
                         <$> responseHeaders readHealth
                         <*> pure (Just wildcard)
-                        <*> readTVarIO patternsVar
+                        <*> fmap const (readTVarIO patternsVar)
             send res
         ("GET", args) -> do
             res <- handleGetPatterns
                         <$> responseHeaders readHealth
                         <*> pure (patternFromPath args)
-                        <*> readTVarIO patternsVar
+                        <*> fmap (flip included) (readTVarIO patternsVar)
             send res
-        ("PUT", args) ->
+        ("PUT", args) -> do
+            pointOrSlotNo <- requestBodyJson decodeForcedRollback req
             withDatabase $ \db -> do
                 headers <- responseHeaders readHealth
                 send =<< handlePutPattern
                             headers
+                            readHealth
+                            forceRollback
                             patternsVar
+                            pointOrSlotNo
                             (patternFromPath args)
                             db
         ("DELETE", args) ->
@@ -303,21 +318,13 @@ handleGetCheckpointBySlot headers mSlotNo query Database{..} =
     handleGetCheckpointBySlot' slotNo mode = do
         let successor = succ (unSlotNo slotNo)
         points <- runReadOnlyTransaction (listAncestorsDesc successor 1 pointFromRow)
-        pure $ responseJsonEncoding status200 headers $ case mode of
-            GetCheckpointStrict ->
-                case points of
-                    [point] | getPointSlotNo point == slotNo ->
-                        pointToJson point
-                    _ | slotNo == 1 ->
-                        pointToJson GenesisPoint
-                    _ ->
-                        Json.null_
-            GetCheckpointClosestAncestor ->
-                case points of
-                    [point] ->
-                        pointToJson point
-                    _ ->
-                        pointToJson GenesisPoint
+        pure $ responseJsonEncoding status200 headers $ case (points, mode) of
+            ([point], GetCheckpointStrict) | getPointSlotNo point == slotNo ->
+                pointToJson point
+            ([point], GetCheckpointClosestAncestor) ->
+                pointToJson point
+            _ ->
+                Json.null_
 
 --
 -- /v1/matches
@@ -432,7 +439,7 @@ handleGetScript headers scriptArg Database{..} = do
 handleGetPatterns
     :: [Http.Header]
     -> Maybe Text
-    -> [Pattern]
+    -> (Pattern -> [Pattern])
     -> Response
 handleGetPatterns headers patternQuery patterns = do
     case patternQuery >>= patternFromText of
@@ -440,7 +447,7 @@ handleGetPatterns headers patternQuery patterns = do
             Errors.invalidPattern
         Just p -> do
             responseStreamJson headers Json.text $ \yield done -> do
-                mapM_ (yield . patternToText) (included p patterns)
+                mapM_ (yield . patternToText) (patterns p)
                 done
 
 handleDeletePattern
@@ -463,23 +470,76 @@ handleDeletePattern headers patternsVar query Database{..} = do
 
 handlePutPattern
     :: [Http.Header]
+    -> IO Health
+    -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> TVar IO [Pattern]
+    -> Maybe ForcedRollback
     -> Maybe Text
     -> Database IO
     -> IO Response
-handlePutPattern headers patternsVar query Database{..} = do
-    case query >>= patternFromText of
-        Nothing ->
+handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query Database{..} = do
+    mPoint <- traverse
+        (\ForcedRollback{since, limit} -> (, limit) <$> resolvePointOrSlot since)
+        mPointOrSlot
+
+    case (query >>= patternFromText, mPoint) of
+        (Nothing, _) ->
             pure Errors.invalidPattern
-        Just p  -> do
-            runReadWriteTransaction $ insertPatterns [patternToRow p]
-            patterns <- atomically $ do
-                modifyTVar' patternsVar (nub . (p :))
-                readTVar patternsVar
-            pure $ responseJsonEncoding status200 headers $
-                Json.list
-                    (Json.text . patternToText)
-                    patterns
+        (_, Nothing) ->
+            pure Errors.malformedPoint
+        (_, Just (Nothing, _)) ->
+            pure Errors.nonExistingPoint
+        (Just p, Just (Just point, lim)) -> do
+            tip <- mostRecentNodeTip <$> readHealth
+            let d = distanceToSlot <$> tip <*> pure (getPointSlotNo point)
+            case ((LongestRollback <$> d) > Just longestRollback, lim) of
+                (True, OnlyAllowRollbackWithinSafeZone) ->
+                    pure Errors.unsafeRollbackBeyondSafeZone
+                _ ->
+                    putPatternAt p point
+  where
+    resolvePointOrSlot :: Either SlotNo Point -> IO (Maybe Point)
+    resolvePointOrSlot = \case
+        Right pt -> do
+            let successor = unSlotNo $ succ $ getPointSlotNo pt
+            pts <- runReadOnlyTransaction $ listAncestorsDesc successor 1 pointFromRow
+            return $ case pts of
+                [pt'] | pt == pt' ->
+                    Just pt
+                -- NOTE: It may be possible for clients to rollback to a point
+                -- prior to any point we know, in which case, we keep things
+                -- flexible and optimistically rollback to that point.
+                [] ->
+                    Just pt
+                _ ->
+                    Nothing
+
+        Left sl -> do
+            let successor = unSlotNo (succ sl)
+            pts <- runReadOnlyTransaction $ listAncestorsDesc successor 1 pointFromRow
+            return $ case pts of
+                [pt] | sl == getPointSlotNo pt ->
+                    Just pt
+                _ ->
+                    Nothing
+
+    putPatternAt :: Pattern -> Point -> IO Response
+    putPatternAt p point = do
+        response <- newEmptyTMVarIO
+        forceRollback point $ ForcedRollbackHandler
+            { onSuccess = do
+                runReadWriteTransaction $ insertPatterns [patternToRow p]
+                patterns <- atomically $ do
+                    modifyTVar' patternsVar (nub . (p :))
+                    readTVar patternsVar
+                atomically $ putTMVar response $ responseJsonEncoding status200 headers $
+                    Json.list
+                        (Json.text . patternToText)
+                        patterns
+            , onFailure = do
+                atomically (putTMVar response Errors.failedToRollback)
+            }
+        atomically (takeTMVar response)
 
 --
 -- Helpers
@@ -496,6 +556,16 @@ responseHeaders readHealth =
     toHeaders slot =
         ("X-Most-Recent-Checkpoint", encodeUtf8 $ slotNoToText $ fromMaybe 0 slot)
         : Default.headers
+
+requestBodyJson
+    :: (Json.Value -> Json.Parser a)
+    -> Request
+    -> IO (Maybe a)
+requestBodyJson parser req = do
+    bytes <- strictRequestBody req
+    case Json.parse parser <$> Json.decodeStrict' (toStrict bytes) of
+        Just (Json.Success a) -> return (Just a)
+        _ -> return Nothing
 
 --
 -- Tracer

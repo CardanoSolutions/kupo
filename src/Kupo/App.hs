@@ -52,7 +52,7 @@ import Kupo.Data.Cardano
     , getPointSlotNo
     )
 import Kupo.Data.ChainSync
-    ( IntersectionNotFoundException (..) )
+    ( ForcedRollbackHandler, IntersectionNotFoundException (..) )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
@@ -84,19 +84,24 @@ newProducer
     :: Tracer IO TraceConfiguration
     -> ChainProducer
     -> ( forall block. IsBlock block
-        => Mailbox IO (Tip, block) (Tip, Point)
+        => (Point -> ForcedRollbackHandler IO -> IO ())
+        -> Mailbox IO (Tip, block) (Tip, Point)
         -> ChainSyncClient IO block
         -> IO ()
        )
     -> IO ()
 newProducer tr chainProducer callback = do
+    forcedRollbackVar <- newEmptyTMVarIO
+    let forcedRollbackCallback = \point handler ->
+            atomically (putTMVar forcedRollbackVar (point, handler))
+
     case chainProducer of
         Ogmios{ogmiosHost, ogmiosPort} -> do
             logWith tr ConfigurationOgmios{ogmiosHost, ogmiosPort}
             mailbox <- atomically (newMailbox mailboxCapacity)
-            callback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
+            callback forcedRollbackCallback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
                 Ogmios.connect statusToggle ogmiosHost ogmiosPort $
-                    Ogmios.runChainSyncClient mailbox checkpoints
+                    Ogmios.runChainSyncClient forcedRollbackVar mailbox checkpoints
 
         CardanoNode{nodeSocket, nodeConfig} -> do
             logWith tr ConfigurationCardanoNode{nodeSocket,nodeConfig}
@@ -106,17 +111,22 @@ newProducer tr chainProducer callback = do
                 , slotsPerEpoch
                 } <- liftIO (parseNetworkParameters nodeConfig)
             logWith tr (ConfigurationNetwork network)
-            callback mailbox $ \tracerChainSync checkpoints statusToggle -> do
+            callback forcedRollbackCallback mailbox $ \tracerChainSync checkpoints statusToggle -> do
                 withChainSyncServer
                   statusToggle
                   [ NodeToClientV_9 .. maxBound ]
                   networkMagic
                   slotsPerEpoch
                   nodeSocket
-                  (Direct.mkChainSyncClient mailbox checkpoints)
-                  & handle (\e@IntersectionNotFound{requestedPoints = points} -> do
-                      logWith tracerChainSync ChainSyncIntersectionNotFound{points}
-                      throwIO e
+                  (Direct.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
+                  & handle
+                    (\case
+                        e@IntersectionNotFound{requestedPoints = points} -> do
+                            logWith tracerChainSync ChainSyncIntersectionNotFound{points}
+                            throwIO e
+                        e@ForcedIntersectionNotFound{point} -> do
+                            logWith tracerChainSync $ ChainSyncIntersectionNotFound [point]
+                            throwIO e
                     )
 
 -- | Consumer process that is reading messages from the 'Mailbox'. Messages are
@@ -130,13 +140,12 @@ consumer
         )
     => Tracer IO TraceConsumer
     -> InputManagement
-    -> LongestRollback
     -> (Tip -> Maybe SlotNo -> DBTransaction m ())
     -> Mailbox m (Tip, block) (Tip, Point)
     -> TVar m [Pattern]
     -> Database m
     -> m Void
-consumer tr inputManagement longestRollback notifyTip mailbox patternsVar Database{..} =
+consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
     forever $ do
         logWith tr ConsumerWaitingForNextBatch
         atomically ((,) <$> flushMailbox mailbox <*> readTVar patternsVar) >>= \case

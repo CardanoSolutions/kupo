@@ -65,6 +65,7 @@ library
       Kupo.Data.Http.Default
       Kupo.Data.Http.Error
       Kupo.Data.Http.FilterMatchesBy
+      Kupo.Data.Http.ForcedRollback
       Kupo.Data.Http.GetCheckpointMode
       Kupo.Data.Http.Response
       Kupo.Data.Http.Status
@@ -242,6 +243,7 @@ test-suite unit
       Test.Kupo.Data.DatabaseSpec
       Test.Kupo.Data.Generators
       Test.Kupo.Data.Http.FilterMatchesBySpec
+      Test.Kupo.Data.Http.ForcedRollbackSpec
       Test.Kupo.Data.OgmiosSpec
       Test.Kupo.Data.Pattern.Fixture
       Test.Kupo.Data.PatternSpec

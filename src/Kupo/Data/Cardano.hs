@@ -171,6 +171,7 @@ module Kupo.Data.Cardano
     , pattern BlockPoint
     , pointFromText
     , pointToJson
+    , pointSlot
     , getPointSlotNo
     , getPointHeaderHash
     , unsafeGetPointHeaderHash
@@ -280,8 +281,8 @@ import qualified Cardano.Ledger.Block as Ledger
 import qualified Cardano.Ledger.Coin as Ledger
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Credential as Ledger
-import qualified Cardano.Ledger.Era as Ledger.Era
 import qualified Cardano.Ledger.Era as Ledger
+import qualified Cardano.Ledger.Era as Ledger.Era
 import qualified Cardano.Ledger.Hashes as Ledger
 import qualified Cardano.Ledger.Keys as Ledger
 import qualified Cardano.Ledger.Mary.Value as Ledger
@@ -289,8 +290,8 @@ import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Cardano.Ledger.Shelley.BlockChain as Ledger.Shelley
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
 import qualified Cardano.Ledger.ShelleyMA.AuxiliaryData as Ledger.MaryAllegra
-import qualified Cardano.Ledger.ShelleyMA.Timelocks as Ledger.MaryAllegra
 import qualified Cardano.Ledger.ShelleyMA.Timelocks as Ledger
+import qualified Cardano.Ledger.ShelleyMA.Timelocks as Ledger.MaryAllegra
 import qualified Cardano.Ledger.ShelleyMA.TxBody as Ledger.MaryAllegra
 import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Codec.CBOR.Read as Cbor
@@ -1415,6 +1416,7 @@ slotNoFromText :: Text -> Maybe SlotNo
 slotNoFromText txt = do
     (slotNo, remSlotNo) <- either (const Nothing) Just (T.decimal txt)
     guard (T.null remSlotNo)
+    guard (slotNo < maxBound `div` 2 - 1)
     pure (SlotNo slotNo)
 
 slotNoToText :: SlotNo -> Text

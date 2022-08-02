@@ -66,6 +66,8 @@ import Kupo.Data.Cardano
     , transactionIdToText
     , withReferences
     )
+import Kupo.Data.ChainSync
+    ( ForcedRollbackHandler )
 import Kupo.Data.Configuration
     ( Configuration (..)
     , InputManagement (..)
@@ -96,6 +98,7 @@ import Test.Kupo.Data.Generators
     , genDatumHash
     , genHeaderHash
     , genInputManagement
+    , genNonGenesisPoint
     , genOutput
     , genOutputReference
     , genScript
@@ -253,7 +256,7 @@ instance Show (Event r) where
 
 data Response (r :: Type -> Type)
     = Unit ()
-    | Checkpoint Point
+    | Checkpoint (Maybe Point)
     | Utxo (Set OutputReference)
     | DatumByHash (Maybe BinaryData)
     | ScriptByHash (Maybe Script)
@@ -265,7 +268,7 @@ instance Show (Response r) where
         Unit () ->
             "()"
         Checkpoint pt ->
-            toString $ "(Checkpoint " <> showPoint pt <> ")"
+            toString $ "(Checkpoint " <> maybe "NULL" showPoint pt <> ")"
         Utxo outRefs ->
             toString $ "(Utxo " <> T.intercalate "," (showOutputReference <$> Set.toList outRefs) <> ")"
         DatumByHash bin ->
@@ -525,7 +528,11 @@ generator inputManagement model =
             ]
         blocks@(tip:_) -> Just $ frequency
             [ (3, pure GetMostRecentCheckpoint)
-            , (3, GetPreviousCheckpoint <$> elements (getPointSlotNo . blockPoint <$> blocks))
+            , (3, GetPreviousCheckpoint <$> oneof
+                [ getPointSlotNo <$> genNonGenesisPoint
+                , elements (getPointSlotNo . blockPoint <$> blocks)
+                ]
+              )
             , (5, pure GetUtxo)
             , (5, GetDatumByHash <$> genOrSelectDatum inputManagement model)
             , (3, GetScriptByHash <$> genOrSelectScript model)
@@ -746,9 +753,9 @@ semantics pause HttpClient{..} queue = \case
             cp' <- getMostRecentCheckpoint
             pure (cp' < cp)
     GetMostRecentCheckpoint -> do
-        Checkpoint <$> getMostRecentCheckpoint
+        Checkpoint . Just <$> getMostRecentCheckpoint
     GetPreviousCheckpoint sl -> do
-        Checkpoint <$> getPreviousCheckpoint sl
+        Checkpoint <$> getCheckpointBySlot GetCheckpointClosestAncestor sl
     GetUtxo -> do
         Utxo . foldMap (Set.singleton . outputReference) <$> getAllMatches OnlyUnspent
     GetDatumByHash hash ->
@@ -762,11 +769,6 @@ semantics pause HttpClient{..} queue = \case
         listCheckpoints <&> \case
             [] -> GenesisPoint
             h:_ -> h
-
-    getPreviousCheckpoint =
-        getCheckpointBySlot GetCheckpointClosestAncestor
-        >=>
-        maybe (fail "getPreviousCheckpoint: no previous checkpoint") pure
 
 -- | Here we mock the server behavior using our model; this is used within the
 -- generator itself, to advance the state-machine. Because the model is our
@@ -782,15 +784,15 @@ mock model = \case
         pure (Unit ())
     GetMostRecentCheckpoint ->
         pure $ Checkpoint $ case currentChain model of
-            []  -> GenesisPoint
-            h:_ -> blockPoint h
+            []  -> Just GenesisPoint
+            h:_ -> Just (blockPoint h)
     GetPreviousCheckpoint sl ->
         let
             search = \case
-                [] -> GenesisPoint
+                [] -> Nothing
                 (blockPoint -> h):rest ->
                     if getPointSlotNo h <= sl
-                    then h
+                    then Just h
                     else search rest
          in
             pure $ Checkpoint $ search (currentChain model)
@@ -808,14 +810,15 @@ mock model = \case
 -- does nothing more than passing information around in the mailbox.
 newMockProducer
     :: TBQueue IO RequestNextResponse
-    -> (  Mailbox IO (Tip, PartialBlock) (Tip, Point)
+    -> (  (Point -> ForcedRollbackHandler IO -> IO ())
+       -> Mailbox IO (Tip, PartialBlock) (Tip, Point)
        -> ChainSyncClient IO PartialBlock
        -> IO ()
        )
     -> IO ()
 newMockProducer queue callback = do
     mailbox <- atomically (newMailbox mailboxCapacity)
-    callback mailbox $ \_ -> \case
+    callback forcedRollbackCallback mailbox $ \_ -> \case
         [GenesisPoint] -> do
             const $ forever $ atomically $ do
                 readTBQueue queue >>= \case
@@ -829,6 +832,9 @@ newMockProducer queue callback = do
                 \Indeed, the goal is to test arbitrary sequences \
                 \of execution, for which starting 'from scratch' is \
                 \therefore not only sufficient but necessary."
+  where
+    forcedRollbackCallback _point _handler =
+        fail "Mock producer cannot force rollback."
 
 --------------------------------------------------------------------------------
 ---- Pretty Printers

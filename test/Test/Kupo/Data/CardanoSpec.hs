@@ -13,7 +13,6 @@ import Kupo.Prelude
 import Kupo.Data.Cardano
     ( Blake2b_224
     , pattern GenesisPoint
-    , SlotNo (..)
     , datumHashFromText
     , datumHashToText
     , digest
@@ -40,21 +39,22 @@ import Test.QuickCheck
     ( Gen, arbitrary, forAll, property, vectorOf, (===) )
 
 import qualified Data.ByteString as BS
+
 spec :: Spec
 spec = parallel $ do
     context "pointFromText" $ do
         specify "origin" $ do
             pointFromText "origin" `shouldBe` Just GenesisPoint
 
-        prop "{slotNo}.{blockHeaderHash}" $ \(s :: Word64) -> forAll (genBytes 32) $ \bytes ->
-            let txt = show s <> "." <> encodeBase16 bytes
-             in case pointFromText txt of
-                    Just{}  -> property True
-                    Nothing -> property False
+        prop "{slotNo}.{blockHeaderHash}" $
+            forAll genSlotNo $ \s ->
+                forAll (genBytes 32) $ \bytes ->
+                    let txt = slotNoToText s <> "." <> encodeBase16 bytes
+                     in case pointFromText txt of
+                            Just{}  -> property True
+                            Nothing -> property False
 
     context "SlotNo" $ do
-        prop "forall (s :: Word64). slotNoFromText (show s) === Just{}" $ \(s :: Word64) ->
-            slotNoFromText (show s) === Just (SlotNo s)
         prop "forall (s :: SlotNo). slotNoFromText (slotNoToText s) === Just{}" $
             forAll genSlotNo $ \s ->
                 slotNoFromText (slotNoToText s) === Just s

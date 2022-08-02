@@ -50,6 +50,8 @@ import Kupo.Data.Configuration
     ( InputManagement (..) )
 import Kupo.Data.Health
     ( ConnectionStatus (..), Health (..) )
+import Kupo.Data.Http.ForcedRollback
+    ( ForcedRollback (..), ForcedRollbackLimit (..) )
 import Kupo.Data.Pattern
     ( Pattern, Result (..) )
 import System.IO.Unsafe
@@ -62,6 +64,7 @@ import Test.QuickCheck
     , elements
     , frequency
     , listOf
+    , oneof
     , suchThat
     , vector
     , vectorOf
@@ -184,7 +187,7 @@ genOutput = mkOutput
 
 genSlotNo :: Gen SlotNo
 genSlotNo = do
-    SlotNo <$> arbitrary
+    SlotNo <$> choose (1, maxBound `div` 2  - 1)
 
 genTransactionId :: Gen TransactionId
 genTransactionId =
@@ -212,6 +215,16 @@ genOutputValue = do
 genInputManagement :: Gen InputManagement
 genInputManagement =
     elements [MarkSpentInputs, RemoveSpentInputs]
+
+genForcedRollbackLimit :: Gen ForcedRollbackLimit
+genForcedRollbackLimit =
+    elements [UnsafeAllowRollbackBeyondSafeZone, OnlyAllowRollbackWithinSafeZone]
+
+genForcedRollback :: Gen ForcedRollback
+genForcedRollback =
+    ForcedRollback
+        <$> oneof [Left <$> genSlotNo, Right <$> genNonGenesisPoint]
+        <*> genForcedRollbackLimit
 
 --
 -- Helpers

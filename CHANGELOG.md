@@ -12,7 +12,7 @@
 
 #### Added
 
-- [📌 #28](https://github.com/CardanoSolutions/kupo/issues/28) - Support for the Babbage's era, including inline-datums & reference scripts. 
+- [📌 #28](https://github.com/CardanoSolutions/kupo/issues/28) - Support for synchronization through the Babbage's era, including capturing inline-datums & reference scripts. 
 
 - [📌 #17](https://github.com/CardanoSolutions/kupo/issues/20) - New command-line flag: `--prune-utxo`. When set, inputs that are spent on-chain will be removed from the index. Once-synced, 
   the index therefore only contain the current ledger UTxO set. When not set, spent inputs are kept in the index but are now marked accordingly to record if and when they've spent.
@@ -61,6 +61,8 @@ increase the time needed for collecting garbage. Optimal value depends on your u
 - [📌 #17](https://github.com/CardanoSolutions/kupo/issues/20) - The `slot_no` and `header_hash` fields are no longer accessible on top-level match result objects. Instead, they're now nested under a `created_at` field, analogous to how `spent_at` has been introduced. 
 
 - [📌 #24](https://github.com/CardanoSolutions/kupo/issues/24) - Fixed a bug where listing checkpoints would sometimes return duplicate entries. 
+
+- [📌 #39](https://github.com/CardanoSolutions/kupo/issues/39) - Inserting a new pattern (i.e. `PUT v1/patterns/{pattern-fragment}`) now requires to provide a rollback point, to which the server will rollback and start synchronizing again. The old behavior can be recovered by simply passing the most recent checkpoint as a rollback point. Note that, you may add an already existing pattern if you only need, for some reason, to rollback the indexer to some previous point in time. See the [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/putPattern1Ary) for details.
 
 - Fixed a bug where the server would systematically reject any request to dynamically remove a pattern (because deemed overlapping with existing patterns). 
 

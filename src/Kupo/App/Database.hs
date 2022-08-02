@@ -166,6 +166,9 @@ data Database (m :: Type -> Type) = Database
         :: forall a. ()
         => DBTransaction m a
         -> m a
+
+    , longestRollback
+        :: LongestRollback
     }
 
 type family DBTransaction (m :: Type -> Type) :: (Type -> Type) where
@@ -245,8 +248,9 @@ mkDatabase
     -> LongestRollback
     -> (forall a. (Connection -> IO a) -> IO a)
     -> Database IO
-mkDatabase tr (fromIntegral -> longestRollback) bracketConnection = Database
-    { insertInputs = \inputs -> ReaderT $ \conn -> do
+mkDatabase tr longestRollback bracketConnection = Database
+    { longestRollback
+    , insertInputs = \inputs -> ReaderT $ \conn -> do
         traceWith tr (DatabaseBeginQuery "insertInputs")
         mapM_
             (\Input{..} -> do
@@ -289,7 +293,7 @@ mkDatabase tr (fromIntegral -> longestRollback) bracketConnection = Database
                   \WHERE spent_at < ( \
                   \  (SELECT MAX(slot_no) FROM checkpoints) - ?\
                   \)"
-        execute conn qry [SQLInteger longestRollback]
+        execute conn qry [SQLInteger (fromIntegral longestRollback)]
         changes conn
 
     , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
@@ -354,12 +358,13 @@ mkDatabase tr (fromIntegral -> longestRollback) bracketConnection = Database
         traceWith tr (DatabaseExitQuery "insertCheckpoints")
 
     , listCheckpointsDesc = \mk -> ReaderT $ \conn -> do
+        let k = fromIntegral longestRollback
         let points =
-                [ 0, 10 .. longestRollback `div` 2 ^ n ]
+                [ 0, 10 .. k `div` 2 ^ n ]
                 ++
-                [ longestRollback `div` (2 ^ e) | (e :: Integer) <- [ n-1, n-2 .. 0 ] ]
+                [ k `div` (2 ^ e) | (e :: Integer) <- [ n-1, n-2 .. 0 ] ]
               where
-                n = ceiling (log (fromIntegral @_ @Double longestRollback))
+                n = ceiling (log (fromIntegral @_ @Double k))
         let qry = "SELECT * FROM checkpoints \
                   \WHERE slot_no >= ((SELECT MAX(slot_no) FROM checkpoints) - ?) \
                   \ORDER BY slot_no ASC \

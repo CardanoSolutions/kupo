@@ -44,19 +44,22 @@ withChainSyncExceptionHandler
     :: Tracer IO TraceChainSync
     -> ConnectionStatusToggle IO
     -> IO ()
-    -> IO ()
+    -> IO Void
 withChainSyncExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
-    foreverCalmly (handleExceptions io)
+    foreverCalmly (handleExceptions (io $> 42))
   where
+    handleExceptions :: IO DiffTime -> IO DiffTime
     handleExceptions
-        = handle (onRetryableException isRetryableIOException)
-        . handle (onRetryableException isRetryableConnectionException)
+        = handle (onRetryableException 5 isRetryableIOException)
+        . handle (onRetryableException 5 isRetryableConnectionException)
+        . handle (onRetryableException 0 isRetryableIntersectionNotFoundException)
         . (`onException` toggleDisconnected)
 
-    onRetryableException :: Exception e => (e -> Bool) -> e -> IO ()
-    onRetryableException isRetryable e
+    onRetryableException :: Exception e => DiffTime -> (e -> Bool) -> e -> IO DiffTime
+    onRetryableException retryingIn isRetryable e
         | isRetryable e = do
-            traceWith tr $ ChainSyncFailedToConnectOrConnectionLost 5
+            traceWith tr $ ChainSyncFailedToConnectOrConnectionLost{retryingIn}
+            pure retryingIn
         | otherwise = do
             throwIO e
 
@@ -76,6 +79,11 @@ withChainSyncExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
         ConnectionClosed{} -> True
         ParseException{} -> False
         UnicodeException{} -> False
+
+    isRetryableIntersectionNotFoundException :: IntersectionNotFoundException -> Bool
+    isRetryableIntersectionNotFoundException = \case
+        ForcedIntersectionNotFound{} -> True
+        IntersectionNotFound{} -> False
 
 --
 -- Tracer

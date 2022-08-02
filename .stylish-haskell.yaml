@@ -46,13 +46,15 @@ columns: 80 # Should match .editorconfig
 steps:
   - imports:
       align: none
-      empty_list_align: inherit
       list_align: new_line
-      list_padding: 4
       long_list_align: new_line_multiline
+      empty_list_align: inherit
+      list_padding: 4
       pad_module_names: false
       separate_lists: true
       space_surround: true
+      post_qualify: true
+      group_imports: false
 
   - language_pragmas:
       align: false
