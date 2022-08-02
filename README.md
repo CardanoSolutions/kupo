@@ -4,7 +4,7 @@
 
 <hr/>
 
-**Kupo** is fast, lightweight and configurable **chain-index** for the Cardano blockchain. It synchronizes data from the blockchain according to **patterns** matching addresses present in transaction outputs and builds a **lookup table** from **matches** to their associated **output references**, **values** and **datum hashes**.
+**Kupo** is fast, lightweight and configurable **chain-index** for the Cardano blockchain. It synchronizes data from the blockchain according to **patterns** matching addresses present in transaction outputs and builds a **lookup table** from matches to their associated **output references**, **values**, **datums** and **scripts**. 
 
 <p align="center">
   <img src="./docs/architecture-diagram.png" />
