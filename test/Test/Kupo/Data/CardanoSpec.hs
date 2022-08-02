@@ -39,6 +39,7 @@ import Test.QuickCheck
     ( Gen, arbitrary, forAll, property, vectorOf, (===) )
 
 import qualified Data.ByteString as BS
+
 spec :: Spec
 spec = parallel $ do
     context "pointFromText" $ do

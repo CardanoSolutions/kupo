@@ -15,7 +15,9 @@ import Kupo.Prelude
 import Control.Exception
     ( try )
 import Data.List
-    ( maximum )
+    ( maximum, (\\) )
+import GHC.IORef
+    ( atomicSwapIORef )
 import Kupo
     ( kupo, newEnvironment, runWith, version, withTracers )
 import Kupo.App.Configuration
@@ -61,6 +63,7 @@ import Test.Hspec
     , context
     , runIO
     , shouldBe
+    , shouldContain
     , shouldReturn
     , shouldSatisfy
     , specify
@@ -71,12 +74,14 @@ import Test.Kupo.App.Http.Client
 import Test.Kupo.Fixture
     ( eraBoundaries
     , lastAlonzoPoint
+    , lastByronPoint
     , someDatumHashInOutput
     , someDatumHashInWitness
     , someDatumInOutput
     , someDatumInWitness
     , someNonExistingPoint
     , someOtherPoint
+    , someOtherStakeKey
     , somePoint
     , somePointAncestor
     , somePointNearScripts
@@ -87,6 +92,7 @@ import Test.Kupo.Fixture
     , someScriptInMetadata
     , someScriptInOutput
     , someScriptInWitness
+    , someStakeKey
     )
 import Type.Reflection
     ( tyConName, typeRep, typeRepTyCon )
@@ -278,7 +284,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             , since = Just lastAlonzoPoint
             , patterns = [MatchAny OnlyShelley]
             }
-        timeoutOrThrow 10 $ race_
+        timeoutOrThrow 20 $ race_
             (kupo tr `runWith` env)
             (do
                 waitDatum someDatumHashInWitness
@@ -294,7 +300,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             , since = Just somePointNearScripts
             , patterns = [MatchAny OnlyShelley]
             }
-        timeoutOrThrow 10 $ race_
+        timeoutOrThrow 20 $ race_
             (kupo tr `runWith` env)
             (do
                 waitScript someScriptHashInWitness
@@ -303,6 +309,98 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     `shouldReturn` someScriptInMetadata
                 waitScript someScriptHashInOutput
                     `shouldReturn` someScriptInOutput
+            )
+
+    specify "Dynamically add pattern and restart to a past point" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just lastByronPoint
+            , patterns = [MatchDelegation someStakeKey]
+            }
+        let maxSlot = getPointSlotNo lastByronPoint + 50_000
+        let onlyInWindow r
+                | getPointSlotNo (createdAt r) <= maxSlot =
+                    Just r { spentAt = Nothing }
+                | otherwise =
+                    Nothing
+        ref <- newIORef ([], [])
+        timeoutOrThrow 10 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitSlot (>= maxSlot)
+                xs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
+                res <- putPatternSince
+                    (MatchDelegation someOtherStakeKey)
+                    (Right lastByronPoint)
+                res `shouldBe` True
+                waitSlot (< maxSlot) -- Observe rollback
+                waitSlot (>= maxSlot)
+                ys <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
+                ys `shouldContain` xs
+                listPatterns `shouldReturn`
+                    [ MatchDelegation someOtherStakeKey
+                    , MatchDelegation someStakeKey
+                    ]
+                atomicSwapIORef ref (xs, ys)
+            )
+        (xs, ys) <- readIORef ref
+        withSystemTempDirectory "kupo-end-to-end" $ \tmp' -> do
+            env' <- newEnvironment $ cfg
+                { workDir = Dir tmp'
+                , since = Just lastByronPoint
+                , patterns = [MatchDelegation someOtherStakeKey]
+                }
+            timeoutOrThrow 10 $ race_
+                (kupo tr `runWith` env')
+                (do
+                    waitSlot (>= maxSlot)
+                    zs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
+                    ys \\ zs `shouldBe` xs
+                )
+
+    specify "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just lastByronPoint
+            , patterns = [MatchAny OnlyShelley]
+            }
+        timeoutOrThrow 10 $ race_
+            (kupo tr `runWith` env)
+            (do
+                let maxSlot = getPointSlotNo lastByronPoint + 10_000
+                waitSlot (>= maxSlot)
+                slot <- maximum . fmap getPointSlotNo <$> listCheckpoints
+                res <- putPatternSince
+                    (MatchDelegation someOtherStakeKey)
+                    (Left (maxSlot - 20_000))
+                slot' <- maximum . fmap getPointSlotNo <$> listCheckpoints
+                res `shouldBe` False
+                listPatterns `shouldReturn` [MatchAny OnlyShelley]
+                slot' `shouldSatisfy` (>= slot)
+            )
+
+    specify "Failing to insert patterns (non-existing point) doesn't disturb normal operations" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just lastByronPoint
+            , patterns = [MatchAny OnlyShelley]
+            }
+        timeoutOrThrow 10 $ race_
+            (kupo tr `runWith` env)
+            (do
+                let maxSlot = getPointSlotNo lastByronPoint + 10_000
+                waitSlot (>= maxSlot)
+                slot <- maximum . fmap getPointSlotNo <$> listCheckpoints
+                res <- putPatternSince
+                    (MatchDelegation someOtherStakeKey)
+                    (Right someNonExistingPoint)
+                slot' <- maximum . fmap getPointSlotNo <$> listCheckpoints
+                res `shouldBe` False
+                listPatterns `shouldReturn` [MatchAny OnlyShelley]
+                slot' `shouldSatisfy` (>= slot)
             )
 
 type EndToEndSpec

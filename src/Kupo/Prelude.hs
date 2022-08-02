@@ -34,6 +34,9 @@ module Kupo.Prelude
     , decodeFull'
     , unsafeDeserialize'
 
+      -- * JSON
+    , eitherDecodeJson
+
       -- * System
     , hijackSigTerm
     , ConnectionStatusToggle (..)
@@ -44,6 +47,8 @@ module Kupo.Prelude
 
 import Cardano.Binary
     ( decodeFull', serialize', unsafeDeserialize' )
+import Control.Arrow
+    ( left )
 import Control.Lens
     ( Lens', at, (^?), (^?!) )
 import Data.Aeson
@@ -108,6 +113,10 @@ import System.Posix.Signals
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
+import qualified Data.Aeson.Internal as Json
+import qualified Data.Aeson.Parser as Json
+import qualified Data.Aeson.Parser.Internal as Json
+import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString.Base58 as Base58
 
 data ConnectionStatusToggle m = ConnectionStatusToggle
@@ -158,3 +167,10 @@ defaultGenericToEncoding =
 -- elements.
 nubOn :: Eq b => (a -> b) -> [a] -> [a]
 nubOn b = nubBy (on (==) b)
+
+eitherDecodeJson
+    :: (Json.Value -> Json.Parser a)
+    -> LByteString
+    -> Either String a
+eitherDecodeJson decoder =
+    left snd . Json.eitherDecodeWith Json.jsonEOF (Json.iparse decoder)

@@ -244,13 +244,13 @@ app withDatabase forceRollback patternsVar readHealth req send =
             res <- handleGetPatterns
                         <$> responseHeaders readHealth
                         <*> pure (Just wildcard)
-                        <*> readTVarIO patternsVar
+                        <*> fmap const (readTVarIO patternsVar)
             send res
         ("GET", args) -> do
             res <- handleGetPatterns
                         <$> responseHeaders readHealth
                         <*> pure (patternFromPath args)
-                        <*> readTVarIO patternsVar
+                        <*> fmap (flip included) (readTVarIO patternsVar)
             send res
         ("PUT", args) -> do
             pointOrSlotNo <- requestBodyJson decodeForcedRollback req
@@ -439,7 +439,7 @@ handleGetScript headers scriptArg Database{..} = do
 handleGetPatterns
     :: [Http.Header]
     -> Maybe Text
-    -> [Pattern]
+    -> (Pattern -> [Pattern])
     -> Response
 handleGetPatterns headers patternQuery patterns = do
     case patternQuery >>= patternFromText of
@@ -447,7 +447,7 @@ handleGetPatterns headers patternQuery patterns = do
             Errors.invalidPattern
         Just p -> do
             responseStreamJson headers Json.text $ \yield done -> do
-                mapM_ (yield . patternToText) (included p patterns)
+                mapM_ (yield . patternToText) (patterns p)
                 done
 
 handleDeletePattern
@@ -506,6 +506,11 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
             return $ case pts of
                 [pt'] | pt == pt' ->
                     Just pt
+                -- NOTE: It may be possible for clients to rollback to a point
+                -- prior to any point we know, in which case, we keep things
+                -- flexible and optimistically rollback to that point.
+                [] ->
+                    Just pt
                 _ ->
                     Nothing
 
@@ -531,7 +536,6 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
                     Json.list
                         (Json.text . patternToText)
                         patterns
-
             , onFailure = do
                 atomically (putTMVar response Errors.failedToRollback)
             }

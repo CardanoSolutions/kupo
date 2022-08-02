@@ -310,7 +310,7 @@ data Result = Result
     , datum :: Datum
     , scriptReference :: ScriptReference
     , createdAt :: Point
-    , spentAt :: Maybe (Point)
+    , spentAt :: Maybe Point
     } deriving (Show, Eq)
 
 resultToJson

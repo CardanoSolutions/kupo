@@ -46,15 +46,19 @@ import Kupo.Data.Cardano
     , transactionIdFromHash
     , unsafeValueFromList
     )
+import Kupo.Data.Http.ForcedRollback
+    ( ForcedRollback (..), ForcedRollbackLimit (..), forcedRollbackToJson )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..) )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..) )
 import Kupo.Data.Pattern
-    ( Pattern (..), Result (..), patternFromText )
+    ( Pattern (..), Result (..), patternFromText, patternToText )
 import Network.HTTP.Client
     ( HttpException
     , Manager
+    , Request (..)
+    , RequestBody (..)
     , Response (..)
     , defaultManagerSettings
     , httpLbs
@@ -62,14 +66,12 @@ import Network.HTTP.Client
     , newManager
     , parseRequest
     )
+import Network.HTTP.Types.Status
+    ( status200, status400 )
 
-import Control.Arrow
-    ( left )
 import qualified Data.Aeson as Json
-import qualified Data.Aeson.Internal as Json
+import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.KeyMap as Json
-import qualified Data.Aeson.Parser as Json
-import qualified Data.Aeson.Parser.Internal as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.Map as Map
 import qualified Data.Text as T
@@ -94,6 +96,12 @@ data HttpClient (m :: Type -> Type) = HttpClient
     , getAllMatches
         :: StatusFlag
         -> m [Result]
+    , putPatternSince
+        :: Pattern
+        -> Either SlotNo Point
+        -> m Bool
+    , listPatterns
+        :: m [Pattern]
     }
 
 newHttpClient :: (String, Int) -> IO (HttpClient IO)
@@ -122,6 +130,10 @@ newHttpClientWith manager (serverHost, serverPort) =
             \a0 a1 -> waitForServer >> _getCheckpointBySlot a0 a1
         , getAllMatches =
             \a0 -> waitForServer >> _getAllMatches a0
+        , putPatternSince =
+            \a0 a1 -> waitForServer >> _putPatternSince a0 a1
+        , listPatterns =
+            waitForServer >> _listPatterns
         }
   where
     baseUrl :: String
@@ -152,7 +164,7 @@ newHttpClientWith manager (serverHost, serverPort) =
     _waitSlot predicate = do
         slots <- fmap getPointSlotNo <$> _listCheckpoints
         unless (not (null slots) && predicate (maximum slots)) $ do
-            threadDelay 0.25
+            threadDelay 0.05
             _waitSlot predicate
 
     _listCheckpoints :: IO [Point]
@@ -160,7 +172,7 @@ newHttpClientWith manager (serverHost, serverPort) =
         req <- parseRequest (baseUrl <> "/v1/checkpoints")
         res <- httpLbs req manager
         let body = responseBody res
-        case eitherDecode (Json.listParser decodePoint) body of
+        case eitherDecodeJson (Json.listParser decodePoint) body of
             Left e ->
                 fail (show body <> " ----> " <> show e)
             Right xs ->
@@ -174,7 +186,7 @@ newHttpClientWith manager (serverHost, serverPort) =
         req <- parseRequest (baseUrl <> "/v1/checkpoints/" <> show slot <> qry)
         res <- httpLbs req manager
         let body = responseBody res
-        pure $ either (const Nothing) Just (eitherDecode decodePoint body)
+        pure $ either (const Nothing) Just (eitherDecodeJson decodePoint body)
 
     _getAllMatches :: StatusFlag -> IO [Result]
     _getAllMatches st = do
@@ -185,7 +197,7 @@ newHttpClientWith manager (serverHost, serverPort) =
         req <- parseRequest (baseUrl <> "/v1/matches" <> q)
         res <- httpLbs req manager
         let body = responseBody res
-        case eitherDecode (Json.listParser decodeResult) body of
+        case eitherDecodeJson (Json.listParser decodeResult) body of
             Left e ->
                 fail (show e)
             Right xs ->
@@ -245,13 +257,47 @@ newHttpClientWith manager (serverHost, serverPort) =
             Just script ->
                 pure script
 
+    _putPatternSince :: Pattern -> Either SlotNo Point -> IO Bool
+    _putPatternSince p pt = do
+        let fragment = toString (patternToText p)
+        req <- parseRequest (baseUrl <> "/v1/patterns/" <> fragment) <&>
+            ( \r -> r
+                { method = "PUT"
+                , requestBody
+                    = RequestBodyLBS
+                    $ Json.encodingToLazyByteString
+                    $ forcedRollbackToJson
+                    $ ForcedRollback
+                        { since = pt
+                        , limit = UnsafeAllowRollbackBeyondSafeZone
+                        }
+                }
+            )
+        res <- httpLbs req manager
+        if
+            | responseStatus res == status200 ->
+                return True
+            | responseStatus res == status400 ->
+                return False
+            | otherwise ->
+                fail ("Unexpected response from server: " <> show res)
+
+    _listPatterns :: IO [Pattern]
+    _listPatterns = do
+        req <- parseRequest (baseUrl <> "/v1/patterns")
+        res <- httpLbs req manager
+        let body = responseBody res
+        case traverse patternFromText <$> Json.eitherDecode' body of
+            Left e ->
+                fail (show body <> " ----> " <> show e)
+            Right Nothing ->
+                fail "Failed to decode patterns returned by the server"
+            Right (Just xs) ->
+                pure xs
+
 --
 -- Decoders
 --
-
-eitherDecode :: (Json.Value -> Json.Parser a) -> LByteString -> Either String a
-eitherDecode decoder =
-    left snd . Json.eitherDecodeWith Json.jsonEOF (Json.iparse decoder)
 
 decodeOutputReference :: Json.KeyMap Json.Value -> Json.Parser OutputReference
 decodeOutputReference o = mkOutputReference

@@ -243,6 +243,7 @@ test-suite unit
       Test.Kupo.Data.DatabaseSpec
       Test.Kupo.Data.Generators
       Test.Kupo.Data.Http.FilterMatchesBySpec
+      Test.Kupo.Data.Http.ForcedRollbackSpec
       Test.Kupo.Data.OgmiosSpec
       Test.Kupo.Data.Pattern.Fixture
       Test.Kupo.Data.PatternSpec

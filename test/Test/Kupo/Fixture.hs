@@ -175,3 +175,13 @@ someScriptInWitness = unsafeScriptFromBytes $ unsafeDecodeBase16
     \5ED76DBB6D8200581C1905A56D43DF143519B1B89CE9AF7188343410EE9F41C3\
     \3D97F50BFC8200581CB481306EE8B782E044726452C8E68FC2D649577A2A4972\
     \BFD61A8FB9"
+
+-- Some stake key in Shelley, present in addresses from early blocks of Shelley.
+someStakeKey :: ByteString
+someStakeKey = unsafeDecodeBase16
+    "06e2ae44dff6770dc0f4ada3cf4cf2605008e27aecdb332ad349fda7"
+
+-- Another stake key that can be seen in early Shelley blocks.
+someOtherStakeKey :: ByteString
+someOtherStakeKey = unsafeDecodeBase16
+    "8c19e0c753136fd37f7bdd0ad6e24b6faa8d4ab0cb1cf8b20439b63c"
