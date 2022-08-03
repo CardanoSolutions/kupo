@@ -895,7 +895,7 @@ paths:
       description: |
         Retrieve the raw script (i.e. full resolved script) associated to a given script hash digest.
 
-        > **NOTE**:
+        > <sup><strong>NOTE</strong></sup> <br/>
         >
         > Raw scripts aren't exact pre-image of their hash digest. Before hashing, scripts are prefixed with a
         > certain discriminator byte depending on the language. For instance, any native script is prefixed with
@@ -956,8 +956,7 @@ paths:
         This endpoint is thereby useful to check is an address is matched by a given pattern configuration (the returned
         list would be non-empty).
 
-        > **Definition**: `x` include `y`
-        >
+        > <sup><strong>(*) Definition</strong></sup> <br/>
         > If all results matched by `y` are also matched by `x`, then `x` is said to include `y`.
       parameters:
         - $ref: "#/components/parameters/pattern-fragment"
