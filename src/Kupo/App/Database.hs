@@ -251,7 +251,6 @@ mkDatabase
 mkDatabase tr longestRollback bracketConnection = Database
     { longestRollback
     , insertInputs = \inputs -> ReaderT $ \conn -> do
-        traceWith tr (DatabaseBeginQuery "insertInputs")
         mapM_
             (\Input{..} -> do
                 insertRow @"inputs" conn
@@ -281,7 +280,6 @@ mkDatabase tr longestRollback bracketConnection = Database
                             ]
             )
             inputs
-        traceWith tr (DatabaseExitQuery "insertInputs")
 
     , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
         let qry = Query $ "DELETE FROM inputs WHERE address " <> addressLike
@@ -290,29 +288,25 @@ mkDatabase tr longestRollback bracketConnection = Database
 
     , pruneInputs = ReaderT $ \conn -> do
         let qry = "DELETE FROM inputs \
-                  \WHERE spent_at < ( \
+                  \WHERE address LIKE '0%' AND spent_at < ( \
                   \  (SELECT MAX(slot_no) FROM checkpoints) - ?\
                   \)"
-        execute conn qry [SQLInteger (fromIntegral longestRollback)]
+        execute conn qry [ SQLInteger (fromIntegral longestRollback) ]
         changes conn
 
     , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
-        traceWith tr (DatabaseBeginQuery "deleteInputsByReference")
         let n = length refs
         when (n > 0) $ do
             let qry = "DELETE FROM inputs \
                       \WHERE output_reference IN " <> mkPreparedStatement n
             execute conn qry refs
-        traceWith tr (DatabaseExitQuery "deleteInputsByReference")
 
     , markInputsByReference = \(fromIntegral -> slotNo) refs -> ReaderT $ \conn -> do
-        traceWith tr (DatabaseBeginQuery "markInputsByReference")
         let n = length refs
         when (n > 0) $ do
             let qry = "UPDATE inputs SET spent_at = ? \
                       \WHERE output_reference IN " <> mkPreparedStatement n
             execute conn qry (SQLInteger slotNo : toRow refs)
-        traceWith tr (DatabaseExitQuery "markInputsByReference")
 
     , foldInputs = \addressLike yield -> ReaderT $ \conn -> do
         let matchMaybeBytes = \case
@@ -346,7 +340,6 @@ mkDatabase tr longestRollback bracketConnection = Database
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
 
     , insertCheckpoints = \cps -> ReaderT $ \conn -> do
-        traceWith tr (DatabaseBeginQuery "insertCheckpoints")
         mapM_
             (\Checkpoint{..} ->
                 insertRow @"checkpoints" conn
@@ -355,7 +348,6 @@ mkDatabase tr longestRollback bracketConnection = Database
                     ]
             )
             cps
-        traceWith tr (DatabaseExitQuery "insertCheckpoints")
 
     , listCheckpointsDesc = \mk -> ReaderT $ \conn -> do
         let k = fromIntegral longestRollback
@@ -393,7 +385,6 @@ mkDatabase tr longestRollback bracketConnection = Database
             patterns
 
     , insertBinaryData = \bin -> ReaderT $ \conn -> do
-        traceWith tr (DatabaseBeginQuery "insertBinaryData")
         mapM_
             (\BinaryData{..} ->
                 insertRow @"binary_data" conn
@@ -402,7 +393,6 @@ mkDatabase tr longestRollback bracketConnection = Database
                     ]
             )
             bin
-        traceWith tr (DatabaseExitQuery "insertBinaryData")
 
     , getBinaryData = \binaryDataHash mk -> ReaderT $ \conn -> do
         let qry = "SELECT binary_data FROM binary_data \
@@ -415,6 +405,7 @@ mkDatabase tr longestRollback bracketConnection = Database
                 Nothing
 
     , pruneBinaryData = ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "pruneBinaryData")
         let qry = " DELETE FROM binary_data \
                   \ WHERE binary_data_hash IN (\
                   \   SELECT binary_data_hash FROM binary_data\
@@ -423,10 +414,10 @@ mkDatabase tr longestRollback bracketConnection = Database
                   \   WHERE inputs.output_reference IS NULL\
                   \ );"
         execute_ conn qry
+        traceWith tr (DatabaseExitQuery "pruneBinaryData")
         changes conn
 
     , insertScripts = \scripts -> ReaderT $ \conn -> do
-        traceWith tr (DatabaseBeginQuery "insertScripts")
         mapM_
             (\ScriptReference{..} ->
                 insertRow @"scripts" conn
@@ -435,7 +426,6 @@ mkDatabase tr longestRollback bracketConnection = Database
                     ]
             )
             scripts
-        traceWith tr (DatabaseExitQuery "insertScripts")
 
     , getScript = \scriptHash mk -> ReaderT $ \conn -> do
         let qry = "SELECT script FROM scripts \
@@ -462,7 +452,7 @@ mkDatabase tr longestRollback bracketConnection = Database
         execute conn "DELETE FROM inputs WHERE created_at > ?"
             [ slotNoVar
             ]
-        execute conn "UPDATE inputs SET spent_at = NULL WHERE spent_at > ?"
+        execute conn "UPDATE inputs SET spent_at = NULL WHERE address LIKE '0%' AND spent_at > ?"
             [ slotNoVar
             ]
         execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
