@@ -95,7 +95,7 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> optional sinceOption
                     <*> many patternOption
                     <*> inputManagementOption
-                    <*> pure 43200 -- TODO: should be pulled from genesis parameters
+                    <*> pure 129600 -- TODO: should be pulled from genesis parameters
                     <*> garbageCollectionIntervalOption
                 )
             <*> (tracersOption <|> Tracers
@@ -275,7 +275,7 @@ garbageCollectionIntervalOption = option diffTime $ mempty
     <> long "gc-interval"
     <> metavar "SECONDS"
     <> help "Number of seconds between background database garbage collections pruning obsolete or unnecessary data."
-    <> value 180
+    <> value 600
     <> showDefault
 
 -- | [--log-level-{COMPONENT}=SEVERITY], default: Info
