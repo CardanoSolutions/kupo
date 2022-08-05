@@ -86,12 +86,12 @@ data Database (m :: Type -> Type) = Database
 
     , deleteInputsByReference
         :: Set ByteString  -- Output references
-        -> DBTransaction m ()
+        -> DBTransaction m Int
 
     , markInputsByReference
         :: Word64 -- Slot
         -> Set ByteString  -- Output references
-        -> DBTransaction m ()
+        -> DBTransaction m Int
 
     , pruneInputs
         :: DBTransaction m Int
@@ -296,17 +296,23 @@ mkDatabase tr longestRollback bracketConnection = Database
 
     , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
         let n = length refs
-        when (n > 0) $ do
+        if n > 0 then do
             let qry = "DELETE FROM inputs \
                       \WHERE output_reference IN " <> mkPreparedStatement n
             execute conn qry refs
+            changes conn
+        else do
+            return 0
 
     , markInputsByReference = \(fromIntegral -> slotNo) refs -> ReaderT $ \conn -> do
         let n = length refs
-        when (n > 0) $ do
+        if n > 0 then do
             let qry = "UPDATE inputs SET spent_at = ? \
                       \WHERE output_reference IN " <> mkPreparedStatement n
             execute conn qry (SQLInteger slotNo : toRow refs)
+            changes conn
+        else do
+            return 0
 
     , foldInputs = \addressLike yield -> ReaderT $ \conn -> do
         let matchMaybeBytes = \case

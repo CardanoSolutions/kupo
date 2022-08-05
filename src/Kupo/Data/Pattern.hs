@@ -391,8 +391,7 @@ matchBlock Codecs{..} patterns blk =
             (toSlotNo (getPointSlotNo pt))
             consumed
 
-        , concatMap (flip (mapMaybeOutputs @block) tx . match pt) patterns
-            ++ produced
+        , matched ++ produced
 
         , Map.foldrWithKey
             (\k v accum -> toBinaryData k v : accum)
@@ -404,6 +403,8 @@ matchBlock Codecs{..} patterns blk =
             scripts
             (witnessedScripts @block tx)
         )
+      where
+        matched = concatMap (flip (mapMaybeOutputs @block) tx . match pt) patterns
 
     match
         :: Point

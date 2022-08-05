@@ -161,19 +161,22 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
         let lastKnownSlot = getPointSlotNo lastKnownPoint
         let (spentInputs, newInputs, bins, scripts) =
                 foldMap (matchBlock codecs patterns . snd) blks
+        isNonEmptyBlock <- runReadWriteTransaction $ do
+            insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
+            insertInputs newInputs
+            n <- onSpentInputs lastKnownTip lastKnownSlot spentInputs
+            let isNonEmptyBlock = n > 0 || not (null newInputs)
+            when isNonEmptyBlock $ do
+                insertBinaryData bins
+                insertScripts scripts
+            notifyTip lastKnownTip (Just lastKnownSlot)
+            return isNonEmptyBlock
         logWith tr $ ConsumerRollForward
             { slotNo = lastKnownSlot
             , inputs = length newInputs
-            , binaryData = length bins
-            , scripts = length scripts
+            , binaryData = if isNonEmptyBlock then length bins else 0
+            , scripts = if isNonEmptyBlock then length scripts else 0
             }
-        runReadWriteTransaction $ do
-            insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
-            insertInputs newInputs
-            onSpentInputs lastKnownTip lastKnownSlot spentInputs
-            insertBinaryData bins
-            insertScripts scripts
-            notifyTip lastKnownTip (Just lastKnownSlot)
 
     rollBackward :: (Tip, Point) -> m ()
     rollBackward (tip, pt) = do
@@ -190,18 +193,23 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
         , toScript = scriptToRow
         }
 
+    onSpentInputs
+        :: Tip
+        -> SlotNo
+        -> Map Word64 (Set ByteString)
+        -> DBTransaction m Int
     onSpentInputs = case inputManagement of
         MarkSpentInputs ->
-            \_ _ -> void . Map.traverseWithKey markInputsByReference
+            \_ _ -> fmap sum . Map.traverseWithKey markInputsByReference
         RemoveSpentInputs ->
             \lastKnownTip lastKnownSlot ->
                 -- Only delete when safe (i.e. deep enough in the chain).
                 -- Otherwise, mark as 'spent' and leave the pruning to the
                 -- periodic 'gardener' / garbage-collector.
                 if distanceToTip lastKnownTip lastKnownSlot > unstableWindow then
-                    traverse_ deleteInputsByReference
+                    fmap sum . traverse deleteInputsByReference
                 else
-                    void . Map.traverseWithKey markInputsByReference
+                    fmap sum . Map.traverseWithKey markInputsByReference
       where
         unstableWindow =
             getLongestRollback longestRollback
