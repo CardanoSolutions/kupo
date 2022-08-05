@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-nix-shell -p gnuplot --run "gnuplot -e 'plot \"$1" using (\$1):(\$2/1048576) with lines;' -p"
+nix-shell -p gnuplot --run "gnuplot -e 'plot \"$1\" using (\$1):(\$2/1048576) with lines;' -p"

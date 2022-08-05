@@ -42,8 +42,7 @@
 
 <br/>
 
-- [📌 #40](https://github.com/CardanoSolutions/kupo/issues/21) New optional command-line option `--gc-interval` to tweak the interval between database's garbage collection. Each garbage collection takes a bit of time (few seconds) and pauses the indexer while doing so; A too short interval may have a strong impact on overall performance. A too long interval may greatly
-increase the time needed for collecting garbage. Optimal value depends on your use-case, but the default (3 minute) is seemingly a sensible default.
+- [📌 #40](https://github.com/CardanoSolutions/kupo/issues/21) New optional command-line option `--gc-interval` to tweak the interval between database's garbage collection. Each garbage collection takes a bit of time (few seconds) and pauses the indexer while doing so; A too short interval may have a strong impact on overall syncing time. A too long interval may increase the time needed for collecting garbage. Optimal values depends on your use-case, but the default (10 minutes) is seemingly a sensible default. While syncing from scratch with very permissive patterns, you may want to increase this value (e.g. to 60 minutes) to avoid needlessly pausing the synchronization.
 
 <br/>
 
@@ -63,6 +62,8 @@ increase the time needed for collecting garbage. Optimal value depends on your u
 - [📌 #24](https://github.com/CardanoSolutions/kupo/issues/24) - Fixed a bug where listing checkpoints would sometimes return duplicate entries. 
 
 - [📌 #39](https://github.com/CardanoSolutions/kupo/issues/39) - Inserting a new pattern (i.e. `PUT v1/patterns/{pattern-fragment}`) now requires to provide a rollback point, to which the server will rollback and start synchronizing again. The old behavior can be recovered by simply passing the most recent checkpoint as a rollback point. Note that, you may add an already existing pattern if you only need, for some reason, to rollback the indexer to some previous point in time. See the [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/putPattern1Ary) for details.
+
+- [📌 #48](https://github.com/CardanoSolutions/kupo/discussions/48) - (Massively) improved performance of query by stake credential. This used to be in linear time in the size of the UTxO set, and is now performed in logarithmic time, same as query by address. Querying by payment credentials is still performed in linear times though so this is probably something you want to avoid doing on permissive patterns (e.g. `*` or `*/*`). 
 
 - Fixed a bug where the server would systematically reject any request to dynamically remove a pattern (because deemed overlapping with existing patterns). 
 
