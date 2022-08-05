@@ -11,13 +11,13 @@ const path = require('path');
 const DEFAULT_URL = 'http://localhost:1442';
 
 const SINCE = "origin";
-const UNTIL = 67297210;
+const UNTIL = 65000000;
 
 main().then(result => console.error(JSON.stringify(result)))
 
 async function main() {
-  const tmp = fs.mkdtempSync('kupo-synchronize-alonzo');
-  console.error(`bench (${tmp}): ${process.argv.slice(3)}`);
+  const workdir = process.env['WORKDIR'] ? process.env['WORKDIR'] : fs.mkdtempSync('kupo-synchronize-alonzo');
+  console.error(`bench (${workdir}): ${process.argv.slice(3)}`);
   let kupo;
   try {
     const cmd = process.argv[2];
@@ -32,7 +32,7 @@ async function main() {
       [ '--node-socket', socketFile
       , '--node-config', configFile
       , '--match', '*'
-      , '--workdir', tmp
+      , '--workdir', workdir
       , '--since', SINCE
       ].concat(extraOptions));
 
@@ -40,7 +40,7 @@ async function main() {
     kupo.stderr.on('data', chunk => process.stderr.write(chunk.toString()));
     kupo.on('close', code => process.exit(code));
 
-    const memoryStream = fs.createWriteStream(path.join(tmp, 'memory.log'));
+    const memoryStream = fs.createWriteStream(path.join(workdir, 'memory.log'));
 
     let memoryUsage = 0;
     let ix = 0;
@@ -58,21 +58,23 @@ async function main() {
     memoryStream.close();
     clearInterval(watchMemory);
 
-    const databaseSize = cp.execSync(`ls -lh ${tmp}/kupo.sqlite3`).toString().split(" ")[4];
+    const databaseSize = cp.execSync(`ls -lh ${workdir}/kupo.sqlite3`).toString().split(" ")[4];
     const maxMemory = `${memoryUsage / (1024 * 1024)}M`;
 
     const time = (Date.now() - now) / 1000;
     if (time < 1000) {
-      return { duration: `${time}s`, databaseSize, maxMemory };
+      return { duration: `${time}s`, databaseSize, maxMemory, workdir };
     } else if (time < 3600 * 3) {
-      return { duration: `${time / 60}min`, databaseSize, maxMemory };
+      return { duration: `${time / 60}min`, databaseSize, maxMemory, workdir };
     } else {
       const hour = Math.floor(time / 3600);
-      const min = time - hour * 3600;
-      return { duration: `${hour}h${min}min`, databaseSize, maxMemory };
+      const min = (time - hour * 3600) / 60;
+      return { duration: `${hour}h${min}min`, databaseSize, maxMemory, workdir };
     }
   } catch (e) {
-    fs.rmSync(tmp, { recursive: true });
+    if (!process.env['WORKDIR']) {
+      fs.rmSync(workdir, { recursive: true });
+    }
     throw e;
   } finally {
     if (kupo) {
