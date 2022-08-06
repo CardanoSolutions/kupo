@@ -157,11 +157,18 @@ data Database (m :: Type -> Type) = Database
         :: Word64  -- slot_no
         -> DBTransaction m (Maybe Word64)
 
+    -- Run a read-only transaction, that is, a set of SELECT operations that
+    -- leave the database unchanged. It acquires a different type of lock than
+    -- the 'runReadwriteTransaction' which also leads to different behavior when
+    -- it comes to retrying.
+    -- Multiple read-only transactions can happen at the same time, whereas a
+    -- read-write transaction will need to wait.
     , runReadOnlyTransaction
         :: forall a. ()
         => DBTransaction m a
         -> m a
 
+    -- See note on 'runReadOnlyTransaction' above.
     , runReadWriteTransaction
         :: forall a. ()
         => DBTransaction m a
@@ -287,11 +294,20 @@ mkDatabase tr longestRollback bracketConnection = Database
         changes conn
 
     , pruneInputs = ReaderT $ \conn -> do
+        traceWith tr (DatabaseBeginQuery "pruneInputs")
+        -- NOTE: There's a (not-so) pointless query on the 'address' column
+        -- to force SQLite to use the compound index 'inputsByAddress' which
+        -- drastically speed up the query. Indeed, SQLite will only use an index
+        -- if the left-most column(s) of an index are used in a WHERE or ORDER
+        -- BY clause.
+        -- Incidentally, the clause has no effect on the filtering because all
+        -- stored addresses start with  '0'.
         let qry = "DELETE FROM inputs \
                   \WHERE address LIKE '0%' AND spent_at < ( \
                   \  (SELECT MAX(slot_no) FROM checkpoints) - ?\
                   \)"
         execute conn qry [ SQLInteger (fromIntegral longestRollback) ]
+        traceWith tr (DatabaseExitQuery "pruneInputs")
         changes conn
 
     , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
@@ -412,12 +428,19 @@ mkDatabase tr longestRollback bracketConnection = Database
 
     , pruneBinaryData = ReaderT $ \conn -> do
         traceWith tr (DatabaseBeginQuery "pruneBinaryData")
+        -- NOTE: This removes all binary_data that aren't associted with any
+        -- known input. The 'ORDER BY' at the end may seem pointless but is
+        -- actually CRUCIAL for the query performance as it forces SQLite to use
+        -- the availables indexes of both tables on 'data_hash' and
+        -- 'binary_data_hash'. Without that, this query may take 1h+ on a large
+        -- database (e.g. mainnet matching '*').
         let qry = " DELETE FROM binary_data \
-                  \ WHERE binary_data_hash IN (\
-                  \   SELECT binary_data_hash FROM binary_data\
+                  \ WHERE binary_data_hash IN ( \
+                  \   SELECT binary_data_hash FROM binary_data \
                   \   LEFT JOIN inputs \
                   \   ON binary_data_hash = inputs.datum_hash \
-                  \   WHERE inputs.output_reference IS NULL\
+                  \   WHERE inputs.output_reference IS NULL \
+                  \   ORDER BY inputs.datum_hash \
                   \ );"
         execute_ conn qry
         traceWith tr (DatabaseExitQuery "pruneBinaryData")
@@ -455,15 +478,31 @@ mkDatabase tr longestRollback bracketConnection = Database
 
     , rollbackTo = \slotNo -> ReaderT $ \conn -> do
         let slotNoVar = SQLInteger (fromIntegral slotNo)
-        execute conn "DELETE FROM inputs WHERE created_at > ?"
-            [ slotNoVar
-            ]
-        execute conn "UPDATE inputs SET spent_at = NULL WHERE address LIKE '0%' AND spent_at > ?"
-            [ slotNoVar
-            ]
-        execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
-            [ slotNoVar
-            ]
+        query_ conn "SELECT MAX(slot_no) FROM checkpoints" >>= \case
+            -- NOTE: Rolling back takes quite a bit of time and, when restarting
+            -- the application, we'll always be asked to rollback to the
+            -- _current tip_. In this case, there's nothing to delete or update,
+            -- so we can safely skip it.
+            [[SQLInteger slotNo']] | fromIntegral slotNo' == slotNo -> do
+                pure ()
+            _otherwise -> do
+                traceWith tr $ DatabaseBeginQuery "rollbackTo"
+                execute conn "DELETE FROM inputs WHERE created_at > ?"
+                    [ slotNoVar
+                    ]
+                execute conn "UPDATE inputs SET spent_at = NULL WHERE address LIKE '0%' AND spent_at > ?"
+                    [ slotNoVar
+                    ]
+                execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
+                    [ slotNoVar
+                    ]
+                traceWith tr $ DatabaseExitQuery "rollbackTo"
+        -- NOTE: It is good to run the 'PRAGMA optimize' every now-and-then. The
+        -- SQLite's official documentation recommend to do so either upon
+        -- closing every connection, or, every few hours. We do it after rolling
+        -- back since this happens regularly but not too often, and, because
+        -- after a rollback, a lot of things gets re-organized in the database
+        -- so it's a good opportunity to tidy things up.
         execute_ conn "PRAGMA optimize"
         query_ conn "SELECT MAX(slot_no) FROM checkpoints" >>= \case
             [[SQLInteger slotNo']] ->

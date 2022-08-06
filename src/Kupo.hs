@@ -157,7 +157,7 @@ kupoWith tr withProducer =
                     (tracerGardener tr)
                     config
                     patterns
-                    (withDatabase nullTracer ShortLived lock longestRollback dbFile)
+                    (withDatabase (tracerDatabase tr) ShortLived lock longestRollback dbFile)
                 )
 
                 -- Block producer, fetching blocks from the network

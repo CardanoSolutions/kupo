@@ -164,8 +164,16 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
         isNonEmptyBlock <- runReadWriteTransaction $ do
             insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
             insertInputs newInputs
-            n <- onSpentInputs lastKnownTip lastKnownSlot spentInputs
-            let isNonEmptyBlock = n > 0 || not (null newInputs)
+            nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot spentInputs
+            -- NOTE: In case where the user has entered a relatively restrictive
+            -- pattern (e.g. one specific address), we do a best-effort at not
+            -- storing all the garbage of the world and only store scripts and
+            -- binary_data from the block if there's at least one transaction
+            -- that is relevant to that configuration.
+            -- Note that this isn't done from within 'matchBlock' because we
+            -- only know if we've spent inputs after running the above database
+            -- operation.
+            let isNonEmptyBlock = nSpentInputs > 0 || not (null newInputs)
             when isNonEmptyBlock $ do
                 insertBinaryData bins
                 insertScripts scripts
