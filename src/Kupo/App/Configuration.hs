@@ -90,17 +90,8 @@ startOrResume
 startOrResume tr configuration Database{..} = do
     checkpoints <- runReadOnlyTransaction (listCheckpointsDesc pointFromRow)
 
-    case nonEmpty (sortOn Down (unSlotNo . getPointSlotNo <$> checkpoints)) of
-        Nothing -> pure ()
-        Just slots -> do
-            let mostRecentCheckpoint = head slots
-            let oldestCheckpoint = last slots
-            let totalCheckpoints = length slots
-            logWith tr $ ConfigurationFoundCheckpoints
-                { totalCheckpoints
-                , mostRecentCheckpoint
-                , oldestCheckpoint
-                }
+    let slots = unSlotNo . getPointSlotNo <$> checkpoints
+    logWith tr $ ConfigurationCheckpointsForIntersection { slots }
 
     case (since, checkpoints) of
         (Nothing, []) -> do
@@ -205,11 +196,8 @@ data TraceConfiguration where
     ConfigurationPatterns
         :: { patterns :: [Text] }
         -> TraceConfiguration
-    ConfigurationFoundCheckpoints
-        :: { totalCheckpoints :: Int
-           , mostRecentCheckpoint :: Word64
-           , oldestCheckpoint :: Word64
-           }
+    ConfigurationCheckpointsForIntersection
+        :: { slots :: [Word64] }
         -> TraceConfiguration
     ConfigurationInvalidOrMissingOption
         :: { hint :: Text }
@@ -226,5 +214,5 @@ instance HasSeverityAnnotation TraceConfiguration where
         ConfigurationOgmios{} -> Info
         ConfigurationCardanoNode{} -> Info
         ConfigurationPatterns{} -> Info
-        ConfigurationFoundCheckpoints{} -> Info
+        ConfigurationCheckpointsForIntersection{} -> Info
         ConfigurationInvalidOrMissingOption{} -> Error
