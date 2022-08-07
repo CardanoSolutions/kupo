@@ -1,8 +1,6 @@
 # Benchmarks
 
-> Exact numbers, especially time, on those benchmarks may not be of extreme relevance as they depend on the machine hardware specifications they were executed on. What is however interesting is the difference between versions and the measured impact of features additions to the base software. 
-
-## Hardware Bench Specifications
+## Hardware Specifications
 
 - AMD Ryzen 9 4900HS (4007MHz, 512KiB L1, 4MiB L2, 8MiB L3)
 - 2 x 8GiB SODIMM DDR4 Synchronous Unbuffered 3200 MHz (0.3 ns)
@@ -12,18 +10,15 @@
 
 ### Synchronization
 
-| version  | options        | duration |
-| ---      | ---            | ---      |
-| `v1.0.1` | N/A            | ~12h     |
-| `v2.0.0` | `--prune-utxo` | 18h      |
+| version       | options        | duration             |
+| ---           | ---            | ---                  |
+| `v1.0.1`      | N/A            | ~10-14h<sup>\*</sup> |
+| `v2.0.0-beta` | `--prune-utxo` | 16h 45min            |
 
-> TODO: re-run mainnet synchronization benchmark with recent fixes w.r.t garbage collection. 
+> <sup>(\*)</sup>Exact time is unknown as it wasn't properly tracked at the time and was done through multiple runs. So this is therefore a gross bracket. 
+
 
 ![](./plots/v2.0.0-beta-mainnet.png)
-
-<p align="center">
-  <small><code>Fig. Memory Usage (MiB) over time</code></small>
-</p>
 
 <p align="right">
   See also <a href="./synchronize.js">synchronize.js</a>
@@ -31,14 +26,14 @@
 
 ### Query
 
-#### `v2.0.0`
+#### `v2.0.0-beta`
 
 Name         | Value
 ---          | ---
 `fragment`   | `stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6`
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment" > /dev/null
 
 real	0m2.557s
 user	0m0.082s
@@ -48,7 +43,7 @@ sys	0m0.136s
 ```
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment?unspent" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment?unspent" > /dev/null
 
 real	0m2.086s
 user	0m0.038s
@@ -65,7 +60,7 @@ Name         | Value
 `asset_name` | `55676c7942726f546865446566696e697469766536393439`
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment" > /dev/null
 
 real	0m2.659s
 user	0m0.116s
@@ -75,7 +70,7 @@ sys	0m0.123s
 ```
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment?unspent" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment?unspent" > /dev/null
 
 real	0m1.856s
 user	0m0.127s
@@ -85,7 +80,7 @@ sys	0m0.070s
 ```
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment?unspent&policy_id=$policy_id&asset_name=$asset_name" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment?unspent&policy_id=$policy_id&asset_name=$asset_name" > /dev/null
 
 real	0m0.601s
 user	0m0.000s
@@ -102,17 +97,13 @@ sys	0m0.007s
 
 ### Synchronization
 
-| version  | options        | duration |
-| ---      | ---            | ---      |
-| `v1.0.1` | N/A            | 55min    |
-| `v2.0.0` | `--prune-utxo` | 50min    |
-| `v2.0.0` | \-             | 65min    |
+| version       | options        | duration |
+| ---           | ---            | ---      |
+| `v1.0.1`      | N/A            | 55min    |
+| `v2.0.0-beta` | `--prune-utxo` | 50min    |
+| `v2.0.0-beta` | \-             | 65min    |
 
 ![](./plots/v2.0.0-beta-testnet.png)
-
-<p align="center">
-  <small><code>Fig. Memory Usage (MiB) over time</code></small>
-</p>
 
 <p align="right">
   See also <a href="./synchronize.js">synchronize.js</a>
@@ -120,14 +111,14 @@ sys	0m0.007s
 
 ### Query
 
-#### `v2.0.0`
+#### `v2.0.0-beta`
 
 Name         | Value
 ---          | ---
 `fragment`   | `addr_test1wrsexavz37208qda7mwwu4k7hcpg26cz0ce86f5e9kul3hqzlh22t`
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment" > /dev/null
 
 real	0m1.611s
 user	0m0.079s
@@ -137,7 +128,7 @@ sys	0m0.069s
 ```
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment?unspent" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment?unspent" > /dev/null
 
 real	0m1.665s
 user	0m0.059s
@@ -147,7 +138,7 @@ sys	0m0.090s
 ```
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment?spent" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment?spent" > /dev/null
 
 real	0m0.004s
 user	0m0.000s
@@ -162,7 +153,7 @@ Name         | Value
 `fragment`   | `stake_test1uzdlw6rjechunh4u03p3eersp6sxpfdwlhkq59ea3mttgfsag8smr`
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment" > /dev/null
 
 real	0m0.006s
 user	0m0.000s
@@ -172,7 +163,7 @@ sys	0m0.004s
 ```
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment?unspent" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment?unspent" > /dev/null
 
 real	0m0.010s
 user	0m0.004s
@@ -182,7 +173,7 @@ sys	0m0.004s
 ```
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment?spent" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment?spent" > /dev/null
 
 real	0m0.008s
 user	0m0.002s
@@ -197,7 +188,7 @@ Name         | Value
 `fragment`   | `6058ae2ba01b03504e0e2c418b44dd431dffe4105172332c518a94b3fe`
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment" > /dev/null
 
 real	0m0.010s
 user	0m0.007s
@@ -207,7 +198,7 @@ sys	0m0.000s
 ```
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment?unspent" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment?unspent" > /dev/null
 
 real	0m0.006s
 user	0m0.000s
@@ -217,7 +208,7 @@ sys	0m0.004s
 ```
 
 ```console
-$ curl -s "http://$hostname/v1/matches/$fragment?spent" > /dev/null
+$ curl -s "http://$hostname/matches/$fragment?spent" > /dev/null
 
 real	0m0.008s
 user	0m0.003s

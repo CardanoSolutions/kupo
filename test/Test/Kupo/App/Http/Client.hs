@@ -146,7 +146,7 @@ newHttpClientWith manager (serverHost, serverPort) =
             | n > 100 =
                 fail "waitForServer: timeout."
             | otherwise = do
-                req <- parseRequest (baseUrl <> "/v1/health")
+                req <- parseRequest (baseUrl <> "/health")
                 void (httpNoBody req manager) `catch` (\(_ :: HttpException) -> do
                     threadDelay 0.1
                     loop (succ n))
@@ -169,7 +169,7 @@ newHttpClientWith manager (serverHost, serverPort) =
 
     _listCheckpoints :: IO [Point]
     _listCheckpoints = do
-        req <- parseRequest (baseUrl <> "/v1/checkpoints")
+        req <- parseRequest (baseUrl <> "/checkpoints")
         res <- httpLbs req manager
         let body = responseBody res
         case eitherDecodeJson (Json.listParser decodePoint) body of
@@ -183,7 +183,7 @@ newHttpClientWith manager (serverHost, serverPort) =
         let qry = case mode of
                 GetCheckpointStrict -> "?strict"
                 GetCheckpointClosestAncestor -> ""
-        req <- parseRequest (baseUrl <> "/v1/checkpoints/" <> show slot <> qry)
+        req <- parseRequest (baseUrl <> "/checkpoints/" <> show slot <> qry)
         res <- httpLbs req manager
         let body = responseBody res
         pure $ either (const Nothing) Just (eitherDecodeJson decodePoint body)
@@ -194,7 +194,7 @@ newHttpClientWith manager (serverHost, serverPort) =
                  NoStatusFlag -> ""
                  OnlySpent -> "?spent"
                  OnlyUnspent -> "?unspent"
-        req <- parseRequest (baseUrl <> "/v1/matches" <> q)
+        req <- parseRequest (baseUrl <> "/matches" <> q)
         res <- httpLbs req manager
         let body = responseBody res
         case eitherDecodeJson (Json.listParser decodeResult) body of
@@ -206,7 +206,7 @@ newHttpClientWith manager (serverHost, serverPort) =
     _lookupDatumByHash :: DatumHash -> IO (Maybe BinaryData)
     _lookupDatumByHash datumHash = do
         let fragment = toString (datumHashToText datumHash)
-        req <- parseRequest (baseUrl <> "/v1/datums/" <> fragment)
+        req <- parseRequest (baseUrl <> "/datums/" <> fragment)
         res <- httpLbs req manager
         let body = responseBody res
         case Json.eitherDecode' body of
@@ -230,7 +230,7 @@ newHttpClientWith manager (serverHost, serverPort) =
     _lookupScriptByHash :: ScriptHash -> IO (Maybe Script)
     _lookupScriptByHash scriptHash = do
         let fragment = toString (scriptHashToText scriptHash)
-        req <- parseRequest (baseUrl <> "/v1/scripts/" <> fragment)
+        req <- parseRequest (baseUrl <> "/scripts/" <> fragment)
         res <- httpLbs req manager
         let body = responseBody res
         case Json.eitherDecode' body of
@@ -260,7 +260,7 @@ newHttpClientWith manager (serverHost, serverPort) =
     _putPatternSince :: Pattern -> Either SlotNo Point -> IO Bool
     _putPatternSince p pt = do
         let fragment = toString (patternToText p)
-        req <- parseRequest (baseUrl <> "/v1/patterns/" <> fragment) <&>
+        req <- parseRequest (baseUrl <> "/patterns/" <> fragment) <&>
             ( \r -> r
                 { method = "PUT"
                 , requestBody
@@ -284,7 +284,7 @@ newHttpClientWith manager (serverHost, serverPort) =
 
     _listPatterns :: IO [Pattern]
     _listPatterns = do
-        req <- parseRequest (baseUrl <> "/v1/patterns")
+        req <- parseRequest (baseUrl <> "/patterns")
         res <- httpLbs req manager
         let body = responseBody res
         case traverse patternFromText <$> Json.eitherDecode' body of

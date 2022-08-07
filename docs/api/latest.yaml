@@ -5,7 +5,7 @@ servers:
 
 info:
   title: Kupo
-  version: v1
+  version: "latest: v2.0.0-beta"
   license:
     name: MPL-2.0
     url: https://raw.githubusercontent.com/cardanosolutions/kupo/master/LICENSE
@@ -239,23 +239,23 @@ info:
     Matches can be queried from the server via HTTP GET requests. For example:
 
     ```console
-    $ curl http://localhost:1442/v1/matches
+    $ curl http://localhost:1442/matches
     ```
 
     will return all matches currently present in the database (be careful when
-    combined with very permissive patterns and wildcards!). The `v1/matches`
+    combined with very permissive patterns and wildcards!). The `/matches`
     endpoint actually accept patterns, which may be different from the one
     provided in the command-line. So it for instance possible to build an index
     for all addresses but then, lookup only a single address as:
 
     ```console
-    $ curl http://localhost:1442/v1/matches/addr1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgz4xq9p
+    $ curl http://localhost:1442/matches/addr1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgz4xq9p
     ```
 
     Optionally, you can query only `unspent` or `spent` results using the respective query flags:
 
     ```console
-    $ curl http://localhost:1442/v1/matches/*/*?unspent
+    $ curl http://localhost:1442/matches/*/*?unspent
     ```
 
     The complete API reference is available below.
@@ -312,7 +312,8 @@ components:
 
   schemas:
     Address_Shelley: &Address_Shelley
-      title: Shelley+
+      title: Shelley
+      description: A Shelley address (standard).
       type: string
       contentEncoding: bech32
       example: addr1vy3qpx09uscywhpp0ekg9zwmq2yj5vp08husfq6qyh2mpps865j6t
@@ -325,6 +326,7 @@ components:
 
     Address_Bootstrap: &Address_Bootstrap
       title: Bootstrap
+      description: A Bootstrap (a.k.a Byron) address (legacy).
       type: string
       contentEncoding: base58
       example: DdzFFzCqrhsnWCKDVxHipmLW7acroB11zWxe1BGP1gCh7EqmgjVPe2qes6HrsQs
@@ -336,7 +338,7 @@ components:
       example: 7a5e61936081db3b2117cbf59bd2123748f58ac96786567067f3314661
 
     Address:
-      description: A Cardano address.
+      description: A Cardano address, in any era.
       anyOf:
         - <<: *Address_Shelley
         - <<: *Address_Bootstrap
@@ -401,6 +403,7 @@ components:
           example: d87980
 
     DatumHash:
+      description: A blake2b-256 hash digest of a Plutus' datum, if any.
       oneOf:
         - title: Digest
           type: string
@@ -410,6 +413,7 @@ components:
           minLength: 64
           maxLength: 64
         - title: Nothing
+          description: N/A
           type: "null"
 
     Deleted:
@@ -437,7 +441,7 @@ components:
             Note that the synchronization will therefore begin starting from the point **immediately after** the provided point!
 
             > <sup><strong>NOTE (1)</strong></sup> <br/>
-            > If you need to query ancestors from any given known point, see [GET /v1/checkpoints/{slot-no}](http://localhost:8000/#operation/getCheckpointBySlot)
+            > If you need to query ancestors from any given known point, see [GET /checkpoints/{slot-no}](http://localhost:8000/#operation/getCheckpointBySlot)
 
             > <sup><strong>NOTE (2)</strong></sup> <br/>
             > The `header_hash` is **optional**! However if provided, Kupo will check that it rolls back exactly to the specified point by comparing header hashes.
@@ -487,38 +491,6 @@ components:
       minLength: 64
       maxLength: 64
 
-    Match:
-      type: object
-      additionalProperties: false
-      required:
-        - transaction_id
-        - output_index
-        - address
-        - value
-        - datum_hash
-        - script_hash
-        - created_at
-        - spent_at
-      properties:
-        transaction_id:
-          $ref: "#/components/schemas/TransactionId"
-        output_index:
-          $ref: "#/components/schemas/OutputIndex"
-        address:
-          $ref: "#/components/schemas/Address"
-        value:
-          $ref: "#/components/schemas/Value"
-        datum_hash:
-          $ref: "#/components/schemas/DatumHash"
-        script_hash:
-          $ref: "#/components/schemas/ScriptHash"
-        created_at:
-          $ref: "#/components/schemas/Point"
-        spent_at:
-          oneOf:
-            - $ref: "#/components/schemas/Point"
-            - type: "null"
-
     OutputIndex:
       type: integer
       description: An index of an output within a transaction.
@@ -533,7 +505,8 @@ components:
         - $ref: "#/components/schemas/AddressParameter"
         - $ref: "#/components/schemas/Credential"
 
-    Point:
+    Point: &Point
+      title: Point
       type: object
       additionalProperties: false
       required:
@@ -572,17 +545,18 @@ components:
           script: 4d01000033222220051200120011
 
     ScriptHash:
+      description: A blake2b-224 hash digest of a Native or Plutus script, if any.
       oneOf:
         - title: Digest
-          type: string
           description: A blake2b-224 hash digest of a Native or Plutus script.
+          type: string
           contentEncoding: base16
           example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded
           minLength: 56
           maxLength: 56
         - title: Nothing
+          description: N/A
           type: "null"
-
 
     SlotNo: &slotNo
       type: integer
@@ -611,7 +585,7 @@ components:
           example: 42
         assets:
           type: object
-          description:
+          description: A _key:value_ map of asset identifier → quantity.
           propertyNames:
             type: string
             pattern: ^[a-f0-9]{56}(.[a-f0-9]{2,64})?$
@@ -627,6 +601,40 @@ components:
       type: string
       title: wildcard
       enum: ["*"]
+
+    Match:
+      type: object
+      additionalProperties: false
+      required:
+        - transaction_id
+        - output_index
+        - address
+        - value
+        - datum_hash
+        - script_hash
+        - created_at
+        - spent_at
+      properties:
+        transaction_id:
+          $ref: "#/components/schemas/TransactionId"
+        output_index:
+          $ref: "#/components/schemas/OutputIndex"
+        address:
+          $ref: "#/components/schemas/Address"
+        value:
+          $ref: "#/components/schemas/Value"
+        datum_hash:
+          $ref: "#/components/schemas/DatumHash"
+        script_hash:
+          $ref: "#/components/schemas/ScriptHash"
+        created_at:
+          <<: *Point
+          description: Block reference at which this transaction was included in the ledger.
+        spent_at:
+          description: Block reference at which this transaction input was spent, if any.
+          oneOf:
+            - $ref: "#/components/schemas/Point"
+            - type: "null"
 
     Health:
       type: object
@@ -773,7 +781,7 @@ tags:
   - name: Health
 
 paths:
-  /v1/matches:
+  /matches:
     get:
       operationId: getAllMatches
       tags: ["Matches"]
@@ -797,7 +805,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/Match"
 
-  /v1/matches/{pattern-fragment}:
+  /matches/{pattern-fragment}:
     get: &getMatches
       operationId: getMatches1Ary
       tags: ["Matches"]
@@ -849,7 +857,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BadRequest"
 
-  /v1/matches/{pattern-fragment}/{pattern-fragment}:
+  /matches/{pattern-fragment}/{pattern-fragment}:
     get:
       <<: *getMatches
       operationId: getMatches2Ary
@@ -860,7 +868,7 @@ paths:
       operationId: deleteMatches2Ary
       summary: Delete Matches (*/*)
 
-  /v1/datums/{datum-hash}:
+  /datums/{datum-hash}:
     get:
       operationdId: getDatumByHash
       tags: ["Datums"]
@@ -887,7 +895,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BadRequest"
 
-  /v1/scripts/{script-hash}:
+  /scripts/{script-hash}:
     get:
       operationdId: getScriptByHash
       tags: ["Scripts"]
@@ -928,7 +936,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BadRequest"
 
-  /v1/patterns:
+  /patterns:
     get:
       operationId: getPatterns
       tags: ["Patterns"]
@@ -946,7 +954,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/Pattern"
 
-  /v1/patterns/{pattern-fragment}:
+  /patterns/{pattern-fragment}:
     get: &getPattern
       operationId: matchPattern1Ary
       tags: ["Patterns"]
@@ -1027,7 +1035,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/BadRequest"
 
-  /v1/patterns/{pattern-fragment}/{pattern-fragment}:
+  /patterns/{pattern-fragment}/{pattern-fragment}:
     get:
       <<: *getPattern
       operationId: getPattern2Ary
@@ -1043,7 +1051,7 @@ paths:
       operationId: putPattern2Ary
       summary: Add Pattern (*/*)
 
-  /v1/checkpoints:
+  /checkpoints:
     get:
       operationId: sampleCheckpoints
       tags: ["Checkpoints"]
@@ -1063,7 +1071,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/Point"
 
-  /v1/checkpoints/{slot-no}:
+  /checkpoints/{slot-no}:
     get:
       operationId: getCheckpointBySlot
       tags: ["Checkpoints"]
@@ -1086,7 +1094,7 @@ paths:
                   - $ref: "#/components/schemas/Point"
                   - type: "null"
 
-  /v1/health:
+  /health:
     get:
       operationId: getHealth
       tags: ["Health"]

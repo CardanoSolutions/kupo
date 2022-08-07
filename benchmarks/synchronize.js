@@ -11,7 +11,7 @@ const path = require('path');
 const DEFAULT_URL = 'http://localhost:1442';
 
 const SINCE = "origin";
-const UNTIL = 65000000;
+const UNTIL = 68000000;
 
 main().then(result => console.error(JSON.stringify(result)))
 
@@ -52,7 +52,7 @@ async function main() {
         }
         ix += 1;
       });
-    }, 2000);
+    }, 1000);
 
     await waitForSlot(UNTIL);
     memoryStream.close();
@@ -95,11 +95,11 @@ function findNodeConfigurationSync() {
 }
 
 async function waitForSlot(target) {
-  const POLL_DELAY = 5000; // ms
+  const POLL_DELAY = 10000; // ms
 
   return new Promise((resolve) => {
     function poll() {
-      http.get(`${DEFAULT_URL}/v1/health`, res => {
+      http.get(`${DEFAULT_URL}/health`, res => {
         res.setEncoding('utf8');
         let body = '';
         res.on('data', (chunk) => { body += chunk; });

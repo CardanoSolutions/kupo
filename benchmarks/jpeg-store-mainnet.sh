@@ -2,7 +2,7 @@
 
 hostname=localhost:1442
 
-echo '#### `v2.0.0`'
+echo '#### `v2.0.0-beta`'
 echo ""
 
 fragment=stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6
@@ -12,18 +12,18 @@ echo -n '`fragment`   | `'; echo -n $fragment; echo '`'
 echo ""
 
 echo '```console'
-echo '$ curl -s "http://$hostname/v1/matches/$fragment" > /dev/null'
-time curl -s "http://$hostname/v1/matches/$fragment" > /dev/null
+echo '$ curl -s "http://$hostname/matches/$fragment" > /dev/null'
+time curl -s "http://$hostname/matches/$fragment" > /dev/null
 echo ""
-echo "$(curl -s "http://$hostname/v1/matches/$fragment" | jq length) matches."
+echo "$(curl -s "http://$hostname/matches/$fragment" | jq length) matches."
 echo '```'
 echo ""
 
 echo '```console'
-echo '$ curl -s "http://$hostname/v1/matches/$fragment?unspent" > /dev/null'
-time curl -s "http://$hostname/v1/matches/$fragment?unspent" > /dev/null
+echo '$ curl -s "http://$hostname/matches/$fragment?unspent" > /dev/null'
+time curl -s "http://$hostname/matches/$fragment?unspent" > /dev/null
 echo ""
-echo "$(curl -s "http://$hostname/v1/matches/$fragment?unspent" | jq length) matches."
+echo "$(curl -s "http://$hostname/matches/$fragment?unspent" | jq length) matches."
 echo '```'
 echo ""
 
@@ -41,25 +41,25 @@ echo -n '`asset_name` | `'; echo -n $asset_name; echo '`'
 echo ""
 
 echo '```console'
-echo '$ curl -s "http://$hostname/v1/matches/$fragment" > /dev/null'
-time curl -s "http://$hostname/v1/matches/$fragment" > /dev/null
+echo '$ curl -s "http://$hostname/matches/$fragment" > /dev/null'
+time curl -s "http://$hostname/matches/$fragment" > /dev/null
 echo ""
-echo "$(curl -s "http://$hostname/v1/matches/$fragment" | jq length) matches."
+echo "$(curl -s "http://$hostname/matches/$fragment" | jq length) matches."
 echo '```'
 echo ""
 
 echo '```console'
-echo '$ curl -s "http://$hostname/v1/matches/$fragment?unspent" > /dev/null'
-time curl -s "http://$hostname/v1/matches/$fragment?unspent" > /dev/null
+echo '$ curl -s "http://$hostname/matches/$fragment?unspent" > /dev/null'
+time curl -s "http://$hostname/matches/$fragment?unspent" > /dev/null
 echo ""
-echo "$(curl -s "http://$hostname/v1/matches/$fragment" | jq length) matches."
+echo "$(curl -s "http://$hostname/matches/$fragment" | jq length) matches."
 echo '```'
 echo ""
 
 echo '```console'
-echo '$ curl -s "http://$hostname/v1/matches/$fragment?unspent&policy_id=$policy_id&asset_name=$asset_name" > /dev/null'
-time curl -s "http://$hostname/v1/matches/$fragment?unspent&policy_id=$policy_id&asset_name=$asset_name" > /dev/null
+echo '$ curl -s "http://$hostname/matches/$fragment?unspent&policy_id=$policy_id&asset_name=$asset_name" > /dev/null'
+time curl -s "http://$hostname/matches/$fragment?unspent&policy_id=$policy_id&asset_name=$asset_name" > /dev/null
 echo ""
-echo "$(curl -s "http://$hostname/v1/matches/$fragment?unspent&policy_id=$policy_id&asset_name=$asset_name" | jq length) matches."
+echo "$(curl -s "http://$hostname/matches/$fragment?unspent&policy_id=$policy_id&asset_name=$asset_name" | jq length) matches."
 echo '```'
 echo ""

@@ -13,20 +13,85 @@
     body { margin: 0; padding: 0; }
     pre { line-height: 0.90em !important; }
     pre > code { font-family: 'Source Code Pro' !important; }
+    #versions {
+      display: none;
+      justify-content: center;
+      align-items: center;
+      position: fixed;
+      padding: 0.5em;
+      top: 0;
+      z-index: 999;
+      background-color: rgb(250, 250, 250);
+      height: 2em;
+      width: calc(260px - 1em);
+    }
+    #versions a {
+      background-color: rgb(255, 255, 255);
+      border: 1px solid rgb(50, 50, 159);
+      color: rgb(50, 50, 159);
+      cursor: pointer;
+      display: inline-block;
+      font-family: Roboto, sans-serif;
+      font-size: 14px;
+      font-weight: bold;
+      line-height: 1.5em;
+      margin-left: 0.5em;
+      padding: 4px 8px;
+      text-align: left;
+      text-decoration: none;
+      text-rendering: optimizespeed !important;
+    }
+    @media (max-width: 800px) {
+      #versions {
+        width: 100%;
+        background-color: rgb(51, 51, 51);
+      }
+
+      #versions a {
+        border: none;
+        color: rgb(51, 51, 51);
+      }
+
+      div.redoc-wrap {
+        margin-top: 2em;
+      }
+    }
+    div.menu-content {
+      top: 3em !important;
+    }
   </style>
 </head>
 <body>
+  <script>
+    function render(version) {
+      Redoc.init(`./api/${version}.yaml`, {
+        expandResponses: '200,201',
+        theme: {
+          logo: {
+            gutter: '2rem',
+          }
+        }
+      }, document.getElementById('redoc-container'), () => document.getElementById('versions').style.display = 'flex');
+    }
+  </script>
+
+  <div id="versions">
+    <a href="#">v1.0.1</a>
+    <a href="#">v2.0.0-beta</a>
+    <a href="#">latest</a>
+    <script>
+      ;[1,2,3].forEach(ix => {
+        const el = document.querySelector(`#versions a:nth-child(${ix})`);
+        el.addEventListener('click', e => {
+          e.preventDefault();
+          render(el.text);
+        });
+      });
+    </script>
+  </div>
+
   <redoc id="redoc-container"></redoc>
   <script src="https://cdn.jsdelivr.net/npm/redoc@2.0.0-rc.63/bundles/redoc.standalone.js"></script>
-  <script>
-    Redoc.init('./openapi.yaml', {
-      expandResponses: '200,201',
-      theme: {
-        logo: {
-          gutter: '2rem',
-        }
-      }
-    }, document.getElementById('redoc-container'))
-  </script>
+  <script>render('latest');</script>
 </body>
 </html>

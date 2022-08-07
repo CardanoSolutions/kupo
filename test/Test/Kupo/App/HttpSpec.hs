@@ -98,256 +98,264 @@ import qualified Test.Kupo.Data.Pattern.Fixture as Fixture
 spec :: Spec
 spec = do
     specification <- runIO $ do
-        Yaml.decodeFileThrow @IO @OpenApi "./docs/openapi.yaml"
+        Yaml.decodeFileThrow @IO @OpenApi "./docs/api/latest.yaml"
+
+    specificationV1_0_1 <- runIO $ do
+        Yaml.decodeFileThrow @IO @OpenApi "./docs/api/v1.0.1.yaml"
 
     parallel $ do
-        session specification get "/v1/health" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint Http.status200
+        session specificationV1_0_1 get "/v1/health" $ \_ _ -> do
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/health"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            pure (Json.Null, [])
 
-        session specification get "/v1/checkpoints" $ \assertJson endpoint -> do
+        session specification get "/health" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/checkpoints"
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/health"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/v1/matches" $ \assertJson endpoint -> do
+        session specification get "/checkpoints" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches"
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/checkpoints"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/v1/matches?spent" $ \assertJson endpoint -> do
+        session specification get "/matches" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches?spent"
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/v1/matches?unspent" $ \assertJson endpoint -> do
+        session specification get "/matches?spent" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches?unspent"
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?spent"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/v1/matches?policy_id=96cb...dc48" $ \assertJson endpoint -> do
+        session specification get "/matches?unspent" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches?policy_id=96cb65293573e5c9f947d40bd06f80c465d4c6acee7598398765dc48"
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?unspent"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/v1/matches?policy_id=96cb...dc48&asset_name=40bd" $ \assertJson endpoint -> do
+        session specification get "/matches?policy_id=96cb...dc48" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/matches?policy_id=96cb65293573e5c9f947d40bd06f80c465d4c6acee7598398765dc48&asset_name=40bd"
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?policy_id=96cb65293573e5c9f947d40bd06f80c465d4c6acee7598398765dc48"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/v1/matches/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification get "/matches?policy_id=96cb...dc48&asset_name=40bd" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?policy_id=96cb65293573e5c9f947d40bd06f80c465d4c6acee7598398765dc48&asset_name=40bd"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification get "/matches/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             fragment <- liftIO $ generate (elements Fixture.unaryFragments)
             res <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath ("/v1/matches/" <> fragment)
+                & flip Wai.setPath ("/matches/" <> fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/v1/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification get "/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             fragment <- liftIO $ generate (elements Fixture.binaryFragments)
             res <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath ("/v1/matches/" <> fragment)
+                & flip Wai.setPath ("/matches/" <> fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        sessionWith noWildcard specification delete "/v1/matches/{pattern-fragment}" $ \assertJson endpoint -> do
+        sessionWith noWildcard specification delete "/matches/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             fragment <- liftIO $ generate (elements Fixture.nonOverlappingUnaryFragments)
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath ("/v1/matches/" <> fragment)
+                & flip Wai.setPath ("/matches/" <> fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        sessionWith noWildcard specification delete "/v1/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+        sessionWith noWildcard specification delete "/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             fragment <- liftIO $ generate (elements Fixture.nonOverlappingBinaryFragments)
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath ("/v1/matches/" <> fragment)
+                & flip Wai.setPath ("/matches/" <> fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/v1/datums/{datum-hash}" $ \assertJson endpoint -> do
+        session specification get "/datums/{datum-hash}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "GET" }
-                & flip Wai.setPath "/v1/datums/309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635"
+                & flip Wai.setPath "/datums/309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/v1/scripts/{script-hash}" $ \assertJson endpoint -> do
+        session specification get "/scripts/{script-hash}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "GET" }
-                & flip Wai.setPath "/v1/scripts/309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded"
+                & flip Wai.setPath "/scripts/309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/v1/patterns" $ \assertJson endpoint -> do
+        session specification get "/patterns" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/patterns"
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/patterns"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification delete "/v1/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification delete "/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             fragment <- liftIO $ generate (elements Fixture.unaryFragments)
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath ("/v1/patterns/" <> fragment)
+                & flip Wai.setPath ("/patterns/" <> fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification delete "/v1/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification delete "/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             fragment <- liftIO $ generate (elements Fixture.binaryFragments)
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath ("/v1/patterns/" <> fragment)
+                & flip Wai.setPath ("/patterns/" <> fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification put "/v1/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification put "/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             reqBody <- liftIO $ generate genPutPatternRequestBody
             res <- Wai.srequest $ Wai.SRequest
                 { Wai.simpleRequest = Wai.defaultRequest
                     { Wai.requestMethod = "PUT" }
-                    & flip Wai.setPath "/v1/patterns/*"
+                    & flip Wai.setPath "/patterns/*"
                 , Wai.simpleRequestBody =
                     reqBody
                 }
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification put "/v1/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification put "/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             reqBody <- liftIO $ generate genPutPatternRequestBody
             res <- Wai.srequest $ Wai.SRequest
                 { Wai.simpleRequest = Wai.defaultRequest
                     { Wai.requestMethod = "PUT" }
-                    & flip Wai.setPath "/v1/patterns/*"
+                    & flip Wai.setPath "/patterns/*"
                 , Wai.simpleRequestBody =
                     reqBody
                 }
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session' "🕱 GET /v1/does-not-exist" $ do
+        session' "🕱 GET /does-not-exist" $ do
             resNotFound <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath "/v1/does-not-exist"
+                & flip Wai.setPath "/does-not-exist"
             resNotFound
                 & Wai.assertStatus (Http.statusCode Http.status404)
             resNotFound
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 POST /v1/health" $ do
+        session' "🕱 POST /health" $ do
             resNotAllowed <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "POST" }
-                & flip Wai.setPath "/v1/health"
+                & flip Wai.setPath "/health"
             resNotAllowed
                 & Wai.assertStatus (Http.statusCode Http.status406)
             resNotAllowed
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /v1/matches/*/*/*" $ do
+        session' "🕱 GET /matches/*/*/*" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath "/v1/matches/*/*/*"
+                & flip Wai.setPath "/matches/*/*/*"
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /v1/matches?spent&unspent" $ do
+        session' "🕱 GET /matches?spent&unspent" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath "/v1/matches?spent&unspent"
+                & flip Wai.setPath "/matches?spent&unspent"
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /v1/matches?asset_name=... (no policy)" $ do
+        session' "🕱 GET /matches?asset_name=... (no policy)" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath "/v1/matches?asset_name=40bd"
+                & flip Wai.setPath "/matches?asset_name=40bd"
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 DELETE /v1/matches/{pattern-fragment}" $ do
+        session' "🕱 DELETE /matches/{pattern-fragment}" $ do
             overlappingFragment <- liftIO $ generate (elements Fixture.overlappingUnaryFragments)
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath ("/v1/matches/" <> overlappingFragment)
+                & flip Wai.setPath ("/matches/" <> overlappingFragment)
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 DELETE /v1/matches/{pattern-fragment}/{pattern-fragment}" $ do
+        session' "🕱 DELETE /matches/{pattern-fragment}/{pattern-fragment}" $ do
             overlappingFragment <- liftIO $ generate (elements Fixture.overlappingBinaryFragments)
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath ("/v1/matches/" <> overlappingFragment)
+                & flip Wai.setPath ("/matches/" <> overlappingFragment)
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /v1/checkpoints/42?foo" $ do
+        session' "🕱 GET /checkpoints/42?foo" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath "/v1/checkpoints/42?foo"
+                & flip Wai.setPath "/checkpoints/42?foo"
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /v1/checkpoints/foo" $ do
+        session' "🕱 GET /checkpoints/foo" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath "/v1/checkpoints/foo"
+                & flip Wai.setPath "/checkpoints/foo"
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /v1/datums/{datum-hash}" $ do
+        session' "🕱 GET /datums/{datum-hash}" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath "/v1/datums/foo"
+                & flip Wai.setPath "/datums/foo"
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /v1/scripts/{script-hash}" $ do
+        session' "🕱 GET /scripts/{script-hash}" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath "/v1/scripts/foo"
+                & flip Wai.setPath "/scripts/foo"
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 PUT /v1/patterns/{pattern-fragment} (invalid / no request body)" $ do
+        session' "🕱 PUT /patterns/{pattern-fragment} (invalid / no request body)" $ do
             resBadRequest <-
                 liftIO (generate genInvalidPutPatternRequestBody) >>= \case
                     Nothing ->
                         Wai.request $ Wai.defaultRequest
                             { Wai.requestMethod = "PUT" }
-                            & flip Wai.setPath "/v1/patterns/*"
+                            & flip Wai.setPath "/patterns/*"
                     Just reqBody ->
                         Wai.srequest $ Wai.SRequest
                             { Wai.simpleRequest = Wai.defaultRequest
                                 { Wai.requestMethod = "PUT" }
-                                & flip Wai.setPath "/v1/patterns/*"
+                                & flip Wai.setPath "/patterns/*"
                             , Wai.simpleRequestBody = reqBody
                             }
             resBadRequest
@@ -395,9 +403,9 @@ databaseStub = Database
     , deleteInputsByAddress =
         \_ -> liftIO (abs <$> generate arbitrary)
     , deleteInputsByReference =
-        \_ -> return ()
+        \_ -> lift (generate arbitrary)
     , markInputsByReference =
-        \_ _ -> return ()
+        \_ _ -> lift (generate arbitrary)
     , pruneInputs =
         liftIO (generate arbitrary)
     , insertCheckpoints =

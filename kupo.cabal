@@ -9,7 +9,7 @@ version:        2.0.0
 synopsis:       A daemon for building lookup indexes from entities of the Cardano blockchain
 description:    Please see the README on GitHub at <https://github.com/cardanosolutions/kupo/tree/master/README.md>
 category:       Web
-stability:      experimental
+stability:      stable
 homepage:       https://github.com/cardanosolutions/kupo#readme
 bug-reports:    https://github.com/cardanosolutions/kupo/issues
 author:         KtorZ <matthias.benkort@gmail.com>
@@ -23,9 +23,12 @@ extra-source-files:
     db/v1.0.0/001.sql
     db/v1.0.0/002.sql
     db/v1.0.1/001.sql
-    db/v2.0.0/001.sql
+    db/v2.0.0-beta/001.sql
 data-files:
-    docs/openapi.yaml
+    docs/api/latest.yaml
+    docs/api/v1.0.0.yaml
+    docs/api/v1.0.1.yaml
+    docs/api/v2.0.0-beta.yaml
 
 source-repository head
   type: git

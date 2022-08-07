@@ -143,28 +143,33 @@ app
     -> IO Health
     -> Application
 app withDatabase forceRollback patternsVar readHealth req send =
-    case pathInfo req of
-        ("v1" : "health" : args) ->
+    route (pathInfo req)
+  where
+    route = \case
+        ("health" : args) ->
             routeHealth (requestMethod req, args)
 
-        ("v1" : "checkpoints" : args) ->
+        ("checkpoints" : args) ->
             routeCheckpoints (requestMethod req, args)
 
-        ("v1" : "matches" : args) ->
+        ("matches" : args) ->
             routeMatches (requestMethod req, args)
 
-        ("v1" : "datums" : args) ->
+        ("datums" : args) ->
             routeDatums (requestMethod req, args)
 
-        ("v1" : "scripts" : args) ->
+        ("scripts" : args) ->
             routeScripts (requestMethod req, args)
 
-        ("v1" : "patterns" : args) ->
+        ("patterns" : args) ->
             routePatterns (requestMethod req, args)
+
+        ("v1" : args) ->
+            route args
 
         _ ->
             send Errors.notFound
-  where
+
     routeHealth = \case
         ("GET", []) -> do
             health <- readHealth
@@ -276,7 +281,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
             send Errors.methodNotAllowed
 
 --
--- /v1/health
+-- /health
 --
 
 handleGetHealth
@@ -287,7 +292,7 @@ handleGetHealth =
     responseJson status200
 
 --
--- /v1/checkpoints
+-- /checkpoints
 --
 
 handleGetCheckpoints
@@ -327,7 +332,7 @@ handleGetCheckpointBySlot headers mSlotNo query Database{..} =
                 Json.null_
 
 --
--- /v1/matches
+-- /matches
 --
 
 handleGetMatches
@@ -389,7 +394,7 @@ handleDeleteMatches headers patternsVar query Database{..} = do
                     ]
 
 --
--- /v1/datums
+-- /datums
 --
 
 handleGetDatum
@@ -414,7 +419,7 @@ handleGetDatum headers datumArg Database{..} = do
                             ]
 
 --
--- /v1/scripts
+-- /scripts
 --
 
 handleGetScript
@@ -433,7 +438,7 @@ handleGetScript headers scriptArg Database{..} = do
                 maybe Json.null_ scriptToJson script
 
 --
--- /v1/patterns
+-- /patterns
 --
 
 handleGetPatterns

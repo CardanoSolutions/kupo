@@ -2,7 +2,7 @@ _config: !include ".hpack.config.yaml"
 
 name:                kupo
 version:             2.0.0
-stability:           experimental
+stability:           stable
 github:              "cardanosolutions/kupo"
 license:             MPL-2.0
 author:              "KtorZ <matthias.benkort@gmail.com>"
@@ -16,7 +16,7 @@ extra-source-files:
 - db/**/*.sql
 
 data-files:
-- docs/openapi.yaml
+- docs/api/*.yaml
 
 dependencies:
 - base >= 4.7 && < 5

@@ -27,7 +27,7 @@ import qualified Data.Aeson.Encoding as Json
 healthCheck :: String -> Int -> IO ()
 healthCheck host port = do
     response <- handle onAnyException $ join $ httpLbs
-        <$> parseRequest ("http://" <> host <> ":" <> show port <> "/v1/health")
+        <$> parseRequest ("http://" <> host <> ":" <> show port <> "/health")
         <*> newManager defaultManagerSettings
     case Json.decode (responseBody response) >>= getConnectionStatus of
         Just st | Json.value st == Json.toEncoding Connected ->

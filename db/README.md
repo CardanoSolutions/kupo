@@ -13,14 +13,14 @@
 ```sql
 CREATE TABLE `inputs` (
   `output_reference` BLOB PRIMARY KEY NOT NULL,
-  `address` TEXT NOT NULL,
+  `address` TEXT COLLATE NOCASE NOT NULL,
   `value` BLOB NOT NULL,
   `datum_hash` BLOB,
   `script_hash` BLOB,
   `created_at` INTEGER NOT NULL,
   `spent_at` INTEGER
 );
-CREATE INDEX `inputsByAddress`   ON `inputs` (`address`, `spent_at`);
+CREATE INDEX `inputsByAddress`   ON `inputs` (`address` COLLATE NOCASE, `spent_at`);
 CREATE INDEX `inputsByDatumHash` ON `inputs` (`datum_hash`);
 
 CREATE TABLE `checkpoints` (
@@ -49,12 +49,8 @@ CREATE TABLE `patterns` (
 
 ## Changelog
 
-<p align="right"><code>v2.0.0</code></p>
+<p align="right"><code>v2.0.0-beta</code></p>
 <hr/>
-
-### Migration to `version=6`
-
-- Set `synchronous = normal` 
 
 ### Migration to `version=5`
 
