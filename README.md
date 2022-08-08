@@ -20,12 +20,17 @@ See [projects 🎯](https://github.com/CardanoSolutions/kupo/projects?type=class
 
 # System Requirements
 
-| Category         | Value                                      |
-| ---              | ---                                        |
-| Operating System | Linux 64-bit                               |
-| RAM              | 2GB                                        |
-| CPU              | 2 cores                                    |
-| Disk Storage     | Variable, up to 40GB (full index, mainnet) |
+| Category         | Value                                     |
+| ---              | ---                                       |
+| Operating System | Linux 64-bit                              |
+| RAM              | 1280MB<sup>1</sup>                        |
+| CPU              | 2 cores                                   |
+| Disk Storage     | Variable (few MB, up to 40GB)<sup>2</sup> |
+
+> <sup><strong>1</strong></sup> The maximum memory usage depends on runtime flags and internal settings. This can be made lower if necessary (possibly as small as a hundred megabytes) by tweaking those settings. The obvious counter-part being slower synchronization times when syncing over large chunks of data. When synchronized, however, this has close to no impact. 
+
+> <sup><strong>2</strong></sup> The size of the database depends on the patterns the indexer is configured with. Storing every single entry of Mainnet currently come close to ~40GB. However, if pruned (i.e. only keep unspent entries), Mainnet is around 4GB.
+> 
 
 # Continuous Integration
 
@@ -33,8 +38,8 @@ See [projects 🎯](https://github.com/CardanoSolutions/kupo/projects?type=class
 | --- | --- | 
 | <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/docker.yaml"><img src="https://img.shields.io/github/workflow/status/cardanosolutions/kupo/Docker?style=for-the-badge&label=&logo=Docker&logoColor=000000&color=f9dd24" /></a> | Docker build, shipping images to [Dockerhub](https://hub.docker.com/r/cardanosolutions/kupo) |
 | <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/nix.yaml"><img src="https://img.shields.io/github/workflow/status/cardanosolutions/kupo/Nix?style=for-the-badge&label=&logo=NixOS&logoColor=000000&color=f9dd24" /></a> | Nix build, providing static binary executables as artifacts. | 
-| <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/pages/pages-build-deployment"><img src="https://img.shields.io/github/deployments/cardanosolutions/kupo/github-pages?style=for-the-badge&label=&logo=readthedocs&logoColor=000000&color=f9dd24"></a> | User manual and API reference deployment. |
-| <img src="https://img.shields.io/static/v1?style=for-the-badge&label=&message=90%&logo=codecov&logoColor=000000&color=f9dd24"> | Test code coverage. |
+| <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/pages/pages-build-deployment"><img src="https://img.shields.io/github/deployments/cardanosolutions/kupo/github-pages?style=for-the-badge&label=&logo=readthedocs&logoColor=000000&color=f9dd24"></a> | [User manual][] and API reference deployment. |
+| <img src="https://img.shields.io/static/v1?style=for-the-badge&label=&message=90%&logo=codecov&logoColor=000000&color=f9dd24"> | Test code coverage. Learn more about the [testing strategy][]. |
 
 # Alternatives
 
@@ -120,3 +125,6 @@ Key differences(s): the plutus-chain-index is the native component behind the PA
 </p>
 
 <p align="center"><a href="https://github.com/cardanosolutions/kupo/blob/master/LICENSE"><img src=".github/license.svg" alt="license=MPL-2.0" /></a></p>
+
+[testing strategy]: https://github.com/CardanoSolutions/kupo/tree/master/test#testing-strategy
+[user manual]: https://cardanosolutions.github.io/kupo
