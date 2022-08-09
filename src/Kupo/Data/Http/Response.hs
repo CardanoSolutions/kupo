@@ -10,6 +10,10 @@ module Kupo.Data.Http.Response
 
 import Kupo.Prelude
 
+import Data.IORef
+    ( mkWeakIORef )
+import GHC.Weak
+    ( finalize )
 import Network.HTTP.Types.Header
     ( Header, hContentLength )
 import Network.HTTP.Types.Status
@@ -54,6 +58,7 @@ responseStreamJson
 responseStreamJson headers encode callback = do
     responseStream status200 headers $ \write flush -> do
         ref <- newIORef True
+        weak <- mkWeakIORef ref flush
         write openBracket
         callback
             (\a -> do
@@ -61,7 +66,7 @@ responseStreamJson headers encode callback = do
                 write (separator isFirstResult <> Json.fromEncoding (encode a))
                 writeIORef ref False
             )
-            (write closeBracket >> flush)
+            (write closeBracket >> finalize weak)
   where
     openBracket = B.putCharUtf8 '['
     closeBracket = B.putCharUtf8 ']'
