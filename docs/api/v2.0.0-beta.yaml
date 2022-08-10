@@ -1078,7 +1078,7 @@ paths:
       summary: Get Checkpoint By Slot
       description: |
         Retrieve a checkpoint by its (absolute) slot number. The query is flexible by default. Meaning that, if there's no checkpoint at the given slot, the server
-        will for for the closest (i.e. most recent) slot that is **before** the provided slot number. This is particularly useful to find ancestors to known slots
+        will instead return the point of the closest (i.e. most recent) slot that is **before** the provided slot number. This is particularly useful to find ancestors to known slots
         in order to use them for references on-chain.
       parameters:
         - $ref: "#/components/parameters/slot-no"
