@@ -27,11 +27,13 @@ module Kupo.Data.Cardano
     , unsafeTransactionIdFromBytes
     , getTransactionId
     , transactionIdToJson
+    , transactionIdFromText
 
       -- * OutputIndex
     , OutputIndex
     , getOutputIndex
     , outputIndexToJson
+    , outputIndexFromText
 
       -- * Input
     , Input
@@ -613,6 +615,14 @@ outputIndexToJson =
     Json.integer . toInteger
 {-# INLINABLE outputIndexToJson #-}
 
+outputIndexFromText :: Text -> Maybe OutputIndex
+outputIndexFromText txt = do
+    (ix, remIx) <- either (const Nothing) Just (T.decimal txt)
+    guard (T.null remIx)
+    pure (fromInteger ix)
+{-# INLINABLE outputIndexFromText #-}
+
+
 -- Transaction
 
 type Transaction = Transaction' StandardCrypto
@@ -672,6 +682,13 @@ withReferences txId = loop 0
 
 instance HasTransactionId Ledger.TxIn where
     getTransactionId (Ledger.TxIn i _) = i
+
+transactionIdFromText
+    :: Text
+    -> Maybe TransactionId
+transactionIdFromText =
+    fmap transactionIdFromHash . hashFromTextAsHex @Blake2b_256
+{-# INLINABLE transactionIdFromText #-}
 
 -- Output
 

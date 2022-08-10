@@ -10,13 +10,15 @@ module Kupo.Data.Http.FilterMatchesBy
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( AssetId, PolicyId, assetNameFromText, policyIdFromText )
+    ( AssetId, PolicyId, assetNameFromText, policyIdFromText, TransactionId, OutputReference, mkOutputReference, outputIndexFromText, transactionIdFromText )
 
 import qualified Network.HTTP.Types as Http
 
 data FilterMatchesBy
     = FilterByAssetId AssetId
     | FilterByPolicyId PolicyId
+    | FilterByTransactionId TransactionId
+    | FilterByOutputReference OutputReference
     | NoFilter
     deriving (Eq, Show, Generic)
 
@@ -61,5 +63,20 @@ filterMatchesBy = search Nothing
                     Nothing
             assetName <- assetNameFromText str
             pure $ FilterByAssetId (policyId, assetName)
+        ("output_index", Just bytes):rest -> do
+            str <- either (const Nothing) pure (decodeUtf8' bytes)
+            guard (isNothing byPolicyId)
+            txId <- case search byPolicyId rest of
+                Just (FilterByTransactionId tId) ->
+                    Just tId
+                _ ->
+                    Nothing
+            outputIndex <- outputIndexFromText str
+            pure $ FilterByOutputReference (mkOutputReference txId outputIndex)
+        ("transaction_id", Just bytes):rest -> do
+            str <- either (const Nothing) pure (decodeUtf8' bytes)
+            guard (isNothing byPolicyId)
+            outputRef <- transactionIdFromText str
+            search (Just (FilterByTransactionId outputRef)) rest
         _:rest ->
             search byPolicyId rest

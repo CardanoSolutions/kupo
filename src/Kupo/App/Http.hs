@@ -44,6 +44,7 @@ import Kupo.Data.Cardano
     , scriptToJson
     , slotNoFromText
     , slotNoToText
+    , getTransactionId
     )
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..) )
@@ -368,6 +369,22 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
                     responseStreamJson headers resultToJson $ \yield done -> do
                         let yieldIf result = do
                                 if hasPolicyId (value result) policyId
+                                then yield result
+                                else pure ()
+                        runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
+                        done
+                Just (FilterByOutputReference oRef) ->
+                    responseStreamJson headers resultToJson $ \yield done -> do
+                        let yieldIf result = do
+                                if outputReference result == oRef
+                                then yield result
+                                else pure ()
+                        runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
+                        done
+                Just (FilterByTransactionId txId) ->
+                    responseStreamJson headers resultToJson $ \yield done -> do
+                        let yieldIf result = do
+                                if (getTransactionId . outputReference) result == txId
                                 then yield result
                                 else pure ()
                         runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
