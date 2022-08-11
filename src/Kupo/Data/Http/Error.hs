@@ -31,6 +31,15 @@ invalidPattern =
                  \<https://cardanosolutions.github.io/kupo>!"
         }
 
+invalidOutputPattern :: Response
+invalidOutputPattern =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Invalid output reference pattern! To fetch matches, you may provide any valid \
+                 \output reference. Make sure to double-check the documentation at: \
+                 \<https://cardanosolutions.github.io/kupo>!"
+        }
+
+
 invalidStatusFlag :: Response
 invalidStatusFlag =
     responseJson status400 Default.headers $ HttpError

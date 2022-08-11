@@ -47,7 +47,7 @@ module Kupo.Data.Database
 
       -- * Filtering
     , applyStatusFlag
-    ) where
+) where
 
 import Kupo.Prelude
 

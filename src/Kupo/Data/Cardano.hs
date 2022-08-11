@@ -40,6 +40,7 @@ module Kupo.Data.Cardano
     , OutputReference
     , mkOutputReference
     , withReferences
+    , outputReferenceFromText
 
       -- * Output
     , Output
@@ -187,7 +188,7 @@ module Kupo.Data.Cardano
 
       -- * WithOrigin
     , WithOrigin (..)
-    ) where
+    , outputReferenceFromPath) where
 
 import Kupo.Prelude
 
@@ -689,6 +690,21 @@ transactionIdFromText
 transactionIdFromText =
     fmap transactionIdFromHash . hashFromTextAsHex @Blake2b_256
 {-# INLINABLE transactionIdFromText #-}
+
+outputReferenceFromText :: Text -> Maybe OutputReference
+outputReferenceFromText txt =
+    case T.splitOn "/" txt of
+        [txId, outputIndex] -> do
+            mkOutputReference <$> transactionIdFromText txId <*> outputIndexFromText outputIndex
+        _ ->
+            empty
+
+outputReferenceFromPath :: [Text] -> Maybe Text
+outputReferenceFromPath = \case
+    [arg0, arg1] ->
+        Just (arg0 <> "/" <> arg1)
+    _ ->
+        Nothing
 
 -- Output
 

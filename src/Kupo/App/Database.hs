@@ -74,6 +74,7 @@ import Numeric
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
+import Kupo.Data.Cardano (OutputReference)
 
 data Database (m :: Type -> Type) = Database
     { insertInputs
@@ -98,6 +99,12 @@ data Database (m :: Type -> Type) = Database
 
     , foldInputs
         :: Text  -- An address-like query
+        -> (Input -> m ())
+        -> DBTransaction m ()
+
+    , foldInputsOutputReference
+        :: Text  -- The status flag
+        -> OutputReference
         -> (Input -> m ())
         -> DBTransaction m ()
 
@@ -360,6 +367,38 @@ mkDatabase tr longestRollback bracketConnection = Database
                 , matchMaybeBytes -> spentAtHeaderHash
                 ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
+
+    , foldInputsOutputReference = \statusFlag outputRef yield -> ReaderT $ \conn -> do
+        let matchMaybeBytes = \case
+                SQLBlob bytes -> Just bytes
+                _ -> Nothing
+        let matchMaybeWord64 = \case
+                SQLInteger (fromIntegral -> wrd) -> Just wrd
+                _ -> Nothing
+        let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash \
+                  \FROM inputs \
+                  \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
+                  \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
+                  \WHERE output_reference = ? " <> statusFlag <> " ORDER BY created_at DESC"
+
+        -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
+        --
+        -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
+        let datum = Nothing
+        let refScript = Nothing
+        let serializedOutput = serialize' outputRef
+        Sqlite.fold conn (Query qry) (Only (SQLBlob serializedOutput)) () $ \() -> \case
+            [ SQLBlob outputReference
+                , SQLText address
+                , SQLBlob value
+                , matchMaybeBytes -> datumHash
+                , matchMaybeBytes -> refScriptHash
+                , SQLInteger (fromIntegral -> createdAtSlotNo)
+                , SQLBlob createdAtHeaderHash
+                , matchMaybeWord64 -> spentAtSlotNo
+                , matchMaybeBytes -> spentAtHeaderHash
+                ] -> yield Input{..}
+            (xs :: [SQLData]) -> throwIO (UnexpectedRow (encodeBase16 serializedOutput) [xs])
 
     , insertCheckpoints = \cps -> ReaderT $ \conn -> do
         mapM_

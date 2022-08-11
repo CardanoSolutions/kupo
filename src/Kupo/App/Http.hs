@@ -44,7 +44,7 @@ import Kupo.Data.Cardano
     , scriptToJson
     , slotNoFromText
     , slotNoToText
-    , getTransactionId
+    , getTransactionId, outputReferenceFromText, outputReferenceFromPath
     )
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..) )
@@ -108,6 +108,7 @@ import qualified Kupo.Data.Http.Error as Errors
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.URI as Http
 import qualified Network.Wai.Handler.Warp as Warp
+import qualified Kupo.Data.Http.Error as Errors
 
 --
 -- Server
@@ -164,6 +165,9 @@ app withDatabase forceRollback patternsVar readHealth req send =
 
         ("patterns" : args) ->
             routePatterns (requestMethod req, args)
+
+        ("outputs" : args) ->
+            routeOutputs (requestMethod req, args)
 
         ("v1" : args) ->
             route args
@@ -277,6 +281,18 @@ app withDatabase forceRollback patternsVar readHealth req send =
                             headers
                             patternsVar
                             (patternFromPath args)
+                            db
+        (_, _) ->
+            send Errors.methodNotAllowed
+
+    routeOutputs = \case
+        ("GET", args) ->
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth
+                send $ handleGetOutputs
+                            headers
+                            (outputReferenceFromPath args)
+                            (queryString req)
                             db
         (_, _) ->
             send Errors.methodNotAllowed
@@ -562,6 +578,29 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
                 atomically (putTMVar response Errors.failedToRollback)
             }
         atomically (takeTMVar response)
+
+--
+-- /outputs
+--
+
+handleGetOutputs
+    :: [Http.Header]
+    -> Maybe Text
+    -> Http.Query
+    -> Database IO
+    -> Response
+handleGetOutputs headers outputQuery queryParams Database{..} = do
+    case (outputQuery >>= outputReferenceFromText, statusFlagFromQueryParams queryParams) of
+        (Nothing, _) ->
+            Errors.invalidOutputPattern
+        (Just{}, Nothing) ->
+            Errors.invalidStatusFlag
+        (Just p, Just statusFlag) -> do
+            let query = applyStatusFlag statusFlag ""
+            responseStreamJson headers resultToJson $ \yield done -> do
+                runReadOnlyTransaction $ foldInputs query (yield . resultFromRow)
+                done
+
 
 --
 -- Helpers
