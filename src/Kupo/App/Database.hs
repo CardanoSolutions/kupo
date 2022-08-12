@@ -338,56 +338,15 @@ mkDatabase tr longestRollback bracketConnection = Database
         else do
             return 0
 
-    , foldInputsByAddress = \addressLike yield -> ReaderT $ \conn -> do
-        let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash \
-                  \FROM inputs \
-                  \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
-                  \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
-                  \WHERE address " <> addressLike <> " ORDER BY created_at DESC"
 
-        -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
-        --
-        -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
-        let datum = Nothing
-        let refScript = Nothing
-        fold_ conn (Query qry) () $ \() -> \case
-            [ SQLBlob outputReference
-                , SQLText address
-                , SQLBlob value
-                , matchMaybeBytes -> datumHash
-                , matchMaybeBytes -> refScriptHash
-                , SQLInteger (fromIntegral -> createdAtSlotNo)
-                , SQLBlob createdAtHeaderHash
-                , matchMaybeWord64 -> spentAtSlotNo
-                , matchMaybeBytes -> spentAtHeaderHash
-                ] -> yield Input{..}
-            (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
+    , foldInputsByAddress = \addressLike yield ->
+        foldInputs ("address " <> addressLike) [] yield
 
-    , foldInputsByOutputReference = \statusFlag outputRef yield -> ReaderT $ \conn -> do
-        let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash \
-                  \FROM inputs \
-                  \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
-                  \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
-                  \WHERE output_reference = ? " <> statusFlag <> " ORDER BY created_at DESC"
 
-        -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
-        --
-        -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
-        let datum = Nothing
-        let refScript = Nothing
-        let serializedOutput = serialize' outputRef
-        Sqlite.fold conn (Query qry) (Only (SQLBlob serializedOutput)) () $ \() -> \case
-            [ SQLBlob outputReference
-                , SQLText address
-                , SQLBlob value
-                , matchMaybeBytes -> datumHash
-                , matchMaybeBytes -> refScriptHash
-                , SQLInteger (fromIntegral -> createdAtSlotNo)
-                , SQLBlob createdAtHeaderHash
-                , matchMaybeWord64 -> spentAtSlotNo
-                , matchMaybeBytes -> spentAtHeaderHash
-                ] -> yield Input{..}
-            (xs :: [SQLData]) -> throwIO (UnexpectedRow (encodeBase16 serializedOutput) [xs])
+    , foldInputsByOutputReference = \statusFlag outputRef yield ->
+        let qry = "output_reference = ? " <> statusFlag
+            param = [SQLBlob $ serialize' outputRef]
+            in foldInputs qry param yield
 
     , insertCheckpoints = \cps -> ReaderT $ \conn -> do
         mapM_
@@ -616,6 +575,35 @@ matchMaybeWord64 :: SQLData -> Maybe Word64
 matchMaybeWord64 = \case
     SQLInteger (fromIntegral -> wrd) -> Just wrd
     _ -> Nothing
+
+foldInputs :: Text  -- A condition on filtering inputs
+    -> [SQLData]
+    -> (Input -> IO ())
+    -> ReaderT Connection IO ()
+foldInputs query params yield = ReaderT $ \conn -> do
+    let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash \
+                \FROM inputs \
+                \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
+                \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
+                \WHERE " <> query <> " ORDER BY created_at DESC"
+
+    -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
+    --
+    -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
+    let datum = Nothing
+    let refScript = Nothing
+    Sqlite.fold conn (Query qry) params () $ \() -> \case
+        [ SQLBlob outputReference
+            , SQLText address
+            , SQLBlob value
+            , matchMaybeBytes -> datumHash
+            , matchMaybeBytes -> refScriptHash
+            , SQLInteger (fromIntegral -> createdAtSlotNo)
+            , SQLBlob createdAtHeaderHash
+            , matchMaybeWord64 -> spentAtSlotNo
+            , matchMaybeBytes -> spentAtHeaderHash
+            ] -> yield Input{..}
+        (xs :: [SQLData]) -> throwIO (UnexpectedRow query [xs])
 
 --
 -- Migrations
