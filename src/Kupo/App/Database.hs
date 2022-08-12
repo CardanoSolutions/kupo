@@ -64,6 +64,8 @@ import Database.SQLite.Simple.ToField
     ( ToField (..) )
 import GHC.TypeLits
     ( KnownSymbol, symbolVal )
+import Kupo.Data.Cardano
+    ( OutputReference )
 import Kupo.Data.Configuration
     ( LongestRollback (..) )
 import Kupo.Data.Database
@@ -74,7 +76,6 @@ import Numeric
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
-import Kupo.Data.Cardano (OutputReference)
 
 data Database (m :: Type -> Type) = Database
     { insertInputs

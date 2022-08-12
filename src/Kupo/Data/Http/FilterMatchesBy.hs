@@ -10,7 +10,16 @@ module Kupo.Data.Http.FilterMatchesBy
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( AssetId, PolicyId, assetNameFromText, policyIdFromText, TransactionId, OutputReference, mkOutputReference, outputIndexFromText, transactionIdFromText )
+    ( AssetId
+    , OutputReference
+    , PolicyId
+    , TransactionId
+    , assetNameFromText
+    , mkOutputReference
+    , outputIndexFromText
+    , policyIdFromText
+    , transactionIdFromText
+    )
 
 import qualified Network.HTTP.Types as Http
 

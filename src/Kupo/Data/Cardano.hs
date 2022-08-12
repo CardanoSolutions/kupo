@@ -41,6 +41,7 @@ module Kupo.Data.Cardano
     , mkOutputReference
     , withReferences
     , outputReferenceFromText
+    , outputReferenceFromPath
 
       -- * Output
     , Output
@@ -188,7 +189,7 @@ module Kupo.Data.Cardano
 
       -- * WithOrigin
     , WithOrigin (..)
-    , outputReferenceFromPath) where
+    ) where
 
 import Kupo.Prelude
 
@@ -697,7 +698,7 @@ outputReferenceFromText txt =
         [txId, outputIndex] -> do
             mkOutputReference <$> transactionIdFromText txId <*> outputIndexFromText outputIndex
         _ ->
-            empty
+            Nothing
 
 outputReferenceFromPath :: [Text] -> Maybe Text
 outputReferenceFromPath = \case

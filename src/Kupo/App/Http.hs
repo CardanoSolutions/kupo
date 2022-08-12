@@ -37,14 +37,16 @@ import Kupo.Data.Cardano
     , datumHashFromText
     , distanceToSlot
     , getPointSlotNo
+    , getTransactionId
     , hasAssetId
     , hasPolicyId
+    , outputReferenceFromPath
+    , outputReferenceFromText
     , pointToJson
     , scriptHashFromText
     , scriptToJson
     , slotNoFromText
     , slotNoToText
-    , getTransactionId, outputReferenceFromText, outputReferenceFromPath
     )
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..) )
@@ -108,7 +110,6 @@ import qualified Kupo.Data.Http.Error as Errors
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.URI as Http
 import qualified Network.Wai.Handler.Warp as Warp
-import qualified Kupo.Data.Http.Error as Errors
 
 --
 -- Server
