@@ -98,12 +98,12 @@ data Database (m :: Type -> Type) = Database
     , pruneInputs
         :: DBTransaction m Int
 
-    , foldInputs
+    , foldInputsByAddress
         :: Text  -- An address-like query
         -> (Input -> m ())
         -> DBTransaction m ()
 
-    , foldInputsOutputReference
+    , foldInputsByOutputReference
         :: Text  -- The status flag
         -> OutputReference
         -> (Input -> m ())
@@ -338,13 +338,7 @@ mkDatabase tr longestRollback bracketConnection = Database
         else do
             return 0
 
-    , foldInputs = \addressLike yield -> ReaderT $ \conn -> do
-        let matchMaybeBytes = \case
-                SQLBlob bytes -> Just bytes
-                _ -> Nothing
-        let matchMaybeWord64 = \case
-                SQLInteger (fromIntegral -> wrd) -> Just wrd
-                _ -> Nothing
+    , foldInputsByAddress = \addressLike yield -> ReaderT $ \conn -> do
         let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash \
                   \FROM inputs \
                   \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
@@ -369,13 +363,7 @@ mkDatabase tr longestRollback bracketConnection = Database
                 ] -> yield Input{..}
             (xs :: [SQLData]) -> throwIO (UnexpectedRow addressLike [xs])
 
-    , foldInputsOutputReference = \statusFlag outputRef yield -> ReaderT $ \conn -> do
-        let matchMaybeBytes = \case
-                SQLBlob bytes -> Just bytes
-                _ -> Nothing
-        let matchMaybeWord64 = \case
-                SQLInteger (fromIntegral -> wrd) -> Just wrd
-                _ -> Nothing
+    , foldInputsByOutputReference = \statusFlag outputRef yield -> ReaderT $ \conn -> do
         let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash \
                   \FROM inputs \
                   \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
@@ -618,6 +606,16 @@ withTransaction conn immediate action =
         | otherwise = execute_ conn "BEGIN TRANSACTION"
     commit   = execute_ conn "COMMIT TRANSACTION"
     rollback = execute_ conn "ROLLBACK TRANSACTION"
+
+matchMaybeBytes :: SQLData -> Maybe ByteString
+matchMaybeBytes = \case
+    SQLBlob bytes -> Just bytes
+    _ -> Nothing
+
+matchMaybeWord64 :: SQLData -> Maybe Word64
+matchMaybeWord64 = \case
+    SQLInteger (fromIntegral -> wrd) -> Just wrd
+    _ -> Nothing
 
 --
 -- Migrations

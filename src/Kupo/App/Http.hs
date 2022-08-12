@@ -372,7 +372,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
                     Errors.invalidMatchFilter
                 Just NoFilter ->
                     responseStreamJson headers resultToJson $ \yield done -> do
-                        runReadOnlyTransaction $ foldInputs query (yield . resultFromRow)
+                        runReadOnlyTransaction $ foldInputsByAddress query (yield . resultFromRow)
                         done
                 Just (FilterByAssetId assetId) ->
                     responseStreamJson headers resultToJson $ \yield done -> do
@@ -380,7 +380,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
                                 if hasAssetId (value result) assetId
                                 then yield result
                                 else pure ()
-                        runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
+                        runReadOnlyTransaction $ foldInputsByAddress query (yieldIf . resultFromRow)
                         done
                 Just (FilterByPolicyId policyId) ->
                     responseStreamJson headers resultToJson $ \yield done -> do
@@ -388,7 +388,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
                                 if hasPolicyId (value result) policyId
                                 then yield result
                                 else pure ()
-                        runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
+                        runReadOnlyTransaction $ foldInputsByAddress query (yieldIf . resultFromRow)
                         done
                 Just (FilterByOutputReference oRef) ->
                     responseStreamJson headers resultToJson $ \yield done -> do
@@ -396,7 +396,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
                                 if outputReference result == oRef
                                 then yield result
                                 else pure ()
-                        runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
+                        runReadOnlyTransaction $ foldInputsByAddress query (yieldIf . resultFromRow)
                         done
                 Just (FilterByTransactionId txId) ->
                     responseStreamJson headers resultToJson $ \yield done -> do
@@ -404,7 +404,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
                                 if (getTransactionId . outputReference) result == txId
                                 then yield result
                                 else pure ()
-                        runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
+                        runReadOnlyTransaction $ foldInputsByAddress query (yieldIf . resultFromRow)
                         done
 
 handleDeleteMatches
@@ -599,7 +599,7 @@ handleGetOutputs headers outputQuery queryParams Database{..} = do
         (Just p, Just statusFlag) -> do
             let query = applyStatusFlag statusFlag ""
             responseStreamJson headers resultToJson $ \yield done -> do
-                runReadOnlyTransaction $ foldInputs query (yield . resultFromRow)
+                runReadOnlyTransaction $ foldInputsByOutputReference query p (yield . resultFromRow)
                 done
 
 
