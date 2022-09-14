@@ -250,6 +250,7 @@ test-suite unit
       Test.Kupo.Data.OgmiosSpec
       Test.Kupo.Data.Pattern.Fixture
       Test.Kupo.Data.PatternSpec
+      Test.Kupo.Data.UtxoConstraint
       Test.Kupo.Fixture
       Test.Kupo.OptionsSpec
       Test.KupoSpec

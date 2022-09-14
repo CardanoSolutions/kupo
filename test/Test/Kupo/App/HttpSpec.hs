@@ -397,7 +397,7 @@ databaseStub = Database
         10
     , insertInputs =
         \_ -> return ()
-    , foldInputs = \_ callback -> lift $ do
+    , foldInputs  = \_ callback -> lift $ do
         rows <- fmap resultToRow <$> generate (listOf1 genResult)
         mapM_ callback rows
     , deleteInputsByAddress =

@@ -9,19 +9,17 @@ module Test.Kupo.Data.PatternSpec
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( Address )
+    ( ComparableOutput, Output, OutputReference, toComparableOutput )
 import Kupo.Data.Pattern
     ( Pattern (..), includes, matching, overlaps, patternFromText )
 import Test.Hspec
     ( Spec, context, parallel, shouldBe, specify )
 import Test.Hspec.QuickCheck
     ( prop )
-import Test.Kupo.Data.Generators
-    ( genPattern )
 import Test.Kupo.Data.Pattern.Fixture
-    ( addresses, patterns )
+    ( matches, patterns )
 import Test.QuickCheck
-    ( counterexample, forAll, (==>) )
+    ( Gen, counterexample, elements, forAll, (==>) )
 
 import qualified Data.Set as Set
 
@@ -31,17 +29,21 @@ spec = parallel $ do
         specify (toString str) $ do
             patternFromText str `shouldBe` Just expectation
 
-    context "matching" $ forM_ patterns $ \(str, p, sort -> matches) -> do
+    context "matching" $ forM_ patterns $ \(str, p, matches') -> do
         specify (toString str) $ do
-            (p `matchAll` addresses) `shouldBe` matches
+            let
+                got = sort (p `matchAll` matches)
+                expected = sort (map (second toComparableOutput) matches')
+             in
+                got `shouldBe` expected
 
     prop "p1 includes p2 => matches(p2) ⊆ matches(p1)" $
         forAll genPattern $ \p1 ->
             forAll genPattern $ \p2 ->
                 p1 `includes` p2 ==>
                     let
-                        m1 = Set.fromList (p1 `matchAll` addresses)
-                        m2 = Set.fromList (p2 `matchAll` addresses)
+                        m1 = Set.fromList (p1 `matchAll` matches)
+                        m2 = Set.fromList (p2 `matchAll` matches)
                     in
                         (m2 `Set.isSubsetOf` m1)
                             & counterexample ("matches(p2): " <> show m2)
@@ -70,6 +72,16 @@ spec = parallel $ do
 -- Helper
 --
 
-matchAll :: Pattern -> [Address] -> [Address]
-matchAll p xs = do
-    sort [ x | Just x <- (\x -> x <$ (x `matching` p)) <$> xs ]
+matchAll
+    :: Pattern
+    -> [(OutputReference, Output)]
+    -> [(OutputReference, ComparableOutput)]
+matchAll p xs =
+    [ (outRef, toComparableOutput out)
+    | (outRef, out) <- xs
+    , isJust (matching outRef out p)
+    ]
+
+genPattern :: Gen Pattern
+genPattern =
+    elements [ p | (_, p, _) <- patterns ]

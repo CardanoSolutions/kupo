@@ -18,6 +18,8 @@ import Kupo.Data.Cardano
     , digest
     , hashScript
     , headerHashFromText
+    , outputReferenceFromText
+    , outputReferenceToText
     , pointFromText
     , scriptFromBytes
     , scriptHashFromBytes
@@ -34,7 +36,7 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
-    ( genDatumHash, genScript, genScriptHash, genSlotNo )
+    ( genDatumHash, genOutputReference, genScript, genScriptHash, genSlotNo )
 import Test.QuickCheck
     ( Gen, arbitrary, forAll, property, vectorOf, (===) )
 
@@ -86,6 +88,13 @@ spec = parallel $ do
             forAll (genBytes 32) $ \bytes ->
                 case headerHashFromText (encodeBase16 bytes) of
                     Just{}  -> property True
+                    Nothing -> property False
+
+    context "OutputReference" $ do
+        prop "forall (x :: OutputReference) => outputRefFromText (outputRefToText x) == Just x" $
+            forAll genOutputReference $ \x ->
+                case outputReferenceFromText (outputReferenceToText x) of
+                    Just{} -> property True
                     Nothing -> property False
 
 --

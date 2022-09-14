@@ -64,8 +64,6 @@ import Database.SQLite.Simple.ToField
     ( ToField (..) )
 import GHC.TypeLits
     ( KnownSymbol, symbolVal )
-import Kupo.Data.Cardano
-    ( OutputReference )
 import Kupo.Data.Configuration
     ( LongestRollback (..) )
 import Kupo.Data.Database
@@ -98,14 +96,8 @@ data Database (m :: Type -> Type) = Database
     , pruneInputs
         :: DBTransaction m Int
 
-    , foldInputsByAddress
+    , foldInputs
         :: Text  -- An address-like query
-        -> (Input -> m ())
-        -> DBTransaction m ()
-
-    , foldInputsByOutputReference
-        :: Text  -- The status flag
-        -> OutputReference
         -> (Input -> m ())
         -> DBTransaction m ()
 
@@ -297,7 +289,7 @@ mkDatabase tr longestRollback bracketConnection = Database
             inputs
 
     , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
-        let qry = Query $ "DELETE FROM inputs WHERE address " <> addressLike
+        let qry = Query $ "DELETE FROM inputs WHERE " <> addressLike
         execute_ conn qry
         changes conn
 
@@ -338,15 +330,35 @@ mkDatabase tr longestRollback bracketConnection = Database
         else do
             return 0
 
+    , foldInputs = \whereClause yield -> ReaderT $ \conn -> do
+        let qry = "SELECT output_reference, address, value, datum_hash, script_hash,\
+                    \ created_at, createdAt.header_hash,\
+                    \ spent_at, spentAt.header_hash \
+                  \FROM inputs \
+                  \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
+                  \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
+                  \WHERE " <> whereClause <> " \
+                  \ORDER BY created_at DESC"
 
-    , foldInputsByAddress = \addressLike yield ->
-        foldInputs ("address " <> addressLike) [] yield
+        -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
+        --
+        -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
+        let (datum, refScript) = (Nothing, Nothing)
 
-
-    , foldInputsByOutputReference = \statusFlag outputRef yield ->
-        let qry = "output_reference = ? " <> statusFlag
-            param = [SQLBlob $ serialize' outputRef]
-            in foldInputs qry param yield
+        Sqlite.fold_ conn (Query qry) () $ \() -> \case
+            [  SQLBlob outputReference
+             , SQLText address
+             , SQLBlob value
+             , matchMaybeBytes -> datumHash
+             , matchMaybeBytes -> refScriptHash
+             , SQLInteger (fromIntegral -> createdAtSlotNo)
+             , SQLBlob createdAtHeaderHash
+             , matchMaybeWord64 -> spentAtSlotNo
+             , matchMaybeBytes -> spentAtHeaderHash
+             ] ->
+                yield Input{..}
+            (xs :: [SQLData]) ->
+                throwIO (UnexpectedRow whereClause [xs])
 
     , insertCheckpoints = \cps -> ReaderT $ \conn -> do
         mapM_
@@ -570,40 +582,13 @@ matchMaybeBytes :: SQLData -> Maybe ByteString
 matchMaybeBytes = \case
     SQLBlob bytes -> Just bytes
     _ -> Nothing
+{-# INLINABLE matchMaybeBytes #-}
 
 matchMaybeWord64 :: SQLData -> Maybe Word64
 matchMaybeWord64 = \case
     SQLInteger (fromIntegral -> wrd) -> Just wrd
     _ -> Nothing
-
-foldInputs :: Text  -- A condition on filtering inputs
-    -> [SQLData]
-    -> (Input -> IO ())
-    -> ReaderT Connection IO ()
-foldInputs query params yield = ReaderT $ \conn -> do
-    let qry = "SELECT output_reference, address, value, datum_hash, script_hash, created_at, createdAt.header_hash, spent_at, spentAt.header_hash \
-                \FROM inputs \
-                \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
-                \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
-                \WHERE " <> query <> " ORDER BY created_at DESC"
-
-    -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
-    --
-    -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
-    let datum = Nothing
-    let refScript = Nothing
-    Sqlite.fold conn (Query qry) params () $ \() -> \case
-        [ SQLBlob outputReference
-            , SQLText address
-            , SQLBlob value
-            , matchMaybeBytes -> datumHash
-            , matchMaybeBytes -> refScriptHash
-            , SQLInteger (fromIntegral -> createdAtSlotNo)
-            , SQLBlob createdAtHeaderHash
-            , matchMaybeWord64 -> spentAtSlotNo
-            , matchMaybeBytes -> spentAtHeaderHash
-            ] -> yield Input{..}
-        (xs :: [SQLData]) -> throwIO (UnexpectedRow query [xs])
+{-# INLINABLE matchMaybeWord64 #-}
 
 --
 -- Migrations
