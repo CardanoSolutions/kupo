@@ -6,7 +6,7 @@
 # --------------------------------- SETUP ------------------------------------ #
 #                                                                              #
 
-FROM nixos/nix:2.3.11 as build
+FROM --platform=${TARGETPLATFORM:-linux/amd64} nixos/nix:2.3.11 as build
 
 RUN echo "substituters = https://cache.nixos.org https://hydra.iohk.io" >> /etc/nix/nix.conf &&\
     echo "trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=" >> /etc/nix/nix.conf
@@ -21,7 +21,7 @@ RUN cp -r dist/* . && chmod +w dist/bin && chmod +x dist/bin/kupo
 # ----------------------------------- BUILD ---------------------------------- #
 #                                                                              #
 
-FROM busybox:1.35 as kupo
+FROM --platform=${TARGETPLATFORM:-linux/amd64} busybox:1.35 as kupo
 
 LABEL name=kupo
 LABEL description="A fast, lightweight & configurable chain-index for Cardano."
