@@ -13,6 +13,8 @@ import Kupo.Prelude
 import Kupo.Data.Cardano
     ( Blake2b_224
     , pattern GenesisPoint
+    , assetNameFromText
+    , assetNameToText
     , datumHashFromText
     , datumHashToText
     , digest
@@ -21,6 +23,8 @@ import Kupo.Data.Cardano
     , outputReferenceFromText
     , outputReferenceToText
     , pointFromText
+    , policyIdFromText
+    , policyIdToText
     , scriptFromBytes
     , scriptHashFromBytes
     , scriptHashFromText
@@ -30,13 +34,14 @@ import Kupo.Data.Cardano
     , slotNoFromText
     , slotNoToText
     , unsafeScriptHashFromBytes
+    , unsafeAssetNameFromBytes
     )
 import Test.Hspec
     ( Spec, context, parallel, shouldBe, specify )
 import Test.Hspec.QuickCheck
     ( prop )
 import Test.Kupo.Data.Generators
-    ( genDatumHash, genOutputReference, genScript, genScriptHash, genSlotNo )
+    ( genDatumHash, genOutputReference, genScript, genScriptHash, genSlotNo, genPolicyId, genAssetName )
 import Test.QuickCheck
     ( Gen, arbitrary, forAll, property, vectorOf, (===) )
 
@@ -57,45 +62,59 @@ spec = parallel $ do
                             Nothing -> property False
 
     context "SlotNo" $ do
-        prop "forall (s :: SlotNo). slotNoFromText (slotNoToText s) === Just{}" $
+        prop "∀(s :: SlotNo). slotNoFromText (slotNoToText s) === Just{}" $
             forAll genSlotNo $ \s ->
                 slotNoFromText (slotNoToText s) === Just s
 
     context "DatumHash" $ do
-        prop "forall (x :: DatumHash). datumHashFromText (datumHashToText x) === x" $
+        prop "∀(x :: DatumHash). datumHashFromText (datumHashToText x) === x" $
             forAll genDatumHash $ \x ->
                 datumHashFromText (datumHashToText x) === Just x
 
     context "Script" $ do
-        prop "forall (x :: Script). scriptFromBytes (scriptToBytes x) === x" $
+        prop "∀(x :: Script). scriptFromBytes (scriptToBytes x) === x" $
             forAll genScript $ \x ->
                 scriptFromBytes (scriptToBytes x) === Just x
-        prop "forall (x :: Script). digest @Blake2b_224 x === hashScript x" $
+        prop "∀(x :: Script). digest @Blake2b_224 x === hashScript x" $
             forAll genScript $ \x ->
                 unsafeScriptHashFromBytes (digest (Proxy @Blake2b_224) (scriptToBytes x))
                     === hashScript x
 
     context "ScriptHash" $ do
-        prop "forall (x :: ScriptHash). scriptHashFromBytes (scriptHashToBytes x) === x" $
+        prop "∀(x :: ScriptHash). scriptHashFromBytes (scriptHashToBytes x) === x" $
             forAll genScriptHash $ \x ->
                 scriptHashFromBytes (scriptHashToBytes x) === Just x
-        prop "forall (x :: ScriptHash). scriptFromText (scriptToText x) === x" $
+        prop "∀(x :: ScriptHash). scriptFromText (scriptToText x) === x" $
             forAll genScriptHash $ \x ->
                 scriptHashFromText (scriptHashToText x) === Just x
 
     context "headerHashFromText" $ do
-        prop "forall (bs :: ByteString). bs .size 32 => headerHashFromText (base16 bs) === Just{}" $
+        prop "∀(bs :: ByteString). bs .size 32 ⇒ headerHashFromText (base16 bs) === Just{}" $
             forAll (genBytes 32) $ \bytes ->
                 case headerHashFromText (encodeBase16 bytes) of
                     Just{}  -> property True
                     Nothing -> property False
 
     context "OutputReference" $ do
-        prop "forall (x :: OutputReference) => outputRefFromText (outputRefToText x) == Just x" $
+        prop "∀(x :: OutputReference). outputRefFromText (outputRefToText x) == Just x" $
             forAll genOutputReference $ \x ->
                 case outputReferenceFromText (outputReferenceToText x) of
                     Just{} -> property True
                     Nothing -> property False
+
+    context "PolicyId" $ do
+        prop "∀(x :: PolicyId). policyIdFromText (policyIdToText x) == Just x" $
+            forAll genPolicyId $ \x ->
+                    case policyIdFromText (policyIdToText x) of
+                        Just{} -> property True
+                        Nothing -> property False
+
+    context "AssetName" $ do
+        prop "∀(x :: AssetName). assetNameFromText (assetNameToText x) == Just x" $
+            forAll genAssetName $ \(unsafeAssetNameFromBytes -> x) ->
+                    case assetNameFromText (assetNameToText x) of
+                        Just{} -> property True
+                        Nothing -> property False
 
 --
 -- Generators

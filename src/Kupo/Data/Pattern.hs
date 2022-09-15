@@ -81,6 +81,14 @@ import Kupo.Data.Cardano
     , transactionIdToText
     , unsafeGetPointHeaderHash
     , valueToJson
+    , PolicyId
+    , AssetId
+    , policyIdToText
+    , policyIdFromText
+    , assetNameToText
+    , assetNameFromText
+    , hasPolicyId
+    , hasAssetId
     )
 
 import qualified Codec.Binary.Bech32 as Bech32
@@ -98,6 +106,8 @@ data Pattern
     | MatchPaymentAndDelegation ByteString ByteString
     | MatchTransactionId TransactionId
     | MatchOutputReference OutputReference
+    | MatchPolicyId PolicyId
+    | MatchAssetId AssetId
     deriving (Generic, Eq, Ord, Show)
 
 -- | Checks whether a given pattern overlaps with a list of other patterns. The
@@ -130,6 +140,12 @@ overlaps p = \case
             getTransactionId a == a'
         (MatchTransactionId a, MatchTransactionId a') ->
             a == a'
+        (MatchPolicyId a, MatchPolicyId a') ->
+            a == a'
+        (MatchAssetId a, MatchAssetId a') ->
+            a == a'
+        (MatchAssetId a, MatchPolicyId a') ->
+            fst a == a'
         _ ->
             False
 
@@ -191,6 +207,10 @@ patternToText = \case
         wildcard <> "@" <> transactionIdToText txId
     MatchOutputReference outRef ->
         outputReferenceToText outRef
+    MatchPolicyId policyId ->
+        policyIdToText policyId <> "." <> wildcard
+    MatchAssetId (policyId, name) ->
+        policyIdToText policyId <> "." <> assetNameToText name
 
 patternFromText :: Text -> Maybe Pattern
 patternFromText txt = asum
@@ -198,6 +218,7 @@ patternFromText txt = asum
     , readerExact
     , readerPaymentOrDelegation
     , readerOutputReference
+    , readerAssetId
     ]
   where
     readerAny = MatchAny IncludingBootstrap
@@ -277,13 +298,25 @@ patternFromText txt = asum
 
     readerOutputReference = do
         case T.splitOn "@" txt of
-            ["*", txId] ->
+            [star, txId] | star == wildcard ->
                 MatchTransactionId <$> transactionIdFromText txId
             [ix, txId] -> do
                 outRef <- mkOutputReference
                     <$> transactionIdFromText txId
                     <*> outputIndexFromText ix
                 pure (MatchOutputReference outRef)
+            _ ->
+                Nothing
+
+    readerAssetId = do
+        case T.splitOn "." txt of
+            [policyId, star] | star == wildcard ->
+                MatchPolicyId <$> policyIdFromText policyId
+            [policyId, name] -> do
+                assetId <- (,)
+                    <$> policyIdFromText policyId
+                    <*> assetNameFromText name
+                pure (MatchAssetId assetId)
             _ ->
                 Nothing
 
@@ -306,6 +339,10 @@ matching outRef out = \case
         guard (txId == getTransactionId outRef)
     MatchOutputReference outRef' ->
         guard (outRef == outRef')
+    MatchPolicyId policyId ->
+        guard (hasPolicyId (getValue out) policyId)
+    MatchAssetId assetId ->
+        guard (hasAssetId (getValue out) assetId)
     other ->
         guard (matchingAddress other (getAddress out))
 

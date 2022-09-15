@@ -17,7 +17,11 @@ import Data.List
 import Kupo.Control.MonadLog
     ( Severity (..), TracerDefinition (..), defaultTracers )
 import Kupo.Data.Cardano
-    ( mkOutputReference, unsafeTransactionIdFromBytes )
+    ( mkOutputReference
+    , unsafeAssetNameFromBytes
+    , unsafePolicyIdFromBytes
+    , unsafeTransactionIdFromBytes
+    )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
@@ -156,6 +160,32 @@ spec = parallel $ do
                         unsafeTransactionIdFromBytes $ unsafeDecodeBase16 str
                  in
                     [ MatchTransactionId txId ]
+            }
+          )
+        , ( defaultArgs ++ [ "--match", "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c3635.*" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { patterns =
+                let
+                    str =
+                        "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c3635"
+                    policyId =
+                        unsafePolicyIdFromBytes $ unsafeDecodeBase16 str
+                 in
+                    [ MatchPolicyId policyId ]
+            }
+          )
+        , ( defaultArgs ++ [ "--match", "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c3635.706174617465" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { patterns =
+                let
+                    str =
+                        "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c3635"
+                    policyId =
+                        unsafePolicyIdFromBytes $ unsafeDecodeBase16 str
+                    assetName =
+                        unsafeAssetNameFromBytes $ unsafeDecodeBase16 "706174617465"
+                 in
+                    [ MatchAssetId (policyId, assetName) ]
             }
           )
         , ( defaultArgs ++ [ "--match", "NOT-A-PATTERN" ]

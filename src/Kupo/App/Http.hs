@@ -363,30 +363,50 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
             case filterMatchesBy queryParams of
                 Nothing ->
                     Errors.invalidMatchFilter
-                Just (mkYieldIf -> yieldIf) -> do
+                Just (mkYieldIf p -> yieldIf) -> do
                     responseStreamJson headers resultToJson $ \yield done -> do
                         runReadOnlyTransaction $ foldInputs query (yieldIf yield . resultFromRow)
                         done
   where
-    mkYieldIf = \case
-        NoFilter ->
-            ($)
-        FilterByAssetId assetId -> \yield result ->
-            if hasAssetId (value result) assetId
-            then yield result
-            else pure ()
-        FilterByPolicyId policyId -> \yield result ->
-            if hasPolicyId (value result) policyId
-            then yield result
-            else pure ()
-        FilterByOutputReference outRef -> \yield result ->
-            if outputReference result == outRef
-            then yield result
-            else pure ()
-        FilterByTransactionId txId -> \yield result ->
-            if (getTransactionId . outputReference) result == txId
-            then yield result
-            else pure ()
+    -- NOTE: kupo does support two different ways for fetching results, via query parameters or via
+    -- path parameters. Historically, there were only query parameters. Yet, with the introduction
+    -- of patterns, both approaches are now redundant with one another.
+    --
+    -- When it comes to asset id / policy id, querying via pattern or via query parameters will have
+    -- the same effect & performance. However, when querying output reference / transaction id from
+    -- a pattern, the query is optimized through a first pre-filtering via SQL.
+    --
+    -- Removing query parameters now would be a breaking change, although it would remove quite a
+    -- bunch of code. This note serves as a reminder. For the next major version, filters should
+    -- likely be removed.
+    mkYieldIf pattern_ filter_ =
+        let
+            predicateA =
+                case pattern_ of
+                    MatchAssetId assetId ->
+                        \result -> hasAssetId (value result) assetId
+                    MatchPolicyId policyId ->
+                        \result -> hasPolicyId (value result) policyId
+                    _ ->
+                        const True
+
+            predicateB =
+                case filter_ of
+                    NoFilter ->
+                        const True
+                    FilterByAssetId assetId ->
+                        \result -> hasAssetId (value result) assetId
+                    FilterByPolicyId policyId ->
+                        \result -> hasPolicyId (value result) policyId
+                    FilterByOutputReference outRef ->
+                        \result -> outputReference result == outRef
+                    FilterByTransactionId transactionId ->
+                        \result -> (getTransactionId . outputReference) result == transactionId
+         in
+            \yield result ->
+                if predicateA result && predicateB result
+                then yield result
+                else pure ()
 
 handleDeleteMatches
     :: [Http.Header]

@@ -546,6 +546,10 @@ patternToSql = \case
         , "(    output_reference >= x'825820" <> txId <> "190100'\
           \ AND output_reference <= x'825820" <> txId <> "190100')"
         ]
+    App.MatchPolicyId{} ->
+        "address LIKE '%'"
+    App.MatchAssetId{} ->
+        "address LIKE '%'"
 
 applyStatusFlag :: StatusFlag -> Text -> Text
 applyStatusFlag = \case
