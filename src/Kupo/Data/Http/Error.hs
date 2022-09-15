@@ -31,17 +31,6 @@ invalidPattern =
                  \<https://cardanosolutions.github.io/kupo>!"
         }
 
-invalidOutputPattern :: Response
-invalidOutputPattern =
-    responseJson status400 Default.headers $ HttpError
-        { hint = "Invalid output reference pattern! To fetch matches, you may provide any valid \
-                 \output reference you may provide any valid output reference in the form of \
-                 \{transaction-id}/{output-index}. The transaction id must be base16-encoded \
-                 \and 64 characters long. Make sure to double-check the documentation at: \
-                 \<https://cardanosolutions.github.io/kupo>!"
-        }
-
-
 invalidStatusFlag :: Response
 invalidStatusFlag =
     responseJson status400 Default.headers $ HttpError

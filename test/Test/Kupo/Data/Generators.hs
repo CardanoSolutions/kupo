@@ -4,10 +4,6 @@
 
 {-# LANGUAGE PatternSynonyms #-}
 
--- This allows to define 'ArbitrarySatisfying' instances here and to prevent
--- circular dependencies between Fixture <-> Generators <-> UtxoConstraint.
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-
 module Test.Kupo.Data.Generators where
 
 import Kupo.Prelude
