@@ -15,10 +15,12 @@ import Kupo.Data.Cardano
     , Point
     , Script
     , ScriptHash
+    , TransactionId
     , unsafeBinaryDataFromBytes
     , unsafeDatumHashFromBytes
     , unsafeScriptFromBytes
     , unsafeScriptHashFromBytes
+    , unsafeTransactionIdFromBytes
     )
 import Kupo.Data.Database
     ( Checkpoint (..), pointFromRow )
@@ -120,6 +122,11 @@ eraBoundaries =
     , ("Alonzo", lastMaryPoint)
     , ("Babbage", lastAlonzoPoint)
     ]
+
+-- A transaction present in the first Alonzo block.
+someTransactionId :: TransactionId
+someTransactionId = unsafeTransactionIdFromBytes $ unsafeDecodeBase16
+    "836EA71A49D79B222C3D525EB980439F13656241D9A2D6AC4F8CEBE159FCBB88"
 
 someDatumHashInWitness :: DatumHash
 someDatumHashInWitness = unsafeDatumHashFromBytes $ unsafeDecodeBase16
