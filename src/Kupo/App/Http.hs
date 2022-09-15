@@ -37,6 +37,7 @@ import Kupo.Data.Cardano
     , datumHashFromText
     , distanceToSlot
     , getPointSlotNo
+    , getTransactionId
     , hasAssetId
     , hasPolicyId
     , pointToJson
@@ -79,7 +80,6 @@ import Kupo.Data.Pattern
     , Result (..)
     , included
     , overlaps
-    , patternFromPath
     , patternFromText
     , patternToText
     , resultToJson
@@ -204,7 +204,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
                 headers <- responseHeaders readHealth
                 send $ handleGetMatches
                             headers
-                            (patternFromPath args)
+                            (pathParametersToText args)
                             (queryString req)
                             db
         ("DELETE", args) ->
@@ -213,7 +213,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
                 send =<< handleDeleteMatches
                             headers
                             patternsVar
-                            (patternFromPath args)
+                            (pathParametersToText args)
                             db
         (_, _) ->
             send Errors.methodNotAllowed
@@ -254,7 +254,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
         ("GET", args) -> do
             res <- handleGetPatterns
                         <$> responseHeaders readHealth
-                        <*> pure (patternFromPath args)
+                        <*> pure (pathParametersToText args)
                         <*> fmap (flip included) (readTVarIO patternsVar)
             send res
         ("PUT", args) -> do
@@ -267,7 +267,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
                             forceRollback
                             patternsVar
                             pointOrSlotNo
-                            (patternFromPath args)
+                            (pathParametersToText args)
                             db
         ("DELETE", args) ->
             withDatabase $ \db -> do
@@ -275,10 +275,21 @@ app withDatabase forceRollback patternsVar readHealth req send =
                 send =<< handleDeletePattern
                             headers
                             patternsVar
-                            (patternFromPath args)
+                            (pathParametersToText args)
                             db
         (_, _) ->
             send Errors.methodNotAllowed
+
+pathParametersToText :: [Text] -> Maybe Text
+pathParametersToText = \case
+    [] ->
+        Just wildcard
+    [arg0] ->
+        Just arg0
+    [arg0, arg1] ->
+        Just (arg0 <> "/" <> arg1)
+    _ ->
+        Nothing
 
 --
 -- /health
@@ -352,26 +363,30 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
             case filterMatchesBy queryParams of
                 Nothing ->
                     Errors.invalidMatchFilter
-                Just NoFilter ->
+                Just (mkYieldIf -> yieldIf) -> do
                     responseStreamJson headers resultToJson $ \yield done -> do
-                        runReadOnlyTransaction $ foldInputs query (yield . resultFromRow)
+                        runReadOnlyTransaction $ foldInputs query (yieldIf yield . resultFromRow)
                         done
-                Just (FilterByAssetId assetId) ->
-                    responseStreamJson headers resultToJson $ \yield done -> do
-                        let yieldIf result = do
-                                if hasAssetId (value result) assetId
-                                then yield result
-                                else pure ()
-                        runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
-                        done
-                Just (FilterByPolicyId policyId) ->
-                    responseStreamJson headers resultToJson $ \yield done -> do
-                        let yieldIf result = do
-                                if hasPolicyId (value result) policyId
-                                then yield result
-                                else pure ()
-                        runReadOnlyTransaction $ foldInputs query (yieldIf . resultFromRow)
-                        done
+  where
+    mkYieldIf = \case
+        NoFilter ->
+            ($)
+        FilterByAssetId assetId -> \yield result ->
+            if hasAssetId (value result) assetId
+            then yield result
+            else pure ()
+        FilterByPolicyId policyId -> \yield result ->
+            if hasPolicyId (value result) policyId
+            then yield result
+            else pure ()
+        FilterByOutputReference outRef -> \yield result ->
+            if outputReference result == outRef
+            then yield result
+            else pure ()
+        FilterByTransactionId txId -> \yield result ->
+            if (getTransactionId . outputReference) result == txId
+            then yield result
+            else pure ()
 
 handleDeleteMatches
     :: [Http.Header]

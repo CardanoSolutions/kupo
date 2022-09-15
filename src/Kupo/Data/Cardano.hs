@@ -24,20 +24,26 @@ module Kupo.Data.Cardano
     , TransactionId
     , transactionIdToText
     , transactionIdFromHash
+    , transactionIdToBytes
     , unsafeTransactionIdFromBytes
     , getTransactionId
     , transactionIdToJson
+    , transactionIdFromText
 
       -- * OutputIndex
     , OutputIndex
     , getOutputIndex
     , outputIndexToJson
+    , outputIndexFromText
+    , outputIndexToText
 
       -- * Input
     , Input
     , OutputReference
     , mkOutputReference
     , withReferences
+    , outputReferenceToText
+    , outputReferenceFromText
 
       -- * Output
     , Output
@@ -47,6 +53,11 @@ module Kupo.Data.Cardano
     , getValue
     , getScript
 
+      -- * ComparableOutput
+    , ComparableOutput
+    , fromComparableOutput
+    , toComparableOutput
+
     -- * Value
     , Value
     , hasAssetId
@@ -54,6 +65,11 @@ module Kupo.Data.Cardano
     , unsafeValueFromList
     , valueToJson
     , assetNameMaxLength
+
+      -- * ComparableValue
+    , ComparableValue
+    , fromComparableValue
+    , toComparableValue
 
     -- * AssetId
     , AssetId
@@ -572,6 +588,11 @@ transactionIdFromHash =
     Ledger.TxId . Ledger.unsafeMakeSafeHash
 {-# INLINABLE transactionIdFromHash #-}
 
+transactionIdToBytes :: TransactionId -> ByteString
+transactionIdToBytes =
+    (\(UnsafeHash h) -> fromShort h) . Ledger.extractHash . Ledger._unTxId
+{-# INLINABLE transactionIdToBytes #-}
+
 unsafeTransactionIdFromBytes
     :: HasCallStack
     => ByteString
@@ -612,6 +633,18 @@ outputIndexToJson :: OutputIndex -> Json.Encoding
 outputIndexToJson =
     Json.integer . toInteger
 {-# INLINABLE outputIndexToJson #-}
+
+outputIndexFromText :: Text -> Maybe OutputIndex
+outputIndexFromText txt = do
+    (ix, remIx) <- either (const Nothing) Just (T.decimal txt)
+    guard (T.null remIx)
+    pure (fromInteger ix)
+{-# INLINABLE outputIndexFromText #-}
+
+outputIndexToText :: OutputIndex -> Text
+outputIndexToText = show
+{-# INLINABLE outputIndexToText #-}
+
 
 -- Transaction
 
@@ -672,6 +705,31 @@ withReferences txId = loop 0
 
 instance HasTransactionId Ledger.TxIn where
     getTransactionId (Ledger.TxIn i _) = i
+
+transactionIdFromText
+    :: Text
+    -> Maybe TransactionId
+transactionIdFromText =
+    fmap transactionIdFromHash . hashFromTextAsHex @Blake2b_256
+{-# INLINABLE transactionIdFromText #-}
+
+outputReferenceFromText :: Text -> Maybe OutputReference
+outputReferenceFromText txt =
+    case T.splitOn "@" txt of
+        [outputIndex, txId] -> do
+            mkOutputReference
+                <$> transactionIdFromText txId
+                <*> outputIndexFromText outputIndex
+        _ ->
+            Nothing
+
+outputReferenceToText :: OutputReference -> Text
+outputReferenceToText outRef =
+    outputIndexToText (getOutputIndex outRef)
+    <>
+    "@"
+    <>
+    transactionIdToText (getTransactionId outRef)
 
 -- Output
 
@@ -772,6 +830,31 @@ getScript
 getScript (Ledger.Babbage.TxOut _address _value _datum refScript) =
     strictMaybeToMaybe refScript
 {-# INLINABLE getScript #-}
+
+-- ComparableOutput
+
+data ComparableOutput = ComparableOutput
+    { comparableOutputAddress :: Address
+    , comparableOutputValue :: ComparableValue
+    , comparableOutputDatum :: Datum
+    , comparableOutputScript :: Maybe Script
+    } deriving (Generic, Eq, Show, Ord)
+
+toComparableOutput
+    :: Output
+    -> ComparableOutput
+toComparableOutput out = ComparableOutput
+    { comparableOutputAddress = getAddress out
+    , comparableOutputValue = toComparableValue (getValue out)
+    , comparableOutputDatum = getDatum out
+    , comparableOutputScript = getScript out
+    }
+
+fromComparableOutput
+    :: ComparableOutput
+    -> Output
+fromComparableOutput (ComparableOutput addr val datum script) =
+    mkOutput addr (fromComparableValue val) datum script
 
 -- ScriptReference
 
@@ -1192,6 +1275,21 @@ valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
             (encodeBase16 (fromShort pid))
         | otherwise     = Json.fromText
             (encodeBase16 (fromShort pid) <> "." <> encodeBase16 (fromShort bytes))
+
+-- ComparableValue
+
+data ComparableValue = ComparableValue
+    { comparableValueAda :: !Integer
+    , comparableValueAssets :: !(Map PolicyId (Map AssetName Integer))
+    } deriving (Generic, Eq, Show, Ord)
+
+fromComparableValue :: ComparableValue -> Value
+fromComparableValue (ComparableValue ada assets) =
+    Ledger.Value ada assets
+
+toComparableValue :: Value -> ComparableValue
+toComparableValue (Ledger.Value ada assets) =
+    ComparableValue ada assets
 
 -- AssetId
 

@@ -16,6 +16,8 @@ import Data.List
     ( isInfixOf )
 import Kupo.Control.MonadLog
     ( Severity (..), TracerDefinition (..), defaultTracers )
+import Kupo.Data.Cardano
+    ( mkOutputReference, unsafeTransactionIdFromBytes )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
@@ -128,6 +130,32 @@ spec = parallel $ do
         , ( defaultArgs ++ [ "--match", "*", "--match", "*/*" ]
           , shouldParseAppConfiguration $ defaultConfiguration
             { patterns = [ MatchAny IncludingBootstrap, MatchAny OnlyShelley ]
+            }
+          )
+        , ( defaultArgs ++ [ "--match", "14@2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { patterns =
+                let
+                    str =
+                        "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771"
+                    outRef =
+                        mkOutputReference
+                            (unsafeTransactionIdFromBytes $ unsafeDecodeBase16 str)
+                            14
+                 in
+                    [ MatchOutputReference outRef ]
+            }
+          )
+        , ( defaultArgs ++ [ "--match", "*@2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { patterns =
+                let
+                    str =
+                        "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771"
+                    txId =
+                        unsafeTransactionIdFromBytes $ unsafeDecodeBase16 str
+                 in
+                    [ MatchTransactionId txId ]
             }
           )
         , ( defaultArgs ++ [ "--match", "NOT-A-PATTERN" ]

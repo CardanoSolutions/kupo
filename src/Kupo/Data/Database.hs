@@ -66,6 +66,7 @@ import Kupo.Data.Cardano
     , datumHashToBytes
     , digestSize
     , hashFromBytes
+    , transactionIdToBytes
     )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..) )
@@ -521,17 +522,30 @@ patternToSql
     -> Text
 patternToSql = \case
     App.MatchAny App.IncludingBootstrap ->
-        "LIKE '%'"
+        "address LIKE '%'"
     App.MatchAny App.OnlyShelley ->
-        "NOT LIKE '00%'"
+        "address NOT LIKE '00%'"
     App.MatchExact addr ->
-        "= '" <> addressToRow addr <> "'"
+        "address = '" <> addressToRow addr <> "'"
     App.MatchPayment payment ->
-        "LIKE '%" <> encodeBase16 payment <> "'"
+        "address LIKE '%" <> encodeBase16 payment <> "'"
     App.MatchDelegation delegation ->
-        "LIKE '01" <> encodeBase16 delegation <> "%'"
+        "address LIKE '01" <> encodeBase16 delegation <> "%'"
     App.MatchPaymentAndDelegation payment delegation ->
-        "LIKE '01" <> encodeBase16 delegation <> "__" <> encodeBase16 payment <> "'"
+        "address LIKE '01" <> encodeBase16 delegation <> "__" <> encodeBase16 payment <> "'"
+    App.MatchOutputReference (encodeBase16 . serialize' -> str) ->
+        "output_reference = x'" <> str <> "'"
+    App.MatchTransactionId (encodeBase16 . transactionIdToBytes -> txId) ->
+        unwords
+        [ "(    output_reference >= x'825820" <> txId <> "00'\
+          \ AND output_reference <= x'825820" <> txId <> "17')"
+        , "OR"
+        , "(    output_reference >= x'825820" <> txId <> "1818'\
+          \ AND output_reference <= x'825820" <> txId <> "18ff')"
+        , "OR"
+        , "(    output_reference >= x'825820" <> txId <> "190100'\
+          \ AND output_reference <= x'825820" <> txId <> "190100')"
+        ]
 
 applyStatusFlag :: StatusFlag -> Text -> Text
 applyStatusFlag = \case

@@ -33,7 +33,7 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadTime
     ( DiffTime, timeout )
 import Kupo.Data.Cardano
-    ( pattern GenesisPoint, getPointSlotNo )
+    ( pattern GenesisPoint, getPointSlotNo, mkOutputReference )
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException )
 import Kupo.Data.Configuration
@@ -75,6 +75,7 @@ import Test.Kupo.Fixture
     ( eraBoundaries
     , lastAlonzoPoint
     , lastByronPoint
+    , lastMaryPoint
     , someDatumHashInOutput
     , someDatumHashInWitness
     , someDatumInOutput
@@ -93,6 +94,7 @@ import Test.Kupo.Fixture
     , someScriptInOutput
     , someScriptInWitness
     , someStakeKey
+    , someTransactionId
     )
 import Type.Reflection
     ( tyConName, typeRep, typeRepTyCon )
@@ -401,6 +403,24 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 res `shouldBe` False
                 listPatterns `shouldReturn` [MatchAny OnlyShelley]
                 slot' `shouldSatisfy` (>= slot)
+            )
+
+    specify "Match by transaction id" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just lastMaryPoint
+            , patterns = [MatchTransactionId someTransactionId]
+            }
+        timeoutOrThrow 10 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitUntilM $ do
+                    outRefs <- fmap outputReference <$> getAllMatches NoStatusFlag
+                    return $
+                        mkOutputReference someTransactionId 0 `elem` outRefs
+                        &&
+                        mkOutputReference someTransactionId 1 `elem` outRefs
             )
 
 type EndToEndSpec

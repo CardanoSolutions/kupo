@@ -40,7 +40,13 @@ import Kupo.Control.MonadThrow
 import Kupo.Control.MonadTime
     ( millisecondsToDiffTime )
 import Kupo.Data.Cardano
-    ( Address, Point, SlotNo (..), getPointSlotNo )
+    ( Address
+    , OutputReference
+    , Point
+    , SlotNo (..)
+    , getAddress
+    , getPointSlotNo
+    )
 import Kupo.Data.Configuration
     ( LongestRollback (..) )
 import Kupo.Data.Database
@@ -58,6 +64,8 @@ import Kupo.Data.Database
     , scriptReferenceFromRow
     , scriptReferenceToRow
     )
+import Kupo.Data.Pattern
+    ( Pattern (..) )
 import System.FilePath
     ( (</>) )
 import System.IO.Temp
@@ -77,7 +85,7 @@ import Test.Kupo.Data.Generators
     , genScriptReference
     )
 import Test.Kupo.Data.Pattern.Fixture
-    ( addresses, patterns )
+    ( matches, patterns )
 import Test.QuickCheck
     ( Gen
     , Property
@@ -112,13 +120,40 @@ spec = parallel $ do
             roundtripFromToRow2 genScriptReference scriptReferenceToRow scriptReferenceFromRow
 
     context "patternToSql" $ around withFixtureDatabase $ do
-        forM_ patterns $ \(_, p, results) -> do
-            let like = patternToSql p
-            specify (toString like) $ \conn -> do
-                rows <- query_ conn $ "SELECT address, LENGTH(address) as len \
-                                      \FROM addresses \
-                                      \WHERE address " <> Query like
-                sort (rowToAddress <$> rows) `shouldBe` sort results
+        forM_ patterns $ \(_, p, ms) -> do
+            let queryLike = patternToSql p
+
+            let searchAddresses = do
+                    let results = sort $ (\(_, out) -> getAddress out) <$> ms
+                    specify (toString queryLike) $ \conn -> do
+                        rows <- query_ conn $ "SELECT address, LENGTH(address) as len \
+                                              \FROM addresses \
+                                              \WHERE " <> Query queryLike
+                        sort (rowToAddress <$> rows) `shouldBe` results
+
+            let searchOutputReferences = do
+                    let results = sort $ fst <$> ms
+                    specify (toString queryLike) $ \conn -> do
+                        rows <- query_ conn $ "SELECT output_reference \
+                                              \FROM output_references \
+                                              \WHERE " <> Query queryLike
+                        sort (rowToOutputReference <$> rows) `shouldBe` results
+
+            case p of
+                MatchAny{} ->
+                    searchAddresses
+                MatchExact{} ->
+                    searchAddresses
+                MatchPayment{} ->
+                    searchAddresses
+                MatchDelegation{} ->
+                    searchAddresses
+                MatchPaymentAndDelegation{} ->
+                    searchAddresses
+                MatchTransactionId{} ->
+                    searchOutputReferences
+                MatchOutputReference{} ->
+                    searchOutputReferences
 
     context "checkpoints" $ do
         let k = 100
@@ -289,17 +324,35 @@ withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
             "CREATE TABLE IF NOT EXISTS addresses (\
             \  address TEXT NOT NULL\
             \)"
+        execute_ conn
+            "CREATE TABLE IF NOT EXISTS output_references (\
+            \  output_reference BLOB NOT NULL\
+            \)"
         executeMany conn
             "INSERT INTO addresses VALUES (?)"
-            (Only . SQLText . addressToRow <$> addresses)
+            (Only . SQLText . addressToRow <$> (getAddress . snd <$> matches))
+        executeMany conn
+            "INSERT INTO output_references VALUES (?)"
+            (Only . outputReferenceToRow <$> (fst <$> matches))
     action conn
 
 rowToAddress :: HasCallStack => [SQLData] -> Address
 rowToAddress = \case
-    [SQLText txt, _] ->
-        addressFromRow txt
+    [SQLText row, _] ->
+        addressFromRow row
     _ ->
         error "rowToAddress: not SQLText"
+
+outputReferenceToRow :: OutputReference -> SQLData
+outputReferenceToRow =
+    SQLBlob . serialize'
+
+rowToOutputReference :: HasCallStack => [SQLData] -> OutputReference
+rowToOutputReference = \case
+    [SQLBlob row] ->
+        unsafeDeserialize' row
+    _ ->
+        error "rowToOutputReference: not SQLBlob"
 
 withInMemoryDatabase
     :: Word64

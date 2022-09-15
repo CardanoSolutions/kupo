@@ -126,7 +126,7 @@ info:
     In case multiple patterns are provided, they'll ALL be used when looking
     for addresses. This allows for example to build an index for a list of
     payment keys known of a wallet. The syntax for patterns is explained in
-    greater details in the [Pattern](#section/Pattern) section below.
+    greater details in the [Patterns](#section/Patterns) section below.
 
     #### --prune-utxo
 
@@ -175,7 +175,7 @@ info:
     $ kupo --help
     ```
 
-    # Pattern
+    # Patterns
 
     Kupo can construct patterns from pretty much every constituant of an
     address, in any kind of format (bech32, base16, base58, you name it!). It
@@ -186,42 +186,85 @@ info:
     for a deep dive!
 
     Here below is summarized the general syntax for valid patterns. Note that
-    different patterns may match the same addresses. Note also that while `*`
+    different patterns may match the same object. Note also that while `*`
     will match _any_ Cardano address (Byron included), `*/*` will match only
     Shelley addresses (since Byron addresses do not have any delegation part!).
 
     ```
-                ┏━━━━━━━━━┓
-    PATTERN  ╾┬─┫ ADDRESS ┣─────────────────────────┬╼
-              │ ┗━━━━━━━━━┛                         │
-              │ ┏━━━━━━━━━━━━━━━┓                   │
-              ├─┫ STAKE-ADDRESS ┣───────────────────┤
-              │ ┗━━━━━━━━━━━━━━━┛                   │
-              │ ┏━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━┓ │
-              ├─┫ CREDENTIAL ┣─┤ / ├─┫ CREDENTIAL ┣─┤
-              │ ┗━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━┛ │
-              │ ╭───╮                               │
-              └─┤ * ├───────────────────────────────┘
-                ╰───╯
+    PATTERN:
 
+           ┏━━━━━━━━━┓
+        ╾┬─┫ ADDRESS ┣───────────────────────────────┬╼
+         │ ┗━━━━━━━━━┛                               │
+         │ ┏━━━━━━━━━━━━━━━┓                         │
+         ├─┫ STAKE_ADDRESS ┣─────────────────────────┤
+         │ ┗━━━━━━━━━━━━━━━┛                         │
+         │ ┏━━━━━━━━━━━━┓                            │
+         ├─┫ CREDENTIAL ┣────────────────────────────┤
+         │ ┗━━━━━━━━━━━━┛                            │
+         │ ┏━━━━━━━━━━━━┓   ╭───╮ ┏━━━━━━━━━━━━┓     │
+         ├─┫ CREDENTIAL ┣───┤ / ├─┫ CREDENTIAL ┣─────┤
+         │ ┗━━━━━━━━━━━━┛   ╰───╯ ┗━━━━━━━━━━━━┛     │
+         │ ┏━━━━━━━━━━━┓                             │
+         ├─┫ POLICY_ID ┣─────────────────────────────┤
+         │ ┗━━━━━━━━━━━┛                             │
+         │ ┏━━━━━━━━━━━┓    ╭───╮ ┏━━━━━━━━━━━━┓     │
+         ├─┫ POLICY_ID ┣────┤ . ├─┫ ASSET_NAME ┣─────┤
+         │ ┗━━━━━━━━━━━┛    ╰───╯ ┗━━━━━━━━━━━━┛     │
+         │ ┏━━━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━━━━━┓ │
+         ├─┫ OUTPUT_INDEX ┣─┤ @ ├─┫ TRANSACTION_ID ┣─┤
+         │ ┗━━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━━━━┛ │
+         │ ╭───╮                                     │
+         └─┤ * ├─────────────────────────────────────┘
+           ╰───╯
     ```
 
     ```
-                  ┏━━━━━━━━━━━━━━━━━━━━━━━━┓
-    CREDENTIAL ╾┬─┫ BASE16(bytes .size 32) ┣─────────────────────────────┬╼
-                │ ┗━━━━━━━━━━━━━━━━━━━━━━━━┛                             │
-                │ ┏━━━━━━━━━━━━━━━━━━━━━━━━┓                             │
-                ├─┫ BASE16(bytes .size 28) ┣─────────────────────────────┤
-                │ ┗━━━━━━━━━━━━━━━━━━━━━━━━┛                             │
-                │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓           │
-                ├─┫ BECH32(bytes) .hrp (vk|addr_vk|stake_vk) ┣───────────┤
-                │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛           │
-                │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
-                ├─┫ BECH32(bytes) .hrp (vkh|addr_vkh|stake_vkh|script) ┣─┤
-                │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
-                │ ╭───╮                                                  │
-                └─┤ * ├──────────────────────────────────────────────────┘
-                  ╰───╯
+    CREDENTIAL:
+
+           ┏━━━━━━━━━━━┓
+        ╾┬─┫ 64 HEXDIG ┣───────────────────────────────────────────┬╼
+         │ ┗━━━━━━━━━━━┛                                           │
+         │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━┓              ┏━━━━━━━━━━━━┓ │
+         ├─┫ vk / addr_vk / stake_vk ┣──────────────┫ *BECH32DIG ┣─┤
+         │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━┛              ┗━━━━━━━━━━━━┛ │
+         │ ┏━━━━━━━━━━━┓                                           │
+         ├─┫ 56 HEXDIG ┣───────────────────────────────────────────┤
+         │ ┗━━━━━━━━━━━┛                                           │
+         │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓  ┏━━━━━━━━━━━━┓ │
+         ├─┫ vkh / addr_vkh / stake_vkh / script ┣──┫ *BECH32DIG ┣─┤
+         │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛  ┗━━━━━━━━━━━━┛ │
+         │ ╭───╮                                                   │
+         └─┤ * ├───────────────────────────────────────────────────┘
+           ╰───╯
+    ```
+
+    ```
+    POLICY_ID:                              ASSET_NAME:
+
+           ┏━━━━━━━━━━━┓                           ┏━━━━━━━━━━━━━┓
+        ╾┬─┫ 56 HEXDIG ┣─┬╼                     ╾┬─┫ 0*64 HEXDIG ┣─┬╼
+         │ ┗━━━━━━━━━━━┛ │                       │ ┗━━━━━━━━━━━━━┛ │
+         │ ╭───╮         │                       │ ╭───╮           │
+         └─┤ * ├─────────┘                       └─┤ * ├───────────┘
+           ╰───╯                                   ╰───╯
+    ```
+
+    ```
+    OUTPUT_INDEX:                           TRANSACTION_ID:
+
+           ┏━━━━━━━━━━━┓                          ┏━━━━━━━━━━━┓
+        ╾┬─┫ 1*3 DIGIT ┣─┬╼                     ╾─┫ 64 HEXDIG ┣─╼
+         │ ┗━━━━━━━━━━━┛ │                        ┗━━━━━━━━━━━┛
+         │ ╭───╮         │
+         └─┤ * ├─────────┘
+           ╰───╯
+    ```
+
+    ```
+    BECH32DIG = %x61 / %x63-68 / %x6A-6E / %x70-7A / 0-9
+
+    HEXDIG = %x30–39 / %x41-%46
     ```
 
     ### Examples:
@@ -499,7 +542,7 @@ components:
 
     Pattern:
       description: |
-          A matching pattern for addresses. See [Pattern](#section/Pattern)
+          A matching pattern for addresses. See [Patterns](#section/Patterns)
       anyOf:
         - $ref: "#/components/schemas/Wildcard"
         - $ref: "#/components/schemas/AddressParameter"
@@ -705,7 +748,7 @@ components:
           - $ref: "#/components/schemas/AddressParameter"
           - $ref: "#/components/schemas/Credential"
       description: |
-        A pattern fragment (i.e. a wildcard, an address or a credential). See [Pattern](#section/Pattern) for more details.
+        A pattern fragment (i.e. a wildcard, an address or a credential). See [Patterns](#section/Patterns) for more details.
 
     policy-id:
       name: policy_id
@@ -812,7 +855,7 @@ paths:
       summary: Get Matches (*)
       description: |
         Retrieve matches from the database matching the given pattern, in descending `slot_no` order. Results are streamed to the client for more efficiency.
-        See [Pattern](#section/Pattern) for more information about constructing patterns.
+        See [Patterns](#section/Patterns) for more information about constructing patterns.
       parameters:
         - $ref: "#/components/parameters/pattern-fragment"
         - $ref: "#/components/parameters/spent"
