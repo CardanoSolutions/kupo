@@ -24,10 +24,10 @@ import Kupo.Data.Cardano
 import qualified Network.HTTP.Types as Http
 
 data FilterMatchesBy
-    = FilterByAssetId AssetId
-    | FilterByPolicyId PolicyId
-    | FilterByTransactionId TransactionId
-    | FilterByOutputReference OutputReference
+    = FilterByAssetId !AssetId
+    | FilterByPolicyId !PolicyId
+    | FilterByTransactionId !TransactionId
+    | FilterByOutputReference !OutputReference
     | NoFilter
     deriving (Eq, Show, Generic)
 

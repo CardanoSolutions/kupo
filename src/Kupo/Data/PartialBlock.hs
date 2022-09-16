@@ -26,17 +26,17 @@ import qualified Data.Set as Set
 -- | A partial representation of a Cardano Block. This only contains bits that
 -- are relevant to kupo. Rest isn't indexed.
 data PartialBlock = PartialBlock
-    { blockPoint :: Point
-    , blockBody :: [ PartialTransaction ]
+    { blockPoint :: !Point
+    , blockBody :: ![ PartialTransaction ]
     } deriving (Eq, Show)
 
 -- | A partial transaction, analogous to 'PartialBlock', trimmed down to the
 -- minimum.
 data PartialTransaction = PartialTransaction
-    { inputs :: [ Input ]
-    , outputs :: [ (OutputReference, Output) ]
-    , datums :: Map DatumHash BinaryData
-    , scripts :: Map ScriptHash Script
+    { inputs :: ![ Input ]
+    , outputs :: ![ (OutputReference, Output) ]
+    , datums :: !(Map DatumHash BinaryData)
+    , scripts :: !(Map ScriptHash Script)
     } deriving (Eq, Show)
 
 instance IsBlock PartialBlock where

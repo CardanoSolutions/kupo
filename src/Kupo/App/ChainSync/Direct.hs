@@ -9,21 +9,35 @@ module Kupo.App.ChainSync.Direct
 import Kupo.Prelude
 
 import Control.Monad.Class.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.App.Mailbox
-    ( Mailbox, putHighFrequencyMessage, putIntermittentMessage )
+    ( Mailbox
+    , putHighFrequencyMessage
+    , putIntermittentMessage
+    )
 import Kupo.Control.MonadThrow
-    ( MonadThrow (..) )
+    ( MonadThrow (..)
+    )
 import Kupo.Data.Cardano
-    ( Point, Tip )
+    ( Point
+    , Tip
+    )
 import Kupo.Data.ChainSync
-    ( ForcedRollbackHandler (..), IntersectionNotFoundException (..) )
+    ( ForcedRollbackHandler (..)
+    , IntersectionNotFoundException (..)
+    )
 import Kupo.Data.Configuration
-    ( maxInFlight )
+    ( maxInFlight
+    )
 import Network.TypedProtocol.Pipelined
-    ( Nat (..), natToInt )
+    ( Nat (..)
+    , natToInt
+    )
 import Ouroboros.Network.Block
-    ( getTipSlotNo, pointSlot )
+    ( getTipSlotNo
+    , pointSlot
+    )
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     ( ChainSyncClientPipelined (..)
     , ClientPipelinedStIdle (..)

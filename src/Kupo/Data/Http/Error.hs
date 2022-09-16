@@ -9,11 +9,17 @@ module Kupo.Data.Http.Error where
 import Kupo.Prelude
 
 import Kupo.Data.Http.Response
-    ( responseJson )
+    ( responseJson
+    )
 import Network.HTTP.Types.Status
-    ( status400, status404, status406, status500 )
+    ( status400
+    , status404
+    , status406
+    , status500
+    )
 import Network.Wai
-    ( Response )
+    ( Response
+    )
 
 import qualified Kupo.Data.Http.Default as Default
 

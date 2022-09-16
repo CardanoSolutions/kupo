@@ -23,26 +23,42 @@ module Kupo.Options
     ) where
 
 import Kupo.Prelude hiding
-    ( group )
+    ( group
+    )
 
 import Options.Applicative
 
 import Data.Char
-    ( toUpper )
+    ( toUpper
+    )
 import Kupo.App
-    ( TraceConsumer, TraceGardener )
+    ( TraceConsumer
+    , TraceGardener
+    )
 import Kupo.App.Configuration
-    ( TraceConfiguration )
+    ( TraceConfiguration
+    )
 import Kupo.App.Database
-    ( TraceDatabase )
+    ( TraceDatabase
+    )
 import Kupo.App.Http
-    ( TraceHttpServer )
+    ( TraceHttpServer
+    )
 import Kupo.Control.MonadLog
-    ( Severity (..), Tracer, TracerDefinition (..), TracerHKD, defaultTracers )
+    ( Severity (..)
+    , Tracer
+    , TracerDefinition (..)
+    , TracerHKD
+    , defaultTracers
+    )
 import Kupo.Control.MonadTime
-    ( DiffTime, millisecondsToDiffTime )
+    ( DiffTime
+    , millisecondsToDiffTime
+    )
 import Kupo.Data.Cardano
-    ( Point, pointFromText )
+    ( Point
+    , pointFromText
+    )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
@@ -50,18 +66,30 @@ import Kupo.Data.Configuration
     , WorkDir (..)
     )
 import Kupo.Data.Pattern
-    ( Pattern, patternFromText )
+    ( Pattern
+    , patternFromText
+    )
 import Options.Applicative.Help.Pretty
-    ( Doc, align, fillSep, hardline, indent, softbreak, string, text, vsep )
+    ( Doc
+    , align
+    , fillSep
+    , hardline
+    , indent
+    , softbreak
+    , string
+    , text
+    , vsep
+    )
 import Safe
-    ( readMay )
+    ( readMay
+    )
 
 import qualified Data.Text as T
 import qualified Data.Text.Read as T
 
 data Command
-    = Run Configuration (Tracers IO MinSeverities)
-    | HealthCheck String Int
+    = Run !Configuration !(Tracers IO MinSeverities)
+    | HealthCheck !String !Int
     | Version
     deriving (Eq, Show)
 
@@ -350,15 +378,15 @@ healthCheckCommand =
 
 data Tracers m (kind :: TracerDefinition) = Tracers
     { tracerHttp
-        :: TracerHKD kind (Tracer m TraceHttpServer)
+        :: !(TracerHKD kind (Tracer m TraceHttpServer))
     , tracerDatabase
-        :: TracerHKD kind (Tracer m TraceDatabase)
+        :: !(TracerHKD kind (Tracer m TraceDatabase))
     , tracerConsumer
-        :: TracerHKD kind (Tracer m TraceConsumer)
+        :: !(TracerHKD kind (Tracer m TraceConsumer))
     , tracerGardener
-        :: TracerHKD kind (Tracer m TraceGardener)
+        :: !(TracerHKD kind (Tracer m TraceGardener))
     , tracerConfiguration
-        :: TracerHKD kind (Tracer m TraceConfiguration)
+        :: !(TracerHKD kind (Tracer m TraceConfiguration))
     } deriving (Generic)
 
 deriving instance Show (Tracers m MinSeverities)

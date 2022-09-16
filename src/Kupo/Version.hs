@@ -9,7 +9,8 @@ module Kupo.Version
 import Kupo.Prelude
 
 import Data.Version
-    ( showVersion )
+    ( showVersion
+    )
 
 import qualified Paths_kupo as Pkg
 

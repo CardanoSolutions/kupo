@@ -16,11 +16,18 @@ module Kupo.Control.MonadTime
 import Kupo.Prelude
 
 import Control.Monad.Class.MonadTime
-    ( MonadTime (..), Time (..), addTime, diffTime )
+    ( MonadTime (..)
+    , Time (..)
+    , addTime
+    , diffTime
+    )
 import Control.Monad.Class.MonadTimer
-    ( timeout )
+    ( timeout
+    )
 import Data.Time.Clock
-    ( DiffTime, secondsToDiffTime )
+    ( DiffTime
+    , secondsToDiffTime
+    )
 
 millisecondsToDiffTime :: Integer -> DiffTime
 millisecondsToDiffTime = toEnum . fromInteger . (* 1_000_000_000)

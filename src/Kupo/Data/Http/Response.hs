@@ -11,15 +11,23 @@ module Kupo.Data.Http.Response
 import Kupo.Prelude
 
 import Data.IORef
-    ( mkWeakIORef )
+    ( mkWeakIORef
+    )
 import GHC.Weak
-    ( finalize )
+    ( finalize
+    )
 import Network.HTTP.Types.Header
-    ( Header, hContentLength )
+    ( Header
+    , hContentLength
+    )
 import Network.HTTP.Types.Status
-    ( status200 )
+    ( status200
+    )
 import Network.Wai
-    ( Response, responseLBS, responseStream )
+    ( Response
+    , responseLBS
+    , responseStream
+    )
 
 import qualified Data.Aeson as Json
 import qualified Data.Binary.Builder as B

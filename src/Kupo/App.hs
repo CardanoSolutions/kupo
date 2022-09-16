@@ -23,25 +23,43 @@ module Kupo.App
 import Kupo.Prelude
 
 import Control.Monad.Class.MonadTimer
-    ( MonadDelay (..) )
+    ( MonadDelay (..)
+    )
 import Kupo.App.ChainSync
-    ( TraceChainSync (..) )
+    ( TraceChainSync (..)
+    )
 import Kupo.App.Configuration
-    ( TraceConfiguration (..), parseNetworkParameters )
+    ( TraceConfiguration (..)
+    , parseNetworkParameters
+    )
 import Kupo.App.Database
-    ( DBTransaction, Database (..) )
+    ( DBTransaction
+    , Database (..)
+    )
 import Kupo.App.Mailbox
-    ( Mailbox, flushMailbox, newMailbox )
+    ( Mailbox
+    , flushMailbox
+    , newMailbox
+    )
 import Kupo.Control.MonadCatch
-    ( MonadCatch (..) )
+    ( MonadCatch (..)
+    )
 import Kupo.Control.MonadLog
-    ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
+    ( HasSeverityAnnotation (..)
+    , MonadLog (..)
+    , Severity (..)
+    , Tracer
+    )
 import Kupo.Control.MonadOuroboros
-    ( MonadOuroboros (..), NodeToClientVersion (..) )
+    ( MonadOuroboros (..)
+    , NodeToClientVersion (..)
+    )
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.Control.MonadThrow
-    ( MonadThrow (..) )
+    ( MonadThrow (..)
+    )
 import Kupo.Data.Cardano
     ( IsBlock
     , Point
@@ -52,7 +70,9 @@ import Kupo.Data.Cardano
     , getPointSlotNo
     )
 import Kupo.Data.ChainSync
-    ( ForcedRollbackHandler, IntersectionNotFoundException (..) )
+    ( ForcedRollbackHandler
+    , IntersectionNotFoundException (..)
+    )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
@@ -62,11 +82,22 @@ import Kupo.Data.Configuration
     , mailboxCapacity
     )
 import Kupo.Data.Database
-    ( binaryDataToRow, pointToRow, resultToRow, scriptToRow )
+    ( binaryDataToRow
+    , pointToRow
+    , resultToRow
+    , scriptToRow
+    )
 import Kupo.Data.Pattern
-    ( Codecs (..), MatchBootstrap (..), Pattern (..), included, matchBlock )
+    ( Codecs (..)
+    , Match (..)
+    , MatchBootstrap (..)
+    , Pattern (..)
+    , included
+    , matchBlock
+    )
 
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Kupo.App.ChainSync.Direct as Direct
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 
@@ -142,7 +173,7 @@ consumer
     -> InputManagement
     -> (Tip -> Maybe SlotNo -> DBTransaction m ())
     -> Mailbox m (Tip, block) (Tip, Point)
-    -> TVar m [Pattern]
+    -> TVar m (Set Pattern)
     -> Database m
     -> m Void
 consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
@@ -154,17 +185,17 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
             (Right pt, _) ->
                 rollBackward pt
   where
-    rollForward :: (NonEmpty (Tip, block) -> [Pattern] -> m ())
+    rollForward :: (NonEmpty (Tip, block) -> Set Pattern -> m ())
     rollForward blks patterns = do
         let (lastKnownTip, lastKnownBlk) = last blks
         let lastKnownPoint = getPoint lastKnownBlk
         let lastKnownSlot = getPointSlotNo lastKnownPoint
-        let (spentInputs, newInputs, bins, scripts) =
+        let Match{consumed, produced, datums, scripts} =
                 foldMap (matchBlock codecs patterns . snd) blks
         isNonEmptyBlock <- runReadWriteTransaction $ do
             insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
-            insertInputs newInputs
-            nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot spentInputs
+            insertInputs produced
+            nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot consumed
             -- NOTE: In case where the user has entered a relatively restrictive
             -- pattern (e.g. one specific address), we do a best-effort at not
             -- storing all the garbage of the world and only store scripts and
@@ -173,16 +204,16 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
             -- Note that this isn't done from within 'matchBlock' because we
             -- only know if we've spent inputs after running the above database
             -- operation.
-            let isNonEmptyBlock = nSpentInputs > 0 || not (null newInputs)
+            let isNonEmptyBlock = nSpentInputs > 0 || not (null produced)
             when isNonEmptyBlock $ do
-                insertBinaryData bins
+                insertBinaryData datums
                 insertScripts scripts
             notifyTip lastKnownTip (Just lastKnownSlot)
             return isNonEmptyBlock
         logWith tr $ ConsumerRollForward
             { slotNo = lastKnownSlot
-            , inputs = length newInputs
-            , binaryData = if isNonEmptyBlock then length bins else 0
+            , inputs = length produced
+            , binaryData = if isNonEmptyBlock then length datums else 0
             , scripts = if isNonEmptyBlock then length scripts else 0
             }
 
@@ -252,7 +283,7 @@ gardener
         )
     => Tracer IO TraceGardener
     -> Configuration
-    -> TVar m [Pattern]
+    -> TVar m (Set Pattern)
     -> (forall a. (Database m -> m a) -> m a)
     -> m Void
 gardener tr config patterns withDatabase = forever $ do
@@ -268,8 +299,8 @@ gardener tr config patterns withDatabase = forever $ do
                         MarkSpentInputs -> pure 0
                 pruneBinaryDataWhenApplicable = do
                     case (inputManagement, MatchAny OnlyShelley `included` xs) of
-                        (MarkSpentInputs, _:_) -> pure 0
-                        _ -> pruneBinaryData
+                        (MarkSpentInputs, s) | not (Set.null s) -> pure 0
+                        _needPruning -> pruneBinaryData
              in
                 (,) <$> pruneInputsWhenApplicable <*> pruneBinaryDataWhenApplicable
         logWith tr $ GardenerExitGarbageCollection { prunedInputs, prunedBinaryData }

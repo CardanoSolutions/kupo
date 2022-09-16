@@ -20,11 +20,12 @@ module Kupo.App.Mailbox
 import Kupo.Prelude
 
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 
 data Mailbox m a b = Mailbox
-    { highFrequencyMessages :: TBQueue m a
-    , intermittentMessages :: TMVar m b
+    { highFrequencyMessages :: !(TBQueue m a)
+    , intermittentMessages :: !(TMVar m b)
     }
 
 newMailbox

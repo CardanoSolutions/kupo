@@ -21,31 +21,48 @@ module Kupo.Control.MonadOuroboros
 import Kupo.Prelude
 
 import Cardano.Chain.Slotting
-    ( EpochSlots (..) )
+    ( EpochSlots (..)
+    )
 import Cardano.Ledger.Crypto
-    ( StandardCrypto )
+    ( StandardCrypto
+    )
 import Control.Tracer
-    ( nullTracer )
+    ( nullTracer
+    )
 import Data.Map.Strict
-    ( (!) )
+    ( (!)
+    )
 import Ouroboros.Consensus.Byron.Ledger.Config
-    ( CodecConfig (..) )
+    ( CodecConfig (..)
+    )
 import Ouroboros.Consensus.Cardano
-    ( CardanoBlock )
+    ( CardanoBlock
+    )
 import Ouroboros.Consensus.Cardano.Block
-    ( CodecConfig (..) )
+    ( CodecConfig (..)
+    )
 import Ouroboros.Consensus.Network.NodeToClient
-    ( ClientCodecs, Codecs' (..), clientCodecs )
+    ( ClientCodecs
+    , Codecs' (..)
+    , clientCodecs
+    )
 import Ouroboros.Consensus.Node.NetworkProtocolVersion
-    ( SupportedNetworkProtocolVersion (..) )
+    ( SupportedNetworkProtocolVersion (..)
+    )
 import Ouroboros.Consensus.Shelley.Ledger.Config
-    ( CodecConfig (..) )
+    ( CodecConfig (..)
+    )
 import Ouroboros.Network.Block
-    ( Point (..), StandardHash, Tip (..) )
+    ( Point (..)
+    , StandardHash
+    , Tip (..)
+    )
 import Ouroboros.Network.Driver.Simple
-    ( runPipelinedPeer )
+    ( runPipelinedPeer
+    )
 import Ouroboros.Network.Magic
-    ( NetworkMagic (..) )
+    ( NetworkMagic (..)
+    )
 import Ouroboros.Network.Mux
     ( MiniProtocol (..)
     , MiniProtocolLimits (..)
@@ -63,13 +80,19 @@ import Ouroboros.Network.NodeToClient
     , withIOManager
     )
 import Ouroboros.Network.Point
-    ( WithOrigin (..) )
+    ( WithOrigin (..)
+    )
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
-    ( ChainSyncClientPipelined (..), chainSyncClientPeerPipelined )
+    ( ChainSyncClientPipelined (..)
+    , chainSyncClientPeerPipelined
+    )
 import Ouroboros.Network.Protocol.Handshake.Version
-    ( combineVersions, simpleSingletonVersions )
+    ( combineVersions
+    , simpleSingletonVersions
+    )
 import Ouroboros.Network.Snocket
-    ( Snocket (..) )
+    ( Snocket (..)
+    )
 
 import Ouroboros.Consensus.Protocol.Praos.Translate
     ()

@@ -42,18 +42,18 @@ language_extensions: &default-extensions
 - TypeSynonymInstances
 - ViewPatterns
 
-columns: 80 # Should match .editorconfig
+columns: 0 # Should match .editorconfig
 steps:
   - imports:
       align: none
       list_align: new_line
-      long_list_align: new_line_multiline
+      long_list_align: multiline
       empty_list_align: inherit
       list_padding: 4
       pad_module_names: false
       separate_lists: true
       space_surround: true
-      post_qualify: true
+      post_qualify: false
       group_imports: false
 
   - language_pragmas:

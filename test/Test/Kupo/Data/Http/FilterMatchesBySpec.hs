@@ -19,13 +19,25 @@ import Kupo.Data.Cardano
     , unsafeAssetNameFromBytes
     )
 import Kupo.Data.Http.FilterMatchesBy
-    ( FilterMatchesBy (..), filterMatchesBy )
+    ( FilterMatchesBy (..)
+    , filterMatchesBy
+    )
 import Test.Hspec
-    ( Spec, context, parallel, shouldBe, specify )
+    ( Spec
+    , context
+    , parallel
+    , shouldBe
+    , specify
+    )
 import Test.Kupo.Data.Generators
-    ( genNonEmptyAssetName, genPolicyId, genTransactionId, generateWith )
+    ( genNonEmptyAssetName
+    , genPolicyId
+    , genTransactionId
+    , generateWith
+    )
 import Test.QuickCheck
-    ( suchThat )
+    ( suchThat
+    )
 
 import qualified Data.ByteString as BS
 import qualified Network.HTTP.Types as Http
@@ -147,6 +159,7 @@ someOtherAssetName =
 -- Helpers
 --
 
+infixr 8 .=
 (.=) :: ByteString -> Text -> (ByteString, Maybe ByteString)
 (.=) key val = (key, Just (encodeUtf8 val))
 

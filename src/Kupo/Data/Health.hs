@@ -16,7 +16,9 @@ module Kupo.Data.Health
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( SlotNo, slotNoToJson )
+    ( SlotNo
+    , slotNoToJson
+    )
 
 import qualified Data.Aeson.Encoding as Json
 

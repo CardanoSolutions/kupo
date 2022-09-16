@@ -13,29 +13,53 @@ module Test.KupoSpec
 import Kupo.Prelude
 
 import Control.Exception
-    ( try )
+    ( try
+    )
 import Data.List
-    ( maximum, (\\) )
+    ( maximum
+    , (\\)
+    )
 import GHC.IORef
-    ( atomicSwapIORef )
+    ( atomicSwapIORef
+    )
 import Kupo
-    ( kupo, newEnvironment, runWith, version, withTracers )
+    ( kupo
+    , newEnvironment
+    , runWith
+    , version
+    , withTracers
+    )
 import Kupo.App.Configuration
-    ( ConflictingOptionsException, NoStartingPointException )
+    ( ConflictingOptionsException
+    , NoStartingPointException
+    )
 import Kupo.App.Http
-    ( healthCheck )
+    ( healthCheck
+    )
 import Kupo.Control.MonadAsync
-    ( race_ )
+    ( race_
+    )
 import Kupo.Control.MonadDelay
-    ( threadDelay )
+    ( threadDelay
+    )
 import Kupo.Control.MonadLog
-    ( Severity (..), TracerDefinition (..), defaultTracers )
+    ( Severity (..)
+    , TracerDefinition (..)
+    , defaultTracers
+    )
 import Kupo.Control.MonadTime
-    ( DiffTime, timeout )
+    ( DiffTime
+    , timeout
+    )
 import Kupo.Data.Cardano
-    ( pattern GenesisPoint, getPointSlotNo, mkOutputReference )
+    ( getPointSlotNo
+    , hasPolicyId
+    , mkOutputReference
+    , pattern GenesisPoint
+    )
 import Kupo.Data.ChainSync
-    ( IntersectionNotFoundException )
+    ( IntersectionNotFoundException
+    )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
@@ -43,19 +67,31 @@ import Kupo.Data.Configuration
     , WorkDir (..)
     )
 import Kupo.Data.Http.GetCheckpointMode
-    ( GetCheckpointMode (..) )
+    ( GetCheckpointMode (..)
+    )
 import Kupo.Data.Http.StatusFlag
-    ( StatusFlag (..) )
+    ( StatusFlag (..)
+    )
 import Kupo.Data.Pattern
-    ( MatchBootstrap (..), Pattern (..), Result (..) )
+    ( MatchBootstrap (..)
+    , Pattern (..)
+    , Result (..)
+    )
 import Kupo.Options
-    ( Tracers (..) )
+    ( Tracers (..)
+    )
 import Network.HTTP.Client
-    ( Manager, defaultManagerSettings, newManager )
+    ( Manager
+    , defaultManagerSettings
+    , newManager
+    )
 import System.Environment
-    ( lookupEnv )
+    ( lookupEnv
+    )
 import System.IO.Temp
-    ( withSystemTempDirectory, withTempFile )
+    ( withSystemTempDirectory
+    , withTempFile
+    )
 import Test.Hspec
     ( Spec
     , SpecWith
@@ -70,7 +106,9 @@ import Test.Hspec
     , xcontext
     )
 import Test.Kupo.App.Http.Client
-    ( HttpClient (..), newHttpClientWith )
+    ( HttpClient (..)
+    , newHttpClientWith
+    )
 import Test.Kupo.Fixture
     ( eraBoundaries
     , lastAlonzoPoint
@@ -87,6 +125,7 @@ import Test.Kupo.Fixture
     , somePointAncestor
     , somePointNearScripts
     , somePointSuccessor
+    , somePolicyId
     , someScriptHashInMetadata
     , someScriptHashInOutput
     , someScriptHashInWitness
@@ -97,7 +136,10 @@ import Test.Kupo.Fixture
     , someTransactionId
     )
 import Type.Reflection
-    ( tyConName, typeRep, typeRepTyCon )
+    ( tyConName
+    , typeRep
+    , typeRepTyCon
+    )
 
 import qualified Prelude
 
@@ -269,13 +311,13 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 waitSlot (> (getPointSlotNo somePointSuccessor))
                 getCheckpointBySlot strict (getPointSlotNo somePoint)
                     `shouldReturn` Just somePoint
-                getCheckpointBySlot strict (pred (getPointSlotNo somePoint))
+                getCheckpointBySlot strict (prev (getPointSlotNo somePoint))
                     `shouldReturn` Nothing
                 getCheckpointBySlot strict (getPointSlotNo somePointSuccessor)
                     `shouldReturn` Just somePointSuccessor
-                getCheckpointBySlot strict  (pred (getPointSlotNo somePointSuccessor))
+                getCheckpointBySlot strict  (prev (getPointSlotNo somePointSuccessor))
                     `shouldReturn` Nothing
-                getCheckpointBySlot flex (pred (getPointSlotNo somePointSuccessor))
+                getCheckpointBySlot flex (prev (getPointSlotNo somePointSuccessor))
                     `shouldReturn` Just somePoint
             )
 
@@ -340,9 +382,9 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 waitSlot (>= maxSlot)
                 ys <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
                 ys `shouldContain` xs
-                listPatterns `shouldReturn`
-                    [ MatchDelegation someOtherStakeKey
-                    , MatchDelegation someStakeKey
+                (sort <$> listPatterns) `shouldReturn`
+                    [ MatchDelegation someStakeKey
+                    , MatchDelegation someOtherStakeKey
                     ]
                 atomicSwapIORef ref (xs, ys)
             )
@@ -423,6 +465,21 @@ spec = skippableContext "End-to-end" $ \manager -> do
                         mkOutputReference someTransactionId 1 `elem` outRefs
             )
 
+    specify "Match by policy id" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just lastMaryPoint
+            , patterns = [MatchPolicyId somePolicyId]
+            }
+        timeoutOrThrow 10 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitUntilM $ do
+                    values <- fmap value <$> getAllMatches NoStatusFlag
+                    return $ all (`hasPolicyId` somePolicyId) values
+            )
+
 type EndToEndSpec
     =  Manager
     -> SpecWith (FilePath, Tracers IO 'Concrete, Configuration)
@@ -447,7 +504,7 @@ skippableContext prefix skippableSpec = do
                     }
             context cardanoNode $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager
-        _ ->
+        _skipOtherwise ->
             xcontext cardanoNode (pure ())
 
     let ogmios = prefix <> " (ogmios)"
@@ -467,7 +524,7 @@ skippableContext prefix skippableSpec = do
                     }
             context ogmios $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager
-        _ ->
+        _skipOtherwise ->
             xcontext ogmios (pure ())
   where
     varCardanoNodeSocket :: String
@@ -488,7 +545,7 @@ skippableContext prefix skippableSpec = do
         -> ((FilePath, Tracers IO 'Concrete, Configuration) -> IO ())
         -> IO ()
     withTempDirectory ref cfg action = do
-        serverPort <- atomicModifyIORef' ref $ \port -> (succ port, port)
+        serverPort <- atomicModifyIORef' ref $ \port -> (next port, port)
         withSystemTempDirectory "kupo-end-to-end" $ \dir -> do
             withTempFile dir "traces" $ \_ h ->
                 withTracers h version (defaultTracers (Just Info)) $ \tr ->

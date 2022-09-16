@@ -33,39 +33,75 @@ module Kupo
 import Kupo.Prelude
 
 import Kupo.App
-    ( ChainSyncClient, TraceConsumer (..), consumer, gardener, newProducer )
+    ( ChainSyncClient
+    , TraceConsumer (..)
+    , consumer
+    , gardener
+    , newProducer
+    )
 import Kupo.App.ChainSync
-    ( withChainSyncExceptionHandler )
+    ( withChainSyncExceptionHandler
+    )
 import Kupo.App.Configuration
-    ( newPatternsCache, startOrResume )
+    ( newPatternsCache
+    , startOrResume
+    )
 import Kupo.App.Database
-    ( ConnectionType (..), newLock, withDatabase )
+    ( ConnectionType (..)
+    , newLock
+    , withDatabase
+    )
 import Kupo.App.Health
-    ( connectionStatusToggle, initializeHealth, readHealth, recordCheckpoint )
+    ( connectionStatusToggle
+    , initializeHealth
+    , readHealth
+    , recordCheckpoint
+    )
 import Kupo.App.Http
-    ( healthCheck, httpServer )
+    ( healthCheck
+    , httpServer
+    )
 import Kupo.App.Mailbox
-    ( Mailbox )
+    ( Mailbox
+    )
 import Kupo.Control.MonadAsync
-    ( concurrently4 )
+    ( concurrently4
+    )
 import Kupo.Control.MonadLog
-    ( TracerDefinition (..), nullTracer, withTracers )
+    ( TracerDefinition (..)
+    , nullTracer
+    , withTracers
+    )
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.Data.Cardano
-    ( IsBlock, Point, Tip )
+    ( IsBlock
+    , Point
+    , Tip
+    )
 import Kupo.Data.ChainSync
-    ( ForcedRollbackHandler )
+    ( ForcedRollbackHandler
+    )
 import Kupo.Data.Configuration
-    ( Configuration (..), WorkDir (..) )
+    ( Configuration (..)
+    , WorkDir (..)
+    )
 import Kupo.Data.Health
-    ( Health, emptyHealth )
+    ( Health
+    , emptyHealth
+    )
 import Kupo.Options
-    ( Command (..), Tracers (..), parseOptions )
+    ( Command (..)
+    , Tracers (..)
+    , parseOptions
+    )
 import Kupo.Version
-    ( version )
+    ( version
+    )
 import System.FilePath
-    ( (</>) )
+    ( (</>)
+    )
 
 --
 -- Environment

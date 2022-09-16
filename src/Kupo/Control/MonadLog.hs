@@ -29,15 +29,26 @@ module Kupo.Control.MonadLog
 import Kupo.Prelude
 
 import Control.Concurrent
-    ( myThreadId )
+    ( myThreadId
+    )
 import Control.Monad.Class.MonadTime
-    ( getCurrentTime )
+    ( getCurrentTime
+    )
 import Control.Tracer
-    ( Tracer (..), natTracer, nullTracer, traceWith )
+    ( Tracer (..)
+    , natTracer
+    , nullTracer
+    , traceWith
+    )
 import Data.Aeson.Encoding
-    ( Encoding, encodingToLazyByteString, pair, pairs )
+    ( Encoding
+    , encodingToLazyByteString
+    , pair
+    , pairs
+    )
 import Data.Char
-    ( isLower )
+    ( isLower
+    )
 import Data.Generics.Tracers
     ( IsRecordOfTracers
     , SomeMsg (..)
@@ -47,11 +58,19 @@ import Data.Generics.Tracers
     , defaultTracers
     )
 import Data.Severity
-    ( HasSeverityAnnotation (..), Severity (..) )
+    ( HasSeverityAnnotation (..)
+    , Severity (..)
+    )
 import Kupo.Control.MonadSTM
-    ( newTMVarIO, withTMVar )
+    ( newTMVarIO
+    , withTMVar
+    )
 import System.IO
-    ( BufferMode (..), hSetBuffering, hSetEncoding, utf8 )
+    ( BufferMode (..)
+    , hSetBuffering
+    , hSetEncoding
+    , utf8
+    )
 
 import qualified Data.Aeson.Key as Json.Key
 import qualified Data.ByteString.Lazy.Char8 as BL8

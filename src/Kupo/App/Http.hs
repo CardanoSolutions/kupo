@@ -18,16 +18,21 @@ module Kupo.App.Http
 
 import Kupo.Prelude
 
-import Data.List
-    ( nub, (\\) )
 import Kupo.App.Database
-    ( Database (..) )
+    ( Database (..)
+    )
 import Kupo.App.Http.HealthCheck
-    ( healthCheck )
+    ( healthCheck
+    )
 import Kupo.Control.MonadLog
-    ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
+    ( HasSeverityAnnotation (..)
+    , MonadLog (..)
+    , Severity (..)
+    , Tracer
+    )
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.Data.Cardano
     ( DatumHash
     , Point
@@ -47,9 +52,11 @@ import Kupo.Data.Cardano
     , slotNoToText
     )
 import Kupo.Data.ChainSync
-    ( ForcedRollbackHandler (..) )
+    ( ForcedRollbackHandler (..)
+    )
 import Kupo.Data.Configuration
-    ( LongestRollback (..) )
+    ( LongestRollback (..)
+    )
 import Kupo.Data.Database
     ( applyStatusFlag
     , binaryDataFromRow
@@ -62,19 +69,33 @@ import Kupo.Data.Database
     , scriptHashToRow
     )
 import Kupo.Data.Health
-    ( Health (..) )
+    ( Health (..)
+    )
 import Kupo.Data.Http.FilterMatchesBy
-    ( FilterMatchesBy (..), filterMatchesBy )
+    ( FilterMatchesBy (..)
+    , filterMatchesBy
+    )
 import Kupo.Data.Http.ForcedRollback
-    ( ForcedRollback (..), ForcedRollbackLimit (..), decodeForcedRollback )
+    ( ForcedRollback (..)
+    , ForcedRollbackLimit (..)
+    , decodeForcedRollback
+    )
 import Kupo.Data.Http.GetCheckpointMode
-    ( GetCheckpointMode (..), getCheckpointModeFromQuery )
+    ( GetCheckpointMode (..)
+    , getCheckpointModeFromQuery
+    )
 import Kupo.Data.Http.Response
-    ( responseJson, responseJsonEncoding, responseStreamJson )
+    ( responseJson
+    , responseJsonEncoding
+    , responseStreamJson
+    )
 import Kupo.Data.Http.Status
-    ( Status (..), mkStatus )
+    ( Status (..)
+    , mkStatus
+    )
 import Kupo.Data.Http.StatusFlag
-    ( statusFlagFromQueryParams )
+    ( statusFlagFromQueryParams
+    )
 import Kupo.Data.Pattern
     ( Pattern (..)
     , Result (..)
@@ -86,7 +107,8 @@ import Kupo.Data.Pattern
     , wildcard
     )
 import Network.HTTP.Types.Status
-    ( status200 )
+    ( status200
+    )
 import Network.Wai
     ( Application
     , Middleware
@@ -102,6 +124,7 @@ import Network.Wai
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Types as Json
+import qualified Data.Set as Set
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
 import qualified Network.HTTP.Types.Header as Http
@@ -116,7 +139,7 @@ httpServer
     :: Tracer IO TraceHttpServer
     -> (forall a. (Database IO -> IO a) -> IO a)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
-    -> TVar IO [Pattern]
+    -> TVar IO (Set Pattern)
     -> IO Health
     -> String
     -> Int
@@ -139,7 +162,7 @@ httpServer tr withDatabase forceRollback patternsVar readHealth host port =
 app
     :: (forall a. (Database IO -> IO a) -> IO a)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
-    -> TVar IO [Pattern]
+    -> TVar IO (Set Pattern)
     -> IO Health
     -> Application
 app withDatabase forceRollback patternsVar readHealth req send =
@@ -167,7 +190,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
         ("v1" : args) ->
             route args
 
-        _ ->
+        _unmatchedRoutes ->
             send Errors.notFound
 
     routeHealth = \case
@@ -288,7 +311,7 @@ pathParametersToText = \case
         Just arg0
     [arg0, arg1] ->
         Just (arg0 <> "/" <> arg1)
-    _ ->
+    _unexpectedPath ->
         Nothing
 
 --
@@ -332,14 +355,14 @@ handleGetCheckpointBySlot headers mSlotNo query Database{..} =
             handleGetCheckpointBySlot' slotNo mode
   where
     handleGetCheckpointBySlot' slotNo mode = do
-        let successor = succ (unSlotNo slotNo)
+        let successor = next (unSlotNo slotNo)
         points <- runReadOnlyTransaction (listAncestorsDesc successor 1 pointFromRow)
         pure $ responseJsonEncoding status200 headers $ case (points, mode) of
             ([point], GetCheckpointStrict) | getPointSlotNo point == slotNo ->
                 pointToJson point
             ([point], GetCheckpointClosestAncestor) ->
                 pointToJson point
-            _ ->
+            _pointNotFound ->
                 Json.null_
 
 --
@@ -363,34 +386,54 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
             case filterMatchesBy queryParams of
                 Nothing ->
                     Errors.invalidMatchFilter
-                Just (mkYieldIf -> yieldIf) -> do
+                Just (mkYieldIf p -> yieldIf) -> do
                     responseStreamJson headers resultToJson $ \yield done -> do
                         runReadOnlyTransaction $ foldInputs query (yieldIf yield . resultFromRow)
                         done
   where
-    mkYieldIf = \case
-        NoFilter ->
-            ($)
-        FilterByAssetId assetId -> \yield result ->
-            if hasAssetId (value result) assetId
-            then yield result
-            else pure ()
-        FilterByPolicyId policyId -> \yield result ->
-            if hasPolicyId (value result) policyId
-            then yield result
-            else pure ()
-        FilterByOutputReference outRef -> \yield result ->
-            if outputReference result == outRef
-            then yield result
-            else pure ()
-        FilterByTransactionId txId -> \yield result ->
-            if (getTransactionId . outputReference) result == txId
-            then yield result
-            else pure ()
+    -- NOTE: kupo does support two different ways for fetching results, via query parameters or via
+    -- path parameters. Historically, there were only query parameters. Yet, with the introduction
+    -- of patterns, both approaches are now redundant with one another.
+    --
+    -- When it comes to asset id / policy id, querying via pattern or via query parameters will have
+    -- the same effect & performance. However, when querying output reference / transaction id from
+    -- a pattern, the query is optimized through a first pre-filtering via SQL.
+    --
+    -- Removing query parameters now would be a breaking change, although it would remove quite a
+    -- bunch of code. This note serves as a reminder. For the next major version, filters should
+    -- likely be removed.
+    mkYieldIf pattern_ filter_ =
+        let
+            predicateA =
+                case pattern_ of
+                    MatchAssetId assetId ->
+                        \result -> hasAssetId (value result) assetId
+                    MatchPolicyId policyId ->
+                        \result -> hasPolicyId (value result) policyId
+                    _otherCasesAlreadyMatchedFromSQL ->
+                        const True
+
+            predicateB =
+                case filter_ of
+                    NoFilter ->
+                        const True
+                    FilterByAssetId assetId ->
+                        \result -> hasAssetId (value result) assetId
+                    FilterByPolicyId policyId ->
+                        \result -> hasPolicyId (value result) policyId
+                    FilterByOutputReference outRef ->
+                        \result -> outputReference result == outRef
+                    FilterByTransactionId transactionId ->
+                        \result -> (getTransactionId . outputReference) result == transactionId
+         in
+            \yield result ->
+                if predicateA result && predicateB result
+                then yield result
+                else pure ()
 
 handleDeleteMatches
     :: [Http.Header]
-    -> TVar IO [Pattern]
+    -> TVar IO (Set Pattern)
     -> Maybe Text
     -> Database IO
     -> IO Response
@@ -399,7 +442,7 @@ handleDeleteMatches headers patternsVar query Database{..} = do
     case query >>= patternFromText of
         Nothing -> do
             pure Errors.invalidPattern
-        Just p | p `overlaps` (patterns \\ [p]) -> do
+        Just p | p `overlaps` patterns -> do
             pure Errors.stillActivePattern
         Just p -> do
             n <- runReadWriteTransaction $ deleteInputsByAddress (patternToSql p)
@@ -459,7 +502,7 @@ handleGetScript headers scriptArg Database{..} = do
 handleGetPatterns
     :: [Http.Header]
     -> Maybe Text
-    -> (Pattern -> [Pattern])
+    -> (Pattern -> Set Pattern)
     -> Response
 handleGetPatterns headers patternQuery patterns = do
     case patternQuery >>= patternFromText of
@@ -472,7 +515,7 @@ handleGetPatterns headers patternQuery patterns = do
 
 handleDeletePattern
     :: [Http.Header]
-    -> TVar IO [Pattern]
+    -> TVar IO (Set Pattern)
     -> Maybe Text
     -> Database IO
     -> IO Response
@@ -482,7 +525,7 @@ handleDeletePattern headers patternsVar query Database{..} = do
             pure Errors.invalidPattern
         Just p -> do
             n <- runReadWriteTransaction $ deletePattern (patternToRow p)
-            atomically $ modifyTVar' patternsVar (\\ [p])
+            atomically $ modifyTVar' patternsVar (Set.delete p)
             pure $ responseJsonEncoding status200 headers $
                 Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)
@@ -492,7 +535,7 @@ handlePutPattern
     :: [Http.Header]
     -> IO Health
     -> (Point -> ForcedRollbackHandler IO -> IO ())
-    -> TVar IO [Pattern]
+    -> TVar IO (Set Pattern)
     -> Maybe ForcedRollback
     -> Maybe Text
     -> Database IO
@@ -515,13 +558,13 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
             case ((LongestRollback <$> d) > Just longestRollback, lim) of
                 (True, OnlyAllowRollbackWithinSafeZone) ->
                     pure Errors.unsafeRollbackBeyondSafeZone
-                _ ->
+                _safeRollbackOrAllowedUnsafe ->
                     putPatternAt p point
   where
     resolvePointOrSlot :: Either SlotNo Point -> IO (Maybe Point)
     resolvePointOrSlot = \case
         Right pt -> do
-            let successor = unSlotNo $ succ $ getPointSlotNo pt
+            let successor = unSlotNo $ next $ getPointSlotNo pt
             pts <- runReadOnlyTransaction $ listAncestorsDesc successor 1 pointFromRow
             return $ case pts of
                 [pt'] | pt == pt' ->
@@ -531,16 +574,16 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
                 -- flexible and optimistically rollback to that point.
                 [] ->
                     Just pt
-                _ ->
+                _pointDoesNotMatch ->
                     Nothing
 
         Left sl -> do
-            let successor = unSlotNo (succ sl)
+            let successor = unSlotNo (next sl)
             pts <- runReadOnlyTransaction $ listAncestorsDesc successor 1 pointFromRow
             return $ case pts of
                 [pt] | sl == getPointSlotNo pt ->
                     Just pt
-                _ ->
+                _unexpectedPoint ->
                     Nothing
 
     putPatternAt :: Pattern -> Point -> IO Response
@@ -550,12 +593,12 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
             { onSuccess = do
                 runReadWriteTransaction $ insertPatterns [patternToRow p]
                 patterns <- atomically $ do
-                    modifyTVar' patternsVar (nub . (p :))
+                    modifyTVar' patternsVar (Set.insert p)
                     readTVar patternsVar
                 atomically $ putTMVar response $ responseJsonEncoding status200 headers $
                     Json.list
                         (Json.text . patternToText)
-                        patterns
+                        (toList patterns)
             , onFailure = do
                 atomically (putTMVar response Errors.failedToRollback)
             }
@@ -585,7 +628,7 @@ requestBodyJson parser req = do
     bytes <- strictRequestBody req
     case Json.parse parser <$> Json.decodeStrict' (toStrict bytes) of
         Just (Json.Success a) -> return (Just a)
-        _ -> return Nothing
+        _failureOrMalformed -> return Nothing
 
 --
 -- Tracer

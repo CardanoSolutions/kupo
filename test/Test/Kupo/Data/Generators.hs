@@ -9,14 +9,14 @@ module Test.Kupo.Data.Generators where
 import Kupo.Prelude
 
 import Data.Bits
-    ( shiftL )
+    ( shiftL
+    )
 import Kupo.Data.Cardano
     ( Address
     , BinaryData
     , Blake2b_224
     , Blake2b_256
     , Block
-    , pattern BlockPoint
     , Datum
     , DatumHash
     , HeaderHash
@@ -38,6 +38,7 @@ import Kupo.Data.Cardano
     , mkOutput
     , mkOutputReference
     , noDatum
+    , pattern BlockPoint
     , scriptHashToBytes
     , unsafeAddressFromBytes
     , unsafeBinaryDataFromBytes
@@ -50,15 +51,24 @@ import Kupo.Data.Cardano
     , unsafeValueFromList
     )
 import Kupo.Data.Configuration
-    ( InputManagement (..) )
+    ( InputManagement (..)
+    )
 import Kupo.Data.Health
-    ( ConnectionStatus (..), Health (..) )
+    ( ConnectionStatus (..)
+    , Health (..)
+    )
 import Kupo.Data.Http.ForcedRollback
-    ( ForcedRollback (..), ForcedRollbackLimit (..) )
+    ( ForcedRollback (..)
+    , ForcedRollbackLimit (..)
+    )
 import Kupo.Data.Pattern
-    ( MatchBootstrap (..), Pattern (..), Result (..) )
+    ( MatchBootstrap (..)
+    , Pattern (..)
+    , Result (..)
+    )
 import System.IO.Unsafe
-    ( unsafePerformIO )
+    ( unsafePerformIO
+    )
 import Test.QuickCheck
     ( Arbitrary (..)
     , Gen
@@ -73,9 +83,11 @@ import Test.QuickCheck
     , vectorOf
     )
 import Test.QuickCheck.Gen
-    ( Gen (..) )
+    ( Gen (..)
+    )
 import Test.QuickCheck.Random
-    ( mkQCGen )
+    ( mkQCGen
+    )
 
 import qualified Data.ByteString as BS
 import qualified Data.Text as T

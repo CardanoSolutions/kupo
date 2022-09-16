@@ -7,17 +7,28 @@ module Test.Kupo.App.Http.Client where
 import Kupo.Prelude
 
 import Cardano.Crypto.Hash.Class
-    ( Hash, HashAlgorithm, hashFromTextAsHex )
+    ( Hash
+    , HashAlgorithm
+    , hashFromTextAsHex
+    )
 import Data.Aeson
-    ( (.!=), (.:), (.:?) )
+    ( (.!=)
+    , (.:)
+    , (.:?)
+    )
 import Data.Aeson.Lens
-    ( key, _String )
+    ( _String
+    , key
+    )
 import Data.List
-    ( maximum )
+    ( maximum
+    )
 import Kupo.Control.MonadCatch
-    ( MonadCatch (..) )
+    ( MonadCatch (..)
+    )
 import Kupo.Control.MonadDelay
-    ( MonadDelay (..) )
+    ( MonadDelay (..)
+    )
 import Kupo.Data.Cardano
     ( Address
     , BinaryData
@@ -47,13 +58,22 @@ import Kupo.Data.Cardano
     , unsafeValueFromList
     )
 import Kupo.Data.Http.ForcedRollback
-    ( ForcedRollback (..), ForcedRollbackLimit (..), forcedRollbackToJson )
+    ( ForcedRollback (..)
+    , ForcedRollbackLimit (..)
+    , forcedRollbackToJson
+    )
 import Kupo.Data.Http.GetCheckpointMode
-    ( GetCheckpointMode (..) )
+    ( GetCheckpointMode (..)
+    )
 import Kupo.Data.Http.StatusFlag
-    ( StatusFlag (..) )
+    ( StatusFlag (..)
+    )
 import Kupo.Data.Pattern
-    ( Pattern (..), Result (..), patternFromText, patternToText )
+    ( Pattern (..)
+    , Result (..)
+    , patternFromText
+    , patternToText
+    )
 import Network.HTTP.Client
     ( HttpException
     , Manager
@@ -67,7 +87,9 @@ import Network.HTTP.Client
     , parseRequest
     )
 import Network.HTTP.Types.Status
-    ( status200, status400 )
+    ( status200
+    , status400
+    )
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
@@ -149,7 +171,7 @@ newHttpClientWith manager (serverHost, serverPort) =
                 req <- parseRequest (baseUrl <> "/health")
                 void (httpNoBody req manager) `catch` (\(_ :: HttpException) -> do
                     threadDelay 0.1
-                    loop (succ n))
+                    loop (next n))
 
     _waitUntilM :: IO Bool -> IO ()
     _waitUntilM predicate = do
@@ -320,7 +342,7 @@ decodeAddress txt =
     case patternFromText txt of
         Just (MatchExact addr) ->
             pure addr
-        _ ->
+        _notAnAddress ->
             empty
 
 decodeDatumHash
@@ -390,7 +412,7 @@ decodeValue = Json.withObject "Value" $ \o -> do
                 pure (policyId, assetName, quantity)
             [ decodeBase16' -> Right policyId ] -> do
                 pure (policyId, mempty, quantity)
-            _ ->
+            _invalidSplit ->
                 empty
 
 decodeHash

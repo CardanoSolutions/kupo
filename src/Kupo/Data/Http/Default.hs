@@ -8,7 +8,9 @@ module Kupo.Data.Http.Default
 
 
 import Network.HTTP.Types.Header
-    ( Header, hContentType )
+    ( Header
+    , hContentType
+    )
 
 headers :: [Header]
 headers =

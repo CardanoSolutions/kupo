@@ -32,21 +32,30 @@ module Kupo.Data.Configuration
 import Kupo.Prelude
 
 import Data.Aeson
-    ( (.:) )
+    ( (.:)
+    )
 import Data.Time.Clock.POSIX
-    ( posixSecondsToUTCTime )
+    ( posixSecondsToUTCTime
+    )
 import Data.Time.Format.ISO8601
-    ( iso8601ParseM )
+    ( iso8601ParseM
+    )
 import Kupo.Control.MonadOuroboros
-    ( EpochSlots (..), NetworkMagic (..) )
+    ( EpochSlots (..)
+    , NetworkMagic (..)
+    )
 import Kupo.Control.MonadTime
-    ( DiffTime )
+    ( DiffTime
+    )
 import Kupo.Data.Cardano
-    ( Point )
+    ( Point
+    )
 import Kupo.Data.Pattern
-    ( Pattern (..) )
+    ( Pattern (..)
+    )
 import Ouroboros.Consensus.BlockchainTime.WallClock.Types
-    ( SystemStart (..) )
+    ( SystemStart (..)
+    )
 
 import qualified Data.Aeson as Json
 
@@ -100,7 +109,7 @@ data ChainProducer
 -- | Database working directory. 'in-memory' runs the database in hot memory,
 -- only suitable for non-permissive patterns or testing.
 data WorkDir
-    = Dir FilePath
+    = Dir !FilePath
     | InMemory
     deriving (Generic, Eq, Show)
 

@@ -10,7 +10,10 @@ module Kupo.Control.MonadAsync
     ) where
 
 import Control.Monad.Class.MonadAsync
-    ( MonadAsync (..), forConcurrently_, mapConcurrently_ )
+    ( MonadAsync (..)
+    , forConcurrently_
+    , mapConcurrently_
+    )
 
 concurrently4 :: MonadAsync m => m a -> m b -> m c -> m d -> m ()
 concurrently4 a b c d =

@@ -4,3 +4,6 @@
 ## Nix
 /result
 /result-*
+
+## Cabal
+dist-newstyle

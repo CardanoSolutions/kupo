@@ -13,7 +13,8 @@ module Test.Kupo.App.ConfigurationSpec
 import Kupo.Prelude
 
 import Kupo.App.Configuration
-    ( parseNetworkParameters )
+    ( parseNetworkParameters
+    )
 import Kupo.Data.Configuration
     ( EpochSlots (..)
     , NetworkMagic (..)
@@ -21,7 +22,12 @@ import Kupo.Data.Configuration
     , mkSystemStart
     )
 import Test.Hspec
-    ( Spec, context, parallel, shouldBe, specify )
+    ( Spec
+    , context
+    , parallel
+    , shouldBe
+    , specify
+    )
 
 spec :: Spec
 spec = parallel $ do
