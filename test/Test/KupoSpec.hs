@@ -53,6 +53,7 @@ import Kupo.Control.MonadTime
     )
 import Kupo.Data.Cardano
     ( getPointSlotNo
+    , hasPolicyId
     , mkOutputReference
     , pattern GenesisPoint
     )
@@ -124,6 +125,7 @@ import Test.Kupo.Fixture
     , somePointAncestor
     , somePointNearScripts
     , somePointSuccessor
+    , somePolicyId
     , someScriptHashInMetadata
     , someScriptHashInOutput
     , someScriptHashInWitness
@@ -380,9 +382,9 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 waitSlot (>= maxSlot)
                 ys <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
                 ys `shouldContain` xs
-                listPatterns `shouldReturn`
-                    [ MatchDelegation someOtherStakeKey
-                    , MatchDelegation someStakeKey
+                (sort <$> listPatterns) `shouldReturn`
+                    [ MatchDelegation someStakeKey
+                    , MatchDelegation someOtherStakeKey
                     ]
                 atomicSwapIORef ref (xs, ys)
             )
@@ -461,6 +463,21 @@ spec = skippableContext "End-to-end" $ \manager -> do
                         mkOutputReference someTransactionId 0 `elem` outRefs
                         &&
                         mkOutputReference someTransactionId 1 `elem` outRefs
+            )
+
+    specify "Match by policy id" $ \(tmp, tr, cfg) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just lastMaryPoint
+            , patterns = [MatchPolicyId somePolicyId]
+            }
+        timeoutOrThrow 10 $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitUntilM $ do
+                    values <- fmap value <$> getAllMatches NoStatusFlag
+                    return $ all (`hasPolicyId` somePolicyId) values
             )
 
 type EndToEndSpec

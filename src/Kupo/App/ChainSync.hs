@@ -80,13 +80,17 @@ withChainSyncExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
 
     isRetryableIOException :: IOException -> Bool
     isRetryableIOException e =
-        isResourceVanishedError e || isDoesNotExistError e || isTryAgainError e
+        isResourceVanishedError e || isDoesNotExistError e || isTryAgainError e || isInvalidArgumentOnSocket e
       where
         isTryAgainError :: IOException -> Bool
         isTryAgainError = isInfixOf "resource exhausted" . show
 
         isResourceVanishedError :: IOException -> Bool
         isResourceVanishedError = isInfixOf "resource vanished" . show
+
+        -- NOTE: MacOS
+        isInvalidArgumentOnSocket :: IOException -> Bool
+        isInvalidArgumentOnSocket = isInfixOf "invalid argument (Socket operation on non-socket)" . show
 
     isRetryableConnectionException :: ConnectionException -> Bool
     isRetryableConnectionException = \case
