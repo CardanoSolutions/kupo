@@ -7,4 +7,5 @@ module Kupo.Control.MonadCatch
     ) where
 
 import Control.Monad.Class.MonadThrow
-    ( MonadCatch (..) )
+    ( MonadCatch (..)
+    )

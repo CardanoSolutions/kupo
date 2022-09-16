@@ -11,7 +11,10 @@ module Test.Kupo.App.MailboxSpec
 import Kupo.Prelude
 
 import Control.Monad.IOSim
-    ( pattern SimTrace, pattern TraceMainReturn, runSimTrace )
+    ( pattern SimTrace
+    , pattern TraceMainReturn
+    , runSimTrace
+    )
 import Kupo.App.Mailbox
     ( Mailbox
     , flushMailbox
@@ -20,13 +23,19 @@ import Kupo.App.Mailbox
     , putIntermittentMessage
     )
 import Kupo.Control.MonadAsync
-    ( MonadAsync (..) )
+    ( MonadAsync (..)
+    )
 import Kupo.Control.MonadDelay
-    ( MonadDelay (..) )
+    ( MonadDelay (..)
+    )
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.Control.MonadTime
-    ( DiffTime, Time (..), secondsToDiffTime )
+    ( DiffTime
+    , Time (..)
+    , secondsToDiffTime
+    )
 import Test.Hspec
     ( Spec
     , context
@@ -37,7 +46,11 @@ import Test.Hspec
     , specify
     )
 import Test.QuickCheck
-    ( arbitrary, frequency, generate, vectorOf )
+    ( arbitrary
+    , frequency
+    , generate
+    , vectorOf
+    )
 
 spec :: Spec
 spec = parallel $ context "Mailbox" $ do
@@ -68,8 +81,8 @@ spec = parallel $ context "Mailbox" $ do
                     let maxTime = n' * (producerWorkTime + consumerWorkTime)
                     t `shouldSatisfy` (<= Time maxTime)
                     msgs' `shouldBe` flatten msgs
-                SimTrace _time _threadId _label _event next ->
-                    analyze next
+                SimTrace _time _threadId _label _event step ->
+                    analyze step
                 e ->
                     expectationFailure ("Simulation failed: " <> show e)
         analyze simulation

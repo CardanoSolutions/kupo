@@ -30,19 +30,31 @@ module Kupo.App.Database
 import Kupo.Prelude
 
 import Control.Exception
-    ( mask, onException, throwIO )
+    ( mask
+    , onException
+    , throwIO
+    )
 import Control.Monad.Class.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Control.Monad.Class.MonadThrow
-    ( bracket_, catch )
+    ( bracket_
+    , catch
+    )
 import Control.Monad.Class.MonadTimer
-    ( threadDelay )
+    ( threadDelay
+    )
 import Control.Tracer
-    ( Tracer, traceWith )
+    ( Tracer
+    , traceWith
+    )
 import Data.FileEmbed
-    ( embedFile )
+    ( embedFile
+    )
 import Data.Severity
-    ( HasSeverityAnnotation (..), Severity (..) )
+    ( HasSeverityAnnotation (..)
+    , Severity (..)
+    )
 import Database.SQLite.Simple
     ( Connection
     , Error (..)
@@ -61,15 +73,24 @@ import Database.SQLite.Simple
     , withStatement
     )
 import Database.SQLite.Simple.ToField
-    ( ToField (..) )
+    ( ToField (..)
+    )
 import GHC.TypeLits
-    ( KnownSymbol, symbolVal )
+    ( KnownSymbol
+    , symbolVal
+    )
 import Kupo.Data.Configuration
-    ( LongestRollback (..) )
+    ( LongestRollback (..)
+    )
 import Kupo.Data.Database
-    ( BinaryData (..), Checkpoint (..), Input (..), ScriptReference (..) )
+    ( BinaryData (..)
+    , Checkpoint (..)
+    , Input (..)
+    , ScriptReference (..)
+    )
 import Numeric
-    ( Floating (..) )
+    ( Floating (..)
+    )
 
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -217,10 +238,10 @@ withDatabase tr mode (DBLock readers writer) k filePath action = do
         case mode of
             ShortLived -> bracket_
                 (do
-                    atomically (modifyTVar' readers succ)
+                    atomically (modifyTVar' readers next)
                     atomically (readTVar writer >>= check . not)
                 )
-                (atomically (modifyTVar' readers pred))
+                (atomically (modifyTVar' readers prev))
                 (between conn)
 
             LongLived -> bracket_
@@ -238,9 +259,7 @@ data ConnectionType = LongLived | ShortLived
 
 -- ** Lock
 
-data DBLock (m :: Type -> Type) = DBLock
-    (TVar m Word)
-    (TVar m Bool)
+data DBLock (m :: Type -> Type) = DBLock !(TVar m Word) !(TVar m Bool)
 
 newLock :: MonadSTM m => m (DBLock m)
 newLock = DBLock
@@ -422,7 +441,7 @@ mkDatabase tr longestRollback bracketConnection = Database
         Sqlite.query conn qry (Only (SQLBlob binaryDataHash)) <&> \case
             [[SQLBlob binaryData]] ->
                 Just (mk BinaryData{..})
-            _ ->
+            _notSQLBlob ->
                 Nothing
 
     , pruneBinaryData = ReaderT $ \conn -> do
@@ -462,7 +481,7 @@ mkDatabase tr longestRollback bracketConnection = Database
         Sqlite.query conn qry (Only (SQLBlob scriptHash)) <&> \case
             [[SQLBlob script]] ->
                 Just (mk ScriptReference{..})
-            _ ->
+            _notSQLBlob ->
                 Nothing
 
     , deletePattern = \p -> ReaderT $ \conn -> do
@@ -551,7 +570,7 @@ retryWhenBusy action =
         ErrorBusy -> do
             threadDelay 0.1
             retryWhenBusy action
-        _ ->
+        _otherError ->
             throwIO e
     )
 
@@ -581,13 +600,13 @@ withTransaction conn immediate action =
 matchMaybeBytes :: SQLData -> Maybe ByteString
 matchMaybeBytes = \case
     SQLBlob bytes -> Just bytes
-    _ -> Nothing
+    _notSQLBlob -> Nothing
 {-# INLINABLE matchMaybeBytes #-}
 
 matchMaybeWord64 :: SQLData -> Maybe Word64
 matchMaybeWord64 = \case
     SQLInteger (fromIntegral -> wrd) -> Just wrd
-    _ -> Nothing
+    _notSQLInteger -> Nothing
 {-# INLINABLE matchMaybeWord64 #-}
 
 --
@@ -604,7 +623,7 @@ databaseVersion conn =
         nextRow stmt >>= \case
             Just (Only version) ->
                 pure version
-            _ ->
+            _unexpectedVersion ->
                 throwIO UnexpectedUserVersion
 
 runMigrations :: Tracer IO TraceDatabase -> Connection -> MigrationRevision -> IO ()
@@ -656,7 +675,7 @@ instance Exception UnexpectedUserVersionException
 
 -- | Something went wrong when unmarshalling data from the database.
 data UnexpectedRowException
-    = UnexpectedRow Text [[SQLData]]
+    = UnexpectedRow !Text ![[SQLData]]
     deriving Show
 instance Exception UnexpectedRowException
 

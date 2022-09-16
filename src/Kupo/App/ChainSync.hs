@@ -16,29 +16,44 @@ module Kupo.App.ChainSync
 import Kupo.Prelude
 
 import Control.Exception.Safe
-    ( IOException )
+    ( IOException
+    )
 import Data.List
-    ( isInfixOf )
+    ( isInfixOf
+    )
 import Data.Severity
-    ( HasSeverityAnnotation (..), Severity (..) )
+    ( HasSeverityAnnotation (..)
+    , Severity (..)
+    )
 import Data.Time.Clock
-    ( DiffTime )
+    ( DiffTime
+    )
 import Kupo.Control.MonadCatch
-    ( MonadCatch (..) )
+    ( MonadCatch (..)
+    )
 import Kupo.Control.MonadDelay
-    ( foreverCalmly )
+    ( foreverCalmly
+    )
 import Kupo.Control.MonadLog
-    ( Tracer, traceWith )
+    ( Tracer
+    , traceWith
+    )
 import Kupo.Control.MonadThrow
-    ( MonadThrow (..) )
+    ( MonadThrow (..)
+    )
 import Kupo.Data.Cardano
-    ( SlotNo, WithOrigin (..) )
+    ( SlotNo
+    , WithOrigin (..)
+    )
 import Kupo.Data.ChainSync
-    ( IntersectionNotFoundException (..) )
+    ( IntersectionNotFoundException (..)
+    )
 import Network.WebSockets
-    ( ConnectionException (..) )
+    ( ConnectionException (..)
+    )
 import System.IO.Error
-    ( isDoesNotExistError )
+    ( isDoesNotExistError
+    )
 
 withChainSyncExceptionHandler
     :: Tracer IO TraceChainSync

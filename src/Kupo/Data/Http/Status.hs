@@ -14,8 +14,8 @@ import Kupo.Prelude
 import qualified Network.HTTP.Types.Status as Http
 
 data Status = Status
-    { statusCode :: Int
-    , statusMessage :: Text
+    { statusCode :: !Int
+    , statusMessage :: !Text
     } deriving stock (Generic)
       deriving anyclass (ToJSON)
 

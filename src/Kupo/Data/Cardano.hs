@@ -206,71 +206,105 @@ module Kupo.Data.Cardano
 import Kupo.Prelude
 
 import Cardano.Binary
-    ( DecoderError (..), FromCBOR (..), decodeAnnotator )
+    ( DecoderError (..)
+    , FromCBOR (..)
+    , decodeAnnotator
+    )
 import Cardano.Crypto.Hash
     ( Blake2b_224
     , Blake2b_256
     , Hash
     , HashAlgorithm (..)
-    , pattern UnsafeHash
     , hashFromBytes
     , hashFromTextAsHex
     , hashToBytesShort
+    , pattern UnsafeHash
     , sizeHash
     )
 import Cardano.Ledger.Allegra
-    ( AllegraEra )
+    ( AllegraEra
+    )
 import Cardano.Ledger.Alonzo
-    ( AlonzoEra )
+    ( AlonzoEra
+    )
 import Cardano.Ledger.Babbage
-    ( BabbageEra )
+    ( BabbageEra
+    )
 import Cardano.Ledger.Crypto
-    ( Crypto, StandardCrypto )
+    ( Crypto
+    , StandardCrypto
+    )
 import Cardano.Ledger.Mary
-    ( MaryEra )
+    ( MaryEra
+    )
 import Cardano.Ledger.Shelley
-    ( ShelleyEra )
+    ( ShelleyEra
+    )
 import Cardano.Ledger.Val
-    ( Val (inject) )
+    ( Val (inject)
+    )
 import Cardano.Slotting.Block
-    ( BlockNo (..) )
+    ( BlockNo (..)
+    )
 import Cardano.Slotting.Slot
-    ( SlotNo (..) )
+    ( SlotNo (..)
+    )
 import Control.Arrow
-    ( left )
+    ( left
+    )
 import Data.Binary.Put
-    ( runPut )
+    ( runPut
+    )
 import Data.ByteString.Bech32
-    ( HumanReadablePart (..), encodeBech32 )
+    ( HumanReadablePart (..)
+    , encodeBech32
+    )
 import Data.Maybe.Strict
-    ( StrictMaybe (..), maybeToStrictMaybe, strictMaybe, strictMaybeToMaybe )
+    ( StrictMaybe (..)
+    , maybeToStrictMaybe
+    , strictMaybe
+    , strictMaybeToMaybe
+    )
 import Data.Sequence.Strict
-    ( pattern (:<|), pattern Empty, StrictSeq )
+    ( StrictSeq
+    , pattern (:<|)
+    , pattern Empty
+    )
 import GHC.Records
-    ( HasField (..) )
+    ( HasField (..)
+    )
 import Ouroboros.Consensus.Block
-    ( ConvertRawHash (..) )
+    ( ConvertRawHash (..)
+    )
 import Ouroboros.Consensus.Byron.Ledger.Mempool
-    ( GenTx (..) )
+    ( GenTx (..)
+    )
 import Ouroboros.Consensus.Cardano.Block
-    ( CardanoBlock, HardForkBlock (..) )
+    ( CardanoBlock
+    , HardForkBlock (..)
+    )
 import Ouroboros.Consensus.HardFork.Combinator
-    ( OneEraHash (..) )
+    ( OneEraHash (..)
+    )
 import Ouroboros.Consensus.Ledger.SupportsMempool
-    ( HasTxs (extractTxs) )
+    ( HasTxs (extractTxs)
+    )
 import Ouroboros.Consensus.Shelley.Ledger.Block
-    ( ShelleyBlock (..) )
+    ( ShelleyBlock (..)
+    )
 import Ouroboros.Consensus.Util
-    ( eitherToMaybe )
+    ( eitherToMaybe
+    )
 import Ouroboros.Network.Block
-    ( pattern BlockPoint
-    , pattern GenesisPoint
-    , HeaderHash
+    ( HeaderHash
     , blockPoint
+    , pattern BlockPoint
+    , pattern GenesisPoint
     , pointSlot
     )
 import Ouroboros.Network.Point
-    ( WithOrigin (..) )
+    ( WithOrigin (..)
+    )
 
 import Ouroboros.Consensus.Cardano
     ()
@@ -465,7 +499,7 @@ instance IsBlock Block where
                 case Ledger.Alonzo.isValid tx of
                     Ledger.Alonzo.IsValid True ->
                         traverseAndTransform fromAlonzoOutput txId 0 outs
-                    _ ->
+                    Ledger.Alonzo.IsValid False ->
                         []
         TransactionBabbage tx ->
             let
@@ -476,7 +510,7 @@ instance IsBlock Block where
                 case Ledger.Alonzo.isValid tx of
                     Ledger.Alonzo.IsValid True ->
                         traverseAndTransform identity txId 0 outs
-                    _ ->
+                    Ledger.Alonzo.IsValid False ->
                         []
       where
         traverseAndTransformByron
@@ -491,7 +525,7 @@ instance IsBlock Block where
             (out:rest) ->
                 let
                     outputRef = mkOutputReference txId ix
-                    results   = traverseAndTransformByron transform txId (succ ix) rest
+                    results   = traverseAndTransformByron transform txId (next ix) rest
                  in
                     case fn outputRef (transform out) of
                         Nothing ->
@@ -511,7 +545,7 @@ instance IsBlock Block where
             output :<| rest ->
                 let
                     outputRef = mkOutputReference txId ix
-                    results   = traverseAndTransform transform txId (succ ix) rest
+                    results   = traverseAndTransform transform txId (next ix) rest
                  in
                     case fn outputRef (transform output) of
                         Nothing ->
@@ -652,18 +686,18 @@ type Transaction = Transaction' StandardCrypto
 
 data Transaction' crypto
     = TransactionByron
-        Ledger.Byron.Tx
-        Ledger.Byron.TxId
+        !Ledger.Byron.Tx
+        !Ledger.Byron.TxId
     | TransactionShelley
-        (Ledger.Shelley.Tx (ShelleyEra crypto))
+        !(Ledger.Shelley.Tx (ShelleyEra crypto))
     | TransactionAllegra
-        (Ledger.Shelley.Tx (AllegraEra crypto))
+        !(Ledger.Shelley.Tx (AllegraEra crypto))
     | TransactionMary
-        (Ledger.Shelley.Tx (MaryEra crypto))
+        !(Ledger.Shelley.Tx (MaryEra crypto))
     | TransactionAlonzo
-        (Ledger.Alonzo.ValidatedTx (AlonzoEra crypto))
+        !(Ledger.Alonzo.ValidatedTx (AlonzoEra crypto))
     | TransactionBabbage
-        (Ledger.Alonzo.ValidatedTx (BabbageEra crypto))
+        !(Ledger.Alonzo.ValidatedTx (BabbageEra crypto))
 
 -- Input
 
@@ -699,7 +733,7 @@ withReferences txId = loop 0
         [] -> []
         out:rest ->
             let
-                results = loop (succ ix) rest
+                results = loop (next ix) rest
              in
                 (mkOutputReference txId ix, out) : results
 
@@ -834,10 +868,10 @@ getScript (Ledger.Babbage.TxOut _address _value _datum refScript) =
 -- ComparableOutput
 
 data ComparableOutput = ComparableOutput
-    { comparableOutputAddress :: Address
-    , comparableOutputValue :: ComparableValue
-    , comparableOutputDatum :: Datum
-    , comparableOutputScript :: Maybe Script
+    { comparableOutputAddress :: !Address
+    , comparableOutputValue :: !ComparableValue
+    , comparableOutputDatum :: !Datum
+    , comparableOutputScript :: !(Maybe Script)
     } deriving (Generic, Eq, Show, Ord)
 
 toComparableOutput
@@ -860,8 +894,8 @@ fromComparableOutput (ComparableOutput addr val datum script) =
 
 data ScriptReference
     = NoScript
-    | ReferencedScript ScriptHash
-    | InlineScript Script
+    | ReferencedScript !ScriptHash
+    | InlineScript !Script
     deriving (Eq, Show)
 
 mkScriptReference
@@ -1140,7 +1174,8 @@ datumHashFromText
 datumHashFromText str =
     case datumHashFromBytes <$> decodeBase16 (encodeUtf8 str) of
         Right (Just hash) -> Just hash
-        _ -> Nothing
+        Right Nothing -> Nothing
+        Left{} -> Nothing
 
 unsafeDatumHashFromBytes
     :: forall crypto.

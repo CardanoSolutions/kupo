@@ -8,7 +8,11 @@ import Kupo.Prelude
 
 import qualified Data.ByteString as BS
 import Data.List
-    ( delete, (!!), (\\) )
+    ( delete
+    , (!!)
+    , (\\)
+    )
+import qualified Data.Set as Set
 import Kupo.Data.Cardano
     ( Address
     , Output
@@ -19,11 +23,17 @@ import Kupo.Data.Cardano
     , unsafeTransactionIdFromBytes
     )
 import Kupo.Data.Pattern
-    ( MatchBootstrap (..), Pattern (..), overlaps )
+    ( MatchBootstrap (..)
+    , Pattern (..)
+    , overlaps
+    )
 import Test.Kupo.Data.Generators
-    ( generateWith )
+    ( generateWith
+    )
 import Test.Kupo.Data.UtxoConstraint
-    ( ArbitrarySatisfying (..), UtxoConstraint (..) )
+    ( ArbitrarySatisfying (..)
+    , UtxoConstraint (..)
+    )
 
 patterns
     :: [(Text, Pattern, [(OutputReference, Output)])]
@@ -205,7 +215,7 @@ nonOverlappingFragments
 nonOverlappingFragments =
     [ str
     | (str, p) <- fragments'
-    , not (p `overlaps` ((snd <$> fragments') \\ [p]))
+    , not (p `overlaps` (Set.delete p (fromList (snd <$> fragments'))))
     ]
   where
     fragments' = filter ((`notElem` ["*", "*/*"]) . fst) fragments

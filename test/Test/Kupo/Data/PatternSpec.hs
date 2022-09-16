@@ -9,17 +9,39 @@ module Test.Kupo.Data.PatternSpec
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( ComparableOutput, Output, OutputReference, toComparableOutput )
+    ( ComparableOutput
+    , Output
+    , OutputReference
+    , toComparableOutput
+    )
 import Kupo.Data.Pattern
-    ( Pattern (..), includes, matching, overlaps, patternFromText )
+    ( Pattern (..)
+    , includes
+    , matching
+    , overlaps
+    , patternFromText
+    )
 import Test.Hspec
-    ( Spec, context, parallel, shouldBe, specify )
+    ( Spec
+    , context
+    , parallel
+    , shouldBe
+    , specify
+    )
 import Test.Hspec.QuickCheck
-    ( prop )
+    ( prop
+    )
 import Test.Kupo.Data.Pattern.Fixture
-    ( matches, patterns )
+    ( matches
+    , patterns
+    )
 import Test.QuickCheck
-    ( Gen, counterexample, elements, forAll, (==>) )
+    ( Gen
+    , counterexample
+    , elements
+    , forAll
+    , (==>)
+    )
 
 import qualified Data.Set as Set
 
@@ -66,7 +88,7 @@ spec = parallel $ do
         forAll genPattern $ \p1 ->
             forAll genPattern $ \p2 ->
                 p1 `includes` p2 ==>
-                    p1 `overlaps` [p2]
+                    p1 `overlaps` (Set.singleton p2)
 
 --
 -- Helper

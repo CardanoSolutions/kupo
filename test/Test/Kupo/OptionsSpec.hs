@@ -13,9 +13,13 @@ module Test.Kupo.OptionsSpec
 import Kupo.Prelude
 
 import Data.List
-    ( isInfixOf )
+    ( isInfixOf
+    )
 import Kupo.Control.MonadLog
-    ( Severity (..), TracerDefinition (..), defaultTracers )
+    ( Severity (..)
+    , TracerDefinition (..)
+    , defaultTracers
+    )
 import Kupo.Data.Cardano
     ( mkOutputReference
     , unsafeAssetNameFromBytes
@@ -29,9 +33,14 @@ import Kupo.Data.Configuration
     , WorkDir (..)
     )
 import Kupo.Data.Pattern
-    ( MatchBootstrap (..), Pattern (..) )
+    ( MatchBootstrap (..)
+    , Pattern (..)
+    )
 import Kupo.Options
-    ( Command (..), Tracers (..), parseOptionsPure )
+    ( Command (..)
+    , Tracers (..)
+    , parseOptionsPure
+    )
 import Test.Hspec
     ( Expectation
     , Spec
@@ -43,7 +52,8 @@ import Test.Hspec
     , specify
     )
 import Test.Kupo.Fixture
-    ( somePoint )
+    ( somePoint
+    )
 
 spec :: Spec
 spec = parallel $ do

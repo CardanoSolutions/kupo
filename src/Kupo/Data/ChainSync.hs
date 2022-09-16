@@ -10,24 +10,26 @@ module Kupo.Data.ChainSync
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( SlotNo, WithOrigin (..) )
+    ( SlotNo
+    , WithOrigin (..)
+    )
 
 data ForcedRollbackHandler (m :: Type -> Type) = ForcedRollbackHandler
-    { onSuccess :: m ()
-    , onFailure :: m ()
+    { onSuccess :: !(m ())
+    , onFailure :: !(m ())
     }
 
 -- | Exception thrown when creating a chain-sync client from an invalid list of
 -- points.
 data IntersectionNotFoundException
     = IntersectionNotFound
-        { requestedPoints :: [WithOrigin SlotNo]
+        { requestedPoints :: ![WithOrigin SlotNo]
             -- ^ Provided points for intersection.
-        , tip :: WithOrigin SlotNo
+        , tip :: !(WithOrigin SlotNo)
             -- ^ Current known tip of the chain.
         }
     | ForcedIntersectionNotFound
-        { point :: WithOrigin SlotNo
+        { point :: !(WithOrigin SlotNo)
             -- ^ Forced intersection point
         }
     deriving (Show)

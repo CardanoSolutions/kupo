@@ -12,7 +12,8 @@ module Kupo.Data.Http.StatusFlag
 import Kupo.Prelude
 
 import Kupo.Data.Configuration
-    ( InputManagement (..) )
+    ( InputManagement (..)
+    )
 import qualified Network.HTTP.Types.URI as Http
 
 data StatusFlag
@@ -23,7 +24,8 @@ data StatusFlag
 isNoStatusFlag :: StatusFlag -> Bool
 isNoStatusFlag = \case
     NoStatusFlag -> True
-    _ -> False
+    OnlyUnspent -> False
+    OnlySpent -> False
 
 -- | Because the chain is only eventually immutable, kupo does not remove recent
 -- data right away. Thus, it is possible that, even though the configuration

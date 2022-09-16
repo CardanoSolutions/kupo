@@ -7,4 +7,5 @@ module Kupo.Control.MonadThrow
     ) where
 
 import Control.Monad.Class.MonadThrow
-    ( MonadThrow (..) )
+    ( MonadThrow (..)
+    )

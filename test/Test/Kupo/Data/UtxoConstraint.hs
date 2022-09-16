@@ -19,13 +19,16 @@ import Test.Kupo.Data.Generators
     , genScript
     )
 import Test.QuickCheck
-    ( Gen, choose, frequency )
+    ( Gen
+    , choose
+    , frequency
+    )
 
 data UtxoConstraint
-    = MustHaveAddress Address
+    = MustHaveAddress !Address
     | MustHaveShelleyAddress
-    | MustHaveTransactionId TransactionId
-    | MustHaveOutputReference OutputReference
+    | MustHaveTransactionId !TransactionId
+    | MustHaveOutputReference !OutputReference
 
 class ArbitrarySatisfying a where
     genSatisfying :: [UtxoConstraint] -> Gen a

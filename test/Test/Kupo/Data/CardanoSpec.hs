@@ -12,7 +12,6 @@ import Kupo.Prelude
 
 import Kupo.Data.Cardano
     ( Blake2b_224
-    , pattern GenesisPoint
     , assetNameFromText
     , assetNameToText
     , datumHashFromText
@@ -22,6 +21,7 @@ import Kupo.Data.Cardano
     , headerHashFromText
     , outputReferenceFromText
     , outputReferenceToText
+    , pattern GenesisPoint
     , pointFromText
     , policyIdFromText
     , policyIdToText
@@ -33,17 +33,36 @@ import Kupo.Data.Cardano
     , scriptToBytes
     , slotNoFromText
     , slotNoToText
-    , unsafeScriptHashFromBytes
     , unsafeAssetNameFromBytes
+    , unsafeScriptHashFromBytes
     )
 import Test.Hspec
-    ( Spec, context, parallel, shouldBe, specify )
+    ( Spec
+    , context
+    , parallel
+    , shouldBe
+    , specify
+    )
 import Test.Hspec.QuickCheck
-    ( prop )
+    ( prop
+    )
 import Test.Kupo.Data.Generators
-    ( genDatumHash, genOutputReference, genScript, genScriptHash, genSlotNo, genPolicyId, genAssetName )
+    ( genAssetName
+    , genDatumHash
+    , genOutputReference
+    , genPolicyId
+    , genScript
+    , genScriptHash
+    , genSlotNo
+    )
 import Test.QuickCheck
-    ( Gen, arbitrary, forAll, property, vectorOf, (===) )
+    ( Gen
+    , arbitrary
+    , forAll
+    , property
+    , vectorOf
+    , (===)
+    )
 
 import qualified Data.ByteString as BS
 

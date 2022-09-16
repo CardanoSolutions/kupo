@@ -20,35 +20,32 @@ module Kupo.Data.Ogmios
 import Kupo.Prelude
 
 import Cardano.Crypto.Hash.Class
-    ( Hash, HashAlgorithm, hashFromTextAsHex, hashToBytes )
+    ( Hash
+    , HashAlgorithm
+    , hashFromTextAsHex
+    , hashToBytes
+    )
 import Data.Aeson
-    ( (.!=), (.:), (.:?) )
+    ( (.!=)
+    , (.:)
+    , (.:?)
+    )
 import Kupo.Data.Cardano
     ( Address
     , BinaryData
     , Blake2b_256
     , BlockNo (..)
-    , pattern BlockPoint
     , DatumHash
-    , pattern GenesisPoint
-    , pattern GenesisTip
     , Input
     , KeyHash (..)
     , NativeScript
     , Output
     , Point
-    , pattern RequireAllOf
-    , pattern RequireAnyOf
-    , pattern RequireMOf
-    , pattern RequireSignature
-    , pattern RequireTimeExpire
-    , pattern RequireTimeStart
     , Script
     , ScriptHash
     , SlotNo (..)
     , StandardCrypto
     , Tip
-    , pattern Tip
     , TransactionId
     , Value
     , WithOrigin (..)
@@ -62,6 +59,16 @@ import Kupo.Data.Cardano
     , mkOutput
     , mkOutputReference
     , noDatum
+    , pattern BlockPoint
+    , pattern GenesisPoint
+    , pattern GenesisTip
+    , pattern RequireAllOf
+    , pattern RequireAnyOf
+    , pattern RequireMOf
+    , pattern RequireSignature
+    , pattern RequireTimeExpire
+    , pattern RequireTimeStart
+    , pattern Tip
     , scriptFromBytes
     , scriptHashFromText
     , slotNoToJson
@@ -71,13 +78,19 @@ import Kupo.Data.Cardano
     , withReferences
     )
 import Kupo.Data.PartialBlock
-    ( PartialBlock (..), PartialTransaction (..) )
+    ( PartialBlock (..)
+    , PartialTransaction (..)
+    )
 import Kupo.Data.Pattern
-    ( Pattern (..), patternFromText )
+    ( Pattern (..)
+    , patternFromText
+    )
 import Ouroboros.Consensus.Cardano.Block
-    ( CardanoEras )
+    ( CardanoEras
+    )
 import Ouroboros.Consensus.HardFork.Combinator
-    ( OneEraHash (..) )
+    ( OneEraHash (..)
+    )
 
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Key as Key
@@ -91,8 +104,8 @@ import qualified Text.Read as T
 -- RequestNextResponse
 
 data RequestNextResponse
-    = RollBackward Tip Point
-    | RollForward  Tip PartialBlock
+    = RollBackward !Tip !Point
+    | RollForward  !Tip !PartialBlock
 
 
 -- Encoders
@@ -238,7 +251,9 @@ decodeAddress txt =
     case patternFromText txt of
         Just (MatchExact addr) ->
             pure addr
-        _ ->
+        Just{} ->
+            empty
+        Nothing ->
             empty
 
 decodeBlockPoint
@@ -326,14 +341,22 @@ decodeScript = Json.withObject "Script" $ \o ->
     decodePlutusV1 o = do
         script <- o .: "plutus:v1"
         case scriptFromBytes <$> decodeBase16 (encodeUtf8 @Text ("01" <> script)) of
-            Right (Just s) -> pure s
-            _ -> fail "decodeScript: decodePlutusV1"
+            Right (Just s) ->
+                    pure s
+            Right Nothing ->
+                fail "decodeScript: decodePlutusV1: malformed script"
+            Left e ->
+                fail $ "decodeScript: decodePlutusV1: not base16: " <> show e
 
     decodePlutusV2 o = do
         script <- o .: "plutus:v2"
         case scriptFromBytes <$> decodeBase16 (encodeUtf8 @Text ("02" <> script)) of
-            Right (Just s) -> pure s
-            _ -> fail "decodeScript: decodePlutusV2"
+            Right (Just s) ->
+                    pure s
+            Right Nothing ->
+                fail "decodeScript: decodePlutusV2: malformed script"
+            Left e ->
+                fail $ "decodeScript: decodePlutusV2: not base16: " <> show e
 
 decodeNativeScript
     :: Json.Value

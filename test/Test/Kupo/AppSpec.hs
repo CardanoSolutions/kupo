@@ -12,32 +12,46 @@ module Test.Kupo.AppSpec where
 import Kupo.Prelude
 
 import Control.Monad.Class.MonadAsync
-    ( link )
+    ( link
+    )
 import GHC.Generics
-    ( Generic1 )
+    ( Generic1
+    )
 import Kupo
-    ( kupoWith, newEnvironment, runWith )
+    ( kupoWith
+    , newEnvironment
+    , runWith
+    )
 import Kupo.App
-    ( ChainSyncClient )
+    ( ChainSyncClient
+    )
 import Kupo.App.Mailbox
-    ( Mailbox, newMailbox, putHighFrequencyMessage, putIntermittentMessage )
+    ( Mailbox
+    , newMailbox
+    , putHighFrequencyMessage
+    , putIntermittentMessage
+    )
 import Kupo.Control.MonadAsync
-    ( MonadAsync (..) )
+    ( MonadAsync (..)
+    )
 import Kupo.Control.MonadDelay
-    ( MonadDelay (..) )
+    ( MonadDelay (..)
+    )
 import Kupo.Control.MonadLog
-    ( configureTracers, defaultTracers, nullTracer )
+    ( configureTracers
+    , defaultTracers
+    , nullTracer
+    )
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.Control.MonadTime
-    ( DiffTime )
+    ( DiffTime
+    )
 import Kupo.Data.Cardano
     ( BinaryData
     , BlockNo (..)
-    , pattern BlockPoint
     , DatumHash
-    , pattern GenesisPoint
-    , pattern GenesisTip
     , Input
     , Output
     , OutputReference
@@ -46,7 +60,6 @@ import Kupo.Data.Cardano
     , ScriptHash
     , SlotNo (..)
     , Tip
-    , pattern Tip
     , binaryDataToJson
     , datumHashToText
     , distanceToTip
@@ -60,6 +73,10 @@ import Kupo.Data.Cardano
     , hashBinaryData
     , hashDatum
     , hashScript
+    , pattern BlockPoint
+    , pattern GenesisPoint
+    , pattern GenesisTip
+    , pattern Tip
     , scriptHashToText
     , scriptToJson
     , slotNoToText
@@ -67,7 +84,8 @@ import Kupo.Data.Cardano
     , withReferences
     )
 import Kupo.Data.ChainSync
-    ( ForcedRollbackHandler )
+    ( ForcedRollbackHandler
+    )
 import Kupo.Data.Configuration
     ( Configuration (..)
     , InputManagement (..)
@@ -76,23 +94,37 @@ import Kupo.Data.Configuration
     , mailboxCapacity
     )
 import Kupo.Data.Http.GetCheckpointMode
-    ( GetCheckpointMode (..) )
+    ( GetCheckpointMode (..)
+    )
 import Kupo.Data.Http.StatusFlag
-    ( StatusFlag (..) )
+    ( StatusFlag (..)
+    )
 import Kupo.Data.Ogmios
-    ( RequestNextResponse (..) )
+    ( RequestNextResponse (..)
+    )
 import Kupo.Data.PartialBlock
-    ( PartialBlock (..), PartialTransaction (..) )
+    ( PartialBlock (..)
+    , PartialTransaction (..)
+    )
 import Kupo.Data.Pattern
-    ( MatchBootstrap (..), Pattern (..), Result (..) )
+    ( MatchBootstrap (..)
+    , Pattern (..)
+    , Result (..)
+    )
 import System.Environment
-    ( lookupEnv )
+    ( lookupEnv
+    )
 import Test.Hspec
-    ( Spec, runIO )
+    ( Spec
+    , runIO
+    )
 import Test.Hspec.QuickCheck
-    ( prop )
+    ( prop
+    )
 import Test.Kupo.App.Http.Client
-    ( HttpClient (..), newHttpClient )
+    ( HttpClient (..)
+    , newHttpClient
+    )
 import Test.Kupo.Data.Generators
     ( genBinaryData
     , genDatumHash
@@ -107,11 +139,24 @@ import Test.Kupo.Data.Generators
     , generateWith
     )
 import Test.QuickCheck
-    ( Gen, choose, counterexample, elements, forAll, frequency, label, oneof )
+    ( Gen
+    , choose
+    , counterexample
+    , elements
+    , forAll
+    , frequency
+    , label
+    , oneof
+    )
 import Test.QuickCheck.Monadic
-    ( assert, monadicIO, monitor, run )
+    ( assert
+    , monadicIO
+    , monitor
+    , run
+    )
 import Test.QuickCheck.Property
-    ( withMaxSuccess )
+    ( withMaxSuccess
+    )
 import Test.StateMachine
     ( CommandNames
     , Concrete
@@ -126,7 +171,11 @@ import Test.StateMachine
     , (.==)
     )
 import Test.StateMachine.Types
-    ( Commands (..), getCommand, newCounter, runGenSym )
+    ( Commands (..)
+    , getCommand
+    , newCounter
+    , runGenSym
+    )
 
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Map as Map
@@ -220,13 +269,13 @@ spec = do
 -- apply (e.g. after getting the tip, we should.. actually receive the tip!).
 
 data Event (r :: Type -> Type)
-    = DoRollForward Tip PartialBlock
-    | DoRollBackward Tip Point
+    = DoRollForward !Tip !PartialBlock
+    | DoRollBackward !Tip !Point
     | GetMostRecentCheckpoint
-    | GetPreviousCheckpoint SlotNo
+    | GetPreviousCheckpoint !SlotNo
     | GetUtxo
-    | GetDatumByHash DatumHash
-    | GetScriptByHash ScriptHash
+    | GetDatumByHash !DatumHash
+    | GetScriptByHash !ScriptHash
     | Pause
         -- ^ Pauses makes the overall state-machine run a lot longer, but they
         -- allow to let the internal garbage-collector to run and possibly
@@ -255,11 +304,11 @@ instance Show (Event r) where
             "Pause"
 
 data Response (r :: Type -> Type)
-    = Unit ()
-    | Checkpoint (Maybe Point)
-    | Utxo (Set OutputReference)
-    | DatumByHash (Maybe BinaryData)
-    | ScriptByHash (Maybe Script)
+    = Unit !()
+    | Checkpoint !(Maybe Point)
+    | Utxo !(Set OutputReference)
+    | DatumByHash !(Maybe BinaryData)
+    | ScriptByHash !(Maybe Script)
     deriving stock (Eq, Generic1)
     deriving anyclass (Rank2.Foldable)
 
@@ -290,11 +339,11 @@ instance Show (Response r) where
 --
 
 data Model (r :: Type -> Type) = Model
-    { networkTip :: Tip
-    , currentChain :: [PartialBlock]
-    , spentOutputReferences :: Set OutputReference
-    , unspentOutputReferences :: Set OutputReference
-    , mempool :: [PartialTransaction]
+    { networkTip :: !Tip
+    , currentChain :: ![PartialBlock]
+    , spentOutputReferences :: !(Set OutputReference)
+    , unspentOutputReferences :: !(Set OutputReference)
+    , mempool :: ![PartialTransaction]
     } deriving stock (Generic)
 
 instance Show (Model r) where
@@ -366,7 +415,7 @@ precondition (LongestRollback k) model = \case
                 [] -> GenesisPoint
                 pt:_ -> blockPoint pt
          in
-            getPointSlotNo (blockPoint block) .== succ (getPointSlotNo currentChainTip)
+            getPointSlotNo (blockPoint block) .== next (getPointSlotNo currentChainTip)
     DoRollBackward _ point ->
         let
             d = distanceToTip (networkTip model) (getPointSlotNo point)
@@ -566,9 +615,9 @@ genContinuingTip networkTip currentTip
 
 -- | Generate a tip right after the given slot.
 genTipAfter :: SlotNo -> Gen Tip
-genTipAfter slot = Tip (succ slot)
+genTipAfter slot = Tip (next slot)
     <$> genHeaderHash
-    <*> pure (coerce $ succ slot)
+    <*> pure (coerce $ next slot)
 
 -- | Generate a valid sublist of transactions from a given sublist. It is not
 -- okay to use Quickcheck's 'sublistOf' because some transactions depends on
@@ -602,7 +651,7 @@ genContinuingBlock
     -> Point
     -> Gen PartialBlock
 genContinuingBlock utxo txs previousTip = do
-    blockPoint <- BlockPoint (succ (getPointSlotNo previousTip)) <$> genHeaderHash
+    blockPoint <- BlockPoint (next (getPointSlotNo previousTip)) <$> genHeaderHash
     (txs', utxo') <- runStateT (genTransactionSublist txs) utxo
     blockBody <- (txs' <>) <$> evalStateT genPartialTransactions utxo'
     pure PartialBlock { blockPoint, blockBody }
@@ -826,7 +875,7 @@ newMockProducer queue callback = do
                         putHighFrequencyMessage mailbox (tip, block)
                     RollBackward tip point ->
                         putIntermittentMessage mailbox (tip, point)
-        _ -> do
+        _notGenesis -> do
             const $ fail
                 "Mock producer cannot start from a list of checkpoints. \
                 \Indeed, the goal is to test arbitrary sequences \

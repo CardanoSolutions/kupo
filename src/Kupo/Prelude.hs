@@ -20,6 +20,11 @@ module Kupo.Prelude
     , (^?!)
     , at
 
+      -- * Extras
+    , next
+    , prev
+    , safeToEnum
+
       -- Encoding
     , encodeBase16
     , decodeBase16
@@ -46,23 +51,45 @@ module Kupo.Prelude
     ) where
 
 import Cardano.Binary
-    ( decodeFull', serialize', unsafeDeserialize' )
+    ( decodeFull'
+    , serialize'
+    , unsafeDeserialize'
+    )
 import Control.Arrow
-    ( left )
+    ( left
+    )
 import Control.Lens
-    ( Lens', at, (^?), (^?!) )
+    ( Lens'
+    , at
+    , (^?!)
+    , (^?)
+    )
 import Data.Aeson
-    ( Encoding, FromJSON (..), GToJSON', ToJSON (..), Zero, genericToEncoding )
+    ( Encoding
+    , FromJSON (..)
+    , GToJSON'
+    , ToJSON (..)
+    , Zero
+    , genericToEncoding
+    )
 import Data.ByteString.Base16
-    ( decodeBase16, encodeBase16 )
+    ( decodeBase16
+    , encodeBase16
+    )
 import Data.ByteString.Base64
-    ( decodeBase64, encodeBase64 )
+    ( decodeBase64
+    , encodeBase64
+    )
 import Data.Generics.Internal.VL.Lens
-    ( view, (^.) )
+    ( view
+    , (^.)
+    )
 import Data.List
-    ( nubBy )
+    ( nubBy
+    )
 import GHC.Generics
-    ( Rep )
+    ( Rep
+    )
 import Relude hiding
     ( MVar
     , Nat
@@ -118,10 +145,15 @@ import qualified Data.Aeson.Parser as Json
 import qualified Data.Aeson.Parser.Internal as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString.Base58 as Base58
+import Relude.Extra
+    ( next
+    , prev
+    , safeToEnum
+    )
 
 data ConnectionStatusToggle m = ConnectionStatusToggle
-    { toggleConnected :: m ()
-    , toggleDisconnected :: m ()
+    { toggleConnected :: !(m ())
+    , toggleDisconnected :: !(m ())
     }
 
 -- | The runtime does not let the application terminate gracefully when a

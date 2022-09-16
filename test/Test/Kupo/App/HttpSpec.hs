@@ -9,7 +9,9 @@ module Test.Kupo.App.HttpSpec
     ) where
 
 import Kupo.Prelude hiding
-    ( get, put )
+    ( get
+    , put
+    )
 
 import Data.OpenApi
     ( OpenApi
@@ -37,31 +39,58 @@ import Data.OpenApi
     , validateJSON
     )
 import Kupo.App.Database
-    ( Database (..) )
+    ( Database (..)
+    )
 import Kupo.App.Http
-    ( app )
+    ( app
+    )
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.Data.Cardano
-    ( pattern BlockPoint, SlotNo (..), unsafeHeaderHashFromBytes )
+    ( SlotNo (..)
+    , pattern BlockPoint
+    , unsafeHeaderHashFromBytes
+    )
 import Kupo.Data.ChainSync
-    ( ForcedRollbackHandler (..) )
+    ( ForcedRollbackHandler (..)
+    )
 import Kupo.Data.Database
-    ( binaryDataToRow, patternToRow, pointToRow, resultToRow, scriptToRow )
+    ( binaryDataToRow
+    , patternToRow
+    , pointToRow
+    , resultToRow
+    , scriptToRow
+    )
 import Kupo.Data.Health
-    ( ConnectionStatus (..), Health (..) )
+    ( ConnectionStatus (..)
+    , Health (..)
+    )
 import Kupo.Data.Pattern
-    ( Pattern )
+    ( Pattern
+    , patternToText
+    )
 import Network.HTTP.Media.MediaType
-    ( MediaType, (//), (/:) )
+    ( MediaType
+    , (//)
+    , (/:)
+    )
 import Network.HTTP.Media.RenderHeader
-    ( renderHeader )
+    ( renderHeader
+    )
 import Network.Wai
-    ( Application )
+    ( Application
+    )
 import Test.Hspec
-    ( Spec, parallel, runIO, shouldContain, specify )
+    ( Spec
+    , parallel
+    , runIO
+    , shouldContain
+    , specify
+    )
 import Test.Hspec.QuickCheck
-    ( prop )
+    ( prop
+    )
 import Test.Kupo.Data.Generators
     ( genBinaryData
     , genDatumHash
@@ -80,9 +109,14 @@ import Test.QuickCheck
     , generate
     , listOf1
     , oneof
+    , suchThat
     )
 import Test.QuickCheck.Monadic
-    ( assert, monadicIO, monitor, run )
+    ( assert
+    , monadicIO
+    , monitor
+    , run
+    )
 
 import qualified Data.Aeson as Json
 import qualified Data.OpenApi as OpenApi
@@ -93,6 +127,9 @@ import qualified Network.HTTP.Types.Status as Http
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Test as Wai
 import qualified Prelude
+import Test.Kupo.Data.Pattern.Fixture
+    ( patterns
+    )
 import qualified Test.Kupo.Data.Pattern.Fixture as Fixture
 
 spec :: Spec
@@ -169,19 +206,12 @@ spec = do
 
         sessionWith noWildcard specification delete "/matches/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            fragment <- liftIO $ generate (elements Fixture.nonOverlappingUnaryFragments)
+            let allPatterns = (\(p, _, _) -> p) <$> patterns
+            fragment <- liftIO $ generate $
+                (patternToText <$> genPattern) `suchThat` (`notElem` allPatterns)
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath ("/matches/" <> fragment)
-            res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
-
-        sessionWith noWildcard specification delete "/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint Http.status200
-            fragment <- liftIO $ generate (elements Fixture.nonOverlappingBinaryFragments)
-            res <- Wai.request $ Wai.defaultRequest
-                { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath ("/matches/" <> fragment)
+                & flip Wai.setPath ("/matches/" <> encodeUtf8 fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
@@ -209,19 +239,10 @@ spec = do
 
         session specification delete "/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
-            fragment <- liftIO $ generate (elements Fixture.unaryFragments)
+            fragment <- liftIO $ generate $ patternToText <$> genPattern
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath ("/patterns/" <> fragment)
-            res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
-
-        session specification delete "/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint Http.status200
-            fragment <- liftIO $ generate (elements Fixture.binaryFragments)
-            res <- Wai.request $ Wai.defaultRequest
-                { Wai.requestMethod = "DELETE" }
-                & flip Wai.setPath ("/patterns/" <> fragment)
+                & flip Wai.setPath ("/patterns/" <> encodeUtf8 fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
@@ -375,8 +396,8 @@ spec = do
 --
 
 newStubbedApplication :: [Pattern] -> IO Application
-newStubbedApplication patterns = do
-    patternsVar <- newTVarIO patterns
+newStubbedApplication defaultPatterns = do
+    patternsVar <- newTVarIO (fromList defaultPatterns)
     pure $ app
         (\callback -> callback databaseStub)
         (\_point ForcedRollbackHandler{onSuccess} -> onSuccess)
@@ -417,7 +438,7 @@ databaseStub = Database
             1 -> do
                 let headerHash = unsafeHeaderHashFromBytes $ unsafeDecodeBase16
                         "0000000000000000000000000000000000000000000000000000000000000000"
-                let point = BlockPoint (SlotNo (pred sl)) headerHash
+                let point = BlockPoint (SlotNo (prev sl)) headerHash
                 pure [mk (pointToRow point)]
             _otherwise -> do
                 fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
@@ -502,9 +523,9 @@ sessionWith
        -> Wai.Session (Json.Value, [ValidationError])
        )
     -> Spec
-sessionWith patterns specification opL path callback =
+sessionWith defaultPatterns specification opL path callback =
     prop (method <> " " <> toString path) $ monadicIO $ do
-        stub <- run (newStubbedApplication patterns)
+        stub <- run (newStubbedApplication defaultPatterns)
         (json, errs) <- run $ Wai.runSession (callback assertJson endpoint) stub
         monitor $ counterexample (decodeUtf8 (Json.encode json))
         forM_ errs (monitor . counterexample . show)
@@ -534,7 +555,7 @@ sessionWith patterns specification opL path callback =
         case T.splitOn "?" path of
             _:[params] -> do
                 traverse (findQueryParam op) (T.splitOn "&" params)
-            _ ->
+            _notFound ->
                 pure []
 
     findQueryParam :: (HasCallStack, Monad f) => Operation -> Text -> f Param
@@ -544,7 +565,7 @@ sessionWith patterns specification opL path callback =
                 oops
                     ("Definition for query parameter '" <> key <> "' not found")
                     (paramAt key (op ^. parameters))
-            _ ->
+            _malformedParam ->
                 error "guardQueryParam: malformed param"
 
     paramAt :: Text -> [Referenced Param] -> Maybe Param

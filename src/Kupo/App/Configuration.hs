@@ -22,27 +22,49 @@ module Kupo.App.Configuration
 import Kupo.Prelude
 
 import Control.Monad.Trans.Except
-    ( throwE, withExceptT )
+    ( throwE
+    , withExceptT
+    )
 import Data.Aeson.Lens
-    ( key, _String )
+    ( _String
+    , key
+    )
 import Kupo.App.Database
-    ( Database (..) )
+    ( Database (..)
+    )
 import Kupo.Control.MonadLog
-    ( HasSeverityAnnotation (..), MonadLog (..), Severity (..), Tracer )
+    ( HasSeverityAnnotation (..)
+    , MonadLog (..)
+    , Severity (..)
+    , Tracer
+    )
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.Control.MonadThrow
-    ( MonadThrow (..) )
+    ( MonadThrow (..)
+    )
 import Kupo.Data.Cardano
-    ( Point, SlotNo (..), getPointSlotNo )
+    ( Point
+    , SlotNo (..)
+    , getPointSlotNo
+    )
 import Kupo.Data.Configuration
-    ( Configuration (..), NetworkParameters (..) )
+    ( Configuration (..)
+    , NetworkParameters (..)
+    )
 import Kupo.Data.Database
-    ( patternFromRow, patternToRow, pointFromRow )
+    ( patternFromRow
+    , patternToRow
+    , pointFromRow
+    )
 import Kupo.Data.Pattern
-    ( Pattern (..), patternToText )
+    ( Pattern (..)
+    , patternToText
+    )
 import System.FilePath.Posix
-    ( replaceFileName )
+    ( replaceFileName
+    )
 
 import qualified Data.Aeson as Json
 import qualified Data.Yaml as Yaml
@@ -136,7 +158,7 @@ newPatternsCache
     => Tracer IO TraceConfiguration
     -> Configuration
     -> Database m
-    -> m (TVar m [Pattern])
+    -> m (TVar m (Set Pattern))
 newPatternsCache tr configuration Database{..} = do
     alreadyKnownPatterns <- runReadOnlyTransaction (listPatterns patternFromRow)
     patterns <- case (alreadyKnownPatterns, configuredPatterns) of
@@ -154,7 +176,7 @@ newPatternsCache tr configuration Database{..} = do
         (xs, _) ->
             pure xs
     logWith tr $ ConfigurationPatterns (patternToText <$> patterns)
-    newTVarIO patterns
+    newTVarIO (fromList patterns)
   where
     Configuration{patterns = configuredPatterns} = configuration
 

@@ -9,23 +9,44 @@ module Test.Kupo.Data.OgmiosSpec
 import Kupo.Prelude
 
 import Data.List
-    ( (!!) )
+    ( (!!)
+    )
 import Kupo.App.ChainSync.Ogmios
-    ( intersectionNotFound )
+    ( intersectionNotFound
+    )
 import Kupo.Data.Ogmios
-    ( decodeFindIntersectResponse, decodeRequestNextResponse )
+    ( decodeFindIntersectResponse
+    , decodeRequestNextResponse
+    )
 import System.Directory
-    ( listDirectory )
+    ( listDirectory
+    )
 import System.FilePath
-    ( (</>) )
+    ( (</>)
+    )
 import Test.Hspec
-    ( Spec, SpecWith, context, parallel, runIO )
+    ( Spec
+    , SpecWith
+    , context
+    , parallel
+    , runIO
+    )
 import Test.Hspec.QuickCheck
-    ( modifyMaxSize, prop )
+    ( modifyMaxSize
+    , prop
+    )
 import Test.QuickCheck
-    ( counterexample, forAll, sized, withMaxSuccess )
+    ( counterexample
+    , forAll
+    , sized
+    , withMaxSuccess
+    )
 import Test.QuickCheck.Monadic
-    ( assert, monadicIO, monitor, run )
+    ( assert
+    , monadicIO
+    , monitor
+    , run
+    )
 
 import Data.Aeson as Json
 import Data.Aeson.Types as Json

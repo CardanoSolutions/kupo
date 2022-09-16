@@ -10,9 +10,11 @@ module Kupo.Control.MonadDelay
 import Kupo.Prelude
 
 import Control.Monad.Class.MonadTimer
-    ( MonadDelay (..) )
+    ( MonadDelay (..)
+    )
 import Kupo.Control.MonadTime
-    ( DiffTime )
+    ( DiffTime
+    )
 
 foreverCalmly :: (MonadDelay m) => m DiffTime -> m Void
 foreverCalmly a = do

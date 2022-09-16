@@ -12,11 +12,17 @@ module Kupo.App.Health
 import Kupo.Prelude
 
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.Data.Cardano
-    ( SlotNo (..), Tip, getTipSlotNo )
+    ( SlotNo (..)
+    , Tip
+    , getTipSlotNo
+    )
 import Kupo.Data.Health
-    ( ConnectionStatus (..), Health (..) )
+    ( ConnectionStatus (..)
+    , Health (..)
+    )
 
 -- | Safe and limited accessor to the health
 readHealth

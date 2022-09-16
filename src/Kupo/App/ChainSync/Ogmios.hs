@@ -14,15 +14,26 @@ module Kupo.App.ChainSync.Ogmios
 import Kupo.Prelude
 
 import Kupo.App.Mailbox
-    ( Mailbox, putHighFrequencyMessage, putIntermittentMessage )
+    ( Mailbox
+    , putHighFrequencyMessage
+    , putIntermittentMessage
+    )
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.Control.MonadThrow
-    ( MonadThrow (..) )
+    ( MonadThrow (..)
+    )
 import Kupo.Data.Cardano
-    ( Point, SlotNo, Tip, WithOrigin, pointSlot )
+    ( Point
+    , SlotNo
+    , Tip
+    , WithOrigin
+    , pointSlot
+    )
 import Kupo.Data.Configuration
-    ( maxInFlight )
+    ( maxInFlight
+    )
 import Kupo.Data.Ogmios
     ( PartialBlock
     , RequestNextResponse (..)
@@ -33,7 +44,9 @@ import Kupo.Data.Ogmios
     )
 
 import Kupo.Data.ChainSync
-    ( ForcedRollbackHandler (..), IntersectionNotFoundException (..) )
+    ( ForcedRollbackHandler (..)
+    , IntersectionNotFoundException (..)
+    )
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
 
@@ -113,8 +126,8 @@ connect ConnectionStatusToggle{toggleConnected} host port action =
         WS.defaultConnectionOptions [] (\ws -> toggleConnected >> action ws)
 
 data CannotResolveAddressException = CannotResolveAddress
-    { host :: String
-    , port :: Int
+    { host :: !String
+    , port :: !Int
     } deriving (Show)
 
 instance Exception CannotResolveAddressException

@@ -16,7 +16,10 @@ module Kupo.Data.Http.ForcedRollback
 import Kupo.Prelude
 
 import Data.Aeson
-    ( (.!=), (.:), (.:?) )
+    ( (.!=)
+    , (.:)
+    , (.:?)
+    )
 import Kupo.Data.Cardano
     ( Point
     , SlotNo (..)
@@ -31,8 +34,8 @@ import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Types as Json
 
 data ForcedRollback = ForcedRollback
-    { since :: Either SlotNo Point
-    , limit :: ForcedRollbackLimit
+    { since :: !(Either SlotNo Point)
+    , limit :: !ForcedRollbackLimit
     } deriving (Generic, Show, Eq)
 
 forcedRollbackToJson :: ForcedRollback -> Json.Encoding
