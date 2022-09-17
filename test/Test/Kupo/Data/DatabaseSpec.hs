@@ -11,7 +11,8 @@ module Test.Kupo.Data.DatabaseSpec
 import Kupo.Prelude
 
 import Data.List
-    ( maximum )
+    ( maximum
+    )
 import Database.SQLite.Simple
     ( Connection
     , Only (..)
@@ -24,21 +25,33 @@ import Database.SQLite.Simple
     , withTransaction
     )
 import Kupo.App.Database
-    ( ConnectionType (..), DBLock, Database (..), newLock, withDatabase )
+    ( ConnectionType (..)
+    , DBLock
+    , Database (..)
+    , newLock
+    , withDatabase
+    )
 import Kupo.Control.MonadAsync
-    ( mapConcurrently_ )
+    ( mapConcurrently_
+    )
 import Kupo.Control.MonadCatch
-    ( MonadCatch (..) )
+    ( MonadCatch (..)
+    )
 import Kupo.Control.MonadDelay
-    ( threadDelay )
+    ( threadDelay
+    )
 import Kupo.Control.MonadLog
-    ( nullTracer )
+    ( nullTracer
+    )
 import Kupo.Control.MonadSTM
-    ( MonadSTM (..) )
+    ( MonadSTM (..)
+    )
 import Kupo.Control.MonadThrow
-    ( MonadThrow (..) )
+    ( MonadThrow (..)
+    )
 import Kupo.Control.MonadTime
-    ( millisecondsToDiffTime )
+    ( millisecondsToDiffTime
+    )
 import Kupo.Data.Cardano
     ( Address
     , OutputReference
@@ -48,7 +61,8 @@ import Kupo.Data.Cardano
     , getPointSlotNo
     )
 import Kupo.Data.Configuration
-    ( LongestRollback (..) )
+    ( LongestRollback (..)
+    )
 import Kupo.Data.Database
     ( addressFromRow
     , addressToRow
@@ -65,15 +79,25 @@ import Kupo.Data.Database
     , scriptReferenceToRow
     )
 import Kupo.Data.Pattern
-    ( Pattern (..) )
+    ( Pattern (..)
+    )
 import System.FilePath
-    ( (</>) )
+    ( (</>)
+    )
 import System.IO.Temp
-    ( withSystemTempDirectory )
+    ( withSystemTempDirectory
+    )
 import Test.Hspec
-    ( Spec, around, context, parallel, shouldBe, specify )
+    ( Spec
+    , around
+    , context
+    , parallel
+    , shouldBe
+    , specify
+    )
 import Test.Hspec.QuickCheck
-    ( prop )
+    ( prop
+    )
 import Test.Kupo.Data.Generators
     ( chooseVector
     , genAddress
@@ -85,7 +109,9 @@ import Test.Kupo.Data.Generators
     , genScriptReference
     )
 import Test.Kupo.Data.Pattern.Fixture
-    ( matches, patterns )
+    ( matches
+    , patterns
+    )
 import Test.QuickCheck
     ( Gen
     , Property
@@ -97,9 +123,15 @@ import Test.QuickCheck
     , generate
     )
 import Test.QuickCheck.Monadic
-    ( PropertyM, assert, monadicIO, monitor, run )
+    ( PropertyM
+    , assert
+    , monadicIO
+    , monitor
+    , run
+    )
 import Test.QuickCheck.Property
-    ( Testable )
+    ( Testable
+    )
 
 import qualified Prelude
 
@@ -154,6 +186,10 @@ spec = parallel $ do
                     searchOutputReferences
                 MatchOutputReference{} ->
                     searchOutputReferences
+                MatchPolicyId{} ->
+                    searchAddresses
+                MatchAssetId{} ->
+                    searchAddresses
 
     context "checkpoints" $ do
         let k = 100

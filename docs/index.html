@@ -74,6 +74,7 @@
   <script>
     function render(version) {
       Redoc.init(`./api/${version}.yaml`, {
+        simpleOneOfTypeLabel: true,
         expandResponses: '200,201',
         theme: {
           logo: {

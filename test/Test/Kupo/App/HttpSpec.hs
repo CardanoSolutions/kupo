@@ -176,19 +176,7 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/matches?policy_id=96cb...dc48" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?policy_id=96cb65293573e5c9f947d40bd06f80c465d4c6acee7598398765dc48"
-            res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
-
-        session specification get "/matches?policy_id=96cb...dc48&asset_name=40bd" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?policy_id=96cb65293573e5c9f947d40bd06f80c465d4c6acee7598398765dc48&asset_name=40bd"
-            res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
-
-        session specification get "/matches/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification get "/matches/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             fragment <- liftIO $ generate (elements Fixture.unaryFragments)
             res <- Wai.request $ Wai.defaultRequest
@@ -196,7 +184,7 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification get "/matches/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification get "/matches/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             fragment <- liftIO $ generate (elements Fixture.binaryFragments)
             res <- Wai.request $ Wai.defaultRequest
@@ -204,7 +192,7 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        sessionWith noWildcard specification delete "/matches/{pattern-fragment}" $ \assertJson endpoint -> do
+        sessionWith noWildcard specification delete "/matches/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             let allPatterns = (\(p, _, _) -> p) <$> patterns
             fragment <- liftIO $ generate $
@@ -237,7 +225,7 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification delete "/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification delete "/patterns/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             fragment <- liftIO $ generate $ patternToText <$> genPattern
             res <- Wai.request $ Wai.defaultRequest
@@ -246,7 +234,7 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification put "/patterns/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification put "/patterns/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             reqBody <- liftIO $ generate genPutPatternRequestBody
             res <- Wai.srequest $ Wai.SRequest
@@ -259,7 +247,7 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session specification put "/patterns/{pattern-fragment}/{pattern-fragment}" $ \assertJson endpoint -> do
+        session specification put "/patterns/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             reqBody <- liftIO $ generate genPutPatternRequestBody
             res <- Wai.srequest $ Wai.SRequest
@@ -305,15 +293,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /matches?asset_name=... (no policy)" $ do
-            resBadRequest <- Wai.request $ Wai.defaultRequest
-                & flip Wai.setPath "/matches?asset_name=40bd"
-            resBadRequest
-                & Wai.assertStatus (Http.statusCode Http.status400)
-            resBadRequest
-                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
-
-        session' "🕱 DELETE /matches/{pattern-fragment}" $ do
+        session' "🕱 DELETE /matches/{pattern}" $ do
             overlappingFragment <- liftIO $ generate (elements Fixture.overlappingUnaryFragments)
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
@@ -323,7 +303,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 DELETE /matches/{pattern-fragment}/{pattern-fragment}" $ do
+        session' "🕱 DELETE /matches/{pattern}" $ do
             overlappingFragment <- liftIO $ generate (elements Fixture.overlappingBinaryFragments)
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
@@ -365,7 +345,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 PUT /patterns/{pattern-fragment} (invalid / no request body)" $ do
+        session' "🕱 PUT /patterns/{pattern} (invalid / no request body)" $ do
             resBadRequest <-
                 liftIO (generate genInvalidPutPatternRequestBody) >>= \case
                     Nothing ->

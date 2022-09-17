@@ -205,9 +205,6 @@ info:
          │ ┏━━━━━━━━━━━━┓   ╭───╮ ┏━━━━━━━━━━━━┓     │
          ├─┫ CREDENTIAL ┣───┤ / ├─┫ CREDENTIAL ┣─────┤
          │ ┗━━━━━━━━━━━━┛   ╰───╯ ┗━━━━━━━━━━━━┛     │
-         │ ┏━━━━━━━━━━━┓                             │
-         ├─┫ POLICY_ID ┣─────────────────────────────┤
-         │ ┗━━━━━━━━━━━┛                             │
          │ ┏━━━━━━━━━━━┓    ╭───╮ ┏━━━━━━━━━━━━┓     │
          ├─┫ POLICY_ID ┣────┤ . ├─┫ ASSET_NAME ┣─────┤
          │ ┗━━━━━━━━━━━┛    ╰───╯ ┗━━━━━━━━━━━━┛     │
@@ -356,29 +353,72 @@ components:
   schemas:
     Address_Shelley: &Address_Shelley
       title: Shelley
-      description: A Shelley address (standard).
-      type: string
-      contentEncoding: bech32
-      example: addr1vy3qpx09uscywhpp0ekg9zwmq2yj5vp08husfq6qyh2mpps865j6t
+      oneOf:
+        - title: bech32
+          type: string
+          contentEncoding: bech32
+          description: A standard payment address, in bech32 (i.e. starting with `addr|addr_test`).
+          example: addr1vy3qpx09uscywhpp0ekg9zwmq2yj5vp08husfq6qyh2mpps865j6t
+        - title: base16
+          type: string
+          contentEncoding: base16
+          description: A standard payment address, in base16
+          example: 7a5e61936081db3b2117cbf59bd2123748f58ac96786567067f3314661
 
     Address_Stake: &Address_Stake
       title: Stake
-      type: string
-      contentEncoding: bech32
-      example: stake1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgydsx9n
+      oneOf:
+        - title: bech32
+          type: string
+          contentEncoding: bech32
+          description: A stake address, in bech32 (i.e. starting with `stake|stake_test`).
+          example: stake1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgydsx9n
+        - title: base16
+          type: string
+          contentEncoding: bech32
+          description: A stake address, in base16.
+          example: 7a5e61936081db3b2117cbf59bd2123748f58ac96786567067f3314661
 
     Address_Bootstrap: &Address_Bootstrap
       title: Bootstrap
-      description: A Bootstrap (a.k.a Byron) address (legacy).
-      type: string
-      contentEncoding: base58
-      example: DdzFFzCqrhsnWCKDVxHipmLW7acroB11zWxe1BGP1gCh7EqmgjVPe2qes6HrsQs
+      oneOf:
+        - title: base58
+          description: A Bootstrap (a.k.a Byron) address (legacy), in base58.
+          type: string
+          contentEncoding: base58
+          example: DdzFFzCqrhsnWCKDVxHipmLW7acroB11zWxe1BGP1gCh7EqmgjVPe2qes6HrsQs
+        - title: base16
+          description: A Bootstrap (a.k.a Byron) address (legacy), in base16.
+          type: string
+          contentEncoding: base16
+          example: 73b81dc65c31ab02195bb9264982233513cabc14df8ff07ed7c55cc326833753a5c23b10ef4121f1757cdf3c0038
 
-    Address_Base16: &Address_Base16
-      title: Base16
+    Address_Credentials: &Address_Credentials
       type: string
-      contentEncoding: base16
-      example: 7a5e61936081db3b2117cbf59bd2123748f58ac96786567067f3314661
+      title: Credentials
+      description: |
+        ```
+          ┏━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━┓
+        ╾─┫ CREDENTIAL ┣─┤ / ├─┫ CREDENTIAL ┣─╼
+          ┗━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━┛
+        ```
+
+        One or two address credentials, separated by a `/`. The left-side identifies the payment
+        part of the address, and the right-side identifies the delegation part. Both are optional
+        an can be instead a wildcard (`*`).
+
+        Examples:
+        - `addr_vk1x7da0l25j04my8sej5ntrgdn38wmshxhplxdfjskn07ufavsgtkqn5hljl/*`
+        - `*/script1cda3khwqv60360rp5m7akt50m6ttapacs8rqhn5w342z7r35m37`
+        - `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e/*`
+        - `*/4fc6bb0c93780ad706425d9f7dc1d3c5e3ddbf29ba8486dce904a5fc`
+        - `*/*`
+      examples:
+      - "addr_vk1x7da0l25j04my8sej5ntrgdn38wmshxhplxdfjskn07ufavsgtkqn5hljl/*"
+      - "*/script1cda3khwqv60360rp5m7akt50m6ttapacs8rqhn5w342z7r35m37"
+      - "dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e/*"
+      - "*/4fc6bb0c93780ad706425d9f7dc1d3c5e3ddbf29ba8486dce904a5fc"
+      - "*/*"
 
     Address:
       description: A Cardano address, in any era.
@@ -386,14 +426,34 @@ components:
         - <<: *Address_Shelley
         - <<: *Address_Bootstrap
 
-    AddressParameter:
+    AddressPattern:
       title: Address
       description: A Cardano address or stake address.
       anyOf:
+        - <<: *Address_Credentials
         - <<: *Address_Shelley
         - <<: *Address_Stake
         - <<: *Address_Bootstrap
-        - <<: *Address_Base16
+
+    AssetIdPattern:
+      type: string
+      title: AssetId
+      pattern: "[0-9a-f]{56}\\.(*|[0-9a-f]{2,64})"
+      description: |
+        ```
+          ┏━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━┓
+        ╾─┫ POLICY_ID ┣─┤ . ├─┫ ASSET_NAME ┣─╼
+          ┗━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━┛
+        ```
+
+        A policy id (base16-encoded) and an optional asset name (base16-encoded), dot-separated.
+
+        Examples:
+        - `1220099e5e430475c219518179efc7e6c8289db028904834025d5b086.*`
+        - `1220099e5e430475c219518179efc7e6c8289db028904834025d5b086.08661220099e`
+      examples:
+        - "1220099e5e430475c219518179efc7e6c8289db028904834025d5b086.*"
+        - "1220099e5e430475c219518179efc7e6c8289db028904834025d5b086.08661220099e"
 
     BadRequest:
       type: object
@@ -402,35 +462,6 @@ components:
         hint:
           type: string
           description: Some hint about what went wrong.
-
-    Credential:
-      anyOf:
-        - title: Bech32
-          type: string
-          description: |
-            A blake2b-224 hash digest of some credential or pre-image of those credentials.
-            Supported bech32 prefixes are:
-            - vk
-            - vkh
-            - addr_vk
-            - addr_vkh
-            - stake_vk
-            - stake_vkh
-            - script
-
-        - title: Base16 (digest)
-          type: string
-          description: A blake2b-224 hash digest of some credential (verification key hash or script hash).
-          contentEncoding: base16
-          minLength: 56
-          maxLength: 56
-
-        - title: Base16 (pre-image)
-          type: string
-          description: A hash pre-image of some credential (verification key or stake key)
-          contentEncoding: base16
-          minLength: 64
-          maxLength: 64
 
     Datum:
       title: Datum
@@ -540,13 +571,37 @@ components:
       minimum: 0
       example: 2
 
+    OutputReferencePattern:
+      title: OutputReference
+      type: string
+      pattern: (*|[0-9]+)@[0-9a-f]{64}
+      description: |
+        ```
+          ┏━━━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━━━━━┓
+        ╾─┫ OUTPUT_INDEX ┣─┤ @ ├─┫ TRANSACTION_ID ┣─╼
+          ┗━━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━━━━┛
+        ```
+
+        An (optional) output index and transaction id (base16-encoded), separated by a `@`.
+
+        Examples:
+          - `42@35d8340cd6a5d31bf9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e09`
+          - `*@35d8340cd6a5d31bf9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e09`
+      examples:
+        - "42@35d8340cd6a5d31bf9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e09"
+        - "*@35d8340cd6a5d31bf9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e09"
+
     Pattern:
       description: |
-          A matching pattern for addresses. See [Patterns](#section/Patterns)
+          A matching pattern for addresses, assets or transactions.
+
+          See [Patterns](#section/Patterns) for more details.
+      title:
       anyOf:
         - $ref: "#/components/schemas/Wildcard"
-        - $ref: "#/components/schemas/AddressParameter"
-        - $ref: "#/components/schemas/Credential"
+        - $ref: "#/components/schemas/AddressPattern"
+        - $ref: "#/components/schemas/AssetIdPattern"
+        - $ref: "#/components/schemas/OutputReferencePattern"
 
     Point: &Point
       title: Point
@@ -642,7 +697,7 @@ components:
 
     Wildcard:
       type: string
-      title: wildcard
+      title: Wildcard
       enum: ["*"]
 
     Match:
@@ -708,22 +763,6 @@ components:
               description: Absolute slot number of the current tip of the node.
 
   parameters:
-    asset-name:
-      name: asset_name
-      in: query
-      required: false
-      allowEmptyValue: false
-      schema:
-        type: string
-        contentEncoding: base16
-        pattern: ^[a-f0-9]{2,64}$
-      description: |
-        Filter matches to only include results whose value carries assets associated with the given asset id (i.e. (`policy_id`, `asset_name`)).
-
-        This filter can only be used **in conjunction with `policy_id`.**
-      example:
-        08661220099e
-
     datum-hash:
       name: datum_hash
       in: path
@@ -738,33 +777,21 @@ components:
       description:
         A datum blake2b-256 hash digest.
 
-    pattern-fragment:
-      name: pattern_fragment
+    pattern:
+      name: pattern
       in: path
       required: true
       schema:
+        title: pattern
         anyOf:
           - $ref: "#/components/schemas/Wildcard"
-          - $ref: "#/components/schemas/AddressParameter"
-          - $ref: "#/components/schemas/Credential"
+          - $ref: "#/components/schemas/AddressPattern"
+          - $ref: "#/components/schemas/AssetIdPattern"
+          - $ref: "#/components/schemas/OutputReferencePattern"
       description: |
-        A pattern fragment (i.e. a wildcard, an address or a credential). See [Patterns](#section/Patterns) for more details.
+        A matching pattern on addresses, assets or transactions.
 
-    policy-id:
-      name: policy_id
-      in: query
-      required: false
-      allowEmptyValue: false
-      schema:
-        type: string
-        contentEncoding: base16
-        minLength: 56
-        maxLength: 56
-        pattern: ^[a-f0-9]{56}$
-      description: |
-        Filter matches to only include results whose value carries assets associated with the given `policy_id`.
-      example:
-        1220099e5e430475c219518179efc7e6c8289db028904834025d5b086
+        See [Patterns](#section/Patterns) for more details.
 
     script-hash:
       name: script_hash
@@ -835,8 +862,6 @@ paths:
       parameters:
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
-        - $ref: "#/components/parameters/policy-id"
-        - $ref: "#/components/parameters/asset-name"
       responses:
         200:
           description: OK
@@ -848,20 +873,18 @@ paths:
                 items:
                   $ref: "#/components/schemas/Match"
 
-  /matches/{pattern-fragment}:
+  /matches/{pattern}:
     get: &getMatches
-      operationId: getMatches1Ary
+      operationId: getMatches
       tags: ["Matches"]
       summary: Get Matches (*)
       description: |
         Retrieve matches from the database matching the given pattern, in descending `slot_no` order. Results are streamed to the client for more efficiency.
         See [Patterns](#section/Patterns) for more information about constructing patterns.
       parameters:
-        - $ref: "#/components/parameters/pattern-fragment"
+        - $ref: "#/components/parameters/pattern"
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
-        - $ref: "#/components/parameters/policy-id"
-        - $ref: "#/components/parameters/asset-name"
       responses:
         200:
           description: OK
@@ -885,6 +908,8 @@ paths:
       summary: Delete Matches (*)
       description: |
         Delete all matches matching the given pattern. Note that this operation is only allowed if the provided pattern isn't a currently active pattern.
+      parameters:
+        - $ref: "#/components/parameters/pattern"
       responses:
         200:
           description: OK
@@ -899,17 +924,6 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 $ref: "#/components/schemas/BadRequest"
-
-  /matches/{pattern-fragment}/{pattern-fragment}:
-    get:
-      <<: *getMatches
-      operationId: getMatches2Ary
-      summary: Get Matches (*/*)
-
-    delete:
-      <<: *deleteMatches
-      operationId: deleteMatches2Ary
-      summary: Delete Matches (*/*)
 
   /datums/{datum-hash}:
     get:
@@ -997,9 +1011,9 @@ paths:
                 items:
                   $ref: "#/components/schemas/Pattern"
 
-  /patterns/{pattern-fragment}:
+  /patterns/{pattern}:
     get: &getPattern
-      operationId: matchPattern1Ary
+      operationId: matchPattern
       tags: ["Patterns"]
       summary: Get Pattern (*)
       description: |
@@ -1010,7 +1024,7 @@ paths:
         > <sup><strong>(*) Definition</strong></sup> <br/>
         > If all results matched by `y` are also matched by `x`, then `x` is said to include `y`.
       parameters:
-        - $ref: "#/components/parameters/pattern-fragment"
+        - $ref: "#/components/parameters/pattern"
       responses:
         200:
           description: OK
@@ -1023,7 +1037,7 @@ paths:
                   $ref: "#/components/schemas/Pattern"
 
     delete: &deletePattern
-      operationId: deletePattern1Ary
+      operationId: deletePattern
       tags: ["Patterns"]
       summary: Delete Pattern (*)
       description: |
@@ -1031,7 +1045,7 @@ paths:
         **NOT** remove the corresponding matches nor will it halt or restart synchronization.
         The server will continue filtering new blocks but, will that pattern removed.
       parameters:
-        - $ref: "#/components/parameters/pattern-fragment"
+        - $ref: "#/components/parameters/pattern"
       responses:
         200:
           description: OK
@@ -1048,14 +1062,14 @@ paths:
                 $ref: "#/components/schemas/BadRequest"
 
     put: &putPattern
-      operationId: putPattern1Ary
+      operationId: putPattern
       tags: [ "Patterns" ]
       summary: Add Pattern (*)
       description: |
         Add a new pattern to watch. This **does not** cause the server to re-sync however!
         Only new blocks will be matched against the pattern.
       parameters:
-        - $ref: "#/components/parameters/pattern-fragment"
+        - $ref: "#/components/parameters/pattern"
       requestBody:
         content:
           "application/json;charset=utf-8":
@@ -1077,22 +1091,6 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 $ref: "#/components/schemas/BadRequest"
-
-  /patterns/{pattern-fragment}/{pattern-fragment}:
-    get:
-      <<: *getPattern
-      operationId: getPattern2Ary
-      summary: Get Pattern (*/*)
-
-    delete:
-      <<: *deletePattern
-      operationId: deletePattern2Ary
-      summary: Delete Pattern (*/*)
-
-    put:
-      <<: *putPattern
-      operationId: putPattern2Ary
-      summary: Add Pattern (*/*)
 
   /checkpoints:
     get:
