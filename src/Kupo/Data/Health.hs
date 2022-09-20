@@ -11,16 +11,34 @@ module Kupo.Data.Health
 
       -- * ConnectionStatus
     , ConnectionStatus (..)
+
+    , mkPrometheusMetrics
     ) where
 
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( SlotNo
+    ( SlotNo (..)
     , slotNoToJson
     )
 
+import Data.ByteString.Builder
+    ( Builder )
+import System.Metrics.Prometheus.Encode.Text
+    ( encodeMetrics )
+import System.Metrics.Prometheus.Metric
+    ( MetricSample (..) )
+import System.Metrics.Prometheus.Metric.Counter
+    ( CounterSample (..) )
+import System.Metrics.Prometheus.Metric.Gauge
+    ( GaugeSample (..) )
+import System.Metrics.Prometheus.MetricId
+    ( Labels (..), MetricId (..), makeName )
+import System.Metrics.Prometheus.Registry
+    ( RegistrySample (..) )
+
 import qualified Data.Aeson.Encoding as Json
+import qualified Data.Map as Map
 
 -- | Information about the overall state of the application.
 data Health = Health
@@ -62,3 +80,37 @@ instance ToJSON ConnectionStatus where
     toEncoding = \case
         Connected -> Json.text "connected"
         Disconnected -> Json.text "disconnected"
+
+mkPrometheusMetrics :: Health -> Builder
+mkPrometheusMetrics Health{..} =
+    prometheusMetrics
+    & Map.fromList
+    & Map.mapKeys (\k -> (MetricId (makeName $ "kupo_" <> k) (Labels mempty)))
+    & RegistrySample
+    & encodeMetrics
+  where
+    mkGauge :: Double -> MetricSample
+    mkGauge = GaugeMetricSample . GaugeSample
+
+    mkCounter :: Int -> MetricSample
+    mkCounter = CounterMetricSample . CounterSample
+
+    prometheusMetrics :: [(Text, MetricSample)]
+    prometheusMetrics = mconcat
+        [ [ ( "connected"
+            , mkGauge $ case connectionStatus of
+                Connected -> 1
+                Disconnected -> 0
+            )
+          ]
+
+        , [ ( "most_recent_checkpoint"
+            , mkCounter $ fromEnum $ unSlotNo s
+            ) | Just s <- [mostRecentCheckpoint]
+          ]
+
+        , [ ( "most_recent_node_tip"
+            , mkCounter $ fromEnum $ unSlotNo s
+            ) | Just s <- [mostRecentNodeTip]
+          ]
+        ]

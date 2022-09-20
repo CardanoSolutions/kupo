@@ -1150,3 +1150,19 @@ paths:
             "application/json;charset=utf-8":
               schema:
                 $ref: "#/components/schemas/Health"
+
+  /metrics:
+    get:
+      operationId: getMetrics
+      tags: ["Health"]
+      summary: Get Health as Prometheus metrics
+      description: |
+        Retrieve Kupo's application health status encoded as Prometheus metrics.
+      responses:
+        200:
+          description: OK
+          headers: *default-headers
+          content:
+            "text/plain;charset=utf-8":
+              schema:
+                type: string

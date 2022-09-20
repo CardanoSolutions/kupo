@@ -70,6 +70,7 @@ import Kupo.Data.Database
     )
 import Kupo.Data.Health
     ( Health (..)
+    , mkPrometheusMetrics
     )
 import Kupo.Data.Http.FilterMatchesBy
     ( FilterMatchesBy (..)
@@ -117,6 +118,7 @@ import Network.Wai
     , pathInfo
     , queryString
     , requestMethod
+    , responseBuilder
     , responseStatus
     , strictRequestBody
     )
@@ -172,6 +174,9 @@ app withDatabase forceRollback patternsVar readHealth req send =
         ("health" : args) ->
             routeHealth (requestMethod req, args)
 
+        ("metrics" : args) ->
+            routeMetrics (requestMethod req, args)
+
         ("checkpoints" : args) ->
             routeCheckpoints (requestMethod req, args)
 
@@ -198,6 +203,16 @@ app withDatabase forceRollback patternsVar readHealth req send =
             health <- readHealth
             headers <- responseHeaders readHealth
             send (handleGetHealth headers health)
+        ("GET", _) ->
+            send Errors.notFound
+        (_, _) ->
+            send Errors.methodNotAllowed
+
+    routeMetrics = \case
+        ("GET", []) -> do
+            health <- readHealth
+            headers <- responseHeaders readHealth
+            send (handleGetMetrics headers health)
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
@@ -324,6 +339,17 @@ handleGetHealth
     -> Response
 handleGetHealth =
     responseJson status200
+
+--
+-- /metrics
+--
+
+handleGetMetrics
+    :: [Http.Header]
+    -> Health
+    -> Response
+handleGetMetrics headers =
+    responseBuilder status200 headers . mkPrometheusMetrics
 
 --
 -- /checkpoints
