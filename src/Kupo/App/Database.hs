@@ -350,14 +350,18 @@ mkDatabase tr longestRollback bracketConnection = Database
             changes conn
 
     , foldInputs = \whereClause yield -> ReaderT $ \conn -> do
-        let qry = "SELECT output_reference, address, value, datum_hash, script_hash,\
-                    \ created_at, createdAt.header_hash,\
-                    \ spent_at, spentAt.header_hash \
+        -- TODO: Move upward and make configurable by users.
+        let ordering = "DESC"
+        let qry = "SELECT output_reference, address, value, datum_hash, script_hash ,\
+                    \created_at, createdAt.header_hash, \
+                    \spent_at, spentAt.header_hash \
                   \FROM inputs \
                   \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
                   \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
                   \WHERE " <> whereClause <> " \
-                  \ORDER BY created_at DESC"
+                  \ORDER BY \
+                    \created_at " <> ordering <> ", \
+                    \substr(output_reference, -2) " <> ordering
 
         -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
         --
@@ -654,6 +658,7 @@ migrations =
         , $(embedFile "db/v1.0.0/002.sql")
         , $(embedFile "db/v1.0.1/001.sql")
         , $(embedFile "db/v2.0.0-beta/001.sql")
+        , $(embedFile "db/v2.1.0/001.sql")
         ]
     ]
   where

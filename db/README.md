@@ -21,6 +21,7 @@ CREATE TABLE `inputs` (
   `spent_at` INTEGER
 );
 CREATE INDEX `inputsByAddress`   ON `inputs` (`address` COLLATE NOCASE, `spent_at`);
+CREATE INDEX `inputsByCreatedAt` ON `inputs` (`created_at`, substr(output_reference, -2));
 CREATE INDEX `inputsByDatumHash` ON `inputs` (`datum_hash`);
 
 CREATE TABLE `checkpoints` (
@@ -72,7 +73,7 @@ CREATE TABLE `patterns` (
 
 ### Migration to `version=4`
 
-- Removes all matches of mainnet & testnet transactions that failed phase-2 validations and consumed collaterals. 
+- Removes all matches of mainnet & testnet transactions that failed phase-2 validations and consumed collaterals.
 
 <p align="right"><code>v1.0.0</code></p>
 <hr/>
@@ -83,4 +84,4 @@ CREATE TABLE `patterns` (
 
 ### Migration to `version=2`
 
-- Add a new `header_hash` column to the inputs table (to associate matches with fully qualified points made of slot and block header hash). 
+- Add a new `header_hash` column to the inputs table (to associate matches with fully qualified points made of slot and block header hash).

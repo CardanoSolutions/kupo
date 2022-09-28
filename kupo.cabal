@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           kupo
-version:        2.0.0
+version:        2.1.0-rc1
 synopsis:       A daemon for building lookup indexes from entities of the Cardano blockchain
 description:    Please see the README on GitHub at <https://github.com/cardanosolutions/kupo/tree/master/README.md>
 category:       Web
@@ -24,6 +24,7 @@ extra-source-files:
     db/v1.0.0/002.sql
     db/v1.0.1/001.sql
     db/v2.0.0-beta/001.sql
+    db/v2.1.0/001.sql
 data-files:
     docs/api/latest.yaml
     docs/api/v1.0.0.yaml
