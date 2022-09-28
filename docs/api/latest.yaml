@@ -1142,6 +1142,8 @@ paths:
       summary: Get Health
       description: |
         Retrieve Kupo's application health status. Note that this call is cheap and does not halt the various concurrent tasks performed by the Kupo.
+
+        This endpoint has two possible content-types: `application/json` or `text/plain`. The latter returns health in a format suitable for [Prometheus](https://prometheus.io/docs/introduction/overview/). The server defaults to `application/json`, but you can control this behavior by passing a corresponding `Accept` header.
       responses:
         200:
           description: OK
@@ -1151,18 +1153,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/Health"
 
-  /metrics:
-    get:
-      operationId: getMetrics
-      tags: ["Health"]
-      summary: Get Health as Prometheus metrics
-      description: |
-        Retrieve Kupo's application health status encoded as Prometheus metrics.
-      responses:
-        200:
-          description: OK
-          headers: *default-headers
-          content:
             "text/plain;charset=utf-8":
               schema:
                 type: string
+                description: |
+                  A key-value export compatible with Prometheus.
+
+                  `connected` and `disconnected` are encoded as `1.0` and `0.0` respectively.
+              examples:
+                response:
+                  value: |
+                    # TYPE kupo_connected gauge
+                    kupo_connected  1.0
+
+                    # TYPE kupo_most_recent_checkpoint counter
+                    kupo_most_recent_checkpoint  294998
+
+                    # TYPE kupo_most_recent_node_tip counter
+                    kupo_most_recent_node_tip  71753381

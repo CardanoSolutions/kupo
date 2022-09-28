@@ -23,19 +23,28 @@ import Kupo.Data.Cardano
     )
 
 import Data.ByteString.Builder
-    ( Builder )
+    ( Builder
+    )
 import System.Metrics.Prometheus.Encode.Text
-    ( encodeMetrics )
+    ( encodeMetrics
+    )
 import System.Metrics.Prometheus.Metric
-    ( MetricSample (..) )
+    ( MetricSample (..)
+    )
 import System.Metrics.Prometheus.Metric.Counter
-    ( CounterSample (..) )
+    ( CounterSample (..)
+    )
 import System.Metrics.Prometheus.Metric.Gauge
-    ( GaugeSample (..) )
+    ( GaugeSample (..)
+    )
 import System.Metrics.Prometheus.MetricId
-    ( Labels (..), MetricId (..), makeName )
+    ( Labels (..)
+    , MetricId (..)
+    , makeName
+    )
 import System.Metrics.Prometheus.Registry
-    ( RegistrySample (..) )
+    ( RegistrySample (..)
+    )
 
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Map as Map
@@ -97,7 +106,7 @@ mkPrometheusMetrics Health{..} =
 
     prometheusMetrics :: [(Text, MetricSample)]
     prometheusMetrics = mconcat
-        [ [ ( "connected"
+        [ [ ( "connection_status"
             , mkGauge $ case connectionStatus of
                 Connected -> 1
                 Disconnected -> 0

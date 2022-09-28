@@ -21,6 +21,7 @@ import Network.Wai
     ( Response
     )
 
+import qualified Data.Text as T
 import qualified Kupo.Data.Http.Default as Default
 
 data HttpError = HttpError
@@ -155,4 +156,11 @@ methodNotAllowed =
         { hint = "Unsupported method called on known endpoint. Make sure to \
                  \double-check the documentation at: \
                  \<https://cardanosolutions.github.io/kupo>!"
+        }
+
+unsupportedContentType :: [Text] -> Response
+unsupportedContentType types =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Unsupported content-type requested in 'Accept' header. \
+                 \This endpoint only understands: " <> T.intercalate " or " types <> "."
         }
