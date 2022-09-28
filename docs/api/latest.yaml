@@ -1163,8 +1163,8 @@ paths:
               examples:
                 response:
                   value: |
-                    # TYPE kupo_connected gauge
-                    kupo_connected  1.0
+                    # TYPE kupo_connection_status gauge
+                    kupo_connection_status  1.0
 
                     # TYPE kupo_most_recent_checkpoint counter
                     kupo_most_recent_checkpoint  294998
