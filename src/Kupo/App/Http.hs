@@ -70,6 +70,7 @@ import Kupo.Data.Database
     )
 import Kupo.Data.Health
     ( Health (..)
+    , mkPrometheusMetrics
     )
 import Kupo.Data.Http.FilterMatchesBy
     ( FilterMatchesBy (..)
@@ -106,8 +107,10 @@ import Kupo.Data.Pattern
     , resultToJson
     , wildcard
     )
-import Network.HTTP.Types.Status
-    ( status200
+import Network.HTTP.Types
+    ( hAccept
+    , hContentType
+    , status200
     )
 import Network.Wai
     ( Application
@@ -116,7 +119,9 @@ import Network.Wai
     , Response
     , pathInfo
     , queryString
+    , requestHeaders
     , requestMethod
+    , responseBuilder
     , responseStatus
     , strictRequestBody
     )
@@ -124,6 +129,7 @@ import Network.Wai
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Types as Json
+import qualified Data.ByteString as BS
 import qualified Data.Set as Set
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
@@ -196,8 +202,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
     routeHealth = \case
         ("GET", []) -> do
             health <- readHealth
-            headers <- responseHeaders readHealth
-            send (handleGetHealth headers health)
+            send =<< handleGetHealth (requestHeaders req) health
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
@@ -206,11 +211,11 @@ app withDatabase forceRollback patternsVar readHealth req send =
     routeCheckpoints = \case
         ("GET", []) ->
             withDatabase $ \db -> do
-                headers <- responseHeaders readHealth
+                headers <- responseHeaders readHealth Default.headers
                 send (handleGetCheckpoints headers db)
         ("GET", [arg]) ->
             withDatabase $ \db -> do
-                headers <- responseHeaders readHealth
+                headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetCheckpointBySlot
                             headers
                             (slotNoFromText arg)
@@ -224,7 +229,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
     routeMatches = \case
         ("GET", args) ->
             withDatabase $ \db -> do
-                headers <- responseHeaders readHealth
+                headers <- responseHeaders readHealth Default.headers
                 send $ handleGetMatches
                             headers
                             (pathParametersToText args)
@@ -232,7 +237,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
                             db
         ("DELETE", args) ->
             withDatabase $ \db -> do
-                headers <- responseHeaders readHealth
+                headers <- responseHeaders readHealth Default.headers
                 send =<< handleDeleteMatches
                             headers
                             patternsVar
@@ -244,7 +249,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
     routeDatums = \case
         ("GET", [arg]) ->
             withDatabase $ \db -> do
-                headers <- responseHeaders readHealth
+                headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetDatum
                             headers
                             (datumHashFromText arg)
@@ -257,7 +262,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
     routeScripts = \case
         ("GET", [arg]) ->
             withDatabase $ \db -> do
-                headers <- responseHeaders readHealth
+                headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetScript
                             headers
                             (scriptHashFromText arg)
@@ -270,20 +275,20 @@ app withDatabase forceRollback patternsVar readHealth req send =
     routePatterns = \case
         ("GET", []) -> do
             res <- handleGetPatterns
-                        <$> responseHeaders readHealth
+                        <$> responseHeaders readHealth Default.headers
                         <*> pure (Just wildcard)
                         <*> fmap const (readTVarIO patternsVar)
             send res
         ("GET", args) -> do
             res <- handleGetPatterns
-                        <$> responseHeaders readHealth
+                        <$> responseHeaders readHealth Default.headers
                         <*> pure (pathParametersToText args)
                         <*> fmap (flip included) (readTVarIO patternsVar)
             send res
         ("PUT", args) -> do
             pointOrSlotNo <- requestBodyJson decodeForcedRollback req
             withDatabase $ \db -> do
-                headers <- responseHeaders readHealth
+                headers <- responseHeaders readHealth Default.headers
                 send =<< handlePutPattern
                             headers
                             readHealth
@@ -294,7 +299,7 @@ app withDatabase forceRollback patternsVar readHealth req send =
                             db
         ("DELETE", args) ->
             withDatabase $ \db -> do
-                headers <- responseHeaders readHealth
+                headers <- responseHeaders readHealth Default.headers
                 send =<< handleDeletePattern
                             headers
                             patternsVar
@@ -321,9 +326,32 @@ pathParametersToText = \case
 handleGetHealth
     :: [Http.Header]
     -> Health
-    -> Response
-handleGetHealth =
-    responseJson status200
+    -> IO Response
+handleGetHealth reqHeaders health =
+    case findContentType reqHeaders of
+        Just ct | cTextPlain `BS.isInfixOf` ct -> do
+            resHeaders <- responseHeaders (pure health) [(hContentType, "text/plain;charset=utf-8")]
+            return $ responseBuilder status200 resHeaders (mkPrometheusMetrics health)
+        Just ct | cApplicationJson `BS.isInfixOf` ct -> do
+            resHeaders <- responseHeaders (pure health) Default.headers
+            return $ responseJson status200 resHeaders health
+        Nothing -> do
+            resHeaders <- responseHeaders (pure health) Default.headers
+            return $ responseJson status200 resHeaders health
+        Just{} ->
+            return $ Errors.unsupportedContentType (prettyContentTypes <$> [cApplicationJson, cTextPlain])
+  where
+    findContentType = \case
+        [] -> Nothing
+        (headerName, headerValue):rest ->
+            if headerName == hAccept then
+                Just headerValue
+            else
+                findContentType rest
+
+    cTextPlain = "text/plain"
+    cApplicationJson = "application/json"
+    prettyContentTypes ct = decodeUtf8 ("'" <> ct <> "'")
 
 --
 -- /checkpoints
@@ -611,14 +639,15 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
 responseHeaders
     :: Applicative m
     => m Health
+    -> [Http.Header]
     -> m [Http.Header]
-responseHeaders readHealth =
+responseHeaders readHealth defaultHeaders =
     toHeaders . mostRecentCheckpoint <$> readHealth
   where
     toHeaders :: Maybe SlotNo -> [Http.Header]
     toHeaders slot =
         ("X-Most-Recent-Checkpoint", encodeUtf8 $ slotNoToText $ fromMaybe 0 slot)
-        : Default.headers
+        : defaultHeaders
 
 requestBodyJson
     :: (Json.Value -> Json.Parser a)

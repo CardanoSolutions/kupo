@@ -86,6 +86,7 @@ import Test.Hspec
     , parallel
     , runIO
     , shouldContain
+    , shouldSatisfy
     , specify
     )
 import Test.Hspec.QuickCheck
@@ -119,9 +120,13 @@ import Test.QuickCheck.Monadic
     )
 
 import qualified Data.Aeson as Json
+import qualified Data.ByteString as BS
 import qualified Data.OpenApi as OpenApi
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
+import Network.HTTP.Types
+    ( hAccept
+    )
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.Status as Http
 import qualified Network.Wai as Wai
@@ -145,6 +150,18 @@ spec = do
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/health"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             pure (Json.Null, [])
+
+        session specification get "/health" $ \_assertJson _endpoint -> do
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestHeaders = [ (hAccept, "text/plain") ] }
+                & flip Wai.setPath "/health"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & Wai.assertHeader Http.hContentType (renderHeader mediaTypeTextPlain)
+            liftIO $ (fst <$> Wai.simpleHeaders res) `shouldContain` ["X-Most-Recent-Checkpoint"]
+            let bytes = toStrict (Wai.simpleBody res)
+            liftIO $ bytes `shouldSatisfy` (BS.isInfixOf "kupo_connection_status")
+            liftIO $ bytes `shouldSatisfy` (BS.isInfixOf "TYPE kupo_most_recent_checkpoint counter")
+            return (Json.Null, [])
 
         session specification get "/health" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -459,6 +476,10 @@ databaseStub = Database
 mediaTypeJson :: MediaType
 mediaTypeJson =
     "application" // "json" /: ("charset", "utf-8")
+
+mediaTypeTextPlain :: MediaType
+mediaTypeTextPlain =
+    "text" // "plain" /: ("charset", "utf-8")
 
 findSchema
     :: HasCallStack

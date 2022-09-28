@@ -163,6 +163,7 @@ library
     , ouroboros-consensus-shelley
     , ouroboros-network
     , ouroboros-network-framework
+    , prometheus
     , relude
     , safe
     , safe-exceptions
