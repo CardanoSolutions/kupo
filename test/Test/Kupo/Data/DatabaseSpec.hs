@@ -54,7 +54,7 @@ import Kupo.Control.MonadTime
     )
 import Kupo.Data.Cardano
     ( Address
-    , OutputReference
+    , ExtendedOutputReference
     , Point
     , SlotNo (..)
     , getAddress
@@ -68,8 +68,8 @@ import Kupo.Data.Database
     , addressToRow
     , datumFromRow
     , datumToRow
-    , outputReferenceFromRow
-    , outputReferenceToRow
+    , extendedOutputReferenceFromRow
+    , extendedOutputReferenceToRow
     , patternFromRow
     , patternToRow
     , patternToSql
@@ -150,7 +150,7 @@ spec = parallel $ do
         prop "Pattern" $
             roundtripFromToRow genPattern patternToRow patternFromRow
         prop "OutputReference" $
-            roundtripFromToRow genExtendedOutputReference outputReferenceToRow outputReferenceFromRow
+            roundtripFromToRow genExtendedOutputReference extendedOutputReferenceToRow extendedOutputReferenceFromRow
         prop "Datum" $
             roundtripFromToRow2 genDatum datumToRow datumFromRow
         prop "ScriptReference" $
@@ -374,7 +374,7 @@ withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
             (Only . SQLText . addressToRow <$> (getAddress . snd <$> matches))
         executeMany conn
             "INSERT INTO output_references VALUES (?)"
-            (Only . outputReferenceToRow' <$> (fst <$> matches))
+            (Only . SQLBlob . extendedOutputReferenceToRow <$> (fst <$> matches))
     action conn
 
 rowToAddress :: HasCallStack => [SQLData] -> Address
@@ -384,14 +384,10 @@ rowToAddress = \case
     _notSqlText ->
         error "rowToAddress: not SQLText"
 
-outputReferenceToRow' :: OutputReference -> SQLData
-outputReferenceToRow' =
-    SQLBlob . serialize'
-
-rowToOutputReference :: HasCallStack => [SQLData] -> OutputReference
+rowToOutputReference :: HasCallStack => [SQLData] -> ExtendedOutputReference
 rowToOutputReference = \case
     [SQLBlob row] ->
-        unsafeDeserialize' row
+        extendedOutputReferenceFromRow row
     _notSqlBlob ->
         error "rowToOutputReference: not SQLBlob"
 

@@ -10,8 +10,8 @@ import Kupo.Prelude
 
 import Kupo.Data.Cardano
     ( ComparableOutput
+    , ExtendedOutputReference
     , Output
-    , OutputReference
     , toComparableOutput
     )
 import Kupo.Data.Pattern
@@ -96,12 +96,12 @@ spec = parallel $ do
 
 matchAll
     :: Pattern
-    -> [(OutputReference, Output)]
-    -> [(OutputReference, ComparableOutput)]
+    -> [(ExtendedOutputReference, Output)]
+    -> [(ExtendedOutputReference, ComparableOutput)]
 matchAll p xs =
     [ (outRef, toComparableOutput out)
     | (outRef, out) <- xs
-    , isJust (matching outRef out p)
+    , isJust (matching (fst outRef) out p)
     ]
 
 genPattern :: Gen Pattern

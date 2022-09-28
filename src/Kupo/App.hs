@@ -83,6 +83,7 @@ import Kupo.Data.Configuration
     )
 import Kupo.Data.Database
     ( binaryDataToRow
+    , outputReferenceToRow
     , pointToRow
     , resultToRow
     , scriptToRow
@@ -227,7 +228,7 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
     codecs = Codecs
         { toResult = resultToRow
         , toSlotNo = unSlotNo
-        , toInput = serialize'
+        , toInput = outputReferenceToRow
         , toBinaryData = binaryDataToRow
         , toScript = scriptToRow
         }

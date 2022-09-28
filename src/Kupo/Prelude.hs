@@ -204,7 +204,7 @@ defaultGenericToEncoding =
 nubOn :: Eq b => (a -> b) -> [a] -> [a]
 nubOn b = nubBy (on (==) b)
 
--- | Like 'foldr' but provide access to the index of each element.
+-- | Like 'foldr' but provides access to the index of each element.
 foldrWithIndex
         :: (Integral ix, Foldable f)
         => (ix -> a -> result -> result)

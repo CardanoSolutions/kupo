@@ -19,9 +19,10 @@ module Kupo.Data.Database
     , resultToRow
     , resultFromRow
 
-      -- * OutputReference
+      -- * ExtendedOutputReference / OutputReference
     , outputReferenceToRow
-    , outputReferenceFromRow
+    , extendedOutputReferenceToRow
+    , extendedOutputReferenceFromRow
 
       -- * Pattern
     , patternToRow
@@ -67,6 +68,7 @@ import Data.Bits
     )
 import Kupo.Data.Cardano
     ( Blake2b_224
+    , Blake2b_256
     , Crypto
     , Hash
     , HashAlgorithm
@@ -74,7 +76,9 @@ import Kupo.Data.Cardano
     , datumHashToBytes
     , digestSize
     , hashFromBytes
+    , mkOutputReference
     , transactionIdToBytes
+    , unsafeTransactionIdFromBytes
     )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..)
@@ -89,6 +93,7 @@ import qualified Cardano.Ledger.BaseTypes as Ledger
 import qualified Cardano.Ledger.Credential as Ledger
 import qualified Cardano.Ledger.Hashes as Ledger
 import qualified Cardano.Ledger.Keys as Ledger
+import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Data.Binary.Get as B
 import qualified Data.Binary.Put as B
 import qualified Data.ByteString.Lazy as BSL
@@ -149,7 +154,7 @@ resultFromRow
     -> App.Result
 resultFromRow row = App.Result
     { App.outputReference =
-        outputReferenceFromRow (outputReference row)
+        extendedOutputReferenceFromRow (outputReference row)
     , App.address =
         addressFromRow (address row)
     , App.value =
@@ -171,7 +176,7 @@ resultToRow x =
     Input {..}
   where
     outputReference =
-        outputReferenceToRow (App.outputReference x)
+        extendedOutputReferenceToRow (App.outputReference x)
 
     address =
         addressToRow (App.address x)
@@ -197,11 +202,43 @@ resultToRow x =
 -- Output Reference
 --
 
-outputReferenceToRow :: App.ExtendedOutputReference -> ByteString
-outputReferenceToRow = serialize' . fst
+-- Serialize output references with their associated position within a block. This allows for a
+-- compact representation of extended output references, and enable filters by transaction id,
+-- transaction id + output index or transaction id + output index + transaction index by doing bytes
+-- comparisons on byte string intervals.
+--
+--     ┏━━━━━━━━━━━━━━━━┯━━━━━━━━━━━━━━┯━━━━━━━━━━━━━━━━━━━┓
+--     ┃ transaction id │ output index │ transaction index ┃
+--     ┗━━━ 32 bytes ━━━┷━━━ 2 bytes ━━┷━━━━━ 2 bytes ━━━━━┛
+--
+extendedOutputReferenceToRow :: App.ExtendedOutputReference -> ByteString
+extendedOutputReferenceToRow (Ledger.TxIn txId (Ledger.TxIx outIx), txIx) =
+    BSL.toStrict $ B.runPut $ do
+        B.putByteString (transactionIdToBytes txId)
+        B.putWord16be (fromIntegral outIx)
+        B.putWord16be txIx
 
-outputReferenceFromRow :: ByteString -> App.ExtendedOutputReference
-outputReferenceFromRow = (,0) . unsafeDeserialize'
+outputReferenceToRow :: App.OutputReference -> ByteString
+outputReferenceToRow (Ledger.TxIn txId (Ledger.TxIx outIx)) =
+    BSL.toStrict $ B.runPut $ do
+        B.putByteString (transactionIdToBytes txId)
+        B.putWord16be (fromIntegral outIx)
+
+extendedOutputReferenceFromRow :: ByteString -> App.ExtendedOutputReference
+extendedOutputReferenceFromRow bytes =
+    case B.runGetOrFail parser (BSL.fromStrict bytes) of
+        Left (_remaining, _offset, hint) ->
+            error (toText hint)
+        Right (remaining, _offset, result) ->
+            if BSL.null remaining
+            then result
+            else error "outputReferenceFromRow: non-empty remaining bytes"
+  where
+    parser = do
+        txId <- unsafeTransactionIdFromBytes <$> B.getByteString (digestSize @Blake2b_256)
+        outIx <- Ledger.TxIx . fromIntegral <$> B.getWord16be
+        txIx <- B.getWord16be
+        pure (Ledger.TxIn txId outIx, txIx)
 
 --
 -- Pattern
@@ -456,8 +493,8 @@ addressFromRow =
                 error (toText hint)
             Right (remaining, _offset, result) ->
                 if BSL.null remaining
-                  then result
-                  else error "addressFromRow: non-empty remaining bytes"
+                then result
+                else error "addressFromRow: non-empty remaining bytes"
 
     getAddr = do
         B.getWord8 >>= \case
@@ -553,23 +590,26 @@ patternToSql = \case
         "address LIKE '01" <> encodeBase16 delegation <> "%'"
     App.MatchPaymentAndDelegation payment delegation ->
         "address LIKE '01" <> encodeBase16 delegation <> "__" <> encodeBase16 payment <> "'"
-    App.MatchOutputReference (encodeBase16 . serialize' -> str) ->
-        "output_reference = x'" <> str <> "'"
-    App.MatchTransactionId (encodeBase16 . transactionIdToBytes -> txId) ->
-        unwords
-        [ "(    output_reference >= x'825820" <> txId <> "00'\
-          \ AND output_reference <= x'825820" <> txId <> "17')"
-        , "OR"
-        , "(    output_reference >= x'825820" <> txId <> "1818'\
-          \ AND output_reference <= x'825820" <> txId <> "18ff')"
-        , "OR"
-        , "(    output_reference >= x'825820" <> txId <> "190100'\
-          \ AND output_reference <= x'825820" <> txId <> "190100')"
-        ]
+    App.MatchOutputReference ref ->
+        let
+            lowerBound = extendedOutputReferenceToRowBase16 (ref, minBound)
+            upperBound = extendedOutputReferenceToRowBase16 (ref, maxBound)
+        in
+            "(    output_reference >= x'" <> lowerBound <> "'\
+            \ AND output_reference <= x'" <> upperBound <> "')"
+    App.MatchTransactionId txId ->
+        let
+            lowerBound = extendedOutputReferenceToRowBase16 (mkOutputReference txId minBound, minBound)
+            upperBound = extendedOutputReferenceToRowBase16 (mkOutputReference txId maxBound, maxBound)
+        in
+            "(    output_reference >= x'" <> lowerBound <> "'\
+            \ AND output_reference <= x'" <> upperBound <> "')"
     App.MatchPolicyId{} ->
         "address LIKE '%'"
     App.MatchAssetId{} ->
         "address LIKE '%'"
+  where
+    extendedOutputReferenceToRowBase16 = encodeBase16 . extendedOutputReferenceToRow
 
 applyStatusFlag :: StatusFlag -> Text -> Text
 applyStatusFlag = \case

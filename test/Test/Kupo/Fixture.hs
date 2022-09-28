@@ -137,6 +137,11 @@ someTransactionId :: TransactionId
 someTransactionId = unsafeTransactionIdFromBytes $ unsafeDecodeBase16
     "836EA71A49D79B222C3D525EB980439F13656241D9A2D6AC4F8CEBE159FCBB88"
 
+-- A transaction id present in a block at the 3rd position
+someThirdTransactionId :: TransactionId
+someThirdTransactionId = unsafeTransactionIdFromBytes $ unsafeDecodeBase16
+    "CA828E5361E72DB12131BDBDDAFDABDE785D82968EE7E9169EE69750E792F780"
+
 someDatumHashInWitness :: DatumHash
 someDatumHashInWitness = unsafeDatumHashFromBytes $ unsafeDecodeBase16
     "0118AD9F6A79B8DFAB690DCB66EA6244A382891525789B405F7AF7DC61635578"

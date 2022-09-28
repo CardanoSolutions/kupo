@@ -92,6 +92,7 @@ import Numeric
     ( Floating (..)
     )
 
+import qualified Data.ByteString as BS
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
@@ -329,25 +330,24 @@ mkDatabase tr longestRollback bracketConnection = Database
         traceWith tr (DatabaseExitQuery "pruneInputs")
         changes conn
 
-    , deleteInputsByReference = \refs -> ReaderT $ \conn -> do
-        let n = length refs
-        if n > 0 then do
-            let qry = "DELETE FROM inputs \
-                      \WHERE output_reference IN " <> mkPreparedStatement n
-            execute conn qry refs
+    , deleteInputsByReference = \(toList -> refs) -> ReaderT $ \conn -> do
+        fmap sum $ forM refs $ \ref ->  do
+            let qry = "DELETE FROM inputs WHERE output_reference >= ? AND output_reference <= ?"
+            execute conn qry
+                [ SQLBlob (ref <> BS.replicate 2 minBound)
+                , SQLBlob (ref <> BS.replicate 2 maxBound)
+                ]
             changes conn
-        else do
-            return 0
 
-    , markInputsByReference = \(fromIntegral -> slotNo) refs -> ReaderT $ \conn -> do
-        let n = length refs
-        if n > 0 then do
-            let qry = "UPDATE inputs SET spent_at = ? \
-                      \WHERE output_reference IN " <> mkPreparedStatement n
-            execute conn qry (SQLInteger slotNo : toRow refs)
+    , markInputsByReference = \(fromIntegral -> slotNo) (toList -> refs) -> ReaderT $ \conn -> do
+        fmap sum $ forM refs $ \ref -> do
+            let qry = "UPDATE inputs SET spent_at = ? WHERE output_reference >= ? AND output_reference <= ?"
+            execute conn qry
+                [ SQLInteger slotNo
+                , SQLBlob (ref <> BS.replicate 2 minBound)
+                , SQLBlob (ref <> BS.replicate 2 maxBound)
+                ]
             changes conn
-        else do
-            return 0
 
     , foldInputs = \whereClause yield -> ReaderT $ \conn -> do
         let qry = "SELECT output_reference, address, value, datum_hash, script_hash,\

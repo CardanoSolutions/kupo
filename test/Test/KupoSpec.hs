@@ -133,6 +133,7 @@ import Test.Kupo.Fixture
     , someScriptInOutput
     , someScriptInWitness
     , someStakeKey
+    , someThirdTransactionId
     , someTransactionId
     )
 import Type.Reflection
@@ -447,12 +448,15 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 slot' `shouldSatisfy` (>= slot)
             )
 
-    specify "Match by transaction id" $ \(tmp, tr, cfg) -> do
+    specify "Match by transaction id / output reference" $ \(tmp, tr, cfg) -> do
         let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastMaryPoint
-            , patterns = [MatchTransactionId someTransactionId]
+            , patterns =
+                [ MatchTransactionId someTransactionId
+                , MatchOutputReference (mkOutputReference someThirdTransactionId 0)
+                ]
             }
         timeoutOrThrow 10 $ race_
             (kupo tr `runWith` env)
@@ -460,10 +464,13 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 waitUntilM $ do
                     outRefs <- fmap outputReference <$> getAllMatches NoStatusFlag
                     return $
-                        (mkOutputReference someTransactionId 0, 42) `elem` outRefs
+                        (mkOutputReference someTransactionId 0, 0) `elem` outRefs
                         &&
-                        (mkOutputReference someTransactionId 1, 42) `elem` outRefs
+                        (mkOutputReference someTransactionId 1, 0) `elem` outRefs
+                        &&
+                        (mkOutputReference someThirdTransactionId 0, 2) `elem` outRefs
             )
+
 
     specify "Match by policy id" $ \(tmp, tr, cfg) -> do
         let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)

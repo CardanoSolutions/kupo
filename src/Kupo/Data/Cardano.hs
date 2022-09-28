@@ -465,7 +465,7 @@ instance IsBlock Block where
         transformByron (Ledger.Byron.TxInUtxo txId ix) =
             mkOutputReference
                 (transactionIdFromByron txId)
-                (fromIntegral @Word16 @Word64 ix)
+                ix
 
     mapMaybeOutputs
         :: forall result. ()
@@ -672,11 +672,11 @@ transactionIdToJson =
 
 -- OutputIndex
 
-type OutputIndex = Word64
+type OutputIndex = Word16
 
 getOutputIndex :: OutputReference' crypto -> OutputIndex
 getOutputIndex (Ledger.TxIn _ (Ledger.TxIx ix)) =
-    ix
+    fromIntegral ix
 {-# INLINABLE getOutputIndex #-}
 
 outputIndexToJson :: OutputIndex -> Json.Encoding
@@ -736,7 +736,7 @@ mkOutputReference
     -> OutputIndex
     -> OutputReference
 mkOutputReference i =
-    Ledger.TxIn i . Ledger.TxIx
+    Ledger.TxIn i . Ledger.TxIx . fromIntegral
 {-# INLINABLE mkOutputReference #-}
 
 withReferences

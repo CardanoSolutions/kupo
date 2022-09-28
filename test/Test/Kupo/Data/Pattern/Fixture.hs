@@ -15,8 +15,8 @@ import Data.List
 import qualified Data.Set as Set
 import Kupo.Data.Cardano
     ( Address
+    , ExtendedOutputReference
     , Output
-    , OutputReference
     , TransactionId
     , mkOutputReference
     , unsafeAddressFromBytes
@@ -36,7 +36,7 @@ import Test.Kupo.Data.UtxoConstraint
     )
 
 patterns
-    :: [(Text, Pattern, [(OutputReference, Output)])]
+    :: [(Text, Pattern, [(ExtendedOutputReference, Output)])]
 patterns =
     [ ( "*"
       , MatchAny IncludingBootstrap
@@ -136,7 +136,7 @@ patterns =
     ]
 
 matches
-    :: [(OutputReference, Output)]
+    :: [(ExtendedOutputReference, Output)]
 matches = generateWith 14 $ sequence
     [ genSatisfying
         -- Payment address, from credentials#0
