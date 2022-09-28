@@ -460,9 +460,9 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 waitUntilM $ do
                     outRefs <- fmap outputReference <$> getAllMatches NoStatusFlag
                     return $
-                        mkOutputReference someTransactionId 0 `elem` outRefs
+                        (mkOutputReference someTransactionId 0, 42) `elem` outRefs
                         &&
-                        mkOutputReference someTransactionId 1 `elem` outRefs
+                        (mkOutputReference someTransactionId 1, 42) `elem` outRefs
             )
 
     specify "Match by policy id" $ \(tmp, tr, cfg) -> do

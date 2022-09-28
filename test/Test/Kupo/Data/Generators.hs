@@ -19,6 +19,7 @@ import Kupo.Data.Cardano
     , Block
     , Datum
     , DatumHash
+    , ExtendedOutputReference
     , HeaderHash
     , Output
     , OutputIndex
@@ -30,6 +31,7 @@ import Kupo.Data.Cardano
     , ScriptReference (..)
     , SlotNo (..)
     , TransactionId
+    , TransactionIndex
     , Value
     , assetNameMaxLength
     , digestSize
@@ -213,6 +215,14 @@ genOutputReference :: Gen OutputReference
 genOutputReference =
     mkOutputReference <$> genTransactionId <*> genOutputIndex
 
+genExtendedOutputReference :: Gen ExtendedOutputReference
+genExtendedOutputReference = do
+    (,) <$> genOutputReference <*> genTransactionIndex
+
+genTransactionIndex :: Gen TransactionIndex
+genTransactionIndex =
+    fromIntegral <$> choose (0 :: Int, 255)
+
 genPattern :: Gen Pattern
 genPattern = oneof
     [ MatchAny <$> elements [ IncludingBootstrap, OnlyShelley ]
@@ -228,7 +238,7 @@ genPattern = oneof
 
 genResult :: Gen Result
 genResult = Result
-    <$> genOutputReference
+    <$> genExtendedOutputReference
     <*> genAddress
     <*> genOutputValue
     <*> genDatum

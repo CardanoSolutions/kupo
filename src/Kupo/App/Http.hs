@@ -450,9 +450,9 @@ handleGetMatches headers patternQuery queryParams Database{..} = do
                     FilterByPolicyId policyId ->
                         \result -> hasPolicyId (value result) policyId
                     FilterByOutputReference outRef ->
-                        \result -> outputReference result == outRef
+                        \result -> fst (outputReference result) == outRef
                     FilterByTransactionId transactionId ->
-                        \result -> (getTransactionId . outputReference) result == transactionId
+                        \result -> (getTransactionId . fst . outputReference) result == transactionId
          in
             \yield result ->
                 if predicateA result && predicateB result

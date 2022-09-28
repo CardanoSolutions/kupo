@@ -35,7 +35,7 @@ import Kupo.Data.Cardano
     , Blake2b_256
     , Datum
     , DatumHash
-    , OutputReference
+    , ExtendedOutputReference
     , Point
     , Script
     , ScriptHash
@@ -321,10 +321,13 @@ newHttpClientWith manager (serverHost, serverPort) =
 -- Decoders
 --
 
-decodeOutputReference :: Json.KeyMap Json.Value -> Json.Parser OutputReference
-decodeOutputReference o = mkOutputReference
-    <$> (o .: "transaction_id" >>= decodeTransactionId)
-    <*> o .: "output_index"
+decodeOutputReference :: Json.KeyMap Json.Value -> Json.Parser ExtendedOutputReference
+decodeOutputReference o = do
+    txIx <- o .: "transaction_index"
+    outRef <- mkOutputReference
+        <$> (o .: "transaction_id" >>= decodeTransactionId)
+        <*> o .: "output_index"
+    pure (outRef, txIx)
 
 decodePoint :: Json.Value -> Json.Parser Point
 decodePoint =

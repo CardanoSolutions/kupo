@@ -49,7 +49,7 @@ instance IsBlock PartialBlock where
         Set.fromList . inputs
 
     foldBlock fn result =
-        foldr fn result . blockBody
+        foldrWithIndex fn result . blockBody
 
     mapMaybeOutputs fn  =
         mapMaybe (uncurry fn) . outputs

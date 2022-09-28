@@ -24,6 +24,7 @@ module Kupo.Prelude
     , next
     , prev
     , safeToEnum
+    , foldrWithIndex
 
       -- Encoding
     , encodeBase16
@@ -145,6 +146,9 @@ import qualified Data.Aeson.Parser as Json
 import qualified Data.Aeson.Parser.Internal as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString.Base58 as Base58
+import Data.Sequence.Strict
+    ( StrictSeq
+    )
 import Relude.Extra
     ( next
     , prev
@@ -199,6 +203,18 @@ defaultGenericToEncoding =
 -- elements.
 nubOn :: Eq b => (a -> b) -> [a] -> [a]
 nubOn b = nubBy (on (==) b)
+
+-- | Like 'foldr' but provide access to the index of each element.
+foldrWithIndex
+        :: (Integral ix, Foldable f)
+        => (ix -> a -> result -> result)
+        -> result
+        -> f a
+        -> result
+foldrWithIndex outer result xs =
+    foldr (\x inner !i -> outer i x (inner (i+1))) (const result) xs 0
+{-# SPECIALIZE foldrWithIndex :: (Word16 -> a -> result -> result) -> result -> [a] -> result #-}
+{-# SPECIALIZE foldrWithIndex :: (Word16 -> a -> result -> result) -> result -> StrictSeq a -> result #-}
 
 eitherDecodeJson
     :: (Json.Value -> Json.Parser a)

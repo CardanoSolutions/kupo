@@ -19,6 +19,10 @@ module Kupo.Data.Database
     , resultToRow
     , resultFromRow
 
+      -- * OutputReference
+    , outputReferenceToRow
+    , outputReferenceFromRow
+
       -- * Pattern
     , patternToRow
     , patternFromRow
@@ -193,12 +197,11 @@ resultToRow x =
 -- Output Reference
 --
 
-outputReferenceToRow :: App.OutputReference -> ByteString
-outputReferenceToRow = serialize'
+outputReferenceToRow :: App.ExtendedOutputReference -> ByteString
+outputReferenceToRow = serialize' . fst
 
-outputReferenceFromRow :: ByteString -> App.OutputReference
-outputReferenceFromRow = unsafeDeserialize'
-
+outputReferenceFromRow :: ByteString -> App.ExtendedOutputReference
+outputReferenceFromRow = (,0) . unsafeDeserialize'
 
 --
 -- Pattern

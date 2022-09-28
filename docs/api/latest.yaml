@@ -567,7 +567,7 @@ components:
 
     OutputIndex:
       type: integer
-      description: An index of an output within a transaction.
+      description: The index of the output within the transaction carrying it.
       minimum: 0
       example: 2
 
@@ -670,6 +670,12 @@ components:
       minLength: 64
       maxLength: 64
 
+    TransactionIndex:
+      type: integer
+      description: The index of the transaction within the block including it.
+      minimum: 0
+      example: 14
+
     Value:
       type: object
       description: A (multi-asset) value of a transaction's output.
@@ -704,6 +710,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - transaction_index
         - transaction_id
         - output_index
         - address
@@ -713,6 +720,8 @@ components:
         - created_at
         - spent_at
       properties:
+        transaction_index:
+          $ref: "#/components/schemas/TransactionIndex"
         transaction_id:
           $ref: "#/components/schemas/TransactionId"
         output_index:

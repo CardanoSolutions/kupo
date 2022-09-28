@@ -68,6 +68,8 @@ import Kupo.Data.Database
     , addressToRow
     , datumFromRow
     , datumToRow
+    , outputReferenceFromRow
+    , outputReferenceToRow
     , patternFromRow
     , patternToRow
     , patternToSql
@@ -102,6 +104,7 @@ import Test.Kupo.Data.Generators
     ( chooseVector
     , genAddress
     , genDatum
+    , genExtendedOutputReference
     , genNonGenesisPoint
     , genPattern
     , genPointsBetween
@@ -146,6 +149,8 @@ spec = parallel $ do
             roundtripFromToRow genNonGenesisPoint pointToRow pointFromRow
         prop "Pattern" $
             roundtripFromToRow genPattern patternToRow patternFromRow
+        prop "OutputReference" $
+            roundtripFromToRow genExtendedOutputReference outputReferenceToRow outputReferenceFromRow
         prop "Datum" $
             roundtripFromToRow2 genDatum datumToRow datumFromRow
         prop "ScriptReference" $
@@ -369,25 +374,25 @@ withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
             (Only . SQLText . addressToRow <$> (getAddress . snd <$> matches))
         executeMany conn
             "INSERT INTO output_references VALUES (?)"
-            (Only . outputReferenceToRow <$> (fst <$> matches))
+            (Only . outputReferenceToRow' <$> (fst <$> matches))
     action conn
 
 rowToAddress :: HasCallStack => [SQLData] -> Address
 rowToAddress = \case
     [SQLText row, _] ->
         addressFromRow row
-    _ ->
+    _notSqlText ->
         error "rowToAddress: not SQLText"
 
-outputReferenceToRow :: OutputReference -> SQLData
-outputReferenceToRow =
+outputReferenceToRow' :: OutputReference -> SQLData
+outputReferenceToRow' =
     SQLBlob . serialize'
 
 rowToOutputReference :: HasCallStack => [SQLData] -> OutputReference
 rowToOutputReference = \case
     [SQLBlob row] ->
         unsafeDeserialize' row
-    _ ->
+    _notSqlBlob ->
         error "rowToOutputReference: not SQLBlob"
 
 withInMemoryDatabase
