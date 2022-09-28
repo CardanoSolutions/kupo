@@ -145,7 +145,7 @@ resultFromRow
     -> App.Result
 resultFromRow row = App.Result
     { App.outputReference =
-        unsafeDeserialize' (outputReference row)
+        outputReferenceFromRow (outputReference row)
     , App.address =
         addressFromRow (address row)
     , App.value =
@@ -167,7 +167,7 @@ resultToRow x =
     Input {..}
   where
     outputReference =
-        serialize' (App.outputReference x)
+        outputReferenceToRow (App.outputReference x)
 
     address =
         addressToRow (App.address x)
@@ -188,6 +188,17 @@ resultToRow x =
     (spentAtSlotNo, spentAtHeaderHash) =
         let row = pointToRow <$> (App.spentAt x)
          in (checkpointSlotNo <$> row, checkpointHeaderHash <$> row)
+
+--
+-- Output Reference
+--
+
+outputReferenceToRow :: App.OutputReference -> ByteString
+outputReferenceToRow = serialize'
+
+outputReferenceFromRow :: ByteString -> App.OutputReference
+outputReferenceFromRow = unsafeDeserialize'
+
 
 --
 -- Pattern
