@@ -29,6 +29,9 @@ import Kupo.Control.MonadCatch
 import Kupo.Control.MonadDelay
     ( MonadDelay (..)
     )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..)
+    )
 import Kupo.Data.Cardano
     ( Address
     , BinaryData
@@ -54,6 +57,7 @@ import Kupo.Data.Cardano
     , scriptFromBytes
     , scriptHashFromBytes
     , scriptHashToText
+    , slotNoToText
     , transactionIdFromHash
     , unsafeValueFromList
     )
@@ -129,10 +133,11 @@ data HttpClient (m :: Type -> Type) = HttpClient
 newHttpClient :: (String, Int) -> IO (HttpClient IO)
 newHttpClient config = do
     manager <- newManager defaultManagerSettings
-    pure (newHttpClientWith manager config)
+    logs <- newTVarIO []
+    pure (newHttpClientWith manager config logs)
 
-newHttpClientWith :: Manager -> (String, Int) -> HttpClient IO
-newHttpClientWith manager (serverHost, serverPort) =
+newHttpClientWith :: Manager -> (String, Int) -> TVar IO [Text] -> HttpClient IO
+newHttpClientWith manager (serverHost, serverPort) logs =
     HttpClient
         { waitUntilM =
             \a0 -> waitForServer >> _waitUntilM a0
@@ -158,6 +163,9 @@ newHttpClientWith manager (serverHost, serverPort) =
             waitForServer >> _listPatterns
         }
   where
+    log :: Text -> IO ()
+    log = atomically . modifyTVar' logs . (:)
+
     baseUrl :: String
     baseUrl = "http://" <> serverHost <> ":" <> show serverPort
 
@@ -170,24 +178,30 @@ newHttpClientWith manager (serverHost, serverPort) =
             | otherwise = do
                 req <- parseRequest (baseUrl <> "/health")
                 void (httpNoBody req manager) `catch` (\(_ :: HttpException) -> do
+                    log "waitForServer"
                     threadDelay 0.1
                     loop (next n))
 
     _waitUntilM :: IO Bool -> IO ()
     _waitUntilM predicate = do
-        predicate >>= \case
-            True ->
-                return ()
-            False -> do
-                threadDelay 0.25
-                _waitUntilM predicate
+        result <- predicate
+        log $ "waitUntilM: " <> show result
+        unless result $ do
+            threadDelay 0.25
+            _waitUntilM predicate
 
     _waitSlot :: (SlotNo -> Bool) -> IO ()
     _waitSlot predicate = do
-        slots <- fmap getPointSlotNo <$> _listCheckpoints
-        unless (not (null slots) && predicate (maximum slots)) $ do
-            threadDelay 0.05
-            _waitSlot predicate
+        _listCheckpoints >>= \case
+            [] -> do
+                log "waitSlot: no checkpoint"
+                threadDelay 0.05
+                _waitSlot predicate
+            (maximum . fmap getPointSlotNo -> sl) -> do
+                log $ "waitSlot (" <> slotNoToText sl <> "): " <> show (predicate sl)
+                unless (predicate sl) $ do
+                    threadDelay 0.05
+                    _waitSlot predicate
 
     _listCheckpoints :: IO [Point]
     _listCheckpoints = do
@@ -242,11 +256,14 @@ newHttpClientWith manager (serverHost, serverPort) =
 
     _waitDatum :: DatumHash -> IO BinaryData
     _waitDatum datumHash = do
+        let datumStr = T.take 8 (datumHashToText datumHash)
         _lookupDatumByHash datumHash >>= \case
             Nothing -> do
+                log $ "waitDatum (" <> datumStr <> "): not found"
                 threadDelay 0.25
                 _waitDatum datumHash
-            Just bin ->
+            Just bin -> do
+                log $ "waitDatum (" <> datumStr <> "): found"
                 pure bin
 
     _lookupScriptByHash :: ScriptHash -> IO (Maybe Script)
@@ -272,11 +289,14 @@ newHttpClientWith manager (serverHost, serverPort) =
 
     _waitScript :: ScriptHash -> IO Script
     _waitScript scriptHash = do
+        let scriptStr = T.take 8 (scriptHashToText scriptHash)
         _lookupScriptByHash scriptHash >>= \case
             Nothing -> do
+                log $ "waitScript (" <> scriptStr <> "): not found"
                 threadDelay 0.25
                 _waitScript scriptHash
-            Just script ->
+            Just script -> do
+                log $ "waitScript (" <> scriptStr <> "): found"
                 pure script
 
     _putPatternSince :: Pattern -> Either SlotNo Point -> IO Bool
