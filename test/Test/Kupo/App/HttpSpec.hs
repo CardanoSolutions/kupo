@@ -324,6 +324,14 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
+        session' "🕱 GET /matches?order=foo" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/matches?order=foo"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
         session' "🕱 DELETE /matches/{pattern}" $ do
             overlappingFragment <- liftIO $ generate (elements Fixture.overlappingUnaryFragments)
             resBadRequest <- Wai.request $ Wai.defaultRequest
@@ -429,7 +437,7 @@ databaseStub = Database
         10
     , insertInputs =
         \_ -> return ()
-    , foldInputs = \_ callback -> lift $ do
+    , foldInputs = \_ _ callback -> lift $ do
         rows <- fmap resultToRow <$> generate (listOf1 genResult)
         mapM_ callback rows
     , deleteInputsByAddress =

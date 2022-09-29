@@ -195,6 +195,10 @@ genNonGenesisPoint :: Gen Point
 genNonGenesisPoint = do
     BlockPoint <$> genSlotNo <*> genHeaderHash
 
+genNonGenesisPointBetween :: (SlotNo, SlotNo) -> Gen Point
+genNonGenesisPointBetween (SlotNo minSlot, SlotNo maxSlot) =
+    BlockPoint <$> fmap SlotNo (choose (minSlot, maxSlot)) <*> genHeaderHash
+
 genPointsBetween :: (SlotNo, SlotNo) -> Gen [Point]
 genPointsBetween (inf, sup)
     | inf >= sup = pure []
@@ -237,14 +241,19 @@ genPattern = oneof
     sz = digestSize @Blake2b_224
 
 genResult :: Gen Result
-genResult = Result
+genResult =
+    genResultWith genNonGenesisPoint
+
+genResultWith :: Gen Point -> Gen Result
+genResultWith genPoint = Result
     <$> genExtendedOutputReference
     <*> genAddress
     <*> genOutputValue
     <*> genDatum
     <*> genScriptReference
-    <*> genNonGenesisPoint
-    <*> frequency [(1, pure Nothing), (5, Just <$> genNonGenesisPoint)]
+    <*> genPoint
+    <*> frequency [(1, pure Nothing), (5, Just <$> genPoint)]
+
 
 genOutput :: Gen Output
 genOutput = mkOutput

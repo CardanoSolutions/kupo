@@ -107,6 +107,14 @@ malformedPoint =
                  \a point). Please refer to the API reference for details <https://cardanosolutions.github.io/kupo>."
         }
 
+invalidSortDirection :: Response
+invalidSortDirection =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Invalid sort direction provided as query parameter. \
+                 \You can specify either 'order=most_recent_first' or \
+                 \'order=oldest_first'. Please refer to the API reference for details <https://cardanosolutions.github.io/kupo#operation/getAllMatches>."
+        }
+
 unsafeRollbackBeyondSafeZone :: Response
 unsafeRollbackBeyondSafeZone =
     responseJson status400 Default.headers $ HttpError

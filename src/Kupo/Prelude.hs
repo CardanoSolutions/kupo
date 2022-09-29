@@ -88,6 +88,9 @@ import Data.Generics.Internal.VL.Lens
 import Data.List
     ( nubBy
     )
+import Data.Sequence.Strict
+    ( StrictSeq
+    )
 import GHC.Generics
     ( Rep
     )
@@ -131,6 +134,11 @@ import Relude hiding
     , tryTakeTMVar
     , writeTVar
     )
+import Relude.Extra
+    ( next
+    , prev
+    , safeToEnum
+    )
 import System.Posix.Signals
     ( Handler (..)
     , installHandler
@@ -146,14 +154,6 @@ import qualified Data.Aeson.Parser as Json
 import qualified Data.Aeson.Parser.Internal as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString.Base58 as Base58
-import Data.Sequence.Strict
-    ( StrictSeq
-    )
-import Relude.Extra
-    ( next
-    , prev
-    , safeToEnum
-    )
 
 data ConnectionStatusToggle m = ConnectionStatusToggle
     { toggleConnected :: !(m ())

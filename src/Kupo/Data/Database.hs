@@ -52,6 +52,10 @@ module Kupo.Data.Database
 
       -- * Filtering
     , applyStatusFlag
+
+      -- * Sorting
+    , SortDirection (..)
+    , mkSortDirection
     ) where
 
 import Kupo.Prelude
@@ -79,6 +83,9 @@ import Kupo.Data.Cardano
     , mkOutputReference
     , transactionIdToBytes
     , unsafeTransactionIdFromBytes
+    )
+import Kupo.Data.Http.OrderMatchesBy
+    ( OrderMatchesBy (..)
     )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..)
@@ -619,3 +626,12 @@ applyStatusFlag = \case
         (<> " AND spent_at IS NULL")
     OnlySpent ->
         (<> " AND spent_at IS NOT NULL")
+
+data SortDirection = Asc | Desc
+    deriving (Generic)
+
+mkSortDirection :: OrderMatchesBy -> SortDirection
+mkSortDirection = \case
+    MostRecentFirst -> Desc
+    NoExplicitOrder -> Desc
+    OldestFirst -> Asc

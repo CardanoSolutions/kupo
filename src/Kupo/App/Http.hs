@@ -61,6 +61,7 @@ import Kupo.Data.Database
     ( applyStatusFlag
     , binaryDataFromRow
     , datumHashToRow
+    , mkSortDirection
     , patternToRow
     , patternToSql
     , pointFromRow
@@ -84,6 +85,9 @@ import Kupo.Data.Http.ForcedRollback
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..)
     , getCheckpointModeFromQuery
+    )
+import Kupo.Data.Http.OrderMatchesBy
+    ( orderMatchesBy
     )
 import Kupo.Data.Http.Response
     ( responseJson
@@ -410,13 +414,16 @@ handleGetMatches headers patternQuery queryParams Database{..} = either id id $ 
     statusFlag <- statusFlagFromQueryParams queryParams
         `orAbort` Errors.invalidStatusFlag
 
-    let query = applyStatusFlag statusFlag (patternToSql p)
-
     yieldIf <- (mkYieldIf p <$> filterMatchesBy queryParams)
         `orAbort` Errors.invalidMatchFilter
 
+    sortDirection <- mkSortDirection <$> orderMatchesBy queryParams
+        `orAbort` Errors.invalidSortDirection
+
+    let query = applyStatusFlag statusFlag (patternToSql p)
+
     pure $ responseStreamJson headers resultToJson $ \yield done -> do
-        runReadOnlyTransaction $ foldInputs query (yieldIf yield . resultFromRow)
+        runReadOnlyTransaction $ foldInputs query sortDirection (yieldIf yield . resultFromRow)
         done
   where
     -- NOTE: kupo does support two different ways for fetching results, via query parameters or via

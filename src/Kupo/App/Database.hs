@@ -87,6 +87,7 @@ import Kupo.Data.Database
     , Checkpoint (..)
     , Input (..)
     , ScriptReference (..)
+    , SortDirection (..)
     )
 import Numeric
     ( Floating (..)
@@ -120,6 +121,7 @@ data Database (m :: Type -> Type) = Database
 
     , foldInputs
         :: Text  -- An address-like query
+        -> SortDirection
         -> (Input -> m ())
         -> DBTransaction m ()
 
@@ -349,19 +351,26 @@ mkDatabase tr longestRollback bracketConnection = Database
                 ]
             changes conn
 
-    , foldInputs = \whereClause yield -> ReaderT $ \conn -> do
-        -- TODO: Move upward and make configurable by users.
-        let ordering = "DESC"
-        let qry = "SELECT output_reference, address, value, datum_hash, script_hash ,\
+    , foldInputs = \whereClause sortDirection yield -> ReaderT $ \conn -> do
+        let qry = "SELECT \
+                    \output_reference, address, value, datum_hash, script_hash ,\
                     \created_at, createdAt.header_hash, \
                     \spent_at, spentAt.header_hash \
                   \FROM inputs \
-                  \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
-                  \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at \
-                  \WHERE " <> whereClause <> " \
+                  \JOIN \
+                    \checkpoints AS createdAt ON createdAt.slot_no = created_at \
+                  \LEFT OUTER JOIN \
+                    \checkpoints AS spentAt ON spentAt.slot_no = spent_at \
+                  \WHERE "
+                    <> whereClause <> " \
                   \ORDER BY \
                     \created_at " <> ordering <> ", \
-                    \substr(output_reference, -2) " <> ordering
+                    \substr(output_reference, -2) " <> ordering <> ", \
+                    \substr(output_reference, -4, 2) " <> ordering
+              where
+                ordering = case sortDirection of
+                    Asc -> "ASC"
+                    Desc -> "DESC"
 
         -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
         --
