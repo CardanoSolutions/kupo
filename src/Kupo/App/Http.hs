@@ -403,21 +403,21 @@ handleGetMatches
     -> Http.Query
     -> Database IO
     -> Response
-handleGetMatches headers patternQuery queryParams Database{..} = do
-    case (patternQuery >>= patternFromText, statusFlagFromQueryParams queryParams) of
-        (Nothing, _) ->
-            Errors.invalidPattern
-        (Just{}, Nothing) ->
-            Errors.invalidStatusFlag
-        (Just p, Just statusFlag) -> do
-            let query = applyStatusFlag statusFlag (patternToSql p)
-            case filterMatchesBy queryParams of
-                Nothing ->
-                    Errors.invalidMatchFilter
-                Just (mkYieldIf p -> yieldIf) -> do
-                    responseStreamJson headers resultToJson $ \yield done -> do
-                        runReadOnlyTransaction $ foldInputs query (yieldIf yield . resultFromRow)
-                        done
+handleGetMatches headers patternQuery queryParams Database{..} = either id id $ do
+    p <- (patternQuery >>= patternFromText)
+        `orAbort` Errors.invalidPattern
+
+    statusFlag <- statusFlagFromQueryParams queryParams
+        `orAbort` Errors.invalidStatusFlag
+
+    let query = applyStatusFlag statusFlag (patternToSql p)
+
+    yieldIf <- (mkYieldIf p <$> filterMatchesBy queryParams)
+        `orAbort` Errors.invalidMatchFilter
+
+    pure $ responseStreamJson headers resultToJson $ \yield done -> do
+        runReadOnlyTransaction $ foldInputs query (yieldIf yield . resultFromRow)
+        done
   where
     -- NOTE: kupo does support two different ways for fetching results, via query parameters or via
     -- path parameters. Historically, there were only query parameters. Yet, with the introduction
@@ -635,6 +635,10 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
 --
 -- Helpers
 --
+
+orAbort :: Maybe a -> Response -> Either Response a
+orAbort l r = maybeToRight r l
+{-# INLINABLE orAbort #-}
 
 responseHeaders
     :: Applicative m
