@@ -40,12 +40,18 @@ info:
 
     ### From source
 
-    ```console
-    $ nix build -f default.nix kupo.components.exes.kupo
-    ```
+    #### Pre-requisite
 
-    This produces a statically-linked executable that provides a command-line
-    interface for passing options and commands.
+    On Linux, make sure to have [nix](https://nixos.org/download.html#nix-install-linux) and [cachix](https://www.cachix.org/) installed.
+    Configure cachix to use `kupo.cachix.org-1:RzYQ8KVjRJdPNt/Bhq/UqdyGYWFM8ShjEMNG8wzHBQ4=` (`cachix use kupo`).
+
+    On MacOS, you'll need `cabal` as well as a few system dependencies. Follow the [instructions to install `cardano-node` on the developer portal](https://developers.cardano.org/docs/get-started/installing-cardano-node#macos) since Kupo share a similar set of dependencies.
+
+    #### Building
+
+    ```console
+    $ make
+    ```
 
     # Getting Started
 

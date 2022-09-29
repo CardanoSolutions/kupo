@@ -4,20 +4,22 @@
 
 #### 1. Feedback
 
-Contributions in the form of feedback and issue is very much welcome. Might it be a suggestion, a bug report or maybe some questions that you have. It helps improving Kupo in the long run and these are probably the best kind of contributions to start with. 
+Contributions in the form of feedback and issue is very much welcome. Might it be a suggestion, a bug report or maybe some questions that you have. It helps improving Kupo in the long run and these are probably the best kind of contributions to start with.
 
-Do not hesitate to add _thumbs up :+1:_ to open issues to show your interest. 
+Do not hesitate to add _thumbs up :+1:_ to open issues to show your interest.
 
 #### 2. Donation
 
 Feel like tossing some coins for the project? Become a [sponsor](https://github.com/sponsors/KtorZ) !
 
 
-#### 3. Code 
+#### 3. Code
 
-Make sure to first read the [user-manual 🕮 ](https://cardanosolutions.github.io/kupo) if you're willing to hack a bit on Kupo.
+Make sure to first read the [user-manual 📖](https://cardanosolutions.github.io/kupo) if you're willing to hack a bit on Kupo. Then, `make help` should provide a good starting point.
 
-For development, [stack](https://docs.haskellstack.org/en/stable/README/) or [cabal](https://cabal.readthedocs.io/en/latest/) should work _out-of-the-box_<sup>TM</sup> provided 
+![](./docs/makefile.png)
+
+For development, [cabal](https://cabal.readthedocs.io/en/latest/) should work _out-of-the-box_<sup>TM</sup> provided
 that you have the right system dependencies. That is, you'd need the following:
 
 - `libsodium-dev 1.0.*`
@@ -28,10 +30,10 @@ that you have the right system dependencies. That is, you'd need the following:
 - `zlib1g-dev 1.2.*`
 - [bitcoin-core/secp256k1@ac83be33](https://github.com/bitcoin-core/secp256k1/tree/ac83be33d0956faf6b7f61a60ab524ef7d6a473)
 
-You can run tests using 
+You can run tests using:
 
 ```console
-$ stack test kupo
+$ make check
 
 # or similarly
 
@@ -50,15 +52,15 @@ export OGMIOS_HOST=127.0.0.1
 export OGMIOS_PORT=1337
 ```
 
-Coding standards are enforced using tools and configuration defined in the repository. Make sure to configure your editor to pick them up. 
+Coding standards are enforced using tools and configuration defined in the repository. Make sure to configure your editor to pick them up.
 
-Pull requests are welcome, but we do recommend to open an issue to bring any idea to discussion first! 
+Pull requests are welcome, but we do recommend to open an issue to bring any idea to discussion first!
 
 ## About Issues / Discussion
 
 ### :bug: How To Report A Bug
 
-Open a [Bug Ticket](https://github.com/cardanosolutions/kupo/issues/new?template=bug.md). 
+Open a [Bug Ticket](https://github.com/cardanosolutions/kupo/issues/new?template=bug.md).
 
 ### :bulb: How To Propose An Idea
 

@@ -1,4 +1,4 @@
-name: Nix
+name: Build
 
 on:
   pull_request:
@@ -31,17 +31,12 @@ jobs:
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
     - name: 🔨 Build
-      run: |
-        nix-build -A kupo.components.exes.kupo -o dist
-        cp -r dist/* . && mkdir -p share && chmod +w share
-        mkdir -p share/zsh/site-functions          && ./bin/kupo --zsh-completion-script  kupo > share/zsh/site-functions/_kupo
-        mkdir -p share/bash-completion/completions && ./bin/kupo --bash-completion-script kupo > share/bash-completion/completions/kupo
-        chmod -w share
+      run: make
 
     - name: 📎 Upload Artifact
       uses: actions/upload-artifact@v2
       with:
-        name: kupo-x86_64-linux
+        name: kupo-${{ github.sha }}-${{ runner.arch }}-${{ runner.os }}
         path: |
-          bin
-          share
+          dist/bin
+          dist/share

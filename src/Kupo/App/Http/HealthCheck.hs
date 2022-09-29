@@ -9,15 +9,24 @@ module Kupo.App.Http.HealthCheck
 import Kupo.Prelude
 
 import Kupo.Control.MonadCatch
-    ( handle )
+    ( handle
+    )
 import Kupo.Data.Health
-    ( ConnectionStatus (..) )
+    ( ConnectionStatus (..)
+    )
 import Network.HTTP.Client
-    ( defaultManagerSettings, httpLbs, newManager, parseRequest, responseBody )
+    ( defaultManagerSettings
+    , httpLbs
+    , newManager
+    , parseRequest
+    , responseBody
+    )
 import Relude.Extra
-    ( lookup )
+    ( lookup
+    )
 import System.Exit
-    ( ExitCode (..) )
+    ( ExitCode (..)
+    )
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
