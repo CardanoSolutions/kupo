@@ -786,6 +786,19 @@ components:
       description:
         A datum blake2b-256 hash digest.
 
+    order:
+      name: order
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - most_recent_first
+          - oldest_first
+        description: |
+          Order results by their location on-chain. By default, most recent results are returned first (i.e. by descending `created_at.slot_no`).
+          Within a same slot, results are ordered in function of their position in the block (i.e. `transaction_index`).
+
     pattern:
       name: pattern
       in: path
@@ -871,6 +884,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
+        - $ref: "#/components/parameters/order"
       responses:
         200:
           description: OK
@@ -894,6 +908,7 @@ paths:
         - $ref: "#/components/parameters/pattern"
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
+        - $ref: "#/components/parameters/order"
       responses:
         200:
           description: OK
