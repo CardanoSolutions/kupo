@@ -1,5 +1,10 @@
 ## Generated
 *.sqlite3
+kupo-synchronize-*
+
+## Node
+package-lock.json
+node_modules
 
 ## Nix
 /result
@@ -7,3 +12,7 @@
 
 ## Cabal
 dist-newstyle
+
+## Dist
+/dist
+*.tar.gz

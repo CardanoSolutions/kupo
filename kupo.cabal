@@ -1,11 +1,11 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.34.6.
 --
 -- see: https://github.com/sol/hpack
 
 name:           kupo
-version:        2.0.0
+version:        2.1.0-rc1
 synopsis:       A daemon for building lookup indexes from entities of the Cardano blockchain
 description:    Please see the README on GitHub at <https://github.com/cardanosolutions/kupo/tree/master/README.md>
 category:       Web
@@ -24,6 +24,7 @@ extra-source-files:
     db/v1.0.0/002.sql
     db/v1.0.1/001.sql
     db/v2.0.0-beta/001.sql
+    db/v2.1.0/001.sql
 data-files:
     docs/api/latest.yaml
     docs/api/v1.0.0.yaml
@@ -70,6 +71,7 @@ library
       Kupo.Data.Http.FilterMatchesBy
       Kupo.Data.Http.ForcedRollback
       Kupo.Data.Http.GetCheckpointMode
+      Kupo.Data.Http.OrderMatchesBy
       Kupo.Data.Http.Response
       Kupo.Data.Http.Status
       Kupo.Data.Http.StatusFlag
@@ -248,6 +250,8 @@ test-suite unit
       Test.Kupo.Data.Generators
       Test.Kupo.Data.Http.FilterMatchesBySpec
       Test.Kupo.Data.Http.ForcedRollbackSpec
+      Test.Kupo.Data.Http.Helpers
+      Test.Kupo.Data.Http.OrderMatchesBySpec
       Test.Kupo.Data.OgmiosSpec
       Test.Kupo.Data.Pattern.Fixture
       Test.Kupo.Data.PatternSpec

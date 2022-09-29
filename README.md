@@ -106,7 +106,6 @@ Key differences(s): the plutus-chain-index is the native component behind the PA
   <a href="https://github.com/minswap"><img src="https://avatars.githubusercontent.com/u/80548193?v=4" width=70 height=70 /></a>
   <a href="https://github.com/Quantumplation"><img src="https://avatars.githubusercontent.com/u/49870?v=4" width=70 height=70 /></a>
   <a href="https://github.com/codybutz"><img src="https://avatars.githubusercontent.com/u/3670430?v=4" width=70 height=70 /></a>
-  <br/>
   <a href="https://github.com/scarmuega"><img src="https://avatars.githubusercontent.com/u/653886?v=4" width=70 height=70 /></a>
   <a href="https://github.com/mrbrinker"><img src="https://avatars.githubusercontent.com/u/41247403?v=4" width=70 height=70 /></a>
   <a href="https://github.com/sacrelege"><img src="https://avatars.githubusercontent.com/u/7289595?v=4" width=70 height=70 /></a>
@@ -122,7 +121,7 @@ Key differences(s): the plutus-chain-index is the native component behind the PA
 <p align="center">
   <a href="https://cardanosolutions.github.io/kupo">📖 User Manual</a>
   |
-  <a href="CONTRIBUTING.md"> 📐 Contributing</a>
+  <a href="CONTRIBUTING.md">🤝 Contributing</a>
   |
   <a href="CHANGELOG.md"> 💾 Changelog</a>
   |

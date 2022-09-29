@@ -43,6 +43,7 @@ import Kupo.Data.Cardano
     , Blake2b_256
     , Datum
     , DatumHash
+    , ExtendedOutputReference
     , Input
     , IsBlock (..)
     , Output
@@ -54,6 +55,7 @@ import Kupo.Data.Cardano
     , ScriptReference (..)
     , SlotNo
     , TransactionId
+    , TransactionIndex
     , Value
     , addressFromBytes
     , addressToBytes
@@ -90,6 +92,7 @@ import Kupo.Data.Cardano
     , transactionIdFromText
     , transactionIdToJson
     , transactionIdToText
+    , transactionIndexToJson
     , unsafeGetPointHeaderHash
     , valueToJson
     )
@@ -385,7 +388,7 @@ pattern OnlyShelley <- MatchBootstrap False
 {-# COMPLETE OnlyShelley, IncludingBootstrap #-}
 
 data Result = Result
-    { outputReference :: !OutputReference
+    { outputReference :: !ExtendedOutputReference
     , address :: !Address
     , value :: !Value
     , datum :: !Datum
@@ -398,10 +401,12 @@ resultToJson
     :: Result
     -> Json.Encoding
 resultToJson Result{..} = Json.pairs $ mconcat
-    [ Json.pair "transaction_id"
-        (transactionIdToJson (getTransactionId outputReference))
+    [ Json.pair "transaction_index"
+        (transactionIndexToJson (snd outputReference))
+    , Json.pair "transaction_id"
+        (transactionIdToJson (getTransactionId $ fst outputReference))
     , Json.pair "output_index"
-        (outputIndexToJson (getOutputIndex outputReference))
+        (outputIndexToJson (getOutputIndex $ fst outputReference))
     , Json.pair "address"
         (addressToJson address)
     , Json.pair "value"
@@ -483,10 +488,11 @@ matchBlock Codecs{..} patterns blk =
   where
     fn
         :: Point
+        -> TransactionIndex
         -> BlockBody block
         -> Match result slotNo input bin script
         -> Match result slotNo input bin script
-    fn pt tx Match{consumed, produced, datums, scripts} = Match
+    fn pt ix tx Match{consumed, produced, datums, scripts} = Match
         { consumed = Map.alter
             (\st -> Just $ Set.foldr
                 (Set.insert . toInput)
@@ -512,19 +518,20 @@ matchBlock Codecs{..} patterns blk =
       where
         matched =
             concatMap
-                (flip (mapMaybeOutputs @block) tx . match pt)
+                (flip (mapMaybeOutputs @block) tx . match pt ix)
                 patterns
 
     match
         :: Point
+        -> TransactionIndex
         -> Pattern
         -> OutputReference
         -> Output
         -> Maybe result
-    match pt m outputReference output = do
-        matching outputReference output m
+    match pt ix m outRef output = do
+        matching outRef output m
         pure $ toResult Result
-            { outputReference
+            { outputReference = (outRef, ix)
             , address = getAddress output
             , value = getValue output
             , datum = getDatum output

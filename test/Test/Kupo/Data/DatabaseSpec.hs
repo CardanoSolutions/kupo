@@ -54,20 +54,25 @@ import Kupo.Control.MonadTime
     )
 import Kupo.Data.Cardano
     ( Address
-    , OutputReference
+    , ExtendedOutputReference
     , Point
     , SlotNo (..)
     , getAddress
+    , getOutputIndex
     , getPointSlotNo
+    , slotNoToText
     )
 import Kupo.Data.Configuration
     ( LongestRollback (..)
     )
 import Kupo.Data.Database
-    ( addressFromRow
+    ( SortDirection (..)
+    , addressFromRow
     , addressToRow
     , datumFromRow
     , datumToRow
+    , extendedOutputReferenceFromRow
+    , extendedOutputReferenceToRow
     , patternFromRow
     , patternToRow
     , patternToSql
@@ -79,7 +84,9 @@ import Kupo.Data.Database
     , scriptReferenceToRow
     )
 import Kupo.Data.Pattern
-    ( Pattern (..)
+    ( MatchBootstrap (..)
+    , Pattern (..)
+    , Result (..)
     )
 import System.FilePath
     ( (</>)
@@ -102,10 +109,13 @@ import Test.Kupo.Data.Generators
     ( chooseVector
     , genAddress
     , genDatum
+    , genExtendedOutputReference
     , genNonGenesisPoint
+    , genNonGenesisPointBetween
     , genPattern
     , genPointsBetween
     , genResult
+    , genResultWith
     , genScriptReference
     )
 import Test.Kupo.Data.Pattern.Fixture
@@ -116,11 +126,21 @@ import Test.QuickCheck
     ( Gen
     , Property
     , choose
+    , conjoin
     , counterexample
+    , elements
     , forAllBlind
     , forAllShow
+    , forAllShrinkShow
     , frequency
     , generate
+    , label
+    , listOf1
+    , property
+    , scale
+    , shrinkList
+    , withMaxSuccess
+    , (.&&.)
     )
 import Test.QuickCheck.Monadic
     ( PropertyM
@@ -133,6 +153,7 @@ import Test.QuickCheck.Property
     ( Testable
     )
 
+import qualified Data.Text as T
 import qualified Prelude
 
 spec :: Spec
@@ -146,6 +167,8 @@ spec = parallel $ do
             roundtripFromToRow genNonGenesisPoint pointToRow pointFromRow
         prop "Pattern" $
             roundtripFromToRow genPattern patternToRow patternFromRow
+        prop "OutputReference" $
+            roundtripFromToRow genExtendedOutputReference extendedOutputReferenceToRow extendedOutputReferenceFromRow
         prop "Datum" $
             roundtripFromToRow2 genDatum datumToRow datumFromRow
         prop "ScriptReference" $
@@ -196,7 +219,7 @@ spec = parallel $ do
         prop "list checkpoints after inserting them" $
             forAllCheckpoints k $ \pts -> monadicIO $ do
                 cps <- withInMemoryDatabase k $ \Database{..} -> do
-                    runReadOnlyTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    runReadWriteTransaction $ insertCheckpoints (pointToRow <$> pts)
                     runReadOnlyTransaction $ fmap getPointSlotNo <$> listCheckpointsDesc pointFromRow
                 monitor $ counterexample (show cps)
                 assert $ all (uncurry (>)) (zip cps (drop 1 cps))
@@ -205,13 +228,13 @@ spec = parallel $ do
         prop "get ancestor of any checkpoint" $
             forAllCheckpoints k $ \pts -> monadicIO $ do
                 oneByOne <- withInMemoryDatabase k $ \Database{..} -> do
-                    runReadOnlyTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    runReadWriteTransaction $ insertCheckpoints (pointToRow <$> pts)
                     fmap mconcat $ runReadOnlyTransaction $ forM pts $ \pt -> do
                         let slotNo = unSlotNo (getPointSlotNo pt)
                         listAncestorsDesc slotNo 1 pointFromRow
 
                 allAtOnce <- withInMemoryDatabase k $ \Database{..} -> do
-                    runReadOnlyTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    runReadWriteTransaction $ insertCheckpoints (pointToRow <$> pts)
                     fmap reverse $ runReadOnlyTransaction $ do
                         let slotNo = unSlotNo (maximum (getPointSlotNo <$> pts))
                         listAncestorsDesc slotNo (fromIntegral $ length pts) pointFromRow
@@ -223,6 +246,77 @@ spec = parallel $ do
 
                 assert (Prelude.init pts == oneByOne)
                 assert (oneByOne == allAtOnce)
+
+    context "matches" $ do
+        prop "return matches in order" $ do
+            let slot = getPointSlotNo . createdAt
+            let txIx = snd . outputReference
+            let outIx = getOutputIndex . fst . outputReference
+
+            let oldestFirst current successor
+                    | slot current == slot successor =
+                        if txIx current == txIx successor then
+                            label "same transaction index" (outIx current <= outIx successor)
+                        else
+                            property (txIx current < txIx successor)
+                    | otherwise =
+                        property (slot current < slot successor)
+
+            let mostRecentFirst current successor
+                    | slot current == slot successor =
+                        if txIx current == txIx successor then
+                            label "same transaction index" (outIx current >= outIx successor)
+                        else
+                            property (txIx current >= txIx successor)
+                    | otherwise =
+                        property (slot current > slot successor)
+
+            let genConflictingResults =
+                    scale (10*) $ listOf1 $ genResultWith (genNonGenesisPointBetween (1, 100))
+
+            let shrinkResults =
+                    shrinkList (const [])
+
+            let showResults xs = toString $ unlines
+                    [ "sl/tx/out"
+                    , "---------"
+                    , T.intercalate "\n" $ fmap (\x ->
+                            T.intercalate "/"
+                                [ slotNoToText (slot x)
+                                , show (txIx x)
+                                , show (outIx x)
+                                ]
+                        ) xs
+                    ]
+
+            forAllShrinkShow genConflictingResults shrinkResults showResults $ \results ->
+                withMaxSuccess 50 $ monadicIO $ do
+                    (asc, desc) <- withInMemoryDatabase 10 $ \Database{..} -> do
+                        let matchAll = patternToSql (MatchAny IncludingBootstrap)
+
+                        runReadWriteTransaction $ do
+                            insertInputs (resultToRow <$> results)
+                            insertCheckpoints (pointToRow . createdAt <$> results)
+                            insertCheckpoints (pointToRow <$> mapMaybe spentAt results)
+
+                        qAsc <- newTBQueueIO (fromIntegral $ length results)
+                        runReadOnlyTransaction $ foldInputs matchAll Asc
+                            (atomically . writeTBQueue qAsc . resultFromRow)
+
+                        qDesc <- newTBQueueIO (fromIntegral $ length results)
+                        runReadOnlyTransaction $ foldInputs matchAll Desc
+                            (atomically . writeTBQueue qDesc . resultFromRow)
+
+                        atomically $ (,) <$> flushTBQueue qAsc <*> flushTBQueue qDesc
+
+                    let pAsc = conjoin (uncurry oldestFirst <$> zip asc (drop 1 asc))
+                            & counterexample (showResults asc)
+                            & counterexample "\n    Not ordered ASC ↴\n"
+                    let pDesc = conjoin (uncurry mostRecentFirst <$> zip desc (drop 1 desc))
+                            & counterexample (showResults desc)
+                            & counterexample "\n    Not ordered DESC ↴\n"
+
+                    monitor (.&&. pAsc .&&. pDesc)
 
     context "concurrent read / write" $ do
         specify "1 long-lived worker vs 2 short-lived workers (in-memory)" $ do
@@ -269,10 +363,10 @@ longLivedWorker dir lock allow =
         25 -> pure ()
         n   -> do
             result <- generate (chooseVector (100, 500) genResult)
-            runReadOnlyTransaction $ insertInputs (resultToRow <$> result)
+            runReadWriteTransaction $ insertInputs (resultToRow <$> result)
             ms <- millisecondsToDiffTime <$> generate (choose (1, 15))
             threadDelay ms
-            loop db (succ n)
+            loop db (next n)
 
 shortLivedWorker :: FilePath -> DBLock IO -> IO ()
 shortLivedWorker dir lock = do
@@ -289,7 +383,8 @@ shortLivedWorker dir lock = do
                 , (2, do
                     p <- genPattern
                     let q = patternToSql p
-                    pure $ runReadOnlyTransaction $ foldInputs q (\_ -> pure ())
+                    sortDir <- elements [Asc, Desc]
+                    pure $ runReadOnlyTransaction $ foldInputs q sortDir (\_ -> pure ())
                   )
                 , (1, do
                     p <- genPattern
@@ -307,7 +402,7 @@ shortLivedWorker dir lock = do
                 ]
             ms <- millisecondsToDiffTime <$> generate (choose (15, 50))
             threadDelay ms
-            loop db (succ n)
+            loop db (next n)
 
 --
 -- Properties
@@ -369,25 +464,21 @@ withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
             (Only . SQLText . addressToRow <$> (getAddress . snd <$> matches))
         executeMany conn
             "INSERT INTO output_references VALUES (?)"
-            (Only . outputReferenceToRow <$> (fst <$> matches))
+            (Only . SQLBlob . extendedOutputReferenceToRow <$> (fst <$> matches))
     action conn
 
 rowToAddress :: HasCallStack => [SQLData] -> Address
 rowToAddress = \case
     [SQLText row, _] ->
         addressFromRow row
-    _ ->
+    _notSqlText ->
         error "rowToAddress: not SQLText"
 
-outputReferenceToRow :: OutputReference -> SQLData
-outputReferenceToRow =
-    SQLBlob . serialize'
-
-rowToOutputReference :: HasCallStack => [SQLData] -> OutputReference
+rowToOutputReference :: HasCallStack => [SQLData] -> ExtendedOutputReference
 rowToOutputReference = \case
     [SQLBlob row] ->
-        unsafeDeserialize' row
-    _ ->
+        extendedOutputReferenceFromRow row
+    _notSqlBlob ->
         error "rowToOutputReference: not SQLBlob"
 
 withInMemoryDatabase

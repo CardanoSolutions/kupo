@@ -12,9 +12,6 @@ module Test.KupoSpec
 
 import Kupo.Prelude
 
-import Control.Exception
-    ( try
-    )
 import Data.List
     ( maximum
     , (\\)
@@ -99,7 +96,6 @@ import Test.Hspec
     , context
     , runIO
     , shouldBe
-    , shouldContain
     , shouldReturn
     , shouldSatisfy
     , specify
@@ -133,6 +129,7 @@ import Test.Kupo.Fixture
     , someScriptInOutput
     , someScriptInWitness
     , someStakeKey
+    , someThirdTransactionId
     , someTransactionId
     )
 import Type.Reflection
@@ -141,21 +138,27 @@ import Type.Reflection
     , typeRepTyCon
     )
 
+import Kupo.Control.MonadCatch
+    ( MonadCatch (..)
+    )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..)
+    )
 import qualified Prelude
 
 spec :: Spec
 spec = skippableContext "End-to-end" $ \manager -> do
-    specify "in memory" $ \(_, tr, cfg) -> do
+    specify "in memory" $ \(_, tr, cfg, httpLogs) -> do
         env <- newEnvironment $ cfg
             { workDir = InMemory
             , since = Just GenesisPoint
             , patterns = [MatchAny IncludingBootstrap]
             }
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         let timeLimit = case chainProducer cfg of
                 CardanoNode{} -> 5
                 Ogmios{} -> 10
-        timeoutOrThrow timeLimit $ race_
+        timeoutOrThrow timeLimit (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 waitUntilM $ do
@@ -164,22 +167,22 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 healthCheck (serverHost cfg) (serverPort cfg)
             )
 
-    forM_ eraBoundaries $ \(era, point) -> specify ("quick sync through " <> era) $ \(_, tr, cfg) -> do
+    forM_ eraBoundaries $ \(era, point) -> specify ("quick sync through " <> era) $ \(_, tr, cfg, httpLogs) -> do
         env <- newEnvironment $ cfg
             { workDir = InMemory
             , since = Just point
             , patterns = [MatchAny IncludingBootstrap]
             }
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
-        timeoutOrThrow 5 $ race_
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
+        timeoutOrThrow 5 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 waitSlot (> 1_000)
                 healthCheck (serverHost cfg) (serverPort cfg)
             )
 
-    specify "on disk (start → restart)" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+    specify "on disk (start → restart)" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
 
         ( do -- Can start the server on a fresh new db
             env <- newEnvironment $ cfg
@@ -187,7 +190,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 , since = Just somePoint
                 , patterns = [MatchAny OnlyShelley]
                 }
-            timeoutOrThrow 5 $ race_
+            timeoutOrThrow 5 (debug httpLogs) $ race_
                 (kupo tr `runWith` env)
                 (do
                     waitSlot (> (getPointSlotNo somePoint))
@@ -200,7 +203,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 , since = Just somePoint
                 , patterns = [MatchAny OnlyShelley]
                 }
-            timeoutOrThrow 5 $ race_
+            timeoutOrThrow 5 (debug httpLogs) $ race_
                 (kupo tr `runWith` env)
                 (do
                     cps <- fmap getPointSlotNo <$> listCheckpoints
@@ -226,7 +229,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
           )
 
-    specify "Can't start the server on a fresh new db without explicit point" $ \(tmp, tr, cfg) -> do
+    specify "Can't start the server on a fresh new db without explicit point" $ \(tmp, tr, cfg, _) -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Nothing
@@ -234,8 +237,8 @@ spec = skippableContext "End-to-end" $ \manager -> do
             }
         shouldThrowTimeout @NoStartingPointException 1 (kupo tr `runWith` env)
 
-    specify "Retry and wait when chain producer isn't available" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+    specify "Retry and wait when chain producer isn't available" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just GenesisPoint
@@ -253,7 +256,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                             , ogmiosPort
                             }
             }
-        timeoutOrThrow 5 $ race_
+        timeoutOrThrow 5 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 cps <- listCheckpoints
@@ -262,7 +265,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 cps `shouldBe` cps'
             )
 
-    specify "Crashes when no intersection is found" $ \(tmp, tr, cfg) -> do
+    specify "Crashes when no intersection is found" $ \(tmp, tr, cfg, _) -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just someNonExistingPoint
@@ -270,7 +273,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             }
         shouldThrowTimeout @IntersectionNotFoundException 1 (kupo tr `runWith` env)
 
-    specify "Crashes when no patterns are defined" $ \(tmp, tr, cfg) -> do
+    specify "Crashes when no patterns are defined" $ \(tmp, tr, cfg, _) -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePoint
@@ -278,8 +281,8 @@ spec = skippableContext "End-to-end" $ \manager -> do
             }
         shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
 
-    specify "Can prune utxo on-the-fly" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+    specify "Can prune utxo on-the-fly" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePoint
@@ -287,7 +290,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             , inputManagement = RemoveSpentInputs
             }
 
-        timeoutOrThrow 30 $ race_
+        timeoutOrThrow 30 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 waitSlot (> 50_000)
@@ -295,8 +298,8 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 all (isNothing . spentAt) matches `shouldBe` True
             )
 
-    specify "Retrieve checkpoints and ancestors" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+    specify "Retrieve checkpoints and ancestors" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePointAncestor
@@ -305,7 +308,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             }
         let strict = GetCheckpointStrict
         let flex = GetCheckpointClosestAncestor
-        timeoutOrThrow 5 $ race_
+        timeoutOrThrow 5 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 waitSlot (> (getPointSlotNo somePointSuccessor))
@@ -321,14 +324,14 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     `shouldReturn` Just somePoint
             )
 
-    specify "Retrieve datums associated with datum hashes" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+    specify "Retrieve datums associated with datum hashes" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastAlonzoPoint
             , patterns = [MatchAny OnlyShelley]
             }
-        timeoutOrThrow 20 $ race_
+        timeoutOrThrow 20 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 waitDatum someDatumHashInWitness
@@ -337,14 +340,14 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     `shouldReturn` someDatumInOutput
             )
 
-    specify "Retrieve scripts associated with script hashes" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+    specify "Retrieve scripts associated with script hashes" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePointNearScripts
             , patterns = [MatchAny OnlyShelley]
             }
-        timeoutOrThrow 20 $ race_
+        timeoutOrThrow 20 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 waitScript someScriptHashInWitness
@@ -355,21 +358,21 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     `shouldReturn` someScriptInOutput
             )
 
-    specify "Dynamically add pattern and restart to a past point" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+    specify "Dynamically add pattern and restart to a past point" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastByronPoint
             , patterns = [MatchDelegation someStakeKey]
             }
-        let maxSlot = getPointSlotNo lastByronPoint + 50_000
+        let maxSlot = getPointSlotNo lastByronPoint + 100_000
         let onlyInWindow r
                 | getPointSlotNo (createdAt r) <= maxSlot =
                     Just r { spentAt = Nothing }
                 | otherwise =
                     Nothing
         ref <- newIORef ([], [])
-        timeoutOrThrow 10 $ race_
+        timeoutOrThrow 10 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 waitSlot (>= maxSlot)
@@ -381,7 +384,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 waitSlot (< maxSlot) -- Observe rollback
                 waitSlot (>= maxSlot)
                 ys <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
-                ys `shouldContain` xs
+                (xs \\ ys) `shouldBe` []
                 (sort <$> listPatterns) `shouldReturn`
                     [ MatchDelegation someStakeKey
                     , MatchDelegation someOtherStakeKey
@@ -395,7 +398,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 , since = Just lastByronPoint
                 , patterns = [MatchDelegation someOtherStakeKey]
                 }
-            timeoutOrThrow 10 $ race_
+            timeoutOrThrow 10 (debug httpLogs) $ race_
                 (kupo tr `runWith` env')
                 (do
                     waitSlot (>= maxSlot)
@@ -403,14 +406,14 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     ys \\ zs `shouldBe` xs
                 )
 
-    specify "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+    specify "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastByronPoint
             , patterns = [MatchAny OnlyShelley]
             }
-        timeoutOrThrow 10 $ race_
+        timeoutOrThrow 10 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 let maxSlot = getPointSlotNo lastByronPoint + 10_000
@@ -425,14 +428,14 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 slot' `shouldSatisfy` (>= slot)
             )
 
-    specify "Failing to insert patterns (non-existing point) doesn't disturb normal operations" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+    specify "Failing to insert patterns (non-existing point) doesn't disturb normal operations" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastByronPoint
             , patterns = [MatchAny OnlyShelley]
             }
-        timeoutOrThrow 10 $ race_
+        timeoutOrThrow 5 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 let maxSlot = getPointSlotNo lastByronPoint + 10_000
@@ -447,32 +450,38 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 slot' `shouldSatisfy` (>= slot)
             )
 
-    specify "Match by transaction id" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+    specify "Match by transaction id / output reference" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastMaryPoint
-            , patterns = [MatchTransactionId someTransactionId]
+            , patterns =
+                [ MatchTransactionId someTransactionId
+                , MatchOutputReference (mkOutputReference someThirdTransactionId 0)
+                ]
             }
-        timeoutOrThrow 10 $ race_
+        timeoutOrThrow 10 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 waitUntilM $ do
                     outRefs <- fmap outputReference <$> getAllMatches NoStatusFlag
                     return $
-                        mkOutputReference someTransactionId 0 `elem` outRefs
+                        (mkOutputReference someTransactionId 0, 0) `elem` outRefs
                         &&
-                        mkOutputReference someTransactionId 1 `elem` outRefs
+                        (mkOutputReference someTransactionId 1, 0) `elem` outRefs
+                        &&
+                        (mkOutputReference someThirdTransactionId 0, 2) `elem` outRefs
             )
 
-    specify "Match by policy id" $ \(tmp, tr, cfg) -> do
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg)
+
+    specify "Match by policy id" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastMaryPoint
             , patterns = [MatchPolicyId somePolicyId]
             }
-        timeoutOrThrow 10 $ race_
+        timeoutOrThrow 10 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 waitUntilM $ do
@@ -482,7 +491,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
 
 type EndToEndSpec
     =  Manager
-    -> SpecWith (FilePath, Tracers IO 'Concrete, Configuration)
+    -> SpecWith (FilePath, Tracers IO 'Concrete, Configuration, TVar IO [Text])
 
 skippableContext :: String -> EndToEndSpec -> Spec
 skippableContext prefix skippableSpec = do
@@ -542,17 +551,24 @@ skippableContext prefix skippableSpec = do
     withTempDirectory
         :: IORef Int
         -> Configuration
-        -> ((FilePath, Tracers IO 'Concrete, Configuration) -> IO ())
+        -> ((FilePath, Tracers IO 'Concrete, Configuration, TVar IO [Text]) -> IO ())
         -> IO ()
     withTempDirectory ref cfg action = do
         serverPort <- atomicModifyIORef' ref $ \port -> (next port, port)
+        httpLogs <- newTVarIO []
         withSystemTempDirectory "kupo-end-to-end" $ \dir -> do
             withTempFile dir "traces" $ \_ h ->
                 withTracers h version (defaultTracers (Just Info)) $ \tr ->
-                    action (dir, tr, cfg { serverPort })
+                    action (dir, tr, cfg { serverPort }, httpLogs)
 
-timeoutOrThrow :: DiffTime -> IO () -> IO ()
-timeoutOrThrow t action = do
+debug :: TVar IO [Text] -> IO ()
+debug logs = do
+    xs <- reverse <$> atomically (readTVar logs)
+    putStrLn "\n== HttpClient Debug"
+    mapM_ (putStrLn . toString) xs
+
+timeoutOrThrow :: DiffTime -> IO () -> IO () -> IO ()
+timeoutOrThrow t cleanup action = flip onException cleanup $ do
     res <- timeout t action
     res `shouldSatisfy` isJust
 

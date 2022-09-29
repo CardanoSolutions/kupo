@@ -151,6 +151,12 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             pure (Json.Null, [])
 
+        session specification get "/health" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/health"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
         session specification get "/health" $ \_assertJson _endpoint -> do
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestHeaders = [ (hAccept, "text/plain") ] }
@@ -162,12 +168,6 @@ spec = do
             liftIO $ bytes `shouldSatisfy` (BS.isInfixOf "kupo_connection_status")
             liftIO $ bytes `shouldSatisfy` (BS.isInfixOf "TYPE kupo_most_recent_checkpoint counter")
             return (Json.Null, [])
-
-        session specification get "/health" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint Http.status200
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/health"
-            res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
 
         session specification get "/checkpoints" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -193,6 +193,12 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
+        session specification get "/matches?order=oldest_first" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?oldest_first"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
         session specification get "/matches/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             fragment <- liftIO $ generate (elements Fixture.unaryFragments)
@@ -206,6 +212,14 @@ spec = do
             fragment <- liftIO $ generate (elements Fixture.binaryFragments)
             res <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath ("/matches/" <> fragment)
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification get "/matches/{pattern}?order=most_recent_first" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            fragment <- liftIO $ generate (elements Fixture.binaryFragments)
+            res <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath ("/matches/" <> fragment <> "?order=most_recent_first")
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
@@ -305,6 +319,14 @@ spec = do
         session' "🕱 GET /matches?spent&unspent" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/matches?spent&unspent"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "🕱 GET /matches?order=foo" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/matches?order=foo"
             resBadRequest
                 & Wai.assertStatus (Http.statusCode Http.status400)
             resBadRequest
@@ -415,7 +437,7 @@ databaseStub = Database
         10
     , insertInputs =
         \_ -> return ()
-    , foldInputs = \_ callback -> lift $ do
+    , foldInputs = \_ _ callback -> lift $ do
         rows <- fmap resultToRow <$> generate (listOf1 genResult)
         mapM_ callback rows
     , deleteInputsByAddress =

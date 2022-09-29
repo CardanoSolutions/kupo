@@ -9,15 +9,26 @@ module Test.Kupo.Data.Http.ForcedRollbackSpec
 import Kupo.Prelude
 
 import Kupo.Data.Http.ForcedRollback
-    ( decodeForcedRollback, forcedRollbackToJson )
+    ( decodeForcedRollback
+    , forcedRollbackToJson
+    )
 import Test.Hspec
-    ( Spec, context, parallel )
+    ( Spec
+    , context
+    , parallel
+    )
 import Test.Hspec.QuickCheck
-    ( prop )
+    ( prop
+    )
 import Test.Kupo.Data.Generators
-    ( genForcedRollback )
+    ( genForcedRollback
+    )
 import Test.QuickCheck
-    ( Property, counterexample, forAll, (===) )
+    ( Property
+    , counterexample
+    , forAll
+    , (===)
+    )
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json

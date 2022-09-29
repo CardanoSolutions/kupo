@@ -17,6 +17,10 @@ module Kupo.Data.Cardano
     , IsBlock (..)
     , Block
 
+      -- * TransactionIndex
+    , TransactionIndex
+    , transactionIndexToJson
+
       -- * Transaction
     , Transaction
 
@@ -44,6 +48,9 @@ module Kupo.Data.Cardano
     , withReferences
     , outputReferenceToText
     , outputReferenceFromText
+
+      -- * ExtendedOutputReference
+    , ExtendedOutputReference
 
       -- * Output
     , Output
@@ -365,7 +372,7 @@ class IsBlock (block :: Type) where
         -> Point
 
     foldBlock
-        :: (BlockBody block -> result -> result)
+        :: (TransactionIndex -> BlockBody block -> result -> result)
         -> result
         -> block
         -> result
@@ -405,28 +412,30 @@ instance IsBlock Block where
         blockPoint
 
     foldBlock
-        :: (Transaction -> result -> result)
+        :: (TransactionIndex -> Transaction -> result -> result)
         -> result
         -> Block
         -> result
     foldBlock fn result = \case
         BlockByron blk ->
-            let ignoreProtocolTxs = \case
+            let
+                ignoreProtocolTxs ix = \case
                     ByronTx txId (Ledger.Byron.taTx -> tx) ->
-                        fn (TransactionByron tx txId)
-                    _ ->
+                        fn ix (TransactionByron tx txId)
+                    _protocolUpdateOrVote ->
                         identity
-             in foldr ignoreProtocolTxs result (extractTxs blk)
+             in
+                foldrWithIndex ignoreProtocolTxs result (extractTxs blk)
         BlockShelley (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldr (fn . TransactionShelley) result (Ledger.Shelley.txSeqTxns' txs)
+            foldrWithIndex (\ix -> fn ix . TransactionShelley) result (Ledger.Shelley.txSeqTxns' txs)
         BlockAllegra (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldr (fn . TransactionAllegra) result (Ledger.Shelley.txSeqTxns' txs)
+            foldrWithIndex (\ix -> fn ix . TransactionAllegra) result (Ledger.Shelley.txSeqTxns' txs)
         BlockMary (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldr (fn . TransactionMary) result (Ledger.Shelley.txSeqTxns' txs)
+            foldrWithIndex (\ix -> fn ix . TransactionMary) result (Ledger.Shelley.txSeqTxns' txs)
         BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldr (fn . TransactionAlonzo) result (Ledger.Alonzo.txSeqTxns txs)
+            foldrWithIndex (\ix -> fn ix . TransactionAlonzo) result (Ledger.Alonzo.txSeqTxns txs)
         BlockBabbage (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldr (fn . TransactionBabbage) result (Ledger.Alonzo.txSeqTxns txs)
+            foldrWithIndex (\ix -> fn ix . TransactionBabbage) result (Ledger.Alonzo.txSeqTxns txs)
 
     spentInputs
         :: Transaction
@@ -456,7 +465,7 @@ instance IsBlock Block where
         transformByron (Ledger.Byron.TxInUtxo txId ix) =
             mkOutputReference
                 (transactionIdFromByron txId)
-                (fromIntegral @Word16 @Word64 ix)
+                ix
 
     mapMaybeOutputs
         :: forall result. ()
@@ -649,6 +658,13 @@ transactionIdToText =
     encodeBase16 . (\(UnsafeHash h) -> fromShort h) . Ledger.extractHash . Ledger._unTxId
 {-# INLINABLE transactionIdToText #-}
 
+transactionIdFromText
+    :: Text
+    -> Maybe TransactionId
+transactionIdFromText =
+    fmap transactionIdFromHash . hashFromTextAsHex @Blake2b_256
+{-# INLINABLE transactionIdFromText #-}
+
 transactionIdToJson :: TransactionId -> Json.Encoding
 transactionIdToJson =
     hashToJson . Ledger.extractHash . Ledger._unTxId
@@ -656,11 +672,11 @@ transactionIdToJson =
 
 -- OutputIndex
 
-type OutputIndex = Word64
+type OutputIndex = Word16
 
 getOutputIndex :: OutputReference' crypto -> OutputIndex
 getOutputIndex (Ledger.TxIn _ (Ledger.TxIx ix)) =
-    ix
+    fromIntegral ix
 {-# INLINABLE getOutputIndex #-}
 
 outputIndexToJson :: OutputIndex -> Json.Encoding
@@ -720,7 +736,7 @@ mkOutputReference
     -> OutputIndex
     -> OutputReference
 mkOutputReference i =
-    Ledger.TxIn i . Ledger.TxIx
+    Ledger.TxIn i . Ledger.TxIx . fromIntegral
 {-# INLINABLE mkOutputReference #-}
 
 withReferences
@@ -740,13 +756,6 @@ withReferences txId = loop 0
 instance HasTransactionId Ledger.TxIn where
     getTransactionId (Ledger.TxIn i _) = i
 
-transactionIdFromText
-    :: Text
-    -> Maybe TransactionId
-transactionIdFromText =
-    fmap transactionIdFromHash . hashFromTextAsHex @Blake2b_256
-{-# INLINABLE transactionIdFromText #-}
-
 outputReferenceFromText :: Text -> Maybe OutputReference
 outputReferenceFromText txt =
     case T.splitOn "@" txt of
@@ -754,7 +763,7 @@ outputReferenceFromText txt =
             mkOutputReference
                 <$> transactionIdFromText txId
                 <*> outputIndexFromText outputIndex
-        _ ->
+        _malformedTextString ->
             Nothing
 
 outputReferenceToText :: OutputReference -> Text
@@ -764,6 +773,18 @@ outputReferenceToText outRef =
     "@"
     <>
     transactionIdToText (getTransactionId outRef)
+
+-- ExtendedOutputReference
+
+type ExtendedOutputReference =
+    (OutputReference, TransactionIndex)
+
+-- TransactionIndex
+
+type TransactionIndex = Word16
+
+transactionIndexToJson :: TransactionIndex -> Json.Encoding
+transactionIndexToJson = toEncoding
 
 -- Output
 

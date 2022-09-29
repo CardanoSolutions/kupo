@@ -40,12 +40,18 @@ info:
 
     ### From source
 
-    ```console
-    $ nix build -f default.nix kupo.components.exes.kupo
-    ```
+    #### Pre-requisite
 
-    This produces a statically-linked executable that provides a command-line
-    interface for passing options and commands.
+    On Linux, make sure to have [nix](https://nixos.org/download.html#nix-install-linux) and [cachix](https://www.cachix.org/) installed.
+    Configure cachix to use `kupo.cachix.org-1:RzYQ8KVjRJdPNt/Bhq/UqdyGYWFM8ShjEMNG8wzHBQ4=` (`cachix use kupo`).
+
+    On MacOS, you'll need `cabal` as well as a few system dependencies. Follow the [instructions to install `cardano-node` on the developer portal](https://developers.cardano.org/docs/get-started/installing-cardano-node#macos) since Kupo share a similar set of dependencies.
+
+    #### Building
+
+    ```console
+    $ make
+    ```
 
     # Getting Started
 
@@ -567,7 +573,7 @@ components:
 
     OutputIndex:
       type: integer
-      description: An index of an output within a transaction.
+      description: The index of the output within the transaction carrying it.
       minimum: 0
       example: 2
 
@@ -670,6 +676,12 @@ components:
       minLength: 64
       maxLength: 64
 
+    TransactionIndex:
+      type: integer
+      description: The index of the transaction within the block including it.
+      minimum: 0
+      example: 14
+
     Value:
       type: object
       description: A (multi-asset) value of a transaction's output.
@@ -704,6 +716,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - transaction_index
         - transaction_id
         - output_index
         - address
@@ -713,6 +726,8 @@ components:
         - created_at
         - spent_at
       properties:
+        transaction_index:
+          $ref: "#/components/schemas/TransactionIndex"
         transaction_id:
           $ref: "#/components/schemas/TransactionId"
         output_index:
@@ -763,6 +778,19 @@ components:
               description: Absolute slot number of the current tip of the node.
 
   parameters:
+    asset-name:
+      deprecated: true
+      name: asset_name
+      in: query
+      required: false
+      allowEmptyValue: false
+      schema:
+        type: string
+        contentEncoding: base16
+        pattern: ^[a-f0-9]{2,64}$
+      description: |
+        Use an explicit [Pattern](#section/Patterns) as _path-parameter_ instead.
+
     datum-hash:
       name: datum_hash
       in: path
@@ -776,6 +804,19 @@ components:
         example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
       description:
         A datum blake2b-256 hash digest.
+
+    order:
+      name: order
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - most_recent_first
+          - oldest_first
+        description: |
+          Order results by their location on-chain. By default, most recent results are returned first (i.e. by descending `created_at.slot_no`).
+          Within a same slot, results are ordered in function of their position in the block (i.e. `transaction_index`).
 
     pattern:
       name: pattern
@@ -792,6 +833,21 @@ components:
         A matching pattern on addresses, assets or transactions.
 
         See [Patterns](#section/Patterns) for more details.
+
+    policy-id:
+      deprecated: true
+      name: policy_id
+      in: query
+      required: false
+      allowEmptyValue: false
+      schema:
+        type: string
+        contentEncoding: base16
+        minLength: 56
+        maxLength: 56
+        pattern: ^[a-f0-9]{56}$
+      description: |
+        Use an explicit [Pattern](#section/Patterns) as _path-parameter_ instead.
 
     script-hash:
       name: script_hash
@@ -862,6 +918,9 @@ paths:
       parameters:
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
+        - $ref: "#/components/parameters/order"
+        - $ref: "#/components/parameters/policy-id"
+        - $ref: "#/components/parameters/asset-name"
       responses:
         200:
           description: OK
@@ -885,6 +944,9 @@ paths:
         - $ref: "#/components/parameters/pattern"
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
+        - $ref: "#/components/parameters/order"
+        - $ref: "#/components/parameters/policy-id"
+        - $ref: "#/components/parameters/asset-name"
       responses:
         200:
           description: OK

@@ -806,7 +806,7 @@ semantics pause HttpClient{..} queue = \case
     GetPreviousCheckpoint sl -> do
         Checkpoint <$> getCheckpointBySlot GetCheckpointClosestAncestor sl
     GetUtxo -> do
-        Utxo . foldMap (Set.singleton . outputReference) <$> getAllMatches OnlyUnspent
+        Utxo . foldMap (Set.singleton . fst . outputReference) <$> getAllMatches OnlyUnspent
     GetDatumByHash hash ->
         DatumByHash <$> lookupDatumByHash hash
     GetScriptByHash hash ->

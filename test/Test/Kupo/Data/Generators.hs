@@ -19,6 +19,7 @@ import Kupo.Data.Cardano
     , Block
     , Datum
     , DatumHash
+    , ExtendedOutputReference
     , HeaderHash
     , Output
     , OutputIndex
@@ -30,6 +31,7 @@ import Kupo.Data.Cardano
     , ScriptReference (..)
     , SlotNo (..)
     , TransactionId
+    , TransactionIndex
     , Value
     , assetNameMaxLength
     , digestSize
@@ -193,6 +195,10 @@ genNonGenesisPoint :: Gen Point
 genNonGenesisPoint = do
     BlockPoint <$> genSlotNo <*> genHeaderHash
 
+genNonGenesisPointBetween :: (SlotNo, SlotNo) -> Gen Point
+genNonGenesisPointBetween (SlotNo minSlot, SlotNo maxSlot) =
+    BlockPoint <$> fmap SlotNo (choose (minSlot, maxSlot)) <*> genHeaderHash
+
 genPointsBetween :: (SlotNo, SlotNo) -> Gen [Point]
 genPointsBetween (inf, sup)
     | inf >= sup = pure []
@@ -213,6 +219,14 @@ genOutputReference :: Gen OutputReference
 genOutputReference =
     mkOutputReference <$> genTransactionId <*> genOutputIndex
 
+genExtendedOutputReference :: Gen ExtendedOutputReference
+genExtendedOutputReference = do
+    (,) <$> genOutputReference <*> genTransactionIndex
+
+genTransactionIndex :: Gen TransactionIndex
+genTransactionIndex =
+    fromIntegral <$> choose (0 :: Int, 255)
+
 genPattern :: Gen Pattern
 genPattern = oneof
     [ MatchAny <$> elements [ IncludingBootstrap, OnlyShelley ]
@@ -227,14 +241,19 @@ genPattern = oneof
     sz = digestSize @Blake2b_224
 
 genResult :: Gen Result
-genResult = Result
-    <$> genOutputReference
+genResult =
+    genResultWith genNonGenesisPoint
+
+genResultWith :: Gen Point -> Gen Result
+genResultWith genPoint = Result
+    <$> genExtendedOutputReference
     <*> genAddress
     <*> genOutputValue
     <*> genDatum
     <*> genScriptReference
-    <*> genNonGenesisPoint
-    <*> frequency [(1, pure Nothing), (5, Just <$> genNonGenesisPoint)]
+    <*> genPoint
+    <*> frequency [(1, pure Nothing), (5, Just <$> genPoint)]
+
 
 genOutput :: Gen Output
 genOutput = mkOutput

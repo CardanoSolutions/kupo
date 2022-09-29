@@ -4,6 +4,7 @@ import Kupo.Prelude
 
 import Kupo.Data.Cardano
     ( Address
+    , ExtendedOutputReference
     , Output
     , OutputReference
     , TransactionId
@@ -17,6 +18,7 @@ import Test.Kupo.Data.Generators
     , genOutputReference
     , genOutputValue
     , genScript
+    , genTransactionIndex
     )
 import Test.QuickCheck
     ( Gen
@@ -36,7 +38,7 @@ class ArbitrarySatisfying a where
     shrinkSatisfying :: [UtxoConstraint] -> a -> [a]
     shrinkSatisfying _ _ = []
 
-instance ArbitrarySatisfying (OutputReference, Output) where
+instance ArbitrarySatisfying (ExtendedOutputReference, Output) where
     genSatisfying constraints = do
         k <- genSatisfying constraints
         v <- mkOutput
@@ -56,6 +58,11 @@ instance ArbitrarySatisfying Address where
             pure addr
         _:rest ->
             genSatisfying rest
+
+instance ArbitrarySatisfying ExtendedOutputReference where
+    genSatisfying constraints = do
+        txIx <- genTransactionIndex
+        (,txIx) <$> genSatisfying constraints
 
 instance ArbitrarySatisfying OutputReference where
     genSatisfying = \case
