@@ -2,7 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-module Kupo.App.ChainSync.Direct
+module Kupo.App.ChainSync.Node
     ( mkChainSyncClient
     ) where
 
@@ -66,6 +66,10 @@ mkChainSyncClient var0 mailbox pts =
         -- functions that do not get garbage-collected somehow. As a results,
         -- the heap just keep growing. Inlining the TMVar nicely fixes the
         -- problem.
+        --
+        -- Compiling with `-fno-full-laziness` fixes the issue which suggests that
+        -- some thunks are being created somewhere when used as a top-level binding.
+        --
         -- Interestingly, there's no issue with the 'mailbox'.
         SendMsgFindIntersect pts (clientStIntersect var0 Nothing)
   where

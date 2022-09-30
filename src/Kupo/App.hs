@@ -99,7 +99,7 @@ import Kupo.Data.Pattern
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import qualified Kupo.App.ChainSync.Direct as Direct
+import qualified Kupo.App.ChainSync.Node as Node
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 
 --
@@ -150,7 +150,7 @@ newProducer tr chainProducer callback = do
                   networkMagic
                   slotsPerEpoch
                   nodeSocket
-                  (Direct.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
+                  (Node.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
                   & handle
                     (\case
                         e@IntersectionNotFound{requestedPoints = points} -> do

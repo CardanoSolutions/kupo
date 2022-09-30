@@ -45,10 +45,11 @@ library
       Kupo
       Kupo.App
       Kupo.App.ChainSync
-      Kupo.App.ChainSync.Direct
+      Kupo.App.ChainSync.Node
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
       Kupo.App.Database
+      Kupo.App.FetchBlock.Node
       Kupo.App.Health
       Kupo.App.Http
       Kupo.App.Http.HealthCheck
