@@ -14,6 +14,8 @@ import Kupo.Data.Cardano
     , DatumHash
     , Input
     , IsBlock (..)
+    , Metadata
+    , MetadataHash
     , Output
     , OutputReference
     , Point
@@ -27,16 +29,17 @@ import qualified Data.Set as Set
 -- are relevant to kupo. Rest isn't indexed.
 data PartialBlock = PartialBlock
     { blockPoint :: !Point
-    , blockBody :: ![ PartialTransaction ]
+    , blockBody :: ![PartialTransaction]
     } deriving (Eq, Show)
 
 -- | A partial transaction, analogous to 'PartialBlock', trimmed down to the
 -- minimum.
 data PartialTransaction = PartialTransaction
-    { inputs :: ![ Input ]
-    , outputs :: ![ (OutputReference, Output) ]
+    { inputs :: ![Input]
+    , outputs :: ![(OutputReference, Output)]
     , datums :: !(Map DatumHash BinaryData)
     , scripts :: !(Map ScriptHash Script)
+    , metadata :: !(Maybe (MetadataHash, Metadata))
     } deriving (Eq, Show)
 
 instance IsBlock PartialBlock where
@@ -59,3 +62,6 @@ instance IsBlock PartialBlock where
 
     witnessedScripts =
         scripts
+
+    userDefinedMetadata =
+        metadata

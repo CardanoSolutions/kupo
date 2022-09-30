@@ -407,13 +407,14 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     inputSource <- o .:? "inputSource"
     -- NOTE: On Byron transactions, witnesses are an array!
     witness <- o .: "witness" <|> pure KeyMap.empty
-    metadata <- o .:? "metadata" .!= KeyMap.empty >>= (\o' -> o' .:? "body" .!= KeyMap.empty)
+    auxiliaryData <- o .:? "metadata" .!= KeyMap.empty >>= (\o' -> o' .:? "body" .!= KeyMap.empty)
     datums <- witness .:? "datums" .!= Json.Object mempty >>= decodeDatums
     scriptsInWitness <- witness .:? "scripts" .!= Json.Object mempty >>= decodeScripts
-    scriptsInAuxiliaryData <- metadata .:? "scripts"
+    scriptsInAuxiliaryData <- auxiliaryData .:? "scripts"
     scripts <- case scriptsInAuxiliaryData of
         Just xs -> decodeScripts' scriptsInWitness xs
         Nothing -> pure scriptsInWitness
+    let metadata = undefined
     case inputSource of
         Just ("collaterals" :: Text) -> do
             inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "collaterals"))
@@ -422,8 +423,9 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
                 , outputs = []
                 , datums
                 , scripts
+                , metadata
                 }
-        _ -> do
+        _inputs -> do
             inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "inputs"))
             outs <- traverse decodeOutput =<< (o .: "body" >>= (.: "outputs"))
             pure PartialTransaction
@@ -431,6 +433,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
                 , outputs = withReferences txId outs
                 , datums
                 , scripts
+                , metadata
                 }
 
 decodeDatums
