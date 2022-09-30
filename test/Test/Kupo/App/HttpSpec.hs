@@ -48,7 +48,8 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
 import Kupo.Data.Cardano
-    ( SlotNo (..)
+    ( Block
+    , SlotNo (..)
     , pattern BlockPoint
     , unsafeHeaderHashFromBytes
     )
@@ -420,6 +421,7 @@ newStubbedApplication defaultPatterns = do
     pure $ app
         (\callback -> callback databaseStub)
         (\_point ForcedRollbackHandler{onSuccess} -> onSuccess)
+        (\_point reply -> reply (Nothing @Block))
         patternsVar
         healthStub
 

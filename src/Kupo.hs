@@ -38,6 +38,7 @@ import Kupo.App
     , consumer
     , gardener
     , newProducer
+    , withFetchBlockClient
     )
 import Kupo.App.ChainSync
     ( withChainSyncExceptionHandler
@@ -87,6 +88,9 @@ import Kupo.Data.Configuration
     ( Configuration (..)
     , WorkDir (..)
     )
+import Kupo.Data.FetchBlock
+    ( FetchBlockClient
+    )
 import Kupo.Data.Health
     ( Health
     , emptyHealth
@@ -125,7 +129,9 @@ kupo tr = do
             { chainProducer
             }
         } <- ask
-    kupoWith tr (newProducer (tracerConfiguration tr) chainProducer)
+    kupoWith tr
+        (newProducer (tracerConfiguration tr) chainProducer)
+        (withFetchBlockClient chainProducer)
 
 -- | Same as 'kupo', but allows specifying the chain producer component.
 kupoWith
@@ -135,10 +141,19 @@ kupoWith
           -> Mailbox IO (Tip, block) (Tip, Point)
           -> ChainSyncClient IO block
           -> IO ()
-         ) -> IO ()
+         )
+         -> IO ()
        )
+       -- ^ Chain producer acquisition bracket
+    -> ( ( forall block. IsBlock block
+          => FetchBlockClient IO block
+          -> IO ()
+         )
+         -> IO ()
+       )
+       -- ^ FetchBlockClient acquisition bracket
     -> Kupo ()
-kupoWith tr withProducer =
+kupoWith tr withProducer withFetchBlock =
   hijackSigTerm *> do
     Env { health
         , configuration = config@Configuration
@@ -161,51 +176,53 @@ kupoWith tr withProducer =
         let statusToggle = connectionStatusToggle health
         let tracerChainSync =  contramap ConsumerChainSync . tracerConsumer
         withProducer $ \forceRollback mailbox producer -> do
-            concurrently4
-                -- HTTP Server
-                ( httpServer
-                    (tracerHttp tr)
-                    -- NOTE: This should / could probably use a resource pool to
-                    -- avoid re-creating a new connection on every requests. This is
-                    -- however pretty cheap with SQLite anyway and the HTTP server
-                    -- isn't meant to be a public-facing web server serving millions
-                    -- of clients.
-                    (withDatabase nullTracer ShortLived lock longestRollback dbFile)
-                    forceRollback
-                    patterns
-                    (readHealth health)
-                    serverHost
-                    serverPort
-                )
+            withFetchBlock $ \fetchBlock -> do
+                concurrently4
+                    -- HTTP Server
+                    ( httpServer
+                        (tracerHttp tr)
+                        -- NOTE: This should / could probably use a resource pool to
+                        -- avoid re-creating a new connection on every requests. This is
+                        -- however pretty cheap with SQLite anyway and the HTTP server
+                        -- isn't meant to be a public-facing web server serving millions
+                        -- of clients.
+                        (withDatabase nullTracer ShortLived lock longestRollback dbFile)
+                        forceRollback
+                        fetchBlock
+                        patterns
+                        (readHealth health)
+                        serverHost
+                        serverPort
+                    )
 
-                -- Block consumer fueling the database
-                ( consumer
-                    (tracerConsumer tr)
-                    inputManagement
-                    notifyTip
-                    mailbox
-                    patterns
-                    db
-                )
+                    -- Block consumer fueling the database
+                    ( consumer
+                        (tracerConsumer tr)
+                        inputManagement
+                        notifyTip
+                        mailbox
+                        patterns
+                        db
+                    )
 
-                -- Database garbage-collector
-                ( gardener
-                    (tracerGardener tr)
-                    config
-                    patterns
-                    (withDatabase (tracerDatabase tr) ShortLived lock longestRollback dbFile)
-                )
+                    -- Database garbage-collector
+                    ( gardener
+                        (tracerGardener tr)
+                        config
+                        patterns
+                        (withDatabase (tracerDatabase tr) ShortLived lock longestRollback dbFile)
+                    )
 
-                -- Block producer, fetching blocks from the network
-                ( withChainSyncExceptionHandler (tracerChainSync tr) statusToggle $ do
-                    (mostRecentCheckpoint, checkpoints) <-
-                        startOrResume (tracerConfiguration tr) config db
-                    initializeHealth health mostRecentCheckpoint
-                    producer
-                        (tracerChainSync tr)
-                        checkpoints
-                        statusToggle
-                )
+                    -- Block producer, fetching blocks from the network
+                    ( withChainSyncExceptionHandler (tracerChainSync tr) statusToggle $ do
+                        (mostRecentCheckpoint, checkpoints) <-
+                            startOrResume (tracerConfiguration tr) config db
+                        initializeHealth health mostRecentCheckpoint
+                        producer
+                            (tracerChainSync tr)
+                            checkpoints
+                            statusToggle
+                    )
 
 --
 -- Environment

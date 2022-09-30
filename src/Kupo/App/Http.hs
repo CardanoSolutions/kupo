@@ -35,12 +35,16 @@ import Kupo.Control.MonadSTM
     )
 import Kupo.Data.Cardano
     ( DatumHash
+    , IsBlock (..)
     , Point
     , ScriptHash
     , SlotNo (..)
     , binaryDataToJson
     , datumHashFromText
     , distanceToSlot
+    , extendedMetadataToJson
+    , foldBlock
+    , getPoint
     , getPointSlotNo
     , getTransactionId
     , hasAssetId
@@ -68,6 +72,9 @@ import Kupo.Data.Database
     , resultFromRow
     , scriptFromRow
     , scriptHashToRow
+    )
+import Kupo.Data.FetchBlock
+    ( FetchBlockClient
     )
 import Kupo.Data.Health
     ( Health (..)
@@ -146,18 +153,22 @@ import qualified Network.Wai.Handler.Warp as Warp
 --
 
 httpServer
-    :: Tracer IO TraceHttpServer
+    :: forall block.
+        ( IsBlock block
+        )
+    => Tracer IO TraceHttpServer
     -> (forall a. (Database IO -> IO a) -> IO a)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
+    -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)
     -> IO Health
     -> String
     -> Int
     -> IO ()
-httpServer tr withDatabase forceRollback patternsVar readHealth host port =
+httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host port =
     Warp.runSettings settings
         $ tracerMiddleware tr
-        $ app withDatabase forceRollback patternsVar readHealth
+        $ app withDatabase forceRollback fetchBlock patternsVar readHealth
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -170,12 +181,16 @@ httpServer tr withDatabase forceRollback patternsVar readHealth host port =
 --
 
 app
-    :: (forall a. (Database IO -> IO a) -> IO a)
+    :: forall block.
+        ( IsBlock block
+        )
+    => (forall a. (Database IO -> IO a) -> IO a)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
+    -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)
     -> IO Health
     -> Application
-app withDatabase forceRollback patternsVar readHealth req send =
+app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
     route (pathInfo req)
   where
     route = \case
@@ -193,6 +208,9 @@ app withDatabase forceRollback patternsVar readHealth req send =
 
         ("scripts" : args) ->
             routeScripts (requestMethod req, args)
+
+        ("metadata" : args) ->
+            routeMetadata (requestMethod req, args)
 
         ("patterns" : args) ->
             routePatterns (requestMethod req, args)
@@ -271,6 +289,20 @@ app withDatabase forceRollback patternsVar readHealth req send =
                             headers
                             (scriptHashFromText arg)
                             db
+        ("GET", _) ->
+            send Errors.notFound
+        (_, _) ->
+            send Errors.methodNotAllowed
+
+    routeMetadata = \case
+        ("GET", [arg]) ->
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth Default.headers
+                send =<< handleGetMetadata
+                            headers
+                            (slotNoFromText arg)
+                            db
+                            fetchBlock
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
@@ -407,7 +439,7 @@ handleGetMatches
     -> Http.Query
     -> Database IO
     -> Response
-handleGetMatches headers patternQuery queryParams Database{..} = either id id $ do
+handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $ do
     p <- (patternQuery >>= patternFromText)
         `orAbort` Errors.invalidPattern
 
@@ -531,6 +563,46 @@ handleGetScript headers scriptArg Database{..} = do
                 maybe Json.null_ scriptToJson script
 
 --
+-- /metadata
+--
+
+handleGetMetadata
+    :: forall block.
+        ( IsBlock block
+        )
+    => [Http.Header]
+    -> Maybe SlotNo
+    -> Database IO
+    -> FetchBlockClient IO block
+    -> IO Response
+handleGetMetadata headers slotArg Database{..} fetchBlock =
+    case slotArg of
+        Nothing ->
+            pure Errors.invalidSlotNo
+        Just (SlotNo slotNo) -> do
+            runReadOnlyTransaction (listAncestorsDesc slotNo 1 pointFromRow) >>= \case
+                [ancestor] -> do
+                    response <- newEmptyTMVarIO
+                    fetchBlock ancestor $ \case
+                        Nothing ->
+                            atomically (putTMVar response Errors.noAncestor)
+                        Just blk -> do
+                            let encode = uncurry $ extendedMetadataToJson (getPoint blk)
+                            atomically $ putTMVar response $ responseStreamJson headers encode $
+                                \yield done -> do
+                                    foldBlock
+                                        (\_ix tx st -> do
+                                            st
+                                            maybe (pure ()) yield (userDefinedMetadata @block tx)
+                                        )
+                                        (pure ())
+                                        blk
+                                    done
+                    atomically (takeTMVar response)
+                _noAncestor ->
+                    pure Errors.noAncestor
+
+--
 -- /patterns
 --
 
@@ -646,6 +718,10 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
 orAbort :: Maybe a -> Response -> Either Response a
 orAbort l r = maybeToRight r l
 {-# INLINABLE orAbort #-}
+
+handleRequest :: Either Response Response -> Response
+handleRequest = either id id
+{-# INLINABLE handleRequest #-}
 
 responseHeaders
     :: Applicative m

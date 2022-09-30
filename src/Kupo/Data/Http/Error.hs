@@ -82,6 +82,16 @@ invalidSlotNo =
                  \number. That is, an non-negative integer."
         }
 
+noAncestor :: Response
+noAncestor =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "There's no known-ancestor to the point you've provided! \
+                 \No worries, if you're querying a very recent point, it may \
+                \just be the case that your request arrived in between a \
+                \rollback. Note also that there's (obviously) no ancesto to \
+                \the slot number `0`."
+        }
+
 malformedDatumHash :: Response
 malformedDatumHash =
     responseJson status400 Default.headers $ HttpError

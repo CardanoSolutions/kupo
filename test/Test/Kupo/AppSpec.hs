@@ -11,6 +11,19 @@ module Test.Kupo.AppSpec where
 
 import Kupo.Prelude
 
+import Control.Concurrent.STM
+    ( STM
+    , atomically
+    )
+import Control.Concurrent.STM.TChan
+    ( TChan
+    , cloneTChan
+    , dupTChan
+    , newTChanIO
+    , readTChan
+    , tryReadTChan
+    , writeTChan
+    )
 import Control.Monad.Class.MonadAsync
     ( link
     )
@@ -41,9 +54,6 @@ import Kupo.Control.MonadLog
     ( configureTracers
     , defaultTracers
     , nullTracer
-    )
-import Kupo.Control.MonadSTM
-    ( MonadSTM (..)
     )
 import Kupo.Control.MonadTime
     ( DiffTime
@@ -130,6 +140,7 @@ import Test.Kupo.Data.Generators
     , genDatumHash
     , genHeaderHash
     , genInputManagement
+    , genMetadata
     , genNonGenesisPoint
     , genOutput
     , genOutputReference
@@ -182,6 +193,9 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified GHC.Show as Show
+import Kupo.Data.FetchBlock
+    ( FetchBlockClient
+    )
 import qualified Prelude
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
@@ -191,7 +205,7 @@ varStateMachineIterations = "KUPO_STATE_MACHINE_ITERATIONS"
 spec :: Spec
 spec = do
     httpClient <- runIO (newHttpClient (serverHost, serverPort))
-    queue <- runIO (newTBQueueIO 1)
+    chan <- runIO newTChanIO
 
     maxSuccess <- maybe 30 Prelude.read
         <$> runIO (lookupEnv varStateMachineIterations)
@@ -206,9 +220,9 @@ spec = do
                     Nothing
                     (generator inputManagement)
                     shrinker
-                    (semantics garbageCollectionInterval httpClient queue)
+                    (semantics garbageCollectionInterval httpClient chan)
                     mock
-                    (cleanup queue)
+                    (cleanup chan)
             forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
                 let config = Configuration
                         { chainProducer = error "chainProducer: unused."
@@ -222,8 +236,9 @@ spec = do
                         , garbageCollectionInterval
                         }
                 env <- run (newEnvironment config)
-                let producer = newMockProducer queue
-                let kupo = kupoWith tracers producer `runWith` env
+                producer <- run (newMockProducer <$> atomically (dupTChan chan))
+                fetchBlock <- run (newMockFetchBlock <$> atomically (dupTChan chan))
+                let kupo = kupoWith tracers producer fetchBlock `runWith` env
                 asyncId <- run (async kupo)
                 run $ link asyncId
                 (_hist, model, res) <- runCommands stateMachine cmds
@@ -677,10 +692,10 @@ genPartialTransaction = do
     txId <- lift genTransactionId
     utxos <- get
     nInputs <- lift $ choose (1, min (Set.size utxos) maxNumberOfInputs)
-    inputSet <- Set.fromList <$> replicateM nInputs (lift $ elements $ Set.toList utxos)
+    inputs <- replicateM nInputs (lift $ elements $ Set.toList utxos)
     nOutputs <- lift $ choose (1, maxNumberOfOutputs)
     outputs <- withReferences txId <$> replicateM nOutputs (lift genOutput)
-    put ((utxos `Set.difference` inputSet) <> Set.fromList (fmap fst outputs))
+    put ((utxos `Set.difference` Set.fromList inputs) <> Set.fromList (fmap fst outputs))
     nDatums <- lift $ oneof [pure 0, choose (1, nInputs)]
     datums <-
         replicateM nDatums (lift genBinaryData)
@@ -689,7 +704,8 @@ genPartialTransaction = do
     scripts <-
         replicateM nScripts (lift genScript)
         & fmap (foldMap (\v -> Map.singleton (hashScript v) v))
-    pure PartialTransaction { inputs = Set.toList inputSet, outputs, datums, scripts }
+    metadata <- lift $ oneof [pure Nothing, Just <$> genMetadata]
+    pure PartialTransaction { inputs, outputs, datums, scripts, metadata }
   where
     maxNumberOfInputs = 3
     maxNumberOfOutputs = 3
@@ -769,11 +785,11 @@ shrinker _ _ = []
 -- are mostly NoOp unless there's also a network activity.
 
 cleanup
-    :: TBQueue IO a
+    :: TChan a
     -> Model Concrete
     -> IO ()
-cleanup queue _ = do
-    void $ atomically (flushTBQueue queue)
+cleanup chan _ = do
+    void (atomically $ flushTChan chan)
 
 -- | Actual 'real world' interpretation of each commands. Note that, for
 -- roll-forward / roll-backward, we want to make sure that the events have been
@@ -785,19 +801,19 @@ cleanup queue _ = do
 semantics
     :: DiffTime
     -> HttpClient IO
-    -> TBQueue IO RequestNextResponse
+    -> TChan RequestNextResponse
     -> Event Concrete
     -> IO (Response Concrete)
-semantics pause HttpClient{..} queue = \case
+semantics pause HttpClient{..} chan = \case
     DoRollForward tip block -> do
         cp <- getMostRecentCheckpoint
-        atomically (writeTBQueue queue (RollForward tip block))
+        atomically (writeTChan chan (RollForward tip block))
         fmap Unit $ waitUntilM $ do
             cp' <- getMostRecentCheckpoint
             pure (cp' > cp)
     DoRollBackward tip point -> do
         cp <- getMostRecentCheckpoint
-        atomically (writeTBQueue queue (RollBackward tip point))
+        atomically (writeTChan chan (RollBackward tip point))
         fmap Unit $ waitUntilM $ do
             cp' <- getMostRecentCheckpoint
             pure (cp' < cp)
@@ -858,19 +874,19 @@ mock model = \case
 -- bounded queue of events that are generated by the quickcheck machinery. It
 -- does nothing more than passing information around in the mailbox.
 newMockProducer
-    :: TBQueue IO RequestNextResponse
+    :: TChan RequestNextResponse
     -> (  (Point -> ForcedRollbackHandler IO -> IO ())
        -> Mailbox IO (Tip, PartialBlock) (Tip, Point)
        -> ChainSyncClient IO PartialBlock
        -> IO ()
        )
     -> IO ()
-newMockProducer queue callback = do
+newMockProducer chan callback = do
     mailbox <- atomically (newMailbox mailboxCapacity)
     callback forcedRollbackCallback mailbox $ \_ -> \case
         [GenesisPoint] -> do
             const $ forever $ atomically $ do
-                readTBQueue queue >>= \case
+                readTChan chan >>= \case
                     RollForward tip block ->
                         putHighFrequencyMessage mailbox (tip, block)
                     RollBackward tip point ->
@@ -884,6 +900,25 @@ newMockProducer queue callback = do
   where
     forcedRollbackCallback _point _handler =
         fail "Mock producer cannot force rollback."
+
+newMockFetchBlock
+    :: TChan RequestNextResponse
+    -> (FetchBlockClient IO PartialBlock -> IO ())
+    -> IO ()
+newMockFetchBlock chan callback =
+    callback $ \point reply -> do
+        blocks <- applyBlocks [] <$> atomically (cloneTChan chan >>= flushTChan)
+        reply $ find ((== point) . blockPoint) blocks
+  where
+    applyBlocks :: [PartialBlock] -> [RequestNextResponse] -> [PartialBlock]
+    applyBlocks blocks = \case
+        [] ->
+            reverse blocks
+        (RollForward _ block):rest ->
+            applyBlocks (block:blocks) rest
+        (RollBackward _ point):rest ->
+            let blocks' = dropWhile ((/= point) . blockPoint) blocks
+             in applyBlocks blocks' rest
 
 --------------------------------------------------------------------------------
 ---- Pretty Printers
@@ -979,6 +1014,16 @@ showLongByteString toJsonEncoding =
 --------------------------------------------------------------------------------
 ---- Helpers
 --
+
+-- | Flush the content of a channel, very much like
+flushTChan :: TChan a -> STM [a]
+flushTChan chan =
+    tryReadTChan chan >>= \case
+        Nothing ->
+            pure []
+        Just x -> do
+            xs <- flushTChan chan
+            pure (x : xs)
 
 -- | Collect all resolved datums coming from either outputs (inline datums) or
 -- transactions' witness set.

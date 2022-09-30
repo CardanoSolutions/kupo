@@ -21,6 +21,9 @@ import Kupo.Data.Cardano
     , DatumHash
     , ExtendedOutputReference
     , HeaderHash
+    , Metadata
+    , MetadataHash
+    , Metadatum (..)
     , Output
     , OutputIndex
     , OutputReference
@@ -37,6 +40,7 @@ import Kupo.Data.Cardano
     , digestSize
     , fromBinaryData
     , fromDatumHash
+    , mkMetadata
     , mkOutput
     , mkOutputReference
     , noDatum
@@ -92,6 +96,7 @@ import Test.QuickCheck.Random
     )
 
 import qualified Data.ByteString as BS
+import qualified Data.Map as Map
 import qualified Data.Text as T
 
 genAddress :: Gen Address
@@ -254,7 +259,6 @@ genResultWith genPoint = Result
     <*> genPoint
     <*> frequency [(1, pure Nothing), (5, Just <$> genPoint)]
 
-
 genOutput :: Gen Output
 genOutput = mkOutput
     <$> genAddress
@@ -302,6 +306,18 @@ genForcedRollback =
     ForcedRollback
         <$> oneof [Left <$> genSlotNo, Right <$> genNonGenesisPoint]
         <*> genForcedRollbackLimit
+
+genMetadata :: Gen (MetadataHash, Metadata)
+genMetadata = do
+    n <- choose (1, 3)
+    mkMetadata . Map.fromList <$> liftA2 zip (vector n) (vectorOf n genMetadatum)
+  where
+    -- TODO: Generate more complicated metadatum ?
+    genMetadatum :: Gen Metadatum
+    genMetadatum = oneof
+        [ I <$> arbitrary
+        , B <$> (genBytes =<< choose (0, 16))
+        ]
 
 --
 -- Helpers

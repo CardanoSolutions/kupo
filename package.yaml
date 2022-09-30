@@ -121,6 +121,7 @@ tests:
     - quickcheck-state-machine
     - relude
     - sqlite-simple
+    - stm
     - temporary
     - text
     - wai
