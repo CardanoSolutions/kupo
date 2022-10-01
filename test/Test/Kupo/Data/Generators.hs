@@ -72,6 +72,9 @@ import Kupo.Data.Pattern
     , Pattern (..)
     , Result (..)
     )
+import Numeric
+    ( log
+    )
 import System.IO.Unsafe
     ( unsafePerformIO
     )
@@ -84,6 +87,8 @@ import Test.QuickCheck
     , frequency
     , listOf
     , oneof
+    , resize
+    , sized
     , suchThat
     , vector
     , vectorOf
@@ -312,12 +317,20 @@ genMetadata = do
     n <- choose (1, 3)
     mkMetadata . Map.fromList <$> liftA2 zip (vector n) (vectorOf n genMetadatum)
   where
-    -- TODO: Generate more complicated metadatum ?
     genMetadatum :: Gen Metadatum
-    genMetadatum = oneof
-        [ I <$> arbitrary
-        , B <$> (genBytes =<< choose (0, 16))
-        ]
+    genMetadatum = sized $ \case
+        0 -> oneof
+            [ I <$> arbitrary
+            , B <$> (choose (0, 16) >>= genBytes)
+            , S . T.pack <$> (chooseVector (0, 24) (elements ['a'..'z']))
+            ]
+        ((truncate @Double . log . fromIntegral) -> n) -> oneof
+            [ resize 0 genMetadatum
+            , List <$> (chooseVector (0, n) (nested genMetadatum))
+            , Map <$> (chooseVector (0, n) ((,) <$> nested genMetadatum  <*> nested genMetadatum))
+            ]
+          where
+            nested = resize $ truncate @Double (exp (fromIntegral (prev n)))
 
 --
 -- Helpers
