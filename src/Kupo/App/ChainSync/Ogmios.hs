@@ -124,10 +124,3 @@ connect ConnectionStatusToggle{toggleConnected} host port action =
         --
         -- [("Sec-WebSocket-Protocol", "ogmios.v1:compact")]
         WS.defaultConnectionOptions [] (\ws -> toggleConnected >> action ws)
-
-data CannotResolveAddressException = CannotResolveAddress
-    { host :: !String
-    , port :: !Int
-    } deriving (Show)
-
-instance Exception CannotResolveAddressException

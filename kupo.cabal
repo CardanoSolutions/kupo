@@ -50,6 +50,7 @@ library
       Kupo.App.Configuration
       Kupo.App.Database
       Kupo.App.FetchBlock.Node
+      Kupo.App.FetchBlock.Ogmios
       Kupo.App.Health
       Kupo.App.Http
       Kupo.App.Http.HealthCheck

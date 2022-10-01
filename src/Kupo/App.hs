@@ -111,6 +111,7 @@ import qualified Data.Set as Set
 import qualified Kupo.App.ChainSync.Node as Node
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 import qualified Kupo.App.FetchBlock.Node as Node
+import qualified Kupo.App.FetchBlock.Ogmios as Ogmios
 
 --
 -- Producer
@@ -186,8 +187,8 @@ withFetchBlockClient
     -> IO ()
 withFetchBlockClient chainProducer callback = do
     case chainProducer of
-        Ogmios{} -> do
-            error "withFetchBlockClient^ogmios: TODO"
+        Ogmios{ogmiosHost, ogmiosPort} ->
+            Ogmios.withFetchBlockClient ogmiosHost ogmiosPort callback
         CardanoNode{nodeSocket, nodeConfig} -> do
             NetworkParameters
                 { networkMagic

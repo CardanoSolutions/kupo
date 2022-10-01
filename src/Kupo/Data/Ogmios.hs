@@ -56,6 +56,7 @@ import Kupo.Data.Cardano
     , fromNativeScript
     , hashScript
     , headerHashToJson
+    , metadataFromJson
     , mkOutput
     , mkOutputReference
     , noDatum
@@ -414,7 +415,9 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     scripts <- case scriptsInAuxiliaryData of
         Just xs -> decodeScripts' scriptsInWitness xs
         Nothing -> pure scriptsInWitness
-    let metadata = undefined
+    metadata <- auxiliaryData .:? "blob" >>= \case
+        Nothing -> pure Nothing
+        Just v  -> Just <$> metadataFromJson v
     case inputSource of
         Just ("collaterals" :: Text) -> do
             inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "collaterals"))
