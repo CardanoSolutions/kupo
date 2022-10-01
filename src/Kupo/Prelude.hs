@@ -9,8 +9,11 @@ module Kupo.Prelude
       -- * JSON
     , FromJSON (..)
     , ToJSON (..)
-    , byteStringToJson
+    , eitherDecodeJson
     , defaultGenericToEncoding
+    , encodeBytes
+    , encodeObject
+    , encodeMap
 
       -- * Lenses
     , Lens'
@@ -39,11 +42,6 @@ module Kupo.Prelude
     , serialize'
     , decodeFull'
     , unsafeDeserialize'
-
-      -- * JSON
-    , eitherDecodeJson
-    , encodeObject
-    , encodeMap
 
       -- * System
     , hijackSigTerm
@@ -202,11 +200,6 @@ encodeBase58 :: ByteString -> Text
 encodeBase58 =
     decodeUtf8 . Base58.encodeBase58 Base58.bitcoinAlphabet
 
--- | Encode a ByteString to JSON as a base16 text
-byteStringToJson :: ByteString -> Json.Encoding
-byteStringToJson =
-    Json.text . encodeBase16
-
 -- | Generic JSON encoding, with pre-defined default options.
 defaultGenericToEncoding :: (Generic a, GToJSON' Encoding Zero (Rep a)) => a -> Json.Encoding
 defaultGenericToEncoding =
@@ -243,3 +236,8 @@ encodeMap encodeKey encodeValue =
 encodeObject :: [(Text, Json.Encoding)] -> Json.Encoding
 encodeObject =
     Json.pairs . foldr (\(Json.fromText -> k, v) -> (<>) (Json.pair k v)) mempty
+
+-- | Encode a ByteString to JSON as a base16 text
+encodeBytes :: ByteString -> Json.Encoding
+encodeBytes =
+    Json.text . encodeBase16

@@ -63,6 +63,8 @@ import Kupo.Data.Cardano
     , BlockNo (..)
     , DatumHash
     , Input
+    , Metadata
+    , MetadataHash
     , Output
     , OutputReference
     , Point
@@ -76,6 +78,7 @@ import Kupo.Data.Cardano
     , getBinaryData
     , getDatum
     , getOutputIndex
+    , getPoint
     , getPointSlotNo
     , getScript
     , getTipSlotNo
@@ -83,6 +86,7 @@ import Kupo.Data.Cardano
     , hashBinaryData
     , hashDatum
     , hashScript
+    , metadataHashToText
     , pattern BlockPoint
     , pattern GenesisPoint
     , pattern GenesisTip
@@ -102,6 +106,9 @@ import Kupo.Data.Configuration
     , LongestRollback (..)
     , WorkDir (..)
     , mailboxCapacity
+    )
+import Kupo.Data.FetchBlock
+    ( FetchBlockClient
     )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..)
@@ -179,6 +186,7 @@ import Test.StateMachine
     , checkCommandNames
     , forAllCommands
     , runCommands
+    , (.//)
     , (.==)
     )
 import Test.StateMachine.Types
@@ -193,9 +201,6 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified GHC.Show as Show
-import Kupo.Data.FetchBlock
-    ( FetchBlockClient
-    )
 import qualified Prelude
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
@@ -291,6 +296,7 @@ data Event (r :: Type -> Type)
     | GetUtxo
     | GetDatumByHash !DatumHash
     | GetScriptByHash !ScriptHash
+    | GetMetadataBySlotNo !SlotNo
     | Pause
         -- ^ Pauses makes the overall state-machine run a lot longer, but they
         -- allow to let the internal garbage-collector to run and possibly
@@ -315,6 +321,8 @@ instance Show (Event r) where
             toString $ "(GetDatumByHash " <> showDatumHash hash <> ")"
         GetScriptByHash hash ->
             toString $ "(GetScriptByHash " <> showScriptHash hash <> ")"
+        GetMetadataBySlotNo sl ->
+            toString $ "(GetMetadata " <> showSlotNo sl <> ")"
         Pause ->
             "Pause"
 
@@ -324,6 +332,7 @@ data Response (r :: Type -> Type)
     | Utxo !(Set OutputReference)
     | DatumByHash !(Maybe BinaryData)
     | ScriptByHash !(Maybe Script)
+    | MetadataBySlotNo ![(MetadataHash, Metadata)]
     deriving stock (Eq, Generic1)
     deriving anyclass (Rank2.Foldable)
 
@@ -339,6 +348,8 @@ instance Show (Response r) where
             toString $ "(DatumByHash " <> showBinaryData bin <> ")"
         ScriptByHash script ->
             toString $ "(ScriptByHash " <> showScript script <> ")"
+        MetadataBySlotNo metadata ->
+            toString $ "(MetadataBySlotNo [" <> T.intercalate "," (showMetadataHash . fst <$> metadata) <> "])"
 
 --------------------------------------------------------------------------------
 ---- Model
@@ -451,6 +462,8 @@ precondition (LongestRollback k) model = \case
         Top
     GetScriptByHash{} ->
         Top
+    GetMetadataBySlotNo{} ->
+        Top
     Pause ->
         Top
 
@@ -517,6 +530,8 @@ transition model cmd _res =
             model
         GetScriptByHash{} ->
             model
+        GetMetadataBySlotNo{} ->
+            model
         Pause ->
             model
 
@@ -553,7 +568,7 @@ postcondition model cmd res =
     let
         (res', _) = runGenSym (mock model cmd) newCounter
      in
-        res .== res'
+        Boolean (res == res') .// ("Real " <> show res <> " /= Model " <> show res')
 
 --------------------------------------------------------------------------------
 ---- Generators
@@ -600,6 +615,7 @@ generator inputManagement model =
             , (5, pure GetUtxo)
             , (5, GetDatumByHash <$> genOrSelectDatum inputManagement model)
             , (3, GetScriptByHash <$> genOrSelectScript model)
+            , (3, GetMetadataBySlotNo . SlotNo <$> (elements [0 .. unSlotNo (getPointSlotNo (blockPoint tip))]))
             , (15, DoRollForward
                 <$> genContinuingTip (networkTip model) (blockPoint tip)
                 <*> genContinuingBlock
@@ -827,6 +843,8 @@ semantics pause HttpClient{..} chan = \case
         DatumByHash <$> lookupDatumByHash hash
     GetScriptByHash hash ->
         ScriptByHash <$> lookupScriptByHash hash
+    GetMetadataBySlotNo sl ->
+        MetadataBySlotNo <$> lookupMetadataBySlotNo sl
     Pause -> do
         Unit <$> threadDelay pause
   where
@@ -867,6 +885,13 @@ mock model = \case
         pure (DatumByHash (Map.lookup hash (knownBinaryData model)))
     GetScriptByHash hash ->
         pure (ScriptByHash (Map.lookup hash (knownScripts model)))
+    GetMetadataBySlotNo sl ->
+        case find ((== sl) . getPointSlotNo . getPoint) (currentChain model) of
+            Nothing ->
+                pure $ MetadataBySlotNo []
+            Just blk ->
+                pure $ MetadataBySlotNo (mapMaybe metadata (blockBody blk))
+
     Pause ->
         pure (Unit ())
 
@@ -901,14 +926,16 @@ newMockProducer chan callback = do
     forcedRollbackCallback _point _handler =
         fail "Mock producer cannot force rollback."
 
+-- | Mock a request to the node which returns the block immediately following the given point.
 newMockFetchBlock
     :: TChan RequestNextResponse
     -> (FetchBlockClient IO PartialBlock -> IO ())
     -> IO ()
 newMockFetchBlock chan callback =
     callback $ \point reply -> do
+        let slotNo = next (getPointSlotNo point)
         blocks <- applyBlocks [] <$> atomically (cloneTChan chan >>= flushTChan)
-        reply $ find ((== point) . blockPoint) blocks
+        reply $ find ((== slotNo) . getPointSlotNo . blockPoint) blocks
   where
     applyBlocks :: [PartialBlock] -> [RequestNextResponse] -> [PartialBlock]
     applyBlocks blocks = \case
@@ -976,6 +1003,11 @@ showPartialTransaction tx = mconcat
     , "{"
     , T.intercalate ", " (showOutput <$> outputs tx)
     , "}"
+    , case metadata tx of
+        Nothing ->
+            " w/ no metadata"
+        Just (hash, _) ->
+            " w/ metadata = " <> showMetadataHash hash
     ]
 
 showOutput :: (OutputReference, Output) -> Text
@@ -997,6 +1029,10 @@ showScriptHash =
 showScript :: Maybe Script -> Text
 showScript =
     showLongByteString (maybe Json.null_ scriptToJson)
+
+showMetadataHash :: MetadataHash -> Text
+showMetadataHash =
+    T.take 8 . metadataHashToText
 
 showLongByteString :: (a -> Json.Encoding) -> a -> Text
 showLongByteString toJsonEncoding =

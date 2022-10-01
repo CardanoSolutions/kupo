@@ -2,6 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App.Http
@@ -42,18 +43,21 @@ import Kupo.Data.Cardano
     , binaryDataToJson
     , datumHashFromText
     , distanceToSlot
-    , extendedMetadataToJson
     , foldBlock
     , getPoint
     , getPointSlotNo
     , getTransactionId
     , hasAssetId
     , hasPolicyId
+    , headerHashToBytes
+    , metadataToJson'
+    , pattern GenesisPoint
     , pointToJson
     , scriptHashFromText
     , scriptToJson
     , slotNoFromText
     , slotNoToText
+    , unsafeGetPointHeaderHash
     )
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
@@ -141,6 +145,7 @@ import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
@@ -575,32 +580,38 @@ handleGetMetadata
     -> Database IO
     -> FetchBlockClient IO block
     -> IO Response
-handleGetMetadata headers slotArg Database{..} fetchBlock =
+handleGetMetadata baseHeaders slotArg Database{..} fetchBlock =
     case slotArg of
         Nothing ->
             pure Errors.invalidSlotNo
+        Just (SlotNo slotNo) | slotNo == 0 -> do
+            pure $ responseStreamJson baseHeaders metadataToJson' $ \_yield done -> done
         Just (SlotNo slotNo) -> do
             runReadOnlyTransaction (listAncestorsDesc slotNo 1 pointFromRow) >>= \case
                 [ancestor] -> do
-                    response <- newEmptyTMVarIO
-                    fetchBlock ancestor $ \case
-                        Nothing ->
-                            atomically (putTMVar response Errors.noAncestor)
-                        Just blk -> do
-                            let encode = uncurry $ extendedMetadataToJson (getPoint blk)
-                            atomically $ putTMVar response $ responseStreamJson headers encode $
-                                \yield done -> do
-                                    foldBlock
-                                        (\_ix tx st -> do
-                                            st
-                                            maybe (pure ()) yield (userDefinedMetadata @block tx)
-                                        )
-                                        (pure ())
-                                        blk
-                                    done
-                    atomically (takeTMVar response)
+                    fetchFromNode ancestor
                 _noAncestor ->
-                    pure Errors.noAncestor
+                    fetchFromNode GenesisPoint
+  where
+    fetchFromNode ancestor = do
+        response <- newEmptyTMVarIO
+        fetchBlock ancestor $ \case
+            Nothing -> do
+                atomically (putTMVar response Errors.noAncestor)
+            Just blk -> do
+                let headers =
+                        ( "X-Block-Header-Hash"
+                        -- NOTE: Safe because it can't be origin (it has an ancestor)
+                        , headerHashToBytes (unsafeGetPointHeaderHash (getPoint blk))
+                        ) : baseHeaders
+                atomically $ putTMVar response $ responseStreamJson headers metadataToJson' $
+                    \yield done -> do
+                        traverse_ yield $ foldBlock
+                            (\ix tx -> Map.alter (const $ userDefinedMetadata @block tx) ix)
+                            mempty
+                            blk
+                        done
+        atomically (takeTMVar response)
 
 --
 -- /patterns

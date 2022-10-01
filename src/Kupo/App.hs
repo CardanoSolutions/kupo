@@ -28,6 +28,7 @@ import Control.Monad.Class.MonadTimer
     )
 import Kupo.App.ChainSync
     ( TraceChainSync (..)
+    , withChainSyncExceptionHandler
     )
 import Kupo.App.Configuration
     ( TraceConfiguration (..)
@@ -53,6 +54,7 @@ import Kupo.Control.MonadLog
     , MonadLog (..)
     , Severity (..)
     , Tracer
+    , nullTracer
     )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..)
@@ -194,13 +196,14 @@ withFetchBlockClient chainProducer callback = do
             (chainSyncClient, fetchBlockClient) <- Node.newFetchBlockClient
             race_
                 (callback fetchBlockClient)
-                (withChainSyncServer
-                  noConnectionStatusToggle
-                  [ NodeToClientV_9 .. maxBound ]
-                  networkMagic
-                  slotsPerEpoch
-                  nodeSocket
-                  chainSyncClient
+                (withChainSyncExceptionHandler nullTracer noConnectionStatusToggle $
+                    withChainSyncServer
+                        noConnectionStatusToggle
+                        [ NodeToClientV_9 .. maxBound ]
+                        networkMagic
+                        slotsPerEpoch
+                        nodeSocket
+                        chainSyncClient
                 )
 
 -- | Consumer process that is reading messages from the 'Mailbox'. Messages are

@@ -19,6 +19,10 @@ import Kupo.Data.Cardano
     , digest
     , hashScript
     , headerHashFromText
+    , metadataFromText
+    , metadataHashFromText
+    , metadataHashToText
+    , metadataToText
     , outputReferenceFromText
     , outputReferenceToText
     , pattern GenesisPoint
@@ -49,6 +53,7 @@ import Test.Hspec.QuickCheck
 import Test.Kupo.Data.Generators
     ( genAssetName
     , genDatumHash
+    , genMetadata
     , genOutputReference
     , genPolicyId
     , genScript
@@ -107,12 +112,22 @@ spec = parallel $ do
             forAll genScriptHash $ \x ->
                 scriptHashFromText (scriptHashToText x) === Just x
 
-    context "headerHashFromText" $ do
+    context "HeaderHash" $ do
         prop "∀(bs :: ByteString). bs .size 32 ⇒ headerHashFromText (base16 bs) === Just{}" $
             forAll (genBytes 32) $ \bytes ->
                 case headerHashFromText (encodeBase16 bytes) of
                     Just{}  -> property True
                     Nothing -> property False
+
+    context "Metadata" $ do
+        prop "∀(x :: Metadata). metadataFromText (metadataToText x) === x" $
+            forAll genMetadata $ \(_, x) ->
+                metadataFromText (metadataToText x) === Just x
+
+    context "MetadataHash" $ do
+        prop "∀(x :: MetadataHash). metadataHashFromText (metadataHashToText x) === x" $
+            forAll genMetadata $ \(x, _) ->
+                metadataHashFromText (metadataHashToText x) === Just x
 
     context "OutputReference" $ do
         prop "∀(x :: OutputReference). outputRefFromText (outputRefToText x) == Just x" $

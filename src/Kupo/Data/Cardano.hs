@@ -26,14 +26,19 @@ module Kupo.Data.Cardano
 
       -- * Metadata
     , Metadata
-    , Ledger.Metadatum(..)
+    , Ledger.Metadatum (..)
     , mkMetadata
-    , extendedMetadataToJson
+    , metadataToText
+    , metadataFromText
     , metadataToJson
+    , metadataToJson'
 
       -- * MetadataHash
     , MetadataHash
     , hashMetadata
+    , metadataHashToJson
+    , metadataHashToText
+    , metadataHashFromText
 
       -- * TransactionId
     , TransactionId
@@ -195,6 +200,7 @@ module Kupo.Data.Cardano
 
       -- * HeaderHash
     , HeaderHash
+    , headerHashToBytes
     , headerHashFromText
     , headerHashToJson
     , unsafeHeaderHashFromBytes
@@ -422,14 +428,15 @@ mkMetadata :: Map Word64 Metadatum -> (MetadataHash, Metadata)
 mkMetadata (Ledger.Metadata -> meta) =
     (hashMetadata meta, meta)
 
-extendedMetadataToJson :: Point -> MetadataHash -> Metadata -> Json.Encoding
-extendedMetadataToJson createdAt (Ledger.extractHash -> hash) meta =
-    encodeObject
-        [ ("hash", hashToJson hash)
-        , ("raw", Json.text $ encodeBase16 $ Ledger.originalBytes meta)
-        , ("schema", metadataToJson meta)
-        , ("created_at", pointToJson createdAt)
-        ]
+metadataToText :: Metadata -> Text
+metadataToText =
+    encodeBase16 . Ledger.originalBytes
+{-# INLINABLE metadataToText #-}
+
+metadataFromText :: Text -> Maybe Metadata
+metadataFromText txt = do
+    bytes <- eitherToMaybe $ decodeBase16 (encodeUtf8 txt)
+    eitherToMaybe $ decodeAnnotator "Metadata" fromCBOR (toLazy bytes)
 
 metadataToJson :: Metadata -> Json.Encoding
 metadataToJson (Ledger.Metadata meta) =
@@ -455,6 +462,14 @@ metadataToJson (Ledger.Metadata meta) =
             , ( "v", encodeMetadatum v )
             ]
 
+metadataToJson' :: (MetadataHash, Metadata) -> Json.Encoding
+metadataToJson' (hash, meta) =
+    encodeObject
+        [ ("hash", metadataHashToJson hash)
+        , ("raw", Json.text (metadataToText meta))
+        , ("schema", metadataToJson meta)
+        ]
+
 -- MetadataHash
 
 type MetadataHash =
@@ -463,6 +478,21 @@ type MetadataHash =
 hashMetadata :: Metadata -> MetadataHash
 hashMetadata = Ledger.hashMetadata
 {-# INLINABLE hashMetadata #-}
+
+metadataHashToText :: MetadataHash -> Text
+metadataHashToText =
+    encodeBase16 . Ledger.originalBytes . Ledger.extractHash
+{-# INLINABLE metadataHashToText #-}
+
+metadataHashFromText :: Text -> Maybe MetadataHash
+metadataHashFromText =
+    fmap Ledger.unsafeMakeSafeHash . hashFromTextAsHex @Blake2b_256
+{-# INLINABLE metadataHashFromText #-}
+
+metadataHashToJson :: MetadataHash -> Json.Encoding
+metadataHashToJson =
+    hashToJson . Ledger.extractHash
+{-# INLINABLE metadataHashToJson #-}
 
 -- Block
 
@@ -1110,16 +1140,16 @@ fromBabbageScript =
 scriptToJson
     :: Script
     -> Json.Encoding
-scriptToJson script = Json.pairs $ mconcat
-    [ Json.pair "script" $
-        byteStringToJson (Ledger.originalBytes script)
-    , Json.pair "language" $ case script of
+scriptToJson script = encodeObject
+    [ ("script", encodeBytes (Ledger.originalBytes script))
+    , ("language", case script of
         Ledger.TimelockScript{} ->
           Json.text "native"
         Ledger.PlutusScript Ledger.PlutusV1 _ ->
           Json.text "plutus:v1"
         Ledger.PlutusScript Ledger.PlutusV2 _ ->
           Json.text "plutus:v2"
+      )
     ]
 
 scriptToBytes
@@ -1568,11 +1598,18 @@ headerHashFromText =
     fmap (OneEraHash . hashToBytesShort) . hashFromTextAsHex @Blake2b_256
 {-# INLINABLE headerHashFromText #-}
 
+headerHashToBytes
+    :: HeaderHash Block
+    -> ByteString
+headerHashToBytes =
+    fromShort . toShortRawHash (Proxy @Block)
+{-# INLINABLE headerHashToBytes #-}
+
 headerHashToJson
     :: HeaderHash Block
     -> Json.Encoding
 headerHashToJson =
-    byteStringToJson . fromShort . toShortRawHash (Proxy @Block)
+    encodeBytes . headerHashToBytes
 {-# INLINABLE headerHashToJson #-}
 
 unsafeHeaderHashFromBytes
@@ -1694,7 +1731,7 @@ distanceToSlot (SlotNo a) (SlotNo b)
 
 hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding
 hashToJson (UnsafeHash h) =
-    byteStringToJson (fromShort h)
+    encodeBytes (fromShort h)
 
 -- Digest
 

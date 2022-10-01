@@ -489,7 +489,7 @@ components:
           type: string
           description: A blake2b-256 hash digest of a Plutus' datum.
           contentEncoding: base16
-          example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
+          example: 3097...b635
           minLength: 64
           maxLength: 64
         - title: Nothing
@@ -563,11 +563,11 @@ components:
           - unsafe_allow_beyond_safe_zone
           - within_safe_zone
 
-    HeaderHash:
+    HeaderHash: &HeaderHash
       type: string
       description: A blake2b-256 hash digest of a block header.
       contentEncoding: base16
-      example: 9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e0935d8340cd6a5d31bf
+      example: 9d09...31bf
       minLength: 64
       maxLength: 64
 
@@ -860,7 +860,7 @@ components:
           description: A blake2b-224 hash digest of a Native or Plutus script.
           type: string
           contentEncoding: base16
-          example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded
+          example: 3097...9ded
           minLength: 56
           maxLength: 56
         - title: Nothing
@@ -877,7 +877,7 @@ components:
       type: string
       description: A blake2b-256 hash digest of a transaction body.
       contentEncoding: base16
-      example: 35d8340cd6a5d31bf9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e09
+      example: 35d8...4e09
       minLength: 64
       maxLength: 64
 
@@ -1006,7 +1006,7 @@ components:
         minLength: 64
         maxLength: 64
         pattern: ^[a-f0-9]{64}$
-        example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
+        example: 3097...b635
       description:
         A datum blake2b-256 hash digest.
 
@@ -1064,7 +1064,7 @@ components:
         minLength: 56
         maxLength: 56
         pattern: ^[a-f0-9]{56}$
-        example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded
+        example: 3097...9ded
       description:
         A script blake2b-224 hash digest of a script.
 
@@ -1444,7 +1444,12 @@ paths:
       responses:
         200:
           description: OK
-          headers: *default-headers
+          headers:
+            <<: *default-headers
+            X-Block-Header-Hash:
+              <<: *HeaderHash
+              description: |
+                The block's header hash digest (`blake2b-256`) of the corresponding block at the provided slot. Clients are expected to control that this hash matches the one they expect, especially when fetching metadata from blocks in the unstable region (i.e. less than `k=2160` blocks from the network tip). Indeed, Cardano is a distributed system after all and data isn't guaranteed to be immediately immutable. Data present in very recent blocks may therefore be different between two successive requests.
           content:
             "application/json;charset=utf-8":
               schema:
