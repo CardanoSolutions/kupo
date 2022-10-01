@@ -50,6 +50,7 @@ import Kupo.Data.Cardano
     , hasAssetId
     , hasPolicyId
     , headerHashToBytes
+    , headerHashToText
     , metadataToJson'
     , pattern GenesisPoint
     , pointToJson
@@ -602,7 +603,7 @@ handleGetMetadata baseHeaders slotArg Database{..} fetchBlock =
                 let headers =
                         ( "X-Block-Header-Hash"
                         -- NOTE: Safe because it can't be origin (it has an ancestor)
-                        , headerHashToBytes (unsafeGetPointHeaderHash (getPoint blk))
+                        , encodeUtf8 $ headerHashToText $ unsafeGetPointHeaderHash $ getPoint blk
                         ) : baseHeaders
                 atomically $ putTMVar response $ responseStreamJson headers metadataToJson' $
                     \yield done -> do

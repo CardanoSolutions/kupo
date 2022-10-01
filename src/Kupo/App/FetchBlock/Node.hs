@@ -54,7 +54,7 @@ newFetchBlockClient = do
         ( ChainSyncClientPipelined $ pure $ SendMsgFindIntersect [GenesisPoint] $
                 ClientPipelinedStIntersect
                 { recvMsgIntersectFound = \_point _tip -> do
-                    clientStIdle $ atomically (readTMVar reqVar)
+                    clientStIdle $ atomically (takeTMVar reqVar)
                 , recvMsgIntersectNotFound = \_tip -> do
                     error "mkFetchBlockClient.recvMsgIntersectNotFound: absurd; \
                           \it's always possible to find an intersection against the origin."

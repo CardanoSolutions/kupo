@@ -39,6 +39,7 @@ module Kupo.Data.Cardano
     , metadataHashToJson
     , metadataHashToText
     , metadataHashFromText
+    , unsafeMetadataHashFromBytes
 
       -- * TransactionId
     , TransactionId
@@ -200,9 +201,10 @@ module Kupo.Data.Cardano
 
       -- * HeaderHash
     , HeaderHash
-    , headerHashToBytes
+    , headerHashToText
     , headerHashFromText
     , headerHashToJson
+    , headerHashToBytes
     , unsafeHeaderHashFromBytes
 
       -- * Point
@@ -478,6 +480,13 @@ type MetadataHash =
 hashMetadata :: Metadata -> MetadataHash
 hashMetadata = Ledger.hashMetadata
 {-# INLINABLE hashMetadata #-}
+
+unsafeMetadataHashFromBytes :: HasCallStack => ByteString -> MetadataHash
+unsafeMetadataHashFromBytes =
+    Ledger.unsafeMakeSafeHash
+    . fromMaybe (error "unsafeMetadataHashFromBytes")
+    . hashFromBytes @Blake2b_256
+{-# INLINABLE unsafeMetadataHashFromBytes #-}
 
 metadataHashToText :: MetadataHash -> Text
 metadataHashToText =
@@ -1597,6 +1606,13 @@ headerHashFromText
 headerHashFromText =
     fmap (OneEraHash . hashToBytesShort) . hashFromTextAsHex @Blake2b_256
 {-# INLINABLE headerHashFromText #-}
+
+headerHashToText
+    :: HeaderHash Block
+    -> Text
+headerHashToText =
+    encodeBase16 . headerHashToBytes
+{-# INLINABLE headerHashToText #-}
 
 headerHashToBytes
     :: HeaderHash Block

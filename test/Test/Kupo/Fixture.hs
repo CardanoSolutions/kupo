@@ -11,14 +11,17 @@ import Kupo.Prelude
 import Kupo.Data.Cardano
     ( BinaryData
     , DatumHash
+    , MetadataHash
     , Point
     , PolicyId
     , Script
     , ScriptHash
+    , SlotNo
     , TransactionId
     , pattern GenesisPoint
     , unsafeBinaryDataFromBytes
     , unsafeDatumHashFromBytes
+    , unsafeMetadataHashFromBytes
     , unsafePolicyIdFromBytes
     , unsafeScriptFromBytes
     , unsafeScriptHashFromBytes
@@ -206,3 +209,14 @@ someStakeKey = unsafeDecodeBase16
 someOtherStakeKey :: ByteString
 someOtherStakeKey = unsafeDecodeBase16
     "8c19e0c753136fd37f7bdd0ad6e24b6faa8d4ab0cb1cf8b20439b63c"
+
+-- | Some slot shortly after the start of Allegra which contains transactions with metadata.
+someSlotWithMetadata :: SlotNo
+someSlotWithMetadata = 18_014_527
+
+-- | The metadata associated with 'someSlotWithMetadata'
+someMetadata :: [MetadataHash]
+someMetadata = unsafeMetadataHashFromBytes . unsafeDecodeBase16 <$>
+    [ "A1AE526C1A228CE730E223C8AB56543F865BA8C2C991CA87D509783D4B002C35"
+    , "0C7C650D6992E292A8EAFE206CE87469AC27F0B929DE414370DDDC38993A5C14"
+    ]
