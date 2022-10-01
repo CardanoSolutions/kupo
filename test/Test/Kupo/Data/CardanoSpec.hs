@@ -19,6 +19,12 @@ import Kupo.Data.Cardano
     , digest
     , hashScript
     , headerHashFromText
+    , metadataFromJson
+    , metadataFromText
+    , metadataHashFromText
+    , metadataHashToText
+    , metadataToJson
+    , metadataToText
     , outputReferenceFromText
     , outputReferenceToText
     , pattern GenesisPoint
@@ -49,6 +55,7 @@ import Test.Hspec.QuickCheck
 import Test.Kupo.Data.Generators
     ( genAssetName
     , genDatumHash
+    , genMetadata
     , genOutputReference
     , genPolicyId
     , genScript
@@ -58,13 +65,18 @@ import Test.Kupo.Data.Generators
 import Test.QuickCheck
     ( Gen
     , arbitrary
+    , counterexample
     , forAll
     , property
     , vectorOf
     , (===)
     )
 
+import qualified Data.Aeson as Json
+import qualified Data.Aeson.Encoding as Json
+import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy.Char8 as BL8
 
 spec :: Spec
 spec = parallel $ do
@@ -107,12 +119,37 @@ spec = parallel $ do
             forAll genScriptHash $ \x ->
                 scriptHashFromText (scriptHashToText x) === Just x
 
-    context "headerHashFromText" $ do
+    context "HeaderHash" $ do
         prop "∀(bs :: ByteString). bs .size 32 ⇒ headerHashFromText (base16 bs) === Just{}" $
             forAll (genBytes 32) $ \bytes ->
                 case headerHashFromText (encodeBase16 bytes) of
                     Just{}  -> property True
                     Nothing -> property False
+
+    context "Metadata" $ do
+        prop "∀(x :: Metadata). metadataFromText (metadataToText x) === x" $
+            forAll genMetadata $ \(_, x) ->
+                metadataFromText (metadataToText x) === Just x
+        prop "∀(x :: Metadata). metadataFromJson (metadataToJson x) === x" $
+            forAll genMetadata $ \(_, x) ->
+                let encoded = Json.encodingToLazyByteString (metadataToJson x) in
+                let value = Json.decode' encoded in
+                case Json.parse metadataFromJson <$> value of
+                    Just Json.Success{} ->
+                        property True
+                    Just (Json.Error hint) ->
+                        property False
+                            & counterexample ("Encoding: " <> BL8.unpack encoded)
+                            & counterexample hint
+                    Nothing ->
+                        property False
+                            & counterexample ("Encoding: " <> BL8.unpack encoded)
+                            & counterexample "Malformed JSON encoding."
+
+    context "MetadataHash" $ do
+        prop "∀(x :: MetadataHash). metadataHashFromText (metadataHashToText x) === x" $
+            forAll genMetadata $ \(x, _) ->
+                metadataHashFromText (metadataHashToText x) === Just x
 
     context "OutputReference" $ do
         prop "∀(x :: OutputReference). outputRefFromText (outputRefToText x) == Just x" $

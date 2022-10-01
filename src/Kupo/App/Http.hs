@@ -2,6 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App.Http
@@ -35,21 +36,28 @@ import Kupo.Control.MonadSTM
     )
 import Kupo.Data.Cardano
     ( DatumHash
+    , IsBlock (..)
     , Point
     , ScriptHash
     , SlotNo (..)
     , binaryDataToJson
     , datumHashFromText
     , distanceToSlot
+    , foldBlock
+    , getPoint
     , getPointSlotNo
     , getTransactionId
     , hasAssetId
     , hasPolicyId
+    , headerHashToText
+    , metadataToJson'
+    , pattern GenesisPoint
     , pointToJson
     , scriptHashFromText
     , scriptToJson
     , slotNoFromText
     , slotNoToText
+    , unsafeGetPointHeaderHash
     )
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
@@ -68,6 +76,9 @@ import Kupo.Data.Database
     , resultFromRow
     , scriptFromRow
     , scriptHashToRow
+    )
+import Kupo.Data.FetchBlock
+    ( FetchBlockClient
     )
 import Kupo.Data.Health
     ( Health (..)
@@ -134,6 +145,7 @@ import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
@@ -146,18 +158,22 @@ import qualified Network.Wai.Handler.Warp as Warp
 --
 
 httpServer
-    :: Tracer IO TraceHttpServer
+    :: forall block.
+        ( IsBlock block
+        )
+    => Tracer IO TraceHttpServer
     -> (forall a. (Database IO -> IO a) -> IO a)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
+    -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)
     -> IO Health
     -> String
     -> Int
     -> IO ()
-httpServer tr withDatabase forceRollback patternsVar readHealth host port =
+httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host port =
     Warp.runSettings settings
         $ tracerMiddleware tr
-        $ app withDatabase forceRollback patternsVar readHealth
+        $ app withDatabase forceRollback fetchBlock patternsVar readHealth
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -170,12 +186,16 @@ httpServer tr withDatabase forceRollback patternsVar readHealth host port =
 --
 
 app
-    :: (forall a. (Database IO -> IO a) -> IO a)
+    :: forall block.
+        ( IsBlock block
+        )
+    => (forall a. (Database IO -> IO a) -> IO a)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
+    -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)
     -> IO Health
     -> Application
-app withDatabase forceRollback patternsVar readHealth req send =
+app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
     route (pathInfo req)
   where
     route = \case
@@ -193,6 +213,9 @@ app withDatabase forceRollback patternsVar readHealth req send =
 
         ("scripts" : args) ->
             routeScripts (requestMethod req, args)
+
+        ("metadata" : args) ->
+            routeMetadata (requestMethod req, args)
 
         ("patterns" : args) ->
             routePatterns (requestMethod req, args)
@@ -271,6 +294,21 @@ app withDatabase forceRollback patternsVar readHealth req send =
                             headers
                             (scriptHashFromText arg)
                             db
+        ("GET", _) ->
+            send Errors.notFound
+        (_, _) ->
+            send Errors.methodNotAllowed
+
+    routeMetadata = \case
+        ("GET", [arg]) ->
+            withDatabase $ \db -> do
+                headers <- responseHeaders readHealth Default.headers
+                send =<< handleGetMetadata
+                            headers
+                            (slotNoFromText arg)
+                            (queryString req)
+                            db
+                            fetchBlock
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
@@ -407,7 +445,7 @@ handleGetMatches
     -> Http.Query
     -> Database IO
     -> Response
-handleGetMatches headers patternQuery queryParams Database{..} = either id id $ do
+handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $ do
     p <- (patternQuery >>= patternFromText)
         `orAbort` Errors.invalidPattern
 
@@ -531,6 +569,63 @@ handleGetScript headers scriptArg Database{..} = do
                 maybe Json.null_ scriptToJson script
 
 --
+-- /metadata
+--
+
+handleGetMetadata
+    :: forall block.
+        ( IsBlock block
+        )
+    => [Http.Header]
+    -> Maybe SlotNo
+    -> Http.Query
+    -> Database IO
+    -> FetchBlockClient IO block
+    -> IO Response
+handleGetMetadata baseHeaders slotArg queryParams Database{..} fetchBlock =
+    case slotArg of
+        Nothing ->
+            pure Errors.invalidSlotNo
+        Just (SlotNo slotNo) | slotNo == 0 -> do
+            pure $ responseStreamJson baseHeaders metadataToJson' $ \_yield done -> done
+        Just (SlotNo slotNo) -> do
+            ancestor <- runReadOnlyTransaction (listAncestorsDesc slotNo 1 pointFromRow) <&> \case
+                [ancestor]  -> ancestor
+                _noAncestor -> GenesisPoint
+            case filterMatchesBy queryParams of
+                Just NoFilter ->
+                    fetchFromNode ancestor Nothing
+                Just (FilterByTransactionId tid) ->
+                    fetchFromNode ancestor (Just tid)
+                _invalidFilter -> do
+                    pure Errors.invalidMetadataFilter
+  where
+    fetchFromNode ancestor filterBy = do
+        response <- newEmptyTMVarIO
+        fetchBlock ancestor $ \case
+            Nothing -> do
+                atomically (putTMVar response Errors.noAncestor)
+            Just blk -> do
+                let headers =
+                        ( "X-Block-Header-Hash"
+                        -- NOTE: Safe because it can't be origin (it has an ancestor)
+                        , encodeUtf8 $ headerHashToText $ unsafeGetPointHeaderHash $ getPoint blk
+                        ) : baseHeaders
+                atomically $ putTMVar response $ responseStreamJson headers metadataToJson' $
+                    \yield done -> do
+                        traverse_ yield $ foldBlock
+                            (\ix tx ->
+                                if isNothing filterBy || Just (getTransactionId tx) == filterBy then
+                                    Map.alter (const $ userDefinedMetadata @block tx) ix
+                                else
+                                    identity
+                            )
+                            mempty
+                            blk
+                        done
+        atomically (takeTMVar response)
+
+--
 -- /patterns
 --
 
@@ -646,6 +741,10 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
 orAbort :: Maybe a -> Response -> Either Response a
 orAbort l r = maybeToRight r l
 {-# INLINABLE orAbort #-}
+
+handleRequest :: Either Response Response -> Response
+handleRequest = either identity identity
+{-# INLINABLE handleRequest #-}
 
 responseHeaders
     :: Applicative m

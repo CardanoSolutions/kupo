@@ -24,13 +24,31 @@ module Kupo.Data.Cardano
       -- * Transaction
     , Transaction
 
+      -- * Metadata
+    , Metadata
+    , Ledger.Metadatum (..)
+    , mkMetadata
+    , metadataToText
+    , metadataFromText
+    , metadataToJson
+    , metadataFromJson
+    , metadataToJson'
+
+      -- * MetadataHash
+    , MetadataHash
+    , hashMetadata
+    , metadataHashToJson
+    , metadataHashToText
+    , metadataHashFromText
+    , unsafeMetadataHashFromBytes
+
       -- * TransactionId
+    , HasTransactionId (..)
     , TransactionId
     , transactionIdToText
     , transactionIdFromHash
     , transactionIdToBytes
     , unsafeTransactionIdFromBytes
-    , getTransactionId
     , transactionIdToJson
     , transactionIdFromText
 
@@ -184,8 +202,10 @@ module Kupo.Data.Cardano
 
       -- * HeaderHash
     , HeaderHash
+    , headerHashToText
     , headerHashFromText
     , headerHashToJson
+    , headerHashToBytes
     , unsafeHeaderHashFromBytes
 
       -- * Point
@@ -258,6 +278,9 @@ import Cardano.Slotting.Slot
     )
 import Control.Arrow
     ( left
+    )
+import Data.Aeson
+    ( (.:)
     )
 import Data.Binary.Put
     ( runPut
@@ -345,6 +368,7 @@ import qualified Cardano.Ledger.Keys as Ledger
 import qualified Cardano.Ledger.Mary.Value as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Cardano.Ledger.Shelley.BlockChain as Ledger.Shelley
+import qualified Cardano.Ledger.Shelley.Metadata as Ledger
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
 import qualified Cardano.Ledger.ShelleyMA.AuxiliaryData as Ledger.MaryAllegra
 import qualified Cardano.Ledger.ShelleyMA.Timelocks as Ledger
@@ -352,8 +376,12 @@ import qualified Cardano.Ledger.ShelleyMA.Timelocks as Ledger.MaryAllegra
 import qualified Cardano.Ledger.ShelleyMA.TxBody as Ledger.MaryAllegra
 import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Codec.CBOR.Read as Cbor
+import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Key as Json
+import qualified Data.Aeson.Key as Json.Key
+import qualified Data.Aeson.KeyMap as Json.KeyMap
+import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Short as SBS
 import qualified Data.Map as Map
@@ -364,7 +392,7 @@ import qualified Ouroboros.Network.Block as Ouroboros
 
 -- IsBlock
 
-class IsBlock (block :: Type) where
+class HasTransactionId (BlockBody block) StandardCrypto => IsBlock (block :: Type) where
     type BlockBody block :: Type
 
     getPoint
@@ -393,6 +421,152 @@ class IsBlock (block :: Type) where
     witnessedScripts
         :: BlockBody block
         -> Map ScriptHash Script
+
+    userDefinedMetadata
+        :: BlockBody block
+        -> Maybe (MetadataHash, Metadata)
+
+-- Metadata
+
+type Metadata =
+    Ledger.Metadata (BabbageEra StandardCrypto)
+
+type Metadatum =
+    Ledger.Metadatum
+
+mkMetadata :: Map Word64 Metadatum -> (MetadataHash, Metadata)
+mkMetadata (Ledger.Metadata -> meta) =
+    (hashMetadata meta, meta)
+
+metadataToText :: Metadata -> Text
+metadataToText =
+    encodeBase16 . Ledger.originalBytes
+{-# INLINABLE metadataToText #-}
+
+metadataFromText :: Text -> Maybe Metadata
+metadataFromText txt = do
+    bytes <- eitherToMaybe $ decodeBase16 (encodeUtf8 txt)
+    eitherToMaybe $ decodeAnnotator "Metadata" fromCBOR (toLazy bytes)
+
+metadataToJson :: Metadata -> Json.Encoding
+metadataToJson (Ledger.Metadata meta) =
+    encodeMap show encodeMetadatum meta
+  where
+    encodeMetadatum :: Ledger.Metadatum -> Json.Encoding
+    encodeMetadatum = \case
+        Ledger.I n ->
+            encodeObject [("int", Json.integer n)]
+        Ledger.S txt ->
+            encodeObject [("string", Json.text txt)]
+        Ledger.B bytes ->
+            encodeObject [("bytes", Json.text $ encodeBase16 bytes)]
+        Ledger.List xs ->
+            encodeObject [("list", Json.list encodeMetadatum xs)]
+        Ledger.Map xs ->
+            encodeObject [("map", Json.list encodeKeyPair xs)]
+
+    encodeKeyPair :: (Ledger.Metadatum, Ledger.Metadatum) -> Json.Encoding
+    encodeKeyPair (k, v) =
+        encodeObject
+            [ ( "k", encodeMetadatum k )
+            , ( "v", encodeMetadatum v )
+            ]
+
+metadataFromJson :: Json.Value -> Json.Parser (MetadataHash, Metadata)
+metadataFromJson = fmap mkMetadata . Json.withObject "Metadata"
+    (Json.KeyMap.foldrWithKey
+        (\k v accum -> Map.insert
+            <$> metadatumLabelFromJson k
+            <*> metadatumFromJson v
+            <*> accum
+        )
+        (pure Map.empty)
+    )
+  where
+    metadatumLabelFromJson :: Json.Key -> Json.Parser Word64
+    metadatumLabelFromJson key = do
+        (lbl, remLbl) <- either fail pure (T.decimal $ Json.Key.toText key)
+        guard (T.null remLbl)
+        pure lbl
+
+    metadatumFromJson :: Json.Value -> Json.Parser Metadatum
+    metadatumFromJson = Json.withObject "Metadatum" $ \o -> asum
+        [ metadatumIntFromJson o
+        , metadatumStringFromJson o
+        , metadatumBytesFromJson o
+        , metadatumListFromJson o
+        , metadatumMapFromJson o
+        ]
+      where
+        metadatumIntFromJson :: Json.Object -> Json.Parser Metadatum
+        metadatumIntFromJson o = do
+            i <- o .: "int"
+            pure (Ledger.I i)
+
+        metadatumStringFromJson :: Json.Object -> Json.Parser Metadatum
+        metadatumStringFromJson o = do
+            s <- o .: "string"
+            pure (Ledger.S s)
+
+        metadatumBytesFromJson :: Json.Object -> Json.Parser Metadatum
+        metadatumBytesFromJson o = do
+            b <- (o .: "bytes")
+              >>= either (fail . toString) pure . decodeBase16 . encodeUtf8 @Text
+            pure (Ledger.B b)
+
+        metadatumListFromJson :: Json.Object -> Json.Parser Metadatum
+        metadatumListFromJson o = do
+            xs <- (o .: "list") >>= traverse metadatumFromJson
+            pure (Ledger.List xs)
+
+        metadatumMapFromJson :: Json.Object -> Json.Parser Metadatum
+        metadatumMapFromJson o = do
+            xs <- (o .: "map") >>= traverse
+                (Json.withObject "map" $ \m -> do
+                    k <- m .: "k"
+                    v <- m .: "v"
+                    (,) <$> metadatumFromJson k <*> metadatumFromJson v
+                )
+            pure (Ledger.Map xs)
+
+metadataToJson' :: (MetadataHash, Metadata) -> Json.Encoding
+metadataToJson' (hash, meta) =
+    encodeObject
+        [ ("hash", metadataHashToJson hash)
+        , ("raw", Json.text (metadataToText meta))
+        , ("schema", metadataToJson meta)
+        ]
+
+-- MetadataHash
+
+type MetadataHash =
+    Ledger.SafeHash StandardCrypto Ledger.EraIndependentAuxiliaryData
+
+hashMetadata :: Metadata -> MetadataHash
+hashMetadata = Ledger.hashMetadata
+{-# INLINABLE hashMetadata #-}
+
+unsafeMetadataHashFromBytes :: HasCallStack => ByteString -> MetadataHash
+unsafeMetadataHashFromBytes =
+    Ledger.unsafeMakeSafeHash
+    . fromMaybe (error "unsafeMetadataHashFromBytes")
+    . hashFromBytes @Blake2b_256
+{-# INLINABLE unsafeMetadataHashFromBytes #-}
+
+metadataHashToText :: MetadataHash -> Text
+metadataHashToText =
+    encodeBase16 . Ledger.originalBytes . Ledger.extractHash
+{-# INLINABLE metadataHashToText #-}
+
+metadataHashFromText :: Text -> Maybe MetadataHash
+metadataHashFromText =
+    fmap Ledger.unsafeMakeSafeHash . hashFromTextAsHex @Blake2b_256
+{-# INLINABLE metadataHashFromText #-}
+
+metadataHashToJson :: MetadataHash -> Json.Encoding
+metadataHashToJson =
+    hashToJson . Ledger.extractHash
+{-# INLINABLE metadataHashToJson #-}
 
 -- Block
 
@@ -592,23 +766,60 @@ instance IsBlock Block where
         TransactionAllegra tx ->
             ( fromAllegraScript
                 <$> getField @"scriptWits" tx
-            ) & strictMaybe identity (fromAllegraAuxiliaryData fromAllegraScript)
+            ) & strictMaybe identity (scriptFromAllegraAuxiliaryData fromAllegraScript)
                     (getField @"auxiliaryData" tx)
         TransactionMary tx ->
             ( fromMaryScript
                 <$> getField @"scriptWits" tx
-            ) & strictMaybe identity (fromAllegraAuxiliaryData fromMaryScript)
+            ) & strictMaybe identity (scriptFromAllegraAuxiliaryData fromMaryScript)
                     (getField @"auxiliaryData" tx)
         TransactionAlonzo tx ->
             ( fromAlonzoScript
                 <$> getField @"txscripts" (getField @"wits" tx)
-            ) & strictMaybe identity (fromAlonzoAuxiliaryData fromAlonzoScript)
+            ) & strictMaybe identity (scriptFromAlonzoAuxiliaryData fromAlonzoScript)
                     (getField @"auxiliaryData" tx)
         TransactionBabbage tx ->
             ( fromBabbageScript
                 <$> getField @"txscripts" (getField @"wits" tx)
-            ) & strictMaybe identity (fromAlonzoAuxiliaryData fromBabbageScript)
+            ) & strictMaybe identity (scriptFromAlonzoAuxiliaryData fromBabbageScript)
                     (getField @"auxiliaryData" tx)
+
+    userDefinedMetadata
+        :: Transaction
+        -> Maybe (MetadataHash, Metadata)
+    userDefinedMetadata = \case
+        TransactionByron{} ->
+            Nothing
+        TransactionShelley tx ->
+            case getField @"auxiliaryData" tx of
+                SNothing ->
+                    Nothing
+                SJust (Ledger.Metadata meta) ->
+                    Just (mkMetadata meta)
+        TransactionAllegra tx ->
+            case getField @"auxiliaryData" tx of
+                SNothing ->
+                    Nothing
+                SJust (Ledger.MaryAllegra.AuxiliaryData meta _scripts) ->
+                    Just (mkMetadata meta)
+        TransactionMary tx ->
+            case getField @"auxiliaryData" tx of
+                SNothing ->
+                    Nothing
+                SJust (Ledger.MaryAllegra.AuxiliaryData meta _scripts) ->
+                    Just (mkMetadata meta)
+        TransactionAlonzo tx ->
+            case getField @"auxiliaryData" tx of
+                SNothing ->
+                    Nothing
+                SJust (Ledger.AuxiliaryData meta _scripts) ->
+                    Just (mkMetadata meta)
+        TransactionBabbage tx ->
+            case getField @"auxiliaryData" tx of
+                SNothing ->
+                    Nothing
+                SJust (Ledger.AuxiliaryData meta _scripts) ->
+                    Just (mkMetadata meta)
 
 -- TransactionId
 
@@ -647,10 +858,9 @@ unsafeTransactionIdFromBytes =
     . sizeInvariant (== (digestSize @Blake2b_256))
 {-# INLINABLE unsafeTransactionIdFromBytes #-}
 
-class HasTransactionId f where
+class HasTransactionId (a :: Type) (crypto :: Type) where
     getTransactionId
-        :: forall crypto. (Crypto crypto)
-        => f crypto
+        :: a
         -> TransactionId' crypto
 
 transactionIdToText :: TransactionId -> Text
@@ -715,6 +925,26 @@ data Transaction' crypto
     | TransactionBabbage
         !(Ledger.Alonzo.ValidatedTx (BabbageEra crypto))
 
+instance HasTransactionId Transaction StandardCrypto where
+    getTransactionId = \case
+        TransactionByron _ i ->
+            transactionIdFromByron i
+        TransactionShelley tx ->
+            let body = Ledger.Shelley.body tx
+             in Ledger.txid @(ShelleyEra StandardCrypto) body
+        TransactionAllegra tx ->
+            let body = Ledger.Shelley.body tx
+             in Ledger.txid @(AllegraEra StandardCrypto) body
+        TransactionMary tx ->
+            let body = Ledger.Shelley.body tx
+             in Ledger.txid @(MaryEra StandardCrypto) body
+        TransactionAlonzo tx ->
+            let body = Ledger.Alonzo.body tx
+             in Ledger.txid @(AlonzoEra StandardCrypto) body
+        TransactionBabbage tx ->
+            let body = Ledger.Alonzo.body tx
+             in Ledger.txid @(BabbageEra StandardCrypto) body
+
 -- Input
 
 type Input =
@@ -753,7 +983,7 @@ withReferences txId = loop 0
              in
                 (mkOutputReference txId ix, out) : results
 
-instance HasTransactionId Ledger.TxIn where
+instance HasTransactionId (Ledger.TxIn crypto) crypto where
     getTransactionId (Ledger.TxIn i _) = i
 
 outputReferenceFromText :: Text -> Maybe OutputReference
@@ -941,18 +1171,34 @@ hashScriptReference = \case
 type Script =
     Ledger.Script (BabbageEra StandardCrypto)
 
-fromAllegraAuxiliaryData
+scriptFromAllegraAuxiliaryData
     :: forall era. (Ledger.Core.Script era ~ Ledger.Timelock StandardCrypto)
     => (Ledger.Core.Script era -> Script)
     -> Ledger.MaryAllegra.AuxiliaryData era
     -> Map ScriptHash Script
     -> Map ScriptHash Script
-fromAllegraAuxiliaryData liftScript (Ledger.MaryAllegra.AuxiliaryData _ scripts) m0 =
+scriptFromAllegraAuxiliaryData liftScript (Ledger.MaryAllegra.AuxiliaryData _ scripts) m0 =
     foldr
         (\(liftScript -> s) -> Map.insert (hashScript s) s)
         m0
         scripts
-{-# INLINABLE fromAllegraAuxiliaryData #-}
+{-# INLINABLE scriptFromAllegraAuxiliaryData #-}
+
+scriptFromAlonzoAuxiliaryData
+    :: forall era.
+        ( Ledger.Era era
+        , Ledger.Core.Script era ~ Ledger.Script era
+        )
+    => (Ledger.Script era -> Script)
+    -> Ledger.AuxiliaryData era
+    -> Map ScriptHash Script
+    -> Map ScriptHash Script
+scriptFromAlonzoAuxiliaryData liftScript Ledger.AuxiliaryData{Ledger.scripts} m0 =
+    foldr
+        (\(liftScript -> s) -> Map.insert (hashScript s) s)
+        m0
+        scripts
+{-# INLINABLE scriptFromAlonzoAuxiliaryData #-}
 
 fromAllegraScript
     :: Ledger.MaryAllegra.Timelock StandardCrypto
@@ -977,22 +1223,6 @@ fromAlonzoScript = \case
     Ledger.PlutusScript lang bytes ->
         Ledger.PlutusScript lang bytes
 
-fromAlonzoAuxiliaryData
-    :: forall era.
-        ( Ledger.Era era
-        , Ledger.Core.Script era ~ Ledger.Script era
-        )
-    => (Ledger.Script era -> Script)
-    -> Ledger.AuxiliaryData era
-    -> Map ScriptHash Script
-    -> Map ScriptHash Script
-fromAlonzoAuxiliaryData liftScript Ledger.AuxiliaryData{Ledger.scripts} m0 =
-    foldr
-        (\(liftScript -> s) -> Map.insert (hashScript s) s)
-        m0
-        scripts
-{-# INLINABLE fromAlonzoAuxiliaryData #-}
-
 fromBabbageScript
     :: Ledger.Script (BabbageEra StandardCrypto)
     -> Script
@@ -1003,16 +1233,16 @@ fromBabbageScript =
 scriptToJson
     :: Script
     -> Json.Encoding
-scriptToJson script = Json.pairs $ mconcat
-    [ Json.pair "script" $
-        byteStringToJson (Ledger.originalBytes script)
-    , Json.pair "language" $ case script of
+scriptToJson script = encodeObject
+    [ ("script", encodeBytes (Ledger.originalBytes script))
+    , ("language", case script of
         Ledger.TimelockScript{} ->
           Json.text "native"
         Ledger.PlutusScript Ledger.PlutusV1 _ ->
           Json.text "plutus:v1"
         Ledger.PlutusScript Ledger.PlutusV2 _ ->
           Json.text "plutus:v2"
+      )
     ]
 
 scriptToBytes
@@ -1461,11 +1691,25 @@ headerHashFromText =
     fmap (OneEraHash . hashToBytesShort) . hashFromTextAsHex @Blake2b_256
 {-# INLINABLE headerHashFromText #-}
 
+headerHashToText
+    :: HeaderHash Block
+    -> Text
+headerHashToText =
+    encodeBase16 . headerHashToBytes
+{-# INLINABLE headerHashToText #-}
+
+headerHashToBytes
+    :: HeaderHash Block
+    -> ByteString
+headerHashToBytes =
+    fromShort . toShortRawHash (Proxy @Block)
+{-# INLINABLE headerHashToBytes #-}
+
 headerHashToJson
     :: HeaderHash Block
     -> Json.Encoding
 headerHashToJson =
-    byteStringToJson . fromShort . toShortRawHash (Proxy @Block)
+    encodeBytes . headerHashToBytes
 {-# INLINABLE headerHashToJson #-}
 
 unsafeHeaderHashFromBytes
@@ -1587,7 +1831,7 @@ distanceToSlot (SlotNo a) (SlotNo b)
 
 hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding
 hashToJson (UnsafeHash h) =
-    byteStringToJson (fromShort h)
+    encodeBytes (fromShort h)
 
 -- Digest
 

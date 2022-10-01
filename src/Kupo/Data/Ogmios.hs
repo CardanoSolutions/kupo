@@ -56,6 +56,7 @@ import Kupo.Data.Cardano
     , fromNativeScript
     , hashScript
     , headerHashToJson
+    , metadataFromJson
     , mkOutput
     , mkOutputReference
     , noDatum
@@ -392,7 +393,7 @@ decodeNativeScript json =
                         RequireMOf n <$> traverse decodeNativeScript xs
                     Nothing ->
                         fail "cannot decode MOfN constructor, key isn't a natural."
-            _ ->
+            _malformedKeyValuePair ->
                 fail "cannot decode MOfN, not a list."
     decodeTimeExpire o = do
         RequireTimeExpire . SlotNo <$> (o .: "expiresAt")
@@ -403,34 +404,41 @@ decodePartialTransaction
     :: Json.Value
     -> Json.Parser PartialTransaction
 decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
-    txId <- o .: "id" >>= decodeTransactionId
+    id <- o .: "id" >>= decodeTransactionId
     inputSource <- o .:? "inputSource"
     -- NOTE: On Byron transactions, witnesses are an array!
     witness <- o .: "witness" <|> pure KeyMap.empty
-    metadata <- o .:? "metadata" .!= KeyMap.empty >>= (\o' -> o' .:? "body" .!= KeyMap.empty)
+    auxiliaryData <- o .:? "metadata" .!= KeyMap.empty >>= (\o' -> o' .:? "body" .!= KeyMap.empty)
     datums <- witness .:? "datums" .!= Json.Object mempty >>= decodeDatums
     scriptsInWitness <- witness .:? "scripts" .!= Json.Object mempty >>= decodeScripts
-    scriptsInAuxiliaryData <- metadata .:? "scripts"
+    scriptsInAuxiliaryData <- auxiliaryData .:? "scripts"
     scripts <- case scriptsInAuxiliaryData of
         Just xs -> decodeScripts' scriptsInWitness xs
         Nothing -> pure scriptsInWitness
+    metadata <- auxiliaryData .:? "blob" >>= \case
+        Nothing -> pure Nothing
+        Just v  -> Just <$> metadataFromJson v
     case inputSource of
         Just ("collaterals" :: Text) -> do
             inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "collaterals"))
             pure PartialTransaction
-                { inputs
+                { id
+                , inputs
                 , outputs = []
                 , datums
                 , scripts
+                , metadata
                 }
-        _ -> do
+        _inputs -> do
             inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "inputs"))
             outs <- traverse decodeOutput =<< (o .: "body" >>= (.: "outputs"))
             pure PartialTransaction
-                { inputs
-                , outputs = withReferences txId outs
+                { id
+                , inputs
+                , outputs = withReferences id outs
                 , datums
                 , scripts
+                , metadata
                 }
 
 decodeDatums
@@ -485,7 +493,7 @@ decodePointOrOrigin json =
   where
     decodeOrigin = Json.withText "PointOrigin" $ \case
         txt | txt == "origin" -> pure GenesisPoint
-        _ -> empty
+        _notOrigin -> empty
     decodePoint = Json.withObject "PointOrOrigin" $ \o -> do
         slot <- o .: "slot"
         hash <- o .: "hash" >>= decodeOneEraHash
@@ -499,7 +507,7 @@ decodeSlotNoOrOrigin json =
   where
     decodeOrigin = Json.withText "SlotNoOrOrigin" $ \case
         txt | txt == "origin" -> pure Origin
-        _ -> empty
+        _notOrigin -> empty
     decodeSlotNo = Json.withObject "SlotNoOrOrigin" $ \o -> do
         At . SlotNo <$> (o .: "slot")
 
@@ -511,7 +519,7 @@ decodeTipOrOrigin json =
   where
     decodeOrigin = Json.withText "TipOrOrigin" $ \case
         txt | txt == "origin" -> pure GenesisTip
-        _ -> empty
+        _notOrigin-> empty
     decodeTip = Json.withObject "TipOrOrigin" $ \o -> do
         slot <- o .: "slot"
         hash <- o .: "hash" >>= decodeOneEraHash
@@ -543,5 +551,5 @@ decodeValue = Json.withObject "Value" $ \o -> do
                 pure (policyId, assetName, quantity)
             [ decodeBase16' -> Right policyId ] -> do
                 pure (policyId, mempty, quantity)
-            _ ->
+            _malformedAssetId ->
                 empty

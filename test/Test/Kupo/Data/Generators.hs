@@ -21,6 +21,9 @@ import Kupo.Data.Cardano
     , DatumHash
     , ExtendedOutputReference
     , HeaderHash
+    , Metadata
+    , MetadataHash
+    , Metadatum (..)
     , Output
     , OutputIndex
     , OutputReference
@@ -37,6 +40,7 @@ import Kupo.Data.Cardano
     , digestSize
     , fromBinaryData
     , fromDatumHash
+    , mkMetadata
     , mkOutput
     , mkOutputReference
     , noDatum
@@ -68,6 +72,9 @@ import Kupo.Data.Pattern
     , Pattern (..)
     , Result (..)
     )
+import Numeric
+    ( log
+    )
 import System.IO.Unsafe
     ( unsafePerformIO
     )
@@ -80,6 +87,8 @@ import Test.QuickCheck
     , frequency
     , listOf
     , oneof
+    , resize
+    , sized
     , suchThat
     , vector
     , vectorOf
@@ -92,6 +101,7 @@ import Test.QuickCheck.Random
     )
 
 import qualified Data.ByteString as BS
+import qualified Data.Map as Map
 import qualified Data.Text as T
 
 genAddress :: Gen Address
@@ -254,7 +264,6 @@ genResultWith genPoint = Result
     <*> genPoint
     <*> frequency [(1, pure Nothing), (5, Just <$> genPoint)]
 
-
 genOutput :: Gen Output
 genOutput = mkOutput
     <$> genAddress
@@ -302,6 +311,26 @@ genForcedRollback =
     ForcedRollback
         <$> oneof [Left <$> genSlotNo, Right <$> genNonGenesisPoint]
         <*> genForcedRollbackLimit
+
+genMetadata :: Gen (MetadataHash, Metadata)
+genMetadata = do
+    n <- choose (1, 3)
+    mkMetadata . Map.fromList <$> liftA2 zip (vector n) (vectorOf n genMetadatum)
+  where
+    genMetadatum :: Gen Metadatum
+    genMetadatum = sized $ \case
+        0 -> oneof
+            [ I <$> arbitrary
+            , B <$> (choose (0, 16) >>= genBytes)
+            , S . T.pack <$> (chooseVector (0, 24) (elements ['a'..'z']))
+            ]
+        ((truncate @Double . log . fromIntegral) -> n) -> oneof
+            [ resize 0 genMetadatum
+            , List <$> (chooseVector (0, n) (nested genMetadatum))
+            , Map <$> (chooseVector (0, n) ((,) <$> nested genMetadatum  <*> nested genMetadatum))
+            ]
+          where
+            nested = resize $ truncate @Double (exp (fromIntegral (prev n)))
 
 --
 -- Helpers

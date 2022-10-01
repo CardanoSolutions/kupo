@@ -9,8 +9,11 @@ module Kupo.Prelude
       -- * JSON
     , FromJSON (..)
     , ToJSON (..)
-    , byteStringToJson
+    , eitherDecodeJson
     , defaultGenericToEncoding
+    , encodeBytes
+    , encodeObject
+    , encodeMap
 
       -- * Lenses
     , Lens'
@@ -40,12 +43,10 @@ module Kupo.Prelude
     , decodeFull'
     , unsafeDeserialize'
 
-      -- * JSON
-    , eitherDecodeJson
-
       -- * System
     , hijackSigTerm
     , ConnectionStatusToggle (..)
+    , noConnectionStatusToggle
 
       -- * Utils
     , nubOn
@@ -103,6 +104,7 @@ import Relude hiding
     , TVar
     , atomically
     , catchSTM
+    , id
     , isEmptyTMVar
     , mkWeakTMVar
     , modifyTVar'
@@ -150,14 +152,24 @@ import System.Posix.Signals
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Internal as Json
+import qualified Data.Aeson.Key as Json
 import qualified Data.Aeson.Parser as Json
 import qualified Data.Aeson.Parser.Internal as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString.Base58 as Base58
+import qualified Data.Map as Map
 
 data ConnectionStatusToggle m = ConnectionStatusToggle
     { toggleConnected :: !(m ())
     , toggleDisconnected :: !(m ())
+    }
+
+-- | A 'ConnectionStatusToggle' which has no effect.
+noConnectionStatusToggle :: Applicative m => ConnectionStatusToggle m
+noConnectionStatusToggle =
+    ConnectionStatusToggle
+    { toggleConnected = pure ()
+    , toggleDisconnected = pure ()
     }
 
 -- | The runtime does not let the application terminate gracefully when a
@@ -189,11 +201,6 @@ encodeBase58 :: ByteString -> Text
 encodeBase58 =
     decodeUtf8 . Base58.encodeBase58 Base58.bitcoinAlphabet
 
--- | Encode a ByteString to JSON as a base16 text
-byteStringToJson :: ByteString -> Json.Encoding
-byteStringToJson =
-    Json.text . encodeBase16
-
 -- | Generic JSON encoding, with pre-defined default options.
 defaultGenericToEncoding :: (Generic a, GToJSON' Encoding Zero (Rep a)) => a -> Json.Encoding
 defaultGenericToEncoding =
@@ -222,3 +229,16 @@ eitherDecodeJson
     -> Either String a
 eitherDecodeJson decoder =
     left snd . Json.eitherDecodeWith Json.jsonEOF (Json.iparse decoder)
+
+encodeMap :: (k -> Text) -> (v -> Json.Encoding) -> Map k v -> Json.Encoding
+encodeMap encodeKey encodeValue =
+    encodeObject . Map.foldrWithKey (\k v -> (:) (encodeKey k, encodeValue v)) []
+
+encodeObject :: [(Text, Json.Encoding)] -> Json.Encoding
+encodeObject =
+    Json.pairs . foldr (\(Json.fromText -> k, v) -> (<>) (Json.pair k v)) mempty
+
+-- | Encode a ByteString to JSON as a base16 text
+encodeBytes :: ByteString -> Json.Encoding
+encodeBytes =
+    Json.text . encodeBase16

@@ -5,9 +5,10 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App
-    ( -- * Producer
+    ( -- * Producer(s)
       ChainSyncClient
     , newProducer
+    , withFetchBlockClient
 
       -- * Consumer
     , consumer
@@ -27,6 +28,7 @@ import Control.Monad.Class.MonadTimer
     )
 import Kupo.App.ChainSync
     ( TraceChainSync (..)
+    , withChainSyncExceptionHandler
     )
 import Kupo.App.Configuration
     ( TraceConfiguration (..)
@@ -41,6 +43,9 @@ import Kupo.App.Mailbox
     , flushMailbox
     , newMailbox
     )
+import Kupo.Control.MonadAsync
+    ( race_
+    )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..)
     )
@@ -49,6 +54,7 @@ import Kupo.Control.MonadLog
     , MonadLog (..)
     , Severity (..)
     , Tracer
+    , nullTracer
     )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..)
@@ -88,6 +94,9 @@ import Kupo.Data.Database
     , resultToRow
     , scriptToRow
     )
+import Kupo.Data.FetchBlock
+    ( FetchBlockClient
+    )
 import Kupo.Data.Pattern
     ( Codecs (..)
     , Match (..)
@@ -99,8 +108,10 @@ import Kupo.Data.Pattern
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import qualified Kupo.App.ChainSync.Direct as Direct
+import qualified Kupo.App.ChainSync.Node as Node
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
+import qualified Kupo.App.FetchBlock.Node as Node
+import qualified Kupo.App.FetchBlock.Ogmios as Ogmios
 
 --
 -- Producer
@@ -150,7 +161,7 @@ newProducer tr chainProducer callback = do
                   networkMagic
                   slotsPerEpoch
                   nodeSocket
-                  (Direct.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
+                  (Node.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
                   & handle
                     (\case
                         e@IntersectionNotFound{requestedPoints = points} -> do
@@ -160,6 +171,41 @@ newProducer tr chainProducer callback = do
                             logWith tracerChainSync $ ChainSyncIntersectionNotFound [point]
                             throwIO e
                     )
+
+-- | A background client that answers on-demand requests to fetch specific block. It evolved on a
+-- completely different connection than the main chain producer to not conflict with one another.
+--
+--
+-- The FetchBlockClient is more geared towards fetching precise information (e.g. metadata of a
+-- transaction in a known block).
+withFetchBlockClient
+    :: ChainProducer
+    -> ( forall block. IsBlock block
+        => FetchBlockClient IO block
+        -> IO ()
+       )
+    -> IO ()
+withFetchBlockClient chainProducer callback = do
+    case chainProducer of
+        Ogmios{ogmiosHost, ogmiosPort} ->
+            Ogmios.withFetchBlockClient ogmiosHost ogmiosPort callback
+        CardanoNode{nodeSocket, nodeConfig} -> do
+            NetworkParameters
+                { networkMagic
+                , slotsPerEpoch
+                } <- liftIO (parseNetworkParameters nodeConfig)
+            (chainSyncClient, fetchBlockClient) <- Node.newFetchBlockClient
+            race_
+                (callback fetchBlockClient)
+                (withChainSyncExceptionHandler nullTracer noConnectionStatusToggle $
+                    withChainSyncServer
+                        noConnectionStatusToggle
+                        [ NodeToClientV_9 .. maxBound ]
+                        networkMagic
+                        slotsPerEpoch
+                        nodeSocket
+                        chainSyncClient
+                )
 
 -- | Consumer process that is reading messages from the 'Mailbox'. Messages are
 -- enqueued by another process (the producer).

@@ -489,7 +489,7 @@ components:
           type: string
           description: A blake2b-256 hash digest of a Plutus' datum.
           contentEncoding: base16
-          example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
+          example: 3097...b635
           minLength: 64
           maxLength: 64
         - title: Nothing
@@ -563,13 +563,218 @@ components:
           - unsafe_allow_beyond_safe_zone
           - within_safe_zone
 
-    HeaderHash:
+    HeaderHash: &HeaderHash
       type: string
       description: A blake2b-256 hash digest of a block header.
       contentEncoding: base16
-      example: 9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e0935d8340cd6a5d31bf
+      example: 9d09...31bf
       minLength: 64
       maxLength: 64
+
+    Metadata:
+      type: object
+      additionalProperties: false
+      required:
+        - hash
+        - schema
+        - raw
+      properties:
+        hash:
+          type: string
+          description: A blake2b-256 hash digest of the raw serialized data
+          contentEncoding: base16
+          example: cd6a5d31bf9d309706b92ad83402e682fdab9fc889b1b63565ee3de14e09dedf
+          minLength: 64
+          maxLength: 64
+
+        raw:
+          type: string
+          description: A [CBOR](https://www.rfc-editor.org/rfc/rfc8949.html)-encoded binary payload.
+          contentEncoding: base16
+
+        schema:
+          type: object
+          description: |
+            A high-level description of the raw data. The top-level object is an object where all keys are integers (possibly negative) and points to objects representing one of 5 primitives:
+
+            - int
+            - string
+            - bytes
+            - list
+            - map
+
+            This schema is meant to give a faithful representation of the underlying [CBOR](https://www.rfc-editor.org/rfc/rfc8949.html) encoding, which is slightly more expressive than pure JSON (e.g. keys of maps can be arbitrary CBOR objects).
+
+            This is why it is generally not possible to ensure a 1:1 conversion between low-level CBOR and JSON, and why this intermediate representation is necessary to safely represent **any** metadata object.
+          propertyNames:
+            type: integer
+          additionalProperties:
+            x-additionalPropertiesName: "label (integer)"
+            $ref: "#/components/schemas/Metadatum"
+          example:
+            {
+              "64": {"string": "some text"},
+              "32": {"int": 42},
+              "16": {
+                "map": [
+                  {
+                    "k": {"string": "numbers"},
+                    "v": {"list": [{"int": 1}, {"int": 2}, {"int": 4}, {"int": 8}]}
+                  },
+                  {
+                    "k": {"string": "alphabet"},
+                    "v": {
+                      "map": [
+                        {"k": {"string": "A"}, "v": {"int": 65}},
+                        {"k": {"string": "B"}, "v": {"int": 66}},
+                        {"k": {"string": "C"}, "v": {"int": 67}}
+                      ]
+                    }
+                  }
+                ]
+              },
+              "-8": { "bytes": "48656c6c6f2c2043617264616e6f21" }
+            }
+
+    Metadatum:
+      oneOf:
+        - $ref: "#/components/schemas/Metadatum_Int"
+        - $ref: "#/components/schemas/Metadatum_String"
+        - $ref: "#/components/schemas/Metadatum_Bytes"
+        - $ref: "#/components/schemas/Metadatum_List"
+        - $ref: "#/components/schemas/Metadatum_Map"
+
+    Metadatum_Int:
+      title: int
+      type: object
+      additionalProperties: false
+      required:
+        - int
+      properties:
+        int:
+          type: integer
+          description: |
+            An integer or arbitrary size.
+
+            Example:
+
+            ```json
+            { "int": 42 }
+            ```
+
+    Metadatum_String:
+      title: string
+      type: object
+      additionalProperties: false
+      required:
+        - string
+      properties:
+        string:
+          type: string
+          contentEncoding: utf-8
+          maxLength: 64
+          description: |
+            A text string, which is at most 64 bytes.
+
+            Example:
+
+            ```json
+            { "string": "kupo!" }
+            ```
+
+    Metadatum_Bytes:
+      title: bytes
+      type: object
+      additionalProperties: false
+      required:
+        - bytes
+      properties:
+        bytes:
+          type: string
+          contentEncoding: base16
+          maxLength: 128
+          description: |
+            A base16 byte string, which is at most 64 bytes
+
+            Example:
+
+            ```json
+            { "bytes": "6b75706f21" }
+            ```
+
+    Metadatum_List:
+      title: list
+      type: object
+      additionalProperties: false
+      required:
+        - list
+      properties:
+        list:
+          type: array
+          additionalItems: false
+          items:
+            $ref: "#/components/schemas/Metadatum"
+          description: |
+            A (possibly heterogeneous) list of metadatum
+
+            Example:
+
+            ```json
+            {
+              "list": [
+                {
+                  "int": 14
+                },
+                {
+                  "list": [
+                    { "string": "kupo!" },
+                    { "bytes": "6b75706f21" }
+                  ]
+                }
+              ]
+            }
+            ```
+
+    Metadatum_Map:
+      title: map
+      type: object
+      additionalProperties: false
+      required:
+        - map
+      properties:
+        map:
+          type: array
+          items:
+            type: object
+            additionalItems: false
+            required:
+              - k
+              - v
+            properties:
+              k:
+                $ref: "#/components/schemas/Metadatum"
+              v:
+                $ref: "#/components/schemas/Metadatum"
+          description: |
+            A list of key:value objects. Both keys and values can be any sort metadatum.
+
+            Example:
+
+            ```json
+            {
+              "map": [
+                {
+                  "k": { "int": 14 },
+                  "v": {
+                    "list": [
+                      { "string": "kupo!" },
+                      { "bytes": "6b75706f21" }
+                    ]
+                  }
+                }
+              ]
+            }
+            ```
 
     OutputIndex:
       type: integer
@@ -655,7 +860,7 @@ components:
           description: A blake2b-224 hash digest of a Native or Plutus script.
           type: string
           contentEncoding: base16
-          example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded
+          example: 3097...9ded
           minLength: 56
           maxLength: 56
         - title: Nothing
@@ -672,7 +877,7 @@ components:
       type: string
       description: A blake2b-256 hash digest of a transaction body.
       contentEncoding: base16
-      example: 35d8340cd6a5d31bf9d09706b92adedf9b1b632e682fdab9fc8865ee3de14e09
+      example: 35d8...4e09
       minLength: 64
       maxLength: 64
 
@@ -801,7 +1006,7 @@ components:
         minLength: 64
         maxLength: 64
         pattern: ^[a-f0-9]{64}$
-        example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635
+        example: 3097...b635
       description:
         A datum blake2b-256 hash digest.
 
@@ -859,7 +1064,7 @@ components:
         minLength: 56
         maxLength: 56
         pattern: ^[a-f0-9]{56}$
-        example: 309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded
+        example: 3097...9ded
       description:
         A script blake2b-224 hash digest of a script.
 
@@ -887,6 +1092,15 @@ components:
       description: |
         A query flag (i.e. `?strict`) to only look for checkpoints that strictly match the provided slot. The behavior otherwise is to look for the largest nearest slot smaller or equal to the one provided.
 
+    transaction-id:
+      name: transaction_id
+      in: query
+      required: false
+      description: |
+        An optional transaction id to retrieve items associated with the transaction only.
+      schema:
+        $ref: "#/components/schemas/TransactionId"
+
     unspent:
       name: unspent
       in: query
@@ -897,14 +1111,33 @@ components:
 
 tags:
   - name: Matches
+    description: |
+      Accessing results matched by a certain configuration. Results can be retrieve using **any** pattern (and not only those defined in configuration). So it is possible for example to
+      index data using quite wide patterns (e.g. `*`) but only query a single address later on.
   - name: Checkpoints
     description: |
       An API for inspecting checkpoints known of the database. A checkpoint really is a point on-chain that directly references a block. They are comprised of an absolute slot
       number and a block header hash. Kupo records all such points as it processes blocks. In particular, they are also used to resume synchronization upon restart.
   - name: Datums
+    description: |
+      Accessing datums indexed by the server. By default, the engine indexes **every** datum present in transaction witnesses and inline datums present in **matched** transaction outputs. However,
+      a periodic garbage collector will automatically remove datums that aren't associated to any matched output. Said differently, any datum hash present in a matched output can be queried (so long
+      as its datum has been seen on-chain one way or another). Other hashes _may_ work but aren't guaranteed.
   - name: Scripts
+    description: |
+      Accessing scripts indexed by the server. By default, the engine indexes **every** script present in transaction witnesses and inline scripts present in **matched** transaction outputs. However,
+      a periodic garbage collector will automatically remove scripts that aren't associated to any matched output. Said differently, any script hash present in a matched output can be queried (so long
+      as its script has been seen on-chain one way or another). Other hashes _may_ work but aren't guaranteed.
+  - name: Metadata
+    description: |
+      Accessing metadata present in blocks/transactions. Unlike most other resources, metadata are **not** indexed by the server and are retrieved on-the-fly directly from the node. This is generally quite fast but likely not suitable for fetching large batches of metadata.
   - name: Patterns
+    description: |
+      Dynamically managing the server's configuration. Note that modifying patterns after the server has started indexing may break the server's data integrity -- or more exactly, data completeness.
+      The server does not re-synchronize past blocks unless explicitly told so.
   - name: Health
+    description: |
+      Monitoring endpoints to assess the server's health.
 
 paths:
   /matches:
@@ -1196,6 +1429,33 @@ paths:
                 oneOf:
                   - $ref: "#/components/schemas/Point"
                   - type: "null"
+
+  /metadata/{slot-no}:
+    get:
+      operationId: getMetadataBySlot
+      tags: ["Metadata"]
+      summary: Get Metadata By Slot
+      description: |
+        Retrieve all metadata data seen in a block at the given slot, possibly filtered by transaction id.
+
+        Metadata are ordered according to their respective transaction's order in the block.
+      parameters:
+        - $ref: "#/components/parameters/transaction-id"
+      responses:
+        200:
+          description: OK
+          headers:
+            <<: *default-headers
+            X-Block-Header-Hash:
+              <<: *HeaderHash
+              description: |
+                The block's header hash digest (`blake2b-256`) of the corresponding block at the provided slot. Clients are expected to control that this hash matches the one they expect, especially when fetching metadata from blocks in the unstable region (i.e. less than `k=2160` blocks from the network tip). Indeed, Cardano is a distributed system after all and data isn't guaranteed to be immediately immutable. Data present in very recent blocks may therefore be different between two successive requests.
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Metadata"
 
   /health:
     get:

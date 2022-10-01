@@ -45,10 +45,12 @@ library
       Kupo
       Kupo.App
       Kupo.App.ChainSync
-      Kupo.App.ChainSync.Direct
+      Kupo.App.ChainSync.Node
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
       Kupo.App.Database
+      Kupo.App.FetchBlock.Node
+      Kupo.App.FetchBlock.Ogmios
       Kupo.App.Health
       Kupo.App.Http
       Kupo.App.Http.HealthCheck
@@ -65,6 +67,7 @@ library
       Kupo.Data.ChainSync
       Kupo.Data.Configuration
       Kupo.Data.Database
+      Kupo.Data.FetchBlock
       Kupo.Data.Health
       Kupo.Data.Http.Default
       Kupo.Data.Http.Error
@@ -323,6 +326,7 @@ test-suite unit
     , quickcheck-state-machine
     , relude
     , sqlite-simple
+    , stm
     , temporary
     , text
     , wai

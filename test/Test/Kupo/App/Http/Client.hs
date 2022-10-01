@@ -39,6 +39,8 @@ import Kupo.Data.Cardano
     , Datum
     , DatumHash
     , ExtendedOutputReference
+    , Metadata
+    , MetadataHash
     , Point
     , Script
     , ScriptHash
@@ -51,6 +53,8 @@ import Kupo.Data.Cardano
     , datumHashToText
     , fromDatumHash
     , getPointSlotNo
+    , metadataFromText
+    , metadataHashFromText
     , mkOutputReference
     , noDatum
     , pointFromText
@@ -59,6 +63,7 @@ import Kupo.Data.Cardano
     , scriptHashToText
     , slotNoToText
     , transactionIdFromHash
+    , transactionIdToText
     , unsafeValueFromList
     )
 import Kupo.Data.Http.ForcedRollback
@@ -99,6 +104,7 @@ import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.KeyMap as Json
 import qualified Data.Aeson.Types as Json
+import qualified Data.ByteString.Lazy.Char8 as BL8
 import qualified Data.Map as Map
 import qualified Data.Text as T
 
@@ -115,6 +121,8 @@ data HttpClient (m :: Type -> Type) = HttpClient
         :: ScriptHash -> m (Maybe Script)
     , waitScript
         :: ScriptHash -> m Script
+    , lookupMetadataBySlotNo
+        :: SlotNo -> Maybe TransactionId -> m [(MetadataHash, Metadata)]
     , listCheckpoints
         :: m [Point]
     , getCheckpointBySlot
@@ -151,6 +159,8 @@ newHttpClientWith manager (serverHost, serverPort) logs =
             \a0 -> waitForServer >> _lookupScriptByHash a0
         , waitScript =
             \a0 -> waitForServer >> _waitScript a0
+        , lookupMetadataBySlotNo =
+            \a0 a1 -> waitForServer >> _lookupMetadataBySlotNo a0 a1
         , listCheckpoints =
             waitForServer >> _listCheckpoints
         , getCheckpointBySlot =
@@ -299,6 +309,26 @@ newHttpClientWith manager (serverHost, serverPort) logs =
                 log $ "waitScript (" <> scriptStr <> "): found"
                 pure script
 
+    _lookupMetadataBySlotNo :: SlotNo -> Maybe TransactionId -> IO [(MetadataHash, Metadata)]
+    _lookupMetadataBySlotNo slotNo filterBy = do
+        let fragment = toString (slotNoToText slotNo)
+        let query = case filterBy of
+                Nothing -> ""
+                Just id -> toString ("?transaction_id=" <> transactionIdToText id)
+        req <- parseRequest (baseUrl <> "/metadata/" <> fragment <> query)
+        res <- httpLbs req manager
+        let body = responseBody res
+        if | responseStatus res == status200 ->
+                case eitherDecodeJson (Json.listParser decodeMetadata) body of
+                    Left e ->
+                        fail (show e)
+                    Right xs ->
+                        pure xs
+           | responseStatus res == status400 && "no known-ancestor" `T.isInfixOf` (decodeUtf8 body) ->
+                return []
+           | otherwise ->
+                fail ("Unexpected response from the server: " <> BL8.unpack body)
+
     _putPatternSince :: Pattern -> Either SlotNo Point -> IO Bool
     _putPatternSince p pt = do
         let fragment = toString (patternToText p)
@@ -444,6 +474,16 @@ decodeHash
     -> Json.Parser (Hash alg a)
 decodeHash =
     maybe empty pure . hashFromTextAsHex
+
+decodeMetadata
+    :: Json.Value
+    -> Json.Parser (MetadataHash, Metadata)
+decodeMetadata = Json.withObject "Metadata" $ \o -> do
+    hash <- (o .: "hash")
+        >>= maybe (fail "failed to decode metadata hash") pure . metadataHashFromText
+    meta <- (o .: "raw")
+        >>= maybe (fail "failed to decode metadata payload") pure . metadataFromText
+    pure (hash, meta)
 
 decodeResult
     :: Json.Value

@@ -11,6 +11,19 @@ module Test.Kupo.AppSpec where
 
 import Kupo.Prelude
 
+import Control.Concurrent.STM
+    ( STM
+    , atomically
+    )
+import Control.Concurrent.STM.TChan
+    ( TChan
+    , cloneTChan
+    , dupTChan
+    , newTChanIO
+    , readTChan
+    , tryReadTChan
+    , writeTChan
+    )
 import Control.Monad.Class.MonadAsync
     ( link
     )
@@ -42,9 +55,6 @@ import Kupo.Control.MonadLog
     , defaultTracers
     , nullTracer
     )
-import Kupo.Control.MonadSTM
-    ( MonadSTM (..)
-    )
 import Kupo.Control.MonadTime
     ( DiffTime
     )
@@ -53,6 +63,8 @@ import Kupo.Data.Cardano
     , BlockNo (..)
     , DatumHash
     , Input
+    , Metadata
+    , MetadataHash
     , Output
     , OutputReference
     , Point
@@ -66,6 +78,7 @@ import Kupo.Data.Cardano
     , getBinaryData
     , getDatum
     , getOutputIndex
+    , getPoint
     , getPointSlotNo
     , getScript
     , getTipSlotNo
@@ -73,6 +86,7 @@ import Kupo.Data.Cardano
     , hashBinaryData
     , hashDatum
     , hashScript
+    , metadataHashToText
     , pattern BlockPoint
     , pattern GenesisPoint
     , pattern GenesisTip
@@ -92,6 +106,9 @@ import Kupo.Data.Configuration
     , LongestRollback (..)
     , WorkDir (..)
     , mailboxCapacity
+    )
+import Kupo.Data.FetchBlock
+    ( FetchBlockClient
     )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..)
@@ -130,6 +147,7 @@ import Test.Kupo.Data.Generators
     , genDatumHash
     , genHeaderHash
     , genInputManagement
+    , genMetadata
     , genNonGenesisPoint
     , genOutput
     , genOutputReference
@@ -168,6 +186,7 @@ import Test.StateMachine
     , checkCommandNames
     , forAllCommands
     , runCommands
+    , (.//)
     , (.==)
     )
 import Test.StateMachine.Types
@@ -191,7 +210,7 @@ varStateMachineIterations = "KUPO_STATE_MACHINE_ITERATIONS"
 spec :: Spec
 spec = do
     httpClient <- runIO (newHttpClient (serverHost, serverPort))
-    queue <- runIO (newTBQueueIO 1)
+    chan <- runIO newTChanIO
 
     maxSuccess <- maybe 30 Prelude.read
         <$> runIO (lookupEnv varStateMachineIterations)
@@ -206,9 +225,9 @@ spec = do
                     Nothing
                     (generator inputManagement)
                     shrinker
-                    (semantics garbageCollectionInterval httpClient queue)
+                    (semantics garbageCollectionInterval httpClient chan)
                     mock
-                    (cleanup queue)
+                    (cleanup chan)
             forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
                 let config = Configuration
                         { chainProducer = error "chainProducer: unused."
@@ -222,8 +241,9 @@ spec = do
                         , garbageCollectionInterval
                         }
                 env <- run (newEnvironment config)
-                let producer = newMockProducer queue
-                let kupo = kupoWith tracers producer `runWith` env
+                producer <- run (newMockProducer <$> atomically (dupTChan chan))
+                fetchBlock <- run (newMockFetchBlock <$> atomically (dupTChan chan))
+                let kupo = kupoWith tracers producer fetchBlock `runWith` env
                 asyncId <- run (async kupo)
                 run $ link asyncId
                 (_hist, model, res) <- runCommands stateMachine cmds
@@ -276,6 +296,7 @@ data Event (r :: Type -> Type)
     | GetUtxo
     | GetDatumByHash !DatumHash
     | GetScriptByHash !ScriptHash
+    | GetMetadataBySlotNo !SlotNo
     | Pause
         -- ^ Pauses makes the overall state-machine run a lot longer, but they
         -- allow to let the internal garbage-collector to run and possibly
@@ -300,6 +321,8 @@ instance Show (Event r) where
             toString $ "(GetDatumByHash " <> showDatumHash hash <> ")"
         GetScriptByHash hash ->
             toString $ "(GetScriptByHash " <> showScriptHash hash <> ")"
+        GetMetadataBySlotNo sl ->
+            toString $ "(GetMetadata " <> showSlotNo sl <> ")"
         Pause ->
             "Pause"
 
@@ -309,6 +332,7 @@ data Response (r :: Type -> Type)
     | Utxo !(Set OutputReference)
     | DatumByHash !(Maybe BinaryData)
     | ScriptByHash !(Maybe Script)
+    | MetadataBySlotNo ![(MetadataHash, Metadata)]
     deriving stock (Eq, Generic1)
     deriving anyclass (Rank2.Foldable)
 
@@ -324,6 +348,8 @@ instance Show (Response r) where
             toString $ "(DatumByHash " <> showBinaryData bin <> ")"
         ScriptByHash script ->
             toString $ "(ScriptByHash " <> showScript script <> ")"
+        MetadataBySlotNo metadata ->
+            toString $ "(MetadataBySlotNo [" <> T.intercalate "," (showMetadataHash . fst <$> metadata) <> "])"
 
 --------------------------------------------------------------------------------
 ---- Model
@@ -436,6 +462,8 @@ precondition (LongestRollback k) model = \case
         Top
     GetScriptByHash{} ->
         Top
+    GetMetadataBySlotNo{} ->
+        Top
     Pause ->
         Top
 
@@ -502,6 +530,8 @@ transition model cmd _res =
             model
         GetScriptByHash{} ->
             model
+        GetMetadataBySlotNo{} ->
+            model
         Pause ->
             model
 
@@ -538,7 +568,7 @@ postcondition model cmd res =
     let
         (res', _) = runGenSym (mock model cmd) newCounter
      in
-        res .== res'
+        Boolean (res == res') .// ("Real " <> show res <> " /= Model " <> show res')
 
 --------------------------------------------------------------------------------
 ---- Generators
@@ -585,6 +615,7 @@ generator inputManagement model =
             , (5, pure GetUtxo)
             , (5, GetDatumByHash <$> genOrSelectDatum inputManagement model)
             , (3, GetScriptByHash <$> genOrSelectScript model)
+            , (3, GetMetadataBySlotNo . SlotNo <$> (elements [0 .. unSlotNo (getPointSlotNo (blockPoint tip))]))
             , (15, DoRollForward
                 <$> genContinuingTip (networkTip model) (blockPoint tip)
                 <*> genContinuingBlock
@@ -674,13 +705,13 @@ genPartialTransactions = do
 genPartialTransaction
     :: StateT (Set OutputReference) Gen PartialTransaction
 genPartialTransaction = do
-    txId <- lift genTransactionId
+    id <- lift genTransactionId
     utxos <- get
     nInputs <- lift $ choose (1, min (Set.size utxos) maxNumberOfInputs)
-    inputSet <- Set.fromList <$> replicateM nInputs (lift $ elements $ Set.toList utxos)
+    inputs <- replicateM nInputs (lift $ elements $ Set.toList utxos)
     nOutputs <- lift $ choose (1, maxNumberOfOutputs)
-    outputs <- withReferences txId <$> replicateM nOutputs (lift genOutput)
-    put ((utxos `Set.difference` inputSet) <> Set.fromList (fmap fst outputs))
+    outputs <- withReferences id <$> replicateM nOutputs (lift genOutput)
+    put ((utxos `Set.difference` Set.fromList inputs) <> Set.fromList (fmap fst outputs))
     nDatums <- lift $ oneof [pure 0, choose (1, nInputs)]
     datums <-
         replicateM nDatums (lift genBinaryData)
@@ -689,7 +720,8 @@ genPartialTransaction = do
     scripts <-
         replicateM nScripts (lift genScript)
         & fmap (foldMap (\v -> Map.singleton (hashScript v) v))
-    pure PartialTransaction { inputs = Set.toList inputSet, outputs, datums, scripts }
+    metadata <- lift $ oneof [pure Nothing, Just <$> genMetadata]
+    pure PartialTransaction { id, inputs, outputs, datums, scripts, metadata }
   where
     maxNumberOfInputs = 3
     maxNumberOfOutputs = 3
@@ -769,11 +801,11 @@ shrinker _ _ = []
 -- are mostly NoOp unless there's also a network activity.
 
 cleanup
-    :: TBQueue IO a
+    :: TChan a
     -> Model Concrete
     -> IO ()
-cleanup queue _ = do
-    void $ atomically (flushTBQueue queue)
+cleanup chan _ = do
+    void (atomically $ flushTChan chan)
 
 -- | Actual 'real world' interpretation of each commands. Note that, for
 -- roll-forward / roll-backward, we want to make sure that the events have been
@@ -785,19 +817,19 @@ cleanup queue _ = do
 semantics
     :: DiffTime
     -> HttpClient IO
-    -> TBQueue IO RequestNextResponse
+    -> TChan RequestNextResponse
     -> Event Concrete
     -> IO (Response Concrete)
-semantics pause HttpClient{..} queue = \case
+semantics pause HttpClient{..} chan = \case
     DoRollForward tip block -> do
         cp <- getMostRecentCheckpoint
-        atomically (writeTBQueue queue (RollForward tip block))
+        atomically (writeTChan chan (RollForward tip block))
         fmap Unit $ waitUntilM $ do
             cp' <- getMostRecentCheckpoint
             pure (cp' > cp)
     DoRollBackward tip point -> do
         cp <- getMostRecentCheckpoint
-        atomically (writeTBQueue queue (RollBackward tip point))
+        atomically (writeTChan chan (RollBackward tip point))
         fmap Unit $ waitUntilM $ do
             cp' <- getMostRecentCheckpoint
             pure (cp' < cp)
@@ -811,6 +843,8 @@ semantics pause HttpClient{..} queue = \case
         DatumByHash <$> lookupDatumByHash hash
     GetScriptByHash hash ->
         ScriptByHash <$> lookupScriptByHash hash
+    GetMetadataBySlotNo sl ->
+        MetadataBySlotNo <$> lookupMetadataBySlotNo sl Nothing
     Pause -> do
         Unit <$> threadDelay pause
   where
@@ -851,6 +885,13 @@ mock model = \case
         pure (DatumByHash (Map.lookup hash (knownBinaryData model)))
     GetScriptByHash hash ->
         pure (ScriptByHash (Map.lookup hash (knownScripts model)))
+    GetMetadataBySlotNo sl ->
+        case find ((== sl) . getPointSlotNo . getPoint) (currentChain model) of
+            Nothing ->
+                pure $ MetadataBySlotNo []
+            Just blk ->
+                pure $ MetadataBySlotNo (mapMaybe metadata (blockBody blk))
+
     Pause ->
         pure (Unit ())
 
@@ -858,19 +899,19 @@ mock model = \case
 -- bounded queue of events that are generated by the quickcheck machinery. It
 -- does nothing more than passing information around in the mailbox.
 newMockProducer
-    :: TBQueue IO RequestNextResponse
+    :: TChan RequestNextResponse
     -> (  (Point -> ForcedRollbackHandler IO -> IO ())
        -> Mailbox IO (Tip, PartialBlock) (Tip, Point)
        -> ChainSyncClient IO PartialBlock
        -> IO ()
        )
     -> IO ()
-newMockProducer queue callback = do
+newMockProducer chan callback = do
     mailbox <- atomically (newMailbox mailboxCapacity)
     callback forcedRollbackCallback mailbox $ \_ -> \case
         [GenesisPoint] -> do
             const $ forever $ atomically $ do
-                readTBQueue queue >>= \case
+                readTChan chan >>= \case
                     RollForward tip block ->
                         putHighFrequencyMessage mailbox (tip, block)
                     RollBackward tip point ->
@@ -884,6 +925,27 @@ newMockProducer queue callback = do
   where
     forcedRollbackCallback _point _handler =
         fail "Mock producer cannot force rollback."
+
+-- | Mock a request to the node which returns the block immediately following the given point.
+newMockFetchBlock
+    :: TChan RequestNextResponse
+    -> (FetchBlockClient IO PartialBlock -> IO ())
+    -> IO ()
+newMockFetchBlock chan callback =
+    callback $ \point reply -> do
+        let slotNo = next (getPointSlotNo point)
+        blocks <- applyBlocks [] <$> atomically (cloneTChan chan >>= flushTChan)
+        reply $ find ((== slotNo) . getPointSlotNo . blockPoint) blocks
+  where
+    applyBlocks :: [PartialBlock] -> [RequestNextResponse] -> [PartialBlock]
+    applyBlocks blocks = \case
+        [] ->
+            reverse blocks
+        (RollForward _ block):rest ->
+            applyBlocks (block:blocks) rest
+        (RollBackward _ point):rest ->
+            let blocks' = dropWhile ((/= point) . blockPoint) blocks
+             in applyBlocks blocks' rest
 
 --------------------------------------------------------------------------------
 ---- Pretty Printers
@@ -941,6 +1003,11 @@ showPartialTransaction tx = mconcat
     , "{"
     , T.intercalate ", " (showOutput <$> outputs tx)
     , "}"
+    , case metadata tx of
+        Nothing ->
+            " w/ no metadata"
+        Just (hash, _) ->
+            " w/ metadata = " <> showMetadataHash hash
     ]
 
 showOutput :: (OutputReference, Output) -> Text
@@ -963,6 +1030,10 @@ showScript :: Maybe Script -> Text
 showScript =
     showLongByteString (maybe Json.null_ scriptToJson)
 
+showMetadataHash :: MetadataHash -> Text
+showMetadataHash =
+    T.take 8 . metadataHashToText
+
 showLongByteString :: (a -> Json.Encoding) -> a -> Text
 showLongByteString toJsonEncoding =
     ellipse 20
@@ -979,6 +1050,16 @@ showLongByteString toJsonEncoding =
 --------------------------------------------------------------------------------
 ---- Helpers
 --
+
+-- | Flush the content of a channel, very much like
+flushTChan :: TChan a -> STM [a]
+flushTChan chan =
+    tryReadTChan chan >>= \case
+        Nothing ->
+            pure []
+        Just x -> do
+            xs <- flushTChan chan
+            pure (x : xs)
 
 -- | Collect all resolved datums coming from either outputs (inline datums) or
 -- transactions' witness set.

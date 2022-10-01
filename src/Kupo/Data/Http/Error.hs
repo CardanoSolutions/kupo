@@ -56,6 +56,14 @@ invalidMatchFilter =
                  \In case of doubts, check the documentation at: <https://cardanosolutions.github.io/kupo>!"
         }
 
+invalidMetadataFilter :: Response
+invalidMetadataFilter =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Invalid or incomplete filter query parameters! You can (optionally) filter \
+                 \metadata by 'transaction_id', which must be a valid text string encoded in base16. \
+                 \In case of doubts, check the documentation at: <https://cardanosolutions.github.io/kupo#operation/getMetadataBySlot>!"
+        }
+
 stillActivePattern :: Response
 stillActivePattern =
     responseJson status400 Default.headers $ HttpError
@@ -80,6 +88,16 @@ invalidSlotNo =
     responseJson status400 Default.headers $ HttpError
         { hint = "The path parameter for the endpoint must be an absolute slot \
                  \number. That is, an non-negative integer."
+        }
+
+noAncestor :: Response
+noAncestor =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "There's no known-ancestor to the point you've provided! \
+                 \No worries, if you're querying a very recent point, it may \
+                \just be the case that your request arrived in between a \
+                \rollback. Note also that there's (obviously) no ancesto to \
+                \the slot number `0`."
         }
 
 malformedDatumHash :: Response

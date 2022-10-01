@@ -107,6 +107,7 @@ import Test.Kupo.App.Http.Client
     )
 import Test.Kupo.Fixture
     ( eraBoundaries
+    , lastAllegraPoint
     , lastAlonzoPoint
     , lastByronPoint
     , lastMaryPoint
@@ -114,6 +115,7 @@ import Test.Kupo.Fixture
     , someDatumHashInWitness
     , someDatumInOutput
     , someDatumInWitness
+    , someMetadata
     , someNonExistingPoint
     , someOtherPoint
     , someOtherStakeKey
@@ -128,9 +130,11 @@ import Test.Kupo.Fixture
     , someScriptInMetadata
     , someScriptInOutput
     , someScriptInWitness
+    , someSlotWithMetadata
     , someStakeKey
     , someThirdTransactionId
     , someTransactionId
+    , someTransactionIdWithMetadata
     )
 import Type.Reflection
     ( tyConName
@@ -487,6 +491,24 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 waitUntilM $ do
                     values <- fmap value <$> getAllMatches NoStatusFlag
                     return $ all (`hasPolicyId` somePolicyId) values
+            )
+
+    specify "Fetch metadata by slot" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just lastAllegraPoint
+            , patterns = [MatchAny OnlyShelley]
+            }
+        timeoutOrThrow 10 (debug httpLogs) $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitSlot (> someSlotWithMetadata)
+                xs <- lookupMetadataBySlotNo someSlotWithMetadata Nothing
+                [ hash | (hash, _meta) <- xs ] `shouldBe` someMetadata
+
+                xs' <- lookupMetadataBySlotNo someSlotWithMetadata (Just someTransactionIdWithMetadata)
+                [ hash | (hash, _meta) <- xs' ] `shouldBe` take 1 someMetadata
             )
 
 type EndToEndSpec

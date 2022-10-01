@@ -49,6 +49,7 @@ import Kupo.Control.MonadSTM
     )
 import Kupo.Data.Cardano
     ( SlotNo (..)
+    , getPointSlotNo
     , pattern BlockPoint
     , unsafeHeaderHashFromBytes
     )
@@ -66,6 +67,10 @@ import Kupo.Data.Health
     ( ConnectionStatus (..)
     , Health (..)
     )
+import Kupo.Data.PartialBlock
+    ( PartialBlock (..)
+    , PartialTransaction (..)
+    )
 import Kupo.Data.Pattern
     ( Pattern
     , patternToText
@@ -77,6 +82,9 @@ import Network.HTTP.Media.MediaType
     )
 import Network.HTTP.Media.RenderHeader
     ( renderHeader
+    )
+import Network.HTTP.Types
+    ( hAccept
     )
 import Network.Wai
     ( Application
@@ -95,11 +103,17 @@ import Test.Hspec.QuickCheck
 import Test.Kupo.Data.Generators
     ( genBinaryData
     , genDatumHash
+    , genMetadata
     , genNonGenesisPoint
     , genPattern
     , genResult
     , genScript
     , genScriptHash
+    , genTransactionId
+    , generateWith
+    )
+import Test.Kupo.Data.Pattern.Fixture
+    ( patterns
     )
 import Test.QuickCheck
     ( Gen
@@ -111,6 +125,7 @@ import Test.QuickCheck
     , listOf1
     , oneof
     , suchThat
+    , vectorOf
     )
 import Test.QuickCheck.Monadic
     ( assert
@@ -124,17 +139,11 @@ import qualified Data.ByteString as BS
 import qualified Data.OpenApi as OpenApi
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
-import Network.HTTP.Types
-    ( hAccept
-    )
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.Status as Http
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Test as Wai
 import qualified Prelude
-import Test.Kupo.Data.Pattern.Fixture
-    ( patterns
-    )
 import qualified Test.Kupo.Data.Pattern.Fixture as Fixture
 
 spec :: Spec
@@ -250,6 +259,22 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
+        session specification get "/metadata/{slot-no}" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "GET" }
+                & flip Wai.setPath "/metadata/42"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
+        session specification get "/metadata/{slot-no}?transaction_id=309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "GET" }
+                & flip Wai.setPath "/metadata/42?transaction_id=309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
         session specification get "/patterns" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/patterns"
@@ -291,7 +316,7 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
-        session' "🕱 GET /does-not-exist" $ do
+        session' "† GET /does-not-exist" $ do
             resNotFound <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/does-not-exist"
             resNotFound
@@ -299,7 +324,7 @@ spec = do
             resNotFound
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 POST /health" $ do
+        session' "† POST /health" $ do
             resNotAllowed <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "POST" }
                 & flip Wai.setPath "/health"
@@ -308,7 +333,7 @@ spec = do
             resNotAllowed
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /matches/*/*/*" $ do
+        session' "† GET /matches/*/*/*" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/matches/*/*/*"
             resBadRequest
@@ -316,7 +341,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /matches?spent&unspent" $ do
+        session' "† GET /matches?spent&unspent" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/matches?spent&unspent"
             resBadRequest
@@ -324,7 +349,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /matches?order=foo" $ do
+        session' "† GET /matches?order=foo" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/matches?order=foo"
             resBadRequest
@@ -332,7 +357,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 DELETE /matches/{pattern}" $ do
+        session' "† DELETE /matches/{pattern}" $ do
             overlappingFragment <- liftIO $ generate (elements Fixture.overlappingUnaryFragments)
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
@@ -342,7 +367,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 DELETE /matches/{pattern}" $ do
+        session' "† DELETE /matches/{pattern}" $ do
             overlappingFragment <- liftIO $ generate (elements Fixture.overlappingBinaryFragments)
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "DELETE" }
@@ -352,7 +377,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /checkpoints/42?foo" $ do
+        session' "† GET /checkpoints/42?foo" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/checkpoints/42?foo"
             resBadRequest
@@ -360,7 +385,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /checkpoints/foo" $ do
+        session' "† GET /checkpoints/foo" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/checkpoints/foo"
             resBadRequest
@@ -368,7 +393,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /datums/{datum-hash}" $ do
+        session' "† GET /datums/{datum-hash}" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/datums/foo"
             resBadRequest
@@ -376,7 +401,7 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 GET /scripts/{script-hash}" $ do
+        session' "† GET /scripts/{script-hash}" $ do
             resBadRequest <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath "/scripts/foo"
             resBadRequest
@@ -384,7 +409,31 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
-        session' "🕱 PUT /patterns/{pattern} (invalid / no request body)" $ do
+        session' "† GET /metadata/foo" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/metadata/foo"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "† GET /metadata/999" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/metadata/999"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "† GET /metadata/42?transaction_id=foo" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/metadata/42?transaction_id=foo"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "† PUT /patterns/{pattern} (invalid / no request body)" $ do
             resBadRequest <-
                 liftIO (generate genInvalidPutPatternRequestBody) >>= \case
                     Nothing ->
@@ -420,6 +469,25 @@ newStubbedApplication defaultPatterns = do
     pure $ app
         (\callback -> callback databaseStub)
         (\_point ForcedRollbackHandler{onSuccess} -> onSuccess)
+        (\point reply ->
+            if next (unSlotNo (getPointSlotNo point)) == 999 then
+                reply Nothing
+            else do
+                reply $ Just $ generateWith 42 $ do
+                    blockPoint <- genNonGenesisPoint
+                    blockBody <- vectorOf 10 $ do
+                        id <- genTransactionId
+                        metadata <- oneof [pure Nothing, Just <$> genMetadata]
+                        pure $ PartialTransaction
+                            { id
+                            , inputs = mempty
+                            , outputs = mempty
+                            , scripts = mempty
+                            , datums = mempty
+                            , metadata
+                            }
+                    pure $ PartialBlock { blockPoint, blockBody }
+        )
         patternsVar
         healthStub
 
