@@ -49,7 +49,6 @@ import Kupo.Data.Cardano
     , getTransactionId
     , hasAssetId
     , hasPolicyId
-    , headerHashToBytes
     , headerHashToText
     , metadataToJson'
     , pattern GenesisPoint
@@ -307,6 +306,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
                 send =<< handleGetMetadata
                             headers
                             (slotNoFromText arg)
+                            (queryString req)
                             db
                             fetchBlock
         ("GET", _) ->
@@ -578,23 +578,29 @@ handleGetMetadata
         )
     => [Http.Header]
     -> Maybe SlotNo
+    -> Http.Query
     -> Database IO
     -> FetchBlockClient IO block
     -> IO Response
-handleGetMetadata baseHeaders slotArg Database{..} fetchBlock =
+handleGetMetadata baseHeaders slotArg queryParams Database{..} fetchBlock =
     case slotArg of
         Nothing ->
             pure Errors.invalidSlotNo
         Just (SlotNo slotNo) | slotNo == 0 -> do
             pure $ responseStreamJson baseHeaders metadataToJson' $ \_yield done -> done
         Just (SlotNo slotNo) -> do
-            runReadOnlyTransaction (listAncestorsDesc slotNo 1 pointFromRow) >>= \case
-                [ancestor] -> do
-                    fetchFromNode ancestor
-                _noAncestor ->
-                    fetchFromNode GenesisPoint
+            ancestor <- runReadOnlyTransaction (listAncestorsDesc slotNo 1 pointFromRow) <&> \case
+                [ancestor]  -> ancestor
+                _noAncestor -> GenesisPoint
+            case filterMatchesBy queryParams of
+                Just NoFilter ->
+                    fetchFromNode ancestor Nothing
+                Just (FilterByTransactionId tid) ->
+                    fetchFromNode ancestor (Just tid)
+                _invalidFilter -> do
+                    pure Errors.invalidMetadataFilter
   where
-    fetchFromNode ancestor = do
+    fetchFromNode ancestor filterBy = do
         response <- newEmptyTMVarIO
         fetchBlock ancestor $ \case
             Nothing -> do
@@ -608,7 +614,12 @@ handleGetMetadata baseHeaders slotArg Database{..} fetchBlock =
                 atomically $ putTMVar response $ responseStreamJson headers metadataToJson' $
                     \yield done -> do
                         traverse_ yield $ foldBlock
-                            (\ix tx -> Map.alter (const $ userDefinedMetadata @block tx) ix)
+                            (\ix tx ->
+                                if isNothing filterBy || Just (getTransactionId tx) == filterBy then
+                                    Map.alter (const $ userDefinedMetadata @block tx) ix
+                                else
+                                    identity
+                            )
                             mempty
                             blk
                         done
@@ -732,7 +743,7 @@ orAbort l r = maybeToRight r l
 {-# INLINABLE orAbort #-}
 
 handleRequest :: Either Response Response -> Response
-handleRequest = either id id
+handleRequest = either identity identity
 {-# INLINABLE handleRequest #-}
 
 responseHeaders

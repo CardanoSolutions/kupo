@@ -104,6 +104,7 @@ import Relude hiding
     , TVar
     , atomically
     , catchSTM
+    , id
     , isEmptyTMVar
     , mkWeakTMVar
     , modifyTVar'

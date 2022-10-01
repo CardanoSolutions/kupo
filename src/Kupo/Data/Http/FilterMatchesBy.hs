@@ -80,7 +80,7 @@ filterMatchesBy = search Nothing Nothing
             policyId <- case search byPolicyId byTransactionId rest of
                 Just (FilterByPolicyId policyId) ->
                     Just policyId
-                _ ->
+                _noPolicyId ->
                     Nothing
             assetName <- assetNameFromText str
             pure $ FilterByAssetId (policyId, assetName)
@@ -89,7 +89,7 @@ filterMatchesBy = search Nothing Nothing
             txId <- case search byPolicyId byTransactionId rest of
                 Just (FilterByTransactionId tId) ->
                     Just tId
-                _ ->
+                _noTransactionId ->
                     Nothing
             outputIndex <- outputIndexFromText str
             pure $ FilterByOutputReference (mkOutputReference txId outputIndex)

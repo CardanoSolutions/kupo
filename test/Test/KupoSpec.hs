@@ -134,6 +134,7 @@ import Test.Kupo.Fixture
     , someStakeKey
     , someThirdTransactionId
     , someTransactionId
+    , someTransactionIdWithMetadata
     )
 import Type.Reflection
     ( tyConName
@@ -503,11 +504,11 @@ spec = skippableContext "End-to-end" $ \manager -> do
             (kupo tr `runWith` env)
             (do
                 waitSlot (> someSlotWithMetadata)
-                xs <- lookupMetadataBySlotNo someSlotWithMetadata
+                xs <- lookupMetadataBySlotNo someSlotWithMetadata Nothing
                 [ hash | (hash, _meta) <- xs ] `shouldBe` someMetadata
-                -- NOTE: Ensure we can fetch again, as a regression test. It was observed that only
-                -- the first fetch would work and subsequent one would block indefinitely.
-                void (lookupMetadataBySlotNo someSlotWithMetadata)
+
+                xs' <- lookupMetadataBySlotNo someSlotWithMetadata (Just someTransactionIdWithMetadata)
+                [ hash | (hash, _meta) <- xs' ] `shouldBe` take 1 someMetadata
             )
 
 type EndToEndSpec

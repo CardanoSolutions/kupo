@@ -63,6 +63,7 @@ import Kupo.Data.Cardano
     , scriptHashToText
     , slotNoToText
     , transactionIdFromHash
+    , transactionIdToText
     , unsafeValueFromList
     )
 import Kupo.Data.Http.ForcedRollback
@@ -121,7 +122,7 @@ data HttpClient (m :: Type -> Type) = HttpClient
     , waitScript
         :: ScriptHash -> m Script
     , lookupMetadataBySlotNo
-        :: SlotNo -> m [(MetadataHash, Metadata)]
+        :: SlotNo -> Maybe TransactionId -> m [(MetadataHash, Metadata)]
     , listCheckpoints
         :: m [Point]
     , getCheckpointBySlot
@@ -159,7 +160,7 @@ newHttpClientWith manager (serverHost, serverPort) logs =
         , waitScript =
             \a0 -> waitForServer >> _waitScript a0
         , lookupMetadataBySlotNo =
-            \a0 -> waitForServer >> _lookupMetadataBySlotNo a0
+            \a0 a1 -> waitForServer >> _lookupMetadataBySlotNo a0 a1
         , listCheckpoints =
             waitForServer >> _listCheckpoints
         , getCheckpointBySlot =
@@ -308,10 +309,13 @@ newHttpClientWith manager (serverHost, serverPort) logs =
                 log $ "waitScript (" <> scriptStr <> "): found"
                 pure script
 
-    _lookupMetadataBySlotNo :: SlotNo -> IO [(MetadataHash, Metadata)]
-    _lookupMetadataBySlotNo slotNo = do
+    _lookupMetadataBySlotNo :: SlotNo -> Maybe TransactionId -> IO [(MetadataHash, Metadata)]
+    _lookupMetadataBySlotNo slotNo filterBy = do
         let fragment = toString (slotNoToText slotNo)
-        req <- parseRequest (baseUrl <> "/metadata/" <> fragment)
+        let query = case filterBy of
+                Nothing -> ""
+                Just id -> toString ("?transaction_id=" <> transactionIdToText id)
+        req <- parseRequest (baseUrl <> "/metadata/" <> fragment <> query)
         res <- httpLbs req manager
         let body = responseBody res
         if | responseStatus res == status200 ->

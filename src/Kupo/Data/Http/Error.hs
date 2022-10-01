@@ -56,6 +56,14 @@ invalidMatchFilter =
                  \In case of doubts, check the documentation at: <https://cardanosolutions.github.io/kupo>!"
         }
 
+invalidMetadataFilter :: Response
+invalidMetadataFilter =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Invalid or incomplete filter query parameters! You can (optionally) filter \
+                 \metadata by 'transaction_id', which must be a valid text string encoded in base16. \
+                 \In case of doubts, check the documentation at: <https://cardanosolutions.github.io/kupo#operation/getMetadataBySlot>!"
+        }
+
 stillActivePattern :: Response
 stillActivePattern =
     responseJson status400 Default.headers $ HttpError

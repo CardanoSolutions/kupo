@@ -220,3 +220,8 @@ someMetadata = unsafeMetadataHashFromBytes . unsafeDecodeBase16 <$>
     [ "A1AE526C1A228CE730E223C8AB56543F865BA8C2C991CA87D509783D4B002C35"
     , "0C7C650D6992E292A8EAFE206CE87469AC27F0B929DE414370DDDC38993A5C14"
     ]
+
+-- | The transaction associated with the first metadata of 'someMetadata'
+someTransactionIdWithMetadata :: TransactionId
+someTransactionIdWithMetadata = unsafeTransactionIdFromBytes $ unsafeDecodeBase16
+    "4DC5093D26FDD8D82BA30615EDA72D96B80ED28D3750D916AB1D3AB6FEE4B4B3"

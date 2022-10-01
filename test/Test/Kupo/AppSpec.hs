@@ -705,12 +705,12 @@ genPartialTransactions = do
 genPartialTransaction
     :: StateT (Set OutputReference) Gen PartialTransaction
 genPartialTransaction = do
-    txId <- lift genTransactionId
+    id <- lift genTransactionId
     utxos <- get
     nInputs <- lift $ choose (1, min (Set.size utxos) maxNumberOfInputs)
     inputs <- replicateM nInputs (lift $ elements $ Set.toList utxos)
     nOutputs <- lift $ choose (1, maxNumberOfOutputs)
-    outputs <- withReferences txId <$> replicateM nOutputs (lift genOutput)
+    outputs <- withReferences id <$> replicateM nOutputs (lift genOutput)
     put ((utxos `Set.difference` Set.fromList inputs) <> Set.fromList (fmap fst outputs))
     nDatums <- lift $ oneof [pure 0, choose (1, nInputs)]
     datums <-
@@ -721,7 +721,7 @@ genPartialTransaction = do
         replicateM nScripts (lift genScript)
         & fmap (foldMap (\v -> Map.singleton (hashScript v) v))
     metadata <- lift $ oneof [pure Nothing, Just <$> genMetadata]
-    pure PartialTransaction { inputs, outputs, datums, scripts, metadata }
+    pure PartialTransaction { id, inputs, outputs, datums, scripts, metadata }
   where
     maxNumberOfInputs = 3
     maxNumberOfOutputs = 3
@@ -844,7 +844,7 @@ semantics pause HttpClient{..} chan = \case
     GetScriptByHash hash ->
         ScriptByHash <$> lookupScriptByHash hash
     GetMetadataBySlotNo sl ->
-        MetadataBySlotNo <$> lookupMetadataBySlotNo sl
+        MetadataBySlotNo <$> lookupMetadataBySlotNo sl Nothing
     Pause -> do
         Unit <$> threadDelay pause
   where

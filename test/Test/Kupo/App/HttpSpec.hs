@@ -49,6 +49,7 @@ import Kupo.Control.MonadSTM
     )
 import Kupo.Data.Cardano
     ( SlotNo (..)
+    , getPointSlotNo
     , pattern BlockPoint
     , unsafeHeaderHashFromBytes
     )
@@ -108,6 +109,7 @@ import Test.Kupo.Data.Generators
     , genResult
     , genScript
     , genScriptHash
+    , genTransactionId
     , generateWith
     )
 import Test.Kupo.Data.Pattern.Fixture
@@ -265,6 +267,14 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
+        session specification get "/metadata/{slot-no}?transaction_id=309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestMethod = "GET" }
+                & flip Wai.setPath "/metadata/42?transaction_id=309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
         session specification get "/patterns" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/patterns"
@@ -399,6 +409,30 @@ spec = do
             resBadRequest
                 & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
 
+        session' "† GET /metadata/foo" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/metadata/foo"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "† GET /metadata/999" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/metadata/999"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
+        session' "† GET /metadata/42?transaction_id=foo" $ do
+            resBadRequest <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/metadata/42?transaction_id=foo"
+            resBadRequest
+                & Wai.assertStatus (Http.statusCode Http.status400)
+            resBadRequest
+                & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+
         session' "† PUT /patterns/{pattern} (invalid / no request body)" $ do
             resBadRequest <-
                 liftIO (generate genInvalidPutPatternRequestBody) >>= \case
@@ -435,18 +469,24 @@ newStubbedApplication defaultPatterns = do
     pure $ app
         (\callback -> callback databaseStub)
         (\_point ForcedRollbackHandler{onSuccess} -> onSuccess)
-        (\_point reply -> reply $ Just $ generateWith 42 $ do
-            blockPoint <- genNonGenesisPoint
-            blockBody <- vectorOf 10 $ do
-                metadata <- oneof [pure Nothing, Just <$> genMetadata]
-                pure $ PartialTransaction
-                    { inputs = mempty
-                    , outputs = mempty
-                    , scripts = mempty
-                    , datums = mempty
-                    , metadata
-                    }
-            pure $ PartialBlock { blockPoint, blockBody }
+        (\point reply ->
+            if next (unSlotNo (getPointSlotNo point)) == 999 then
+                reply Nothing
+            else do
+                reply $ Just $ generateWith 42 $ do
+                    blockPoint <- genNonGenesisPoint
+                    blockBody <- vectorOf 10 $ do
+                        id <- genTransactionId
+                        metadata <- oneof [pure Nothing, Just <$> genMetadata]
+                        pure $ PartialTransaction
+                            { id
+                            , inputs = mempty
+                            , outputs = mempty
+                            , scripts = mempty
+                            , datums = mempty
+                            , metadata
+                            }
+                    pure $ PartialBlock { blockPoint, blockBody }
         )
         patternsVar
         healthStub

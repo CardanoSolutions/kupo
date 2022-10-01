@@ -43,12 +43,12 @@ module Kupo.Data.Cardano
     , unsafeMetadataHashFromBytes
 
       -- * TransactionId
+    , HasTransactionId (..)
     , TransactionId
     , transactionIdToText
     , transactionIdFromHash
     , transactionIdToBytes
     , unsafeTransactionIdFromBytes
-    , getTransactionId
     , transactionIdToJson
     , transactionIdFromText
 
@@ -392,7 +392,7 @@ import qualified Ouroboros.Network.Block as Ouroboros
 
 -- IsBlock
 
-class IsBlock (block :: Type) where
+class HasTransactionId (BlockBody block) StandardCrypto => IsBlock (block :: Type) where
     type BlockBody block :: Type
 
     getPoint
@@ -858,10 +858,9 @@ unsafeTransactionIdFromBytes =
     . sizeInvariant (== (digestSize @Blake2b_256))
 {-# INLINABLE unsafeTransactionIdFromBytes #-}
 
-class HasTransactionId f where
+class HasTransactionId (a :: Type) (crypto :: Type) where
     getTransactionId
-        :: forall crypto. (Crypto crypto)
-        => f crypto
+        :: a
         -> TransactionId' crypto
 
 transactionIdToText :: TransactionId -> Text
@@ -926,6 +925,26 @@ data Transaction' crypto
     | TransactionBabbage
         !(Ledger.Alonzo.ValidatedTx (BabbageEra crypto))
 
+instance HasTransactionId Transaction StandardCrypto where
+    getTransactionId = \case
+        TransactionByron _ i ->
+            transactionIdFromByron i
+        TransactionShelley tx ->
+            let body = Ledger.Shelley.body tx
+             in Ledger.txid @(ShelleyEra StandardCrypto) body
+        TransactionAllegra tx ->
+            let body = Ledger.Shelley.body tx
+             in Ledger.txid @(AllegraEra StandardCrypto) body
+        TransactionMary tx ->
+            let body = Ledger.Shelley.body tx
+             in Ledger.txid @(MaryEra StandardCrypto) body
+        TransactionAlonzo tx ->
+            let body = Ledger.Alonzo.body tx
+             in Ledger.txid @(AlonzoEra StandardCrypto) body
+        TransactionBabbage tx ->
+            let body = Ledger.Alonzo.body tx
+             in Ledger.txid @(BabbageEra StandardCrypto) body
+
 -- Input
 
 type Input =
@@ -964,7 +983,7 @@ withReferences txId = loop 0
              in
                 (mkOutputReference txId ix, out) : results
 
-instance HasTransactionId Ledger.TxIn where
+instance HasTransactionId (Ledger.TxIn crypto) crypto where
     getTransactionId (Ledger.TxIn i _) = i
 
 outputReferenceFromText :: Text -> Maybe OutputReference
