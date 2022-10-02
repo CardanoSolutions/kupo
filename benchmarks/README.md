@@ -4,7 +4,7 @@
 
 - AMD Ryzen 9 4900HS (4007MHz, 512KiB L1, 4MiB L2, 8MiB L3)
 - 2 x 8GiB SODIMM DDR4 Synchronous Unbuffered 3200 MHz (0.3 ns)
-- INTEL SSDPEKNW010T8 PCIe (1800 MB/s Write,  1800 MB/s Read) 
+- INTEL SSDPEKNW010T8 PCIe (1800 MB/s Write,  1800 MB/s Read)
 
 ## Mainnet
 
@@ -14,8 +14,9 @@
 | ---           | ---            | ---                  |
 | `v1.0.1`      | N/A            | ~10-14h<sup>\*</sup> |
 | `v2.0.0-beta` | `--prune-utxo` | 16h 45min            |
+| `v2.1.0`      | `--prune-utxo` | 09h 02min            |
 
-> <sup>(\*)</sup>Exact time is unknown as it wasn't properly tracked at the time and was done through multiple runs. So this is therefore a gross bracket. 
+> <sup>(\*)</sup>Exact time is unknown as it wasn't properly tracked at the time and was done through multiple runs. So this is therefore a gross bracket.
 
 
 ![](./plots/v2.0.0-beta-mainnet.png)
@@ -102,6 +103,7 @@ sys	0m0.007s
 | `v1.0.1`      | N/A            | 55min    |
 | `v2.0.0-beta` | `--prune-utxo` | 50min    |
 | `v2.0.0-beta` | \-             | 65min    |
+| `v2.1.0`      | `--prune-utxo` | 22min    |
 
 ![](./plots/v2.0.0-beta-testnet.png)
 
