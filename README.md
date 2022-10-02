@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/kupo.png" height=210 width=320 />
+  <img src="./docs/kupo.png" width="320" />
 </p>
 
 <hr/>
@@ -8,8 +8,12 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/architecture-diagram-dark.png">
-    <img alt="Kupo: components diagram" src="./docs/architecture-diagram-light.png" width=600 height=238>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/architecture-diagram-dark.png 300w" sizes="300px">
+    <source media="(prefers-color-scheme: dark and min-width: 480px)" srcset="./docs/architecture-diagram-dark.png 450w" sizes="450px">
+    <source media="(prefers-color-scheme: dark and min-width: 780px)" srcset="./docs/architecture-diagram-dark.png 600w" sizes="600px">
+    <source media="(min-width: 480px)" srcset="./docs/architecture-diagram-light.png 450w" sizes="450px">
+    <source media="(min-width: 780px)" srcset="./docs/architecture-diagram-light.png 600w" sizes="600px">
+    <img alt="Kupo: components diagram" src="./docs/architecture-diagram-light.png" width="780">
   </picture>
 </p>
 
@@ -97,23 +101,23 @@ Key differences(s): the plutus-chain-index is the native component behind the PA
 ## Sponsors 💖
 
 <p align="center">
-  <a href="https://rraayy.com/"><img src="https://avatars.githubusercontent.com/u/65092852?v=4" width=70 height=70 /></a>
-  <a href="https://sundaeswap.finance/"><img src="https://avatars.githubusercontent.com/u/83610786?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/savaki"><img src="https://avatars.githubusercontent.com/u/108710?v=4" width=70 height=70 /></a>
-  <a href="https://blockfrost.io/"><img src="https://avatars.githubusercontent.com/u/70073210?v=4" width=70 height=70 /></a>
-  <a href="https://jpeg.store/"><img src="https://avatars.githubusercontent.com/u/98781883?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/jacoblambda"><img src="https://avatars.githubusercontent.com/u/9424043?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/minswap"><img src="https://avatars.githubusercontent.com/u/80548193?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/Quantumplation"><img src="https://avatars.githubusercontent.com/u/49870?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/codybutz"><img src="https://avatars.githubusercontent.com/u/3670430?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/scarmuega"><img src="https://avatars.githubusercontent.com/u/653886?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/mrbrinker"><img src="https://avatars.githubusercontent.com/u/41247403?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/sacrelege"><img src="https://avatars.githubusercontent.com/u/7289595?v=4" width=70 height=70 /></a>
-  <a href="https://ccvault.io/"><img src="https://avatars.githubusercontent.com/u/86010408?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/artemwright"><img src="https://avatars.githubusercontent.com/u/83517471?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/kayandra"><img src="https://avatars.githubusercontent.com/u/5002506?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/tapiocapool"><img src="https://avatars.githubusercontent.com/u/80033713?v=4" width=70 height=70 /></a>
-  <a href="https://github.com/will991"><img src="https://avatars.githubusercontent.com/u/9065638?v=4" width=70 height=70 /></a>
+  <a href="https://rraayy.com/"><img src="https://avatars.githubusercontent.com/u/65092852?v=4" width=70 /></a>
+  <a href="https://sundaeswap.finance/"><img src="https://avatars.githubusercontent.com/u/83610786?v=4" width=70 /></a>
+  <a href="https://github.com/savaki"><img src="https://avatars.githubusercontent.com/u/108710?v=4" width=70 /></a>
+  <a href="https://blockfrost.io/"><img src="https://avatars.githubusercontent.com/u/70073210?v=4" width=70 /></a>
+  <a href="https://jpeg.store/"><img src="https://avatars.githubusercontent.com/u/98781883?v=4" width=70 /></a>
+  <a href="https://github.com/jacoblambda"><img src="https://avatars.githubusercontent.com/u/9424043?v=4" width=70 /></a>
+  <a href="https://github.com/minswap"><img src="https://avatars.githubusercontent.com/u/80548193?v=4" width=70 /></a>
+  <a href="https://github.com/Quantumplation"><img src="https://avatars.githubusercontent.com/u/49870?v=4" width=70 /></a>
+  <a href="https://github.com/codybutz"><img src="https://avatars.githubusercontent.com/u/3670430?v=4" width=70 /></a>
+  <a href="https://github.com/scarmuega"><img src="https://avatars.githubusercontent.com/u/653886?v=4" width=70 /></a>
+  <a href="https://github.com/mrbrinker"><img src="https://avatars.githubusercontent.com/u/41247403?v=4" width=70 /></a>
+  <a href="https://github.com/sacrelege"><img src="https://avatars.githubusercontent.com/u/7289595?v=4" width=70 /></a>
+  <a href="https://ccvault.io/"><img src="https://avatars.githubusercontent.com/u/86010408?v=4" width=70 /></a>
+  <a href="https://github.com/artemwright"><img src="https://avatars.githubusercontent.com/u/83517471?v=4" width=70 /></a>
+  <a href="https://github.com/kayandra"><img src="https://avatars.githubusercontent.com/u/5002506?v=4" width=70 /></a>
+  <a href="https://github.com/tapiocapool"><img src="https://avatars.githubusercontent.com/u/80033713?v=4" width=70 /></a>
+  <a href="https://github.com/will991"><img src="https://avatars.githubusercontent.com/u/9065638?v=4" width=70 /></a>
 </p>
 
 ---
