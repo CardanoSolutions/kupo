@@ -32,6 +32,8 @@ jobs:
 
     - name: 🔨 Build
       run: make
+      env:
+        GIT_SHA: ${{ github.sha }}
 
     - name: 📎 Upload Artifact
       uses: actions/upload-artifact@v2

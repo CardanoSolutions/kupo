@@ -84,6 +84,7 @@ library:
     - safe-exceptions
     - strict-containers
     - sqlite-simple
+    - template-haskell
     - text
     - time
     - transformers

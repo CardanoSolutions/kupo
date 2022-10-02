@@ -84,6 +84,7 @@ library
       Kupo.Options
       Kupo.Prelude
       Kupo.Version
+      Kupo.Version.TH
   other-modules:
       Paths_kupo
   hs-source-dirs:
@@ -174,6 +175,7 @@ library
     , safe-exceptions
     , sqlite-simple
     , strict-containers
+    , template-haskell
     , text
     , time
     , transformers
