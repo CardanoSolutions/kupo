@@ -72,8 +72,10 @@ import Kupo.Data.Pattern
 import Options.Applicative.Help.Pretty
     ( Doc
     , align
+    , bold
     , fillSep
     , hardline
+    , hsep
     , indent
     , softbreak
     , string
@@ -106,7 +108,7 @@ parseOptionsPure args =
 
 parserInfo :: ParserInfo Command
 parserInfo = info (helper <*> parser) $ mempty
-    <> progDesc "Kupo - A daemon for building portable lookup indexes on Cardano."
+    <> progDesc "Kupo - Fast, lightweight & configurable chain-index for Cardano."
     <> footerDoc (Just footer')
   where
     parser =
@@ -135,50 +137,10 @@ parserInfo = info (helper <*> parser) $ mempty
                 )
         )
 
-    footer' = vsep
-        [ "Patterns: "
-        , indent 2 "Patterns have the following syntax:"
-        , mempty
-        , indent 2 "PATTERN"
-        , indent 4 "   ╭───╮                                  "
-        , indent 4 "╾┬─┤ * ├───────────────────────────────┬╼ "
-        , indent 4 " │ ╰───╯                               │  "
-        , indent 4 " │ ┏━━━━━━━━━┓                         │  "
-        , indent 4 " ├─┫ ADDRESS ┣─────────────────────────┤  "
-        , indent 4 " │ ┗━━━━━━━━━┛                         │  "
-        , indent 4 " │ ┏━━━━━━━━━━━━━━━┓                   │  "
-        , indent 4 " ├─┫ STAKE-ADDRESS ┣───────────────────┤  "
-        , indent 4 " │ ┗━━━━━━━━━━━━━━━┛                   │  "
-        , indent 4 " │ ┏━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━┓ │  "
-        , indent 4 " └─┫ CREDENTIAL ┣─┤ / ├─┫ CREDENTIAL ┣─┘  "
-        , indent 4 "   ┗━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━┛    "
-        , mempty
-        , indent 2 "CREDENTIAL"
-        , indent 4 "   ╭───╮                                                     "
-        , indent 4 "╾┬─┤ * ├──────────────────────────────────────────────────┬╼ "
-        , indent 4 " │ ╰───╯                                                  │  "
-        , indent 4 " │ ┏━━━━━━━━━━━━━━━━━━━━━━━━┓                             │  "
-        , indent 4 " ├─┫ BASE16(bytes .size 32) ┣─────────────────────────────┤  "
-        , indent 4 " │ ┗━━━━━━━━━━━━━━━━━━━━━━━━┛                             │  "
-        , indent 4 " │ ┏━━━━━━━━━━━━━━━━━━━━━━━━┓                             │  "
-        , indent 4 " ├─┫ BASE16(bytes .size 28) ┣─────────────────────────────┤  "
-        , indent 4 " │ ┗━━━━━━━━━━━━━━━━━━━━━━━━┛                             │  "
-        , indent 4 " │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓           │  "
-        , indent 4 " ├─┫ BECH32(bytes) .hrp (vk|addr_vk|stake_vk) ┣───────────┤  "
-        , indent 4 " │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛           │  "
-        , indent 4 " │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │  "
-        , indent 4 " └─┫ BECH32(bytes) .hrp (vkh|addr_vkh|stake_vkh|script) ┣─┘  "
-        , indent 4 "   ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛    "
-        , mempty
-        , indent 2 "Examples:"
-        , mempty
-        , indent 4 "🗸 --match *"
-        , indent 4 "🗸 --match */*"
-        , indent 4 "🗸 --match addr1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgz4xq9p"
-        , indent 4 "🗸 --match addr_vk1x7da0l25j04my8sej5ntrgdn38wmshxhplxdfjskn07ufavsgtkqn5hljl/*"
-        , indent 4 "🗸 --match */script1cda3khwqv60360rp5m7akt50m6ttapacs8rqhn5w342z7r35m37"
-        , indent 4 "🗸 --match dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e/*"
-        , indent 4 "🗸 --match */4fc6bb0c93780ad706425d9f7dc1d3c5e3ddbf29ba8486dce904a5fc"
+    footer' = hsep
+        [ "See more details on <https://cardanosolutions.github.io/kupo/> or in the manual for"
+        , bold "kupo(1)"
+        , "(i.e. `man kupo`)"
         ]
 
 --
@@ -268,7 +230,7 @@ sinceOption = option (maybeReader rdr) $ mempty
     <> long "since"
     <> metavar "POINT"
     <> helpDoc (Just $ mconcat
-        [ "A point on chain from where to start syncing. "
+        [ "A point on chain from where to start syncing. Mandatory on first start. Optional after. "
         , softbreak
         , "Expects either:"
         , hardline
@@ -295,7 +257,7 @@ inputManagementOption = flag MarkSpentInputs RemoveSpentInputs $ mempty
     <> helpDoc (Just doc)
   where
     doc =
-        string "Remove inputs from the index when spent, instead of marking them as 'spent'."
+        string "When enabled, eventually remove inputs from the index when spent, instead of marking them as 'spent'."
 
 -- | [--gc-interval=SECONDS]
 garbageCollectionIntervalOption :: Parser DiffTime
