@@ -20,6 +20,7 @@ jobs:
     - name: ❄️  Install Nix
       uses: cachix/install-nix-action@v13
       with:
+        nix_path: nixpkgs=channel:nixos-unstable
         extra_nix_config: |
           trusted-public-keys = iohk.cachix.org-1:DpRUyj7h7V830dp/i6Nti+NEO2/nhblbov/8MW7Rqoo= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
           substituters = https://hydra.iohk.io https://cache.nixos.org/
@@ -31,7 +32,7 @@ jobs:
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
     - name: 🔨 Build
-      run: make
+      run: nix-shell -p pandoc --keep GIT_SHA --command make
       env:
         GIT_SHA: ${{ github.sha }}
 
