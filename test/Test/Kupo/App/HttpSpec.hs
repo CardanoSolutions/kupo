@@ -178,6 +178,15 @@ spec = do
             liftIO $ bytes `shouldSatisfy` (BS.isInfixOf "TYPE kupo_most_recent_checkpoint counter")
             return (Json.Null, [])
 
+        session specification get "/health" $ \_assertJson _endpoint -> do
+            res <- Wai.request $ Wai.defaultRequest
+                { Wai.requestHeaders = [ (hAccept, "*/*") ] }
+                & flip Wai.setPath "/health"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+            liftIO $ (fst <$> Wai.simpleHeaders res) `shouldContain` ["X-Most-Recent-Checkpoint"]
+            return (Json.Null, [])
+
         session specification get "/checkpoints" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/checkpoints"

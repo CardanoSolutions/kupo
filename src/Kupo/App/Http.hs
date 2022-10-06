@@ -382,6 +382,9 @@ handleGetHealth reqHeaders health =
         Just ct | cApplicationJson `BS.isInfixOf` ct -> do
             resHeaders <- responseHeaders (pure health) Default.headers
             return $ responseJson status200 resHeaders health
+        Just ct | cAny `BS.isInfixOf` ct -> do
+            resHeaders <- responseHeaders (pure health) [(hContentType, "text/plain;charset=utf-8")]
+            return $ responseBuilder status200 resHeaders (mkPrometheusMetrics health)
         Nothing -> do
             resHeaders <- responseHeaders (pure health) Default.headers
             return $ responseJson status200 resHeaders health
@@ -398,6 +401,8 @@ handleGetHealth reqHeaders health =
 
     cTextPlain = "text/plain"
     cApplicationJson = "application/json"
+    cAny = "*/*"
+
     prettyContentTypes ct = decodeUtf8 ("'" <> ct <> "'")
 
 --
