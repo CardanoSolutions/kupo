@@ -16,6 +16,7 @@ module Kupo.App.Database
     , createShortLivedConnection
     , withLongLivedConnection
     , Connection
+    , ConnectionType (..)
 
       -- ** Lock
     , DBLock
@@ -209,22 +210,33 @@ data Database (m :: Type -> Type) = Database
 type family DBTransaction (m :: Type -> Type) :: (Type -> Type) where
     DBTransaction IO = ReaderT Connection IO
 
+data ConnectionType = ReadOnly | ReadWrite
+    deriving (Generic, Show)
+
+instance ToJSON ConnectionType where
+    toEncoding = defaultGenericToEncoding
+
 createShortLivedConnection
     :: Tracer IO TraceDatabase
+    -> ConnectionType
     -> DBLock IO
     -> LongestRollback
     -> FilePath
     -> IO (Database IO)
-createShortLivedConnection tr (DBLock shortLived longLived) k filePath = do
+createShortLivedConnection tr connectionType (DBLock shortLived longLived) k filePath = do
     uuid <- Just <$> UUID.V4.nextRandom
-    traceWith tr (DatabaseConnection uuid ConnectionCreateShortLived)
-    conn <- Sqlite.open filePath
+    traceWith tr $ DatabaseConnection uuid $ ConnectionCreateShortLived connectionType
+    conn <- Sqlite.open (filePath <> "?" <> modeStr)
     return $ mkDatabase (contramap (DatabaseConnection uuid) tr) k (bracketConnection conn)
   where
+    modeStr = case connectionType of
+        ReadOnly  -> "mode=ro"
+        ReadWrite -> "mode=rw"
+
     bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
     bracketConnection conn between =
         bracket_
-            ( atomically $ do
+            (atomically $ do
                 readTVar longLived >>= check . not
                 modifyTVar' shortLived next
             )
@@ -734,7 +746,8 @@ instance HasSeverityAnnotation TraceDatabase where
 
 data TraceConnection where
     ConnectionCreateShortLived
-        :: TraceConnection
+        :: { mode :: ConnectionType }
+        -> TraceConnection
     ConnectionDestroyShortLived
         :: TraceConnection
     ConnectionLocked
@@ -757,9 +770,9 @@ instance ToJSON TraceConnection where
 
 instance HasSeverityAnnotation TraceConnection where
     getSeverityAnnotation = \case
-        ConnectionCreateShortLived  -> Debug
-        ConnectionDestroyShortLived -> Debug
-        ConnectionLocked{}          -> Debug
-        ConnectionBusy{}            -> Debug
-        ConnectionBeginQuery{}      -> Debug
-        ConnectionExitQuery{}       -> Debug
+        ConnectionCreateShortLived{} -> Debug
+        ConnectionDestroyShortLived  -> Debug
+        ConnectionLocked{}           -> Debug
+        ConnectionBusy{}             -> Debug
+        ConnectionBeginQuery{}       -> Debug
+        ConnectionExitQuery{}        -> Debug

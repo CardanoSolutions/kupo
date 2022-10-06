@@ -53,7 +53,8 @@ import Kupo.App.Configuration
     , startOrResume
     )
 import Kupo.App.Database
-    ( Database (..)
+    ( ConnectionType (..)
+    , Database (..)
     , createShortLivedConnection
     , newLock
     , withLongLivedConnection
@@ -171,20 +172,31 @@ kupoWith tr withProducer withFetchBlock =
         } <- ask
 
     let dbFile = case workDir of
-            Dir dir  -> dir </> "kupo.sqlite3"
-            InMemory -> "file::memory:?cache=shared"
+            Dir dir  -> "file:" <> dir </> "kupo.sqlite3"
+            InMemory -> "file::memory:"
 
     lock <- liftIO newLock
 
-    pool <- liftIO $ newPool $ PoolConfig
+    readOnlyPool <- liftIO $ newPool $ PoolConfig
         { createResource =
-            createShortLivedConnection (tracerDatabase tr) lock longestRollback dbFile
+            createShortLivedConnection (tracerDatabase tr) ReadOnly lock longestRollback dbFile
         , freeResource =
             \Database{close} -> close
         , poolCacheTTL =
             1
         , poolMaxResources =
-            100
+            10
+        }
+
+    readWritePool <- liftIO $ newPool $ PoolConfig
+        { createResource =
+            createShortLivedConnection (tracerDatabase tr) ReadWrite lock longestRollback dbFile
+        , freeResource =
+            \Database{close} -> close
+        , poolCacheTTL =
+            1
+        , poolMaxResources =
+            5
         }
 
     liftIO $ withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile $ \db -> do
@@ -198,7 +210,10 @@ kupoWith tr withProducer withFetchBlock =
                     -- HTTP Server
                     ( httpServer
                         (tracerHttp tr)
-                        (withResource pool)
+                        (\case
+                            ReadOnly  -> withResource readOnlyPool
+                            ReadWrite -> withResource readWritePool
+                        )
                         forceRollback
                         fetchBlock
                         patterns
@@ -222,7 +237,7 @@ kupoWith tr withProducer withFetchBlock =
                         (tracerGardener tr)
                         config
                         patterns
-                        (withResource pool)
+                        (withResource readWritePool)
                     )
 
                     -- Block producer, fetching blocks from the network

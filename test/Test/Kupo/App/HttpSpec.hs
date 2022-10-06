@@ -476,7 +476,7 @@ newStubbedApplication :: [Pattern] -> IO Application
 newStubbedApplication defaultPatterns = do
     patternsVar <- newTVarIO (fromList defaultPatterns)
     pure $ app
-        (\callback -> callback databaseStub)
+        (\_send _mode callback -> callback databaseStub)
         (\_point ForcedRollbackHandler{onSuccess} -> onSuccess)
         (\point reply ->
             if next (unSlotNo (getPointSlotNo point)) == 999 then

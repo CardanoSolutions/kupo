@@ -146,6 +146,11 @@ spec = parallel $ do
             { patterns = [ MatchAny IncludingBootstrap, MatchAny OnlyShelley ]
             }
           )
+        , ( defaultArgs ++ [ "--match", "stake1uxuweccthd5qqgfh49uq592qr8mh7a78g89jjv0u74vnzasr3safd" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { patterns = [ MatchDelegation $ unsafeDecodeBase16 "b8ece30bbb68002137a9780a154019f77f77c741cb2931fcf5593176" ]
+            }
+          )
         , ( defaultArgs ++ [ "--match", "14@2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771" ]
           , shouldParseAppConfiguration $ defaultConfiguration
             { patterns =

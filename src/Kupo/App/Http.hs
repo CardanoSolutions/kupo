@@ -23,7 +23,8 @@ import Data.UUID
     ( UUID
     )
 import Kupo.App.Database
-    ( Database (..)
+    ( ConnectionType (..)
+    , Database (..)
     )
 import Kupo.App.Http.HealthCheck
     ( healthCheck
@@ -171,7 +172,7 @@ httpServer
         ( IsBlock block
         )
     => Tracer IO TraceHttpServer
-    -> ((Database IO -> IO ResponseReceived) -> IO ResponseReceived)
+    -> (ConnectionType -> (Database IO -> IO ResponseReceived) -> IO ResponseReceived)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)
@@ -190,8 +191,8 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
         & Warp.setServerName "kupo"
         & Warp.setBeforeMainLoop (logWith tr HttpServerListening{host,port})
 
-    withDatabaseWrapped send action =
-        withDatabase action `catch` onServerError
+    withDatabaseWrapped send connectionType action =
+        withDatabase connectionType action `catch` onServerError
       where
         onServerError (hint :: SomeException) = do
             logWith tr $ HttpUnexpectedError (toText $ displayException hint)
@@ -206,7 +207,7 @@ app
         ( IsBlock block
         , res ~ ResponseReceived
         )
-    => ((Response -> IO res) -> (Database IO -> IO res) -> IO res)
+    => ((Response -> IO res) -> ConnectionType -> (Database IO -> IO res) -> IO res)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)
@@ -254,11 +255,11 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routeCheckpoints = \case
         ("GET", []) ->
-            withDatabase send $ \db -> do
+            withDatabase send ReadOnly $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send (handleGetCheckpoints headers db)
         ("GET", [arg]) ->
-            withDatabase send $ \db -> do
+            withDatabase send ReadOnly $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetCheckpointBySlot
                             headers
@@ -272,7 +273,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routeMatches = \case
         ("GET", args) ->
-            withDatabase send $ \db -> do
+            withDatabase send ReadOnly $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send $ handleGetMatches
                             headers
@@ -280,7 +281,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
                             (queryString req)
                             db
         ("DELETE", args) ->
-            withDatabase send $ \db -> do
+            withDatabase send ReadWrite $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleDeleteMatches
                             headers
@@ -292,7 +293,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routeDatums = \case
         ("GET", [arg]) ->
-            withDatabase send $ \db -> do
+            withDatabase send ReadOnly $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetDatum
                             headers
@@ -305,7 +306,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routeScripts = \case
         ("GET", [arg]) ->
-            withDatabase send $ \db -> do
+            withDatabase send ReadOnly $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetScript
                             headers
@@ -318,7 +319,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routeMetadata = \case
         ("GET", [arg]) ->
-            withDatabase send $ \db -> do
+            withDatabase send ReadOnly $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetMetadata
                             headers
@@ -346,7 +347,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
             send res
         ("PUT", args) -> do
             pointOrSlotNo <- requestBodyJson decodeForcedRollback req
-            withDatabase send $ \db -> do
+            withDatabase send ReadWrite $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handlePutPattern
                             headers
@@ -357,7 +358,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
                             (pathParametersToText args)
                             db
         ("DELETE", args) ->
-            withDatabase send $ \db -> do
+            withDatabase send ReadWrite $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleDeletePattern
                             headers

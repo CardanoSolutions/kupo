@@ -25,7 +25,8 @@ import Database.SQLite.Simple
     , withTransaction
     )
 import Kupo.App.Database
-    ( DBLock
+    ( ConnectionType (..)
+    , DBLock
     , Database (..)
     , createShortLivedConnection
     , newLock
@@ -371,7 +372,7 @@ longLivedWorker dir lock allow =
 shortLivedWorker :: FilePath -> DBLock IO -> IO ()
 shortLivedWorker dir lock = do
     handle loudly $ bracket
-        (createShortLivedConnection nullTracer lock 42 dir)
+        (createShortLivedConnection nullTracer ReadWrite lock 42 dir)
         (\Database{close} -> close)
         (`loop` 0)
   where
