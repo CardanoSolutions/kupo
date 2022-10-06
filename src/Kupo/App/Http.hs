@@ -785,11 +785,12 @@ tracerMiddleware tr runApp req send = do
     identifier <- UUID.V4.nextRandom
     logWith tr $ TraceRequest {identifier, path, method}
     runApp req $ \res -> do
+        result <- send res
         end <- GHC.Clock.getMonotonicTimeNSec
         let time = mkRequestTime start end
         let status = mkStatus (responseStatus res)
         logWith tr $ TraceResponse {identifier, status, time}
-        send res
+        pure result
   where
     method = decodeUtf8 (requestMethod req)
     path = pathInfo req
