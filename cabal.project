@@ -38,6 +38,13 @@ constraints:
   , graphviz >= 2999.20.1.0
   , direct-sqlite >= 2.3.27
   , HSOpenSSL >= 0.11.7.2
+  , resource-pool >= 0.3.1.0
+
+source-repository-package
+  type: git
+  location: https://github.com/scrive/pool
+  tag: 71867699c5d19fb31e897a972607275b05338d01
+  --sha256: 0000000000000000000000000000000000000000000000000000
 
 source-repository-package
   type: git

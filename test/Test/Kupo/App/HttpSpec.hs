@@ -503,6 +503,8 @@ databaseStub :: Database IO
 databaseStub = Database
     { longestRollback =
         10
+    , close =
+        return ()
     , insertInputs =
         \_ -> return ()
     , foldInputs = \_ _ callback -> lift $ do

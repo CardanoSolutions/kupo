@@ -25,11 +25,11 @@ import Database.SQLite.Simple
     , withTransaction
     )
 import Kupo.App.Database
-    ( ConnectionType (..)
-    , DBLock
+    ( DBLock
     , Database (..)
+    , createShortLivedConnection
     , newLock
-    , withDatabase
+    , withLongLivedConnection
     )
 import Kupo.Control.MonadAsync
     ( mapConcurrently_
@@ -354,7 +354,7 @@ loudly e = do
 
 longLivedWorker :: FilePath -> DBLock IO -> IO () -> IO ()
 longLivedWorker dir lock allow =
-    handle loudly $ withDatabase nullTracer LongLived lock 42 dir $ \db -> do
+    handle loudly $ withLongLivedConnection nullTracer lock 42 dir $ \db -> do
         allow
         loop db 0
   where
@@ -370,7 +370,10 @@ longLivedWorker dir lock allow =
 
 shortLivedWorker :: FilePath -> DBLock IO -> IO ()
 shortLivedWorker dir lock = do
-    handle loudly $ withDatabase nullTracer ShortLived lock 42 dir (`loop` 0)
+    handle loudly $ bracket
+        (createShortLivedConnection nullTracer lock 42 dir)
+        (\Database{close} -> close)
+        (`loop` 0)
   where
     loop :: Database IO -> Int -> IO ()
     loop db@Database{..} = \case
@@ -487,9 +490,8 @@ withInMemoryDatabase
     -> PropertyM IO b
 withInMemoryDatabase k action = do
     lock <- run newLock
-    run $ withDatabase
+    run $ withLongLivedConnection
         nullTracer
-        LongLived
         lock
         (LongestRollback k)
         ":memory:"

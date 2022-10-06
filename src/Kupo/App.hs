@@ -338,18 +338,19 @@ gardener tr config patterns withDatabase = forever $ do
     logWith tr GardenerBeginGarbageCollection
     xs <- readTVarIO patterns
     withDatabase $ \Database{..} -> do
-        (prunedInputs, prunedBinaryData) <- runReadWriteTransaction $ do
-            let
-                pruneInputsWhenApplicable =
-                    case inputManagement of
-                        RemoveSpentInputs -> pruneInputs
-                        MarkSpentInputs -> pure 0
-                pruneBinaryDataWhenApplicable = do
-                    case (inputManagement, MatchAny OnlyShelley `included` xs) of
-                        (MarkSpentInputs, s) | not (Set.null s) -> pure 0
-                        _needPruning -> pruneBinaryData
-             in
-                (,) <$> pruneInputsWhenApplicable <*> pruneBinaryDataWhenApplicable
+        (prunedInputs, prunedBinaryData) <-
+            runReadWriteTransaction $ do
+                let
+                    pruneInputsWhenApplicable =
+                        case inputManagement of
+                            RemoveSpentInputs -> pruneInputs
+                            MarkSpentInputs -> pure 0
+                    pruneBinaryDataWhenApplicable = do
+                        case (inputManagement, MatchAny OnlyShelley `included` xs) of
+                            (MarkSpentInputs, s) | not (Set.null s) -> pure 0
+                            _needPruning -> pruneBinaryData
+                 in
+                    (,) <$> pruneInputsWhenApplicable <*> pruneBinaryDataWhenApplicable
         logWith tr $ GardenerExitGarbageCollection { prunedInputs, prunedBinaryData }
   where
     Configuration

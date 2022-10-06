@@ -7,16 +7,14 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-
 module Kupo.App.Database
     ( -- * Database DSL
       Database (..)
     , DBTransaction
 
       -- * Setup
-    , withDatabase
-    , ConnectionType (..)
+    , createShortLivedConnection
+    , withLongLivedConnection
     , Connection
 
       -- ** Lock
@@ -55,6 +53,9 @@ import Data.Severity
     ( HasSeverityAnnotation (..)
     , Severity (..)
     )
+import Data.UUID
+    ( UUID
+    )
 import Database.SQLite.Simple
     ( Connection
     , Error (..)
@@ -72,12 +73,12 @@ import Database.SQLite.Simple
     , withConnection
     , withStatement
     )
-import Database.SQLite.Simple.ToField
-    ( ToField (..)
-    )
 import GHC.TypeLits
     ( KnownSymbol
     , symbolVal
+    )
+import Kupo.Control.MonadTime
+    ( DiffTime
     )
 import Kupo.Data.Configuration
     ( LongestRollback (..)
@@ -94,8 +95,8 @@ import Numeric
     )
 
 import qualified Data.ByteString as BS
-import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Data.UUID.V4 as UUID.V4
 import qualified Database.SQLite.Simple as Sqlite
 
 data Database (m :: Type -> Type) = Database
@@ -200,85 +201,84 @@ data Database (m :: Type -> Type) = Database
 
     , longestRollback
         :: LongestRollback
+
+    , close
+        :: m ()
     }
 
 type family DBTransaction (m :: Type -> Type) :: (Type -> Type) where
     DBTransaction IO = ReaderT Connection IO
 
-withDatabase
+createShortLivedConnection
     :: Tracer IO TraceDatabase
-    -> ConnectionType
+    -> DBLock IO
+    -> LongestRollback
+    -> FilePath
+    -> IO (Database IO)
+createShortLivedConnection tr (DBLock shortLived longLived) k filePath = do
+    uuid <- Just <$> UUID.V4.nextRandom
+    traceWith tr (DatabaseConnection uuid ConnectionCreateShortLived)
+    conn <- Sqlite.open filePath
+    return $ mkDatabase (contramap (DatabaseConnection uuid) tr) k (bracketConnection conn)
+  where
+    bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
+    bracketConnection conn between =
+        bracket_
+            ( atomically $ do
+                readTVar longLived >>= check . not
+                modifyTVar' shortLived next
+            )
+            (atomically (modifyTVar' shortLived prev))
+            (between conn)
+
+withLongLivedConnection
+    :: Tracer IO TraceDatabase
     -> DBLock IO
     -> LongestRollback
     -> FilePath
     -> (Database IO -> IO a)
     -> IO a
-withDatabase tr mode (DBLock readers writer) k filePath action = do
+withLongLivedConnection tr (DBLock shortLived longLived) k filePath action = do
     withConnection filePath $ \conn -> do
-        when (mode == LongLived) $ do
-            databaseVersion conn >>= runMigrations tr conn
-            execute_ conn "PRAGMA synchronous = NORMAL"
-            execute_ conn "PRAGMA journal_mode = WAL"
-        action (mkDatabase tr k (bracketConnection conn))
+        databaseVersion conn >>= runMigrations tr conn
+        execute_ conn "PRAGMA synchronous = NORMAL"
+        execute_ conn "PRAGMA journal_mode = WAL"
+        action (mkDatabase trConnection k (bracketConnection conn))
   where
-    -- The heuristic below aims at favoring light reader/writer over the main
-    -- writer. We assume that there is only one persistent db producer and possibly
-    -- many short-lived reader/writer. The count of short-lived connection
-    -- is kept in a TVar and each connection increment/decrement it around
-    -- each transaction.
-    --
-    -- Short-lived connection are _mostly_read-only, but they may sometimes
-    -- perform quick writes. Hence, there's a simple fail-over mechanism for
-    -- them, in the (unlikely) case where they'd perform two concurrent
-    -- conflictual requests. There's no need for the LongLived connection
-    -- which is always alone.
-    --
-    -- The persistent process will only attempt writing if there's currently
-    -- no short-lived one. In case where there's at least one busy, it'll let
-    -- them pass and wait until all short-lived are done.
+    trConnection :: Tracer IO TraceConnection
+    trConnection = contramap (DatabaseConnection Nothing) tr
+
     bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
     bracketConnection conn between =
-        case mode of
-            ShortLived -> bracket_
-                (do
-                    atomically (modifyTVar' readers next)
-                    atomically (readTVar writer >>= check . not)
-                )
-                (atomically (modifyTVar' readers prev))
-                (between conn)
-
-            LongLived -> bracket_
-                (atomically $ do
-                    readTVar readers >>= check . (== 0)
-                    writeTVar writer True
-                )
-                (atomically $ writeTVar writer False)
-                (between conn)
-
--- ** ConnectionType
-
-data ConnectionType = LongLived | ShortLived
-    deriving (Eq, Show)
+        bracket_
+            (do
+                atomically (writeTVar longLived True)
+                atomically (readTVar shortLived >>= check . (== 0))
+            )
+            (atomically $ writeTVar longLived False)
+            (between conn)
 
 -- ** Lock
 
 data DBLock (m :: Type -> Type) = DBLock !(TVar m Word) !(TVar m Bool)
 
 newLock :: MonadSTM m => m (DBLock m)
-newLock = DBLock
-    <$> newTVarIO 0 <*> newTVarIO True
+newLock = DBLock <$> newTVarIO 0 <*> newTVarIO True
 
 --
 -- IO
 --
 
 mkDatabase
-    :: Tracer IO TraceDatabase
+    :: Tracer IO TraceConnection
     -> LongestRollback
     -> (forall a. (Connection -> IO a) -> IO a)
     -> Database IO
 mkDatabase tr longestRollback bracketConnection = Database
     { longestRollback
+    , close = do
+        traceWith tr ConnectionDestroyShortLived
+        bracketConnection Sqlite.close
     , insertInputs = \inputs -> ReaderT $ \conn -> do
         mapM_
             (\Input{..} -> do
@@ -316,7 +316,7 @@ mkDatabase tr longestRollback bracketConnection = Database
         changes conn
 
     , pruneInputs = ReaderT $ \conn -> do
-        traceWith tr (DatabaseBeginQuery "pruneInputs")
+        traceWith tr (ConnectionBeginQuery "pruneInputs")
         -- NOTE: There's a (not-so) pointless query on the 'address' column
         -- to force SQLite to use the compound index 'inputsByAddress' which
         -- drastically speed up the query. Indeed, SQLite will only use an index
@@ -329,7 +329,7 @@ mkDatabase tr longestRollback bracketConnection = Database
                   \  (SELECT MAX(slot_no) FROM checkpoints) - ?\
                   \)"
         execute conn qry [ SQLInteger (fromIntegral longestRollback) ]
-        traceWith tr (DatabaseExitQuery "pruneInputs")
+        traceWith tr (ConnectionExitQuery "pruneInputs")
         changes conn
 
     , deleteInputsByReference = \(toList -> refs) -> ReaderT $ \conn -> do
@@ -352,6 +352,7 @@ mkDatabase tr longestRollback bracketConnection = Database
             changes conn
 
     , foldInputs = \whereClause sortDirection yield -> ReaderT $ \conn -> do
+        traceWith tr (ConnectionBeginQuery "foldInputs")
         let qry = "SELECT \
                     \output_reference, address, value, datum_hash, script_hash ,\
                     \created_at, createdAt.header_hash, \
@@ -391,6 +392,7 @@ mkDatabase tr longestRollback bracketConnection = Database
                 yield Input{..}
             (xs :: [SQLData]) ->
                 throwIO (UnexpectedRow whereClause [xs])
+        traceWith tr (ConnectionExitQuery "foldInputs")
 
     , insertCheckpoints = \cps -> ReaderT $ \conn -> do
         mapM_
@@ -458,7 +460,7 @@ mkDatabase tr longestRollback bracketConnection = Database
                 Nothing
 
     , pruneBinaryData = ReaderT $ \conn -> do
-        traceWith tr (DatabaseBeginQuery "pruneBinaryData")
+        traceWith tr (ConnectionBeginQuery "pruneBinaryData")
         -- NOTE: This removes all binary_data that aren't associted with any
         -- known input. The 'ORDER BY' at the end may seem pointless but is
         -- actually CRUCIAL for the query performance as it forces SQLite to use
@@ -474,7 +476,7 @@ mkDatabase tr longestRollback bracketConnection = Database
                   \   ORDER BY inputs.datum_hash \
                   \ );"
         execute_ conn qry
-        traceWith tr (DatabaseExitQuery "pruneBinaryData")
+        traceWith tr (ConnectionExitQuery "pruneBinaryData")
         changes conn
 
     , insertScripts = \scripts -> ReaderT $ \conn -> do
@@ -517,7 +519,7 @@ mkDatabase tr longestRollback bracketConnection = Database
             [[SQLInteger slotNo']] | fromIntegral slotNo' == slotNo -> do
                 pure ()
             _otherwise -> do
-                traceWith tr $ DatabaseBeginQuery "rollbackTo"
+                traceWith tr $ ConnectionBeginQuery "rollbackTo"
                 execute conn "DELETE FROM inputs WHERE created_at > ?"
                     [ slotNoVar
                     ]
@@ -527,7 +529,7 @@ mkDatabase tr longestRollback bracketConnection = Database
                 execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
                     [ slotNoVar
                     ]
-                traceWith tr $ DatabaseExitQuery "rollbackTo"
+                traceWith tr $ ConnectionExitQuery "rollbackTo"
         -- NOTE: It is good to run the 'PRAGMA optimize' every now-and-then. The
         -- SQLite's official documentation recommend to do so either upon
         -- closing every connection, or, every few hours. We do it after rolling
@@ -544,10 +546,10 @@ mkDatabase tr longestRollback bracketConnection = Database
                 throwIO $ UnexpectedRow ("MAX(" <> show slotNo <> ")") xs
 
     , runReadOnlyTransaction = \r -> bracketConnection $ \conn ->
-        retryWhenBusy $ withTransaction conn False (runReaderT r conn)
+        retryWhenBusy tr $ withTransaction conn False (runReaderT r conn)
 
     , runReadWriteTransaction = \r -> bracketConnection $ \conn ->
-        retryWhenBusy $ withTransaction conn True (runReaderT r conn)
+        retryWhenBusy tr $ withTransaction conn True (runReaderT r conn)
     }
 
 insertRow
@@ -574,18 +576,23 @@ mkPreparedStatement n =
     Query ("(" <> T.intercalate "," (replicate n "?") <> ")")
 {-# INLINABLE mkPreparedStatement #-}
 
-retryWhenBusy :: IO a -> IO a
-retryWhenBusy action =
+retryWhenBusy :: Tracer IO TraceConnection -> IO a -> IO a
+retryWhenBusy tr action =
     action `catch` (\e@SQLError{sqlError} -> case sqlError of
         ErrorLocked -> do
-            threadDelay 0.1
-            retryWhenBusy action
+            traceWith tr $ ConnectionLocked { retryingIn }
+            threadDelay retryingIn
+            retryWhenBusy tr action
         ErrorBusy -> do
-            threadDelay 0.1
-            retryWhenBusy action
+            traceWith tr $ ConnectionBusy { retryingIn }
+            threadDelay retryingIn
+            retryWhenBusy tr action
         _otherError ->
             throwIO e
     )
+  where
+    retryingIn = 0.1
+
 
 -- NOTE: Not using sqlite-simple's version because it lacks the crucial
 -- 'onException' on commits; The commit operation may throw an 'SQLiteBusy'
@@ -694,25 +701,15 @@ data UnexpectedRowException
 instance Exception UnexpectedRowException
 
 --
--- Orphan
---
-
-instance (ToField a) => ToRow (Set a) where
-    toRow = Set.foldr (\x xs -> toField x : xs) []
-
---
 -- Tracer
 --
 
 data TraceDatabase where
+    DatabaseConnection
+        :: { identifier :: Maybe UUID, message :: TraceConnection }
+        -> TraceDatabase
     DatabaseCurrentVersion
         :: { currentVersion :: Int }
-        -> TraceDatabase
-    DatabaseBeginQuery
-        :: { beginQuery :: Text }
-        -> TraceDatabase
-    DatabaseExitQuery
-        :: { exitQuery :: Text }
         -> TraceDatabase
     DatabaseNoMigrationNeeded
         :: TraceDatabase
@@ -729,9 +726,40 @@ instance ToJSON TraceDatabase where
 
 instance HasSeverityAnnotation TraceDatabase where
     getSeverityAnnotation = \case
-        DatabaseBeginQuery{}        -> Debug
-        DatabaseExitQuery{}         -> Debug
-        DatabaseCurrentVersion{}    -> Info
-        DatabaseNoMigrationNeeded{} -> Debug
-        DatabaseRunningMigration{}  -> Notice
-        DatabaseRunningInMemory{}   -> Warning
+        DatabaseConnection { message } -> getSeverityAnnotation message
+        DatabaseCurrentVersion{}       -> Info
+        DatabaseNoMigrationNeeded{}    -> Debug
+        DatabaseRunningMigration{}     -> Notice
+        DatabaseRunningInMemory{}      -> Warning
+
+data TraceConnection where
+    ConnectionCreateShortLived
+        :: TraceConnection
+    ConnectionDestroyShortLived
+        :: TraceConnection
+    ConnectionLocked
+        :: { retryingIn :: DiffTime }
+        -> TraceConnection
+    ConnectionBusy
+        :: { retryingIn :: DiffTime }
+        -> TraceConnection
+    ConnectionBeginQuery
+        :: { beginQuery :: Text }
+        -> TraceConnection
+    ConnectionExitQuery
+        :: { exitQuery :: Text }
+        -> TraceConnection
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceConnection where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance HasSeverityAnnotation TraceConnection where
+    getSeverityAnnotation = \case
+        ConnectionCreateShortLived  -> Debug
+        ConnectionDestroyShortLived -> Debug
+        ConnectionLocked{}          -> Debug
+        ConnectionBusy{}            -> Debug
+        ConnectionBeginQuery{}      -> Debug
+        ConnectionExitQuery{}       -> Debug

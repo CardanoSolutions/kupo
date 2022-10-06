@@ -32,6 +32,11 @@ module Kupo
 
 import Kupo.Prelude
 
+import Data.Pool
+    ( PoolConfig (..)
+    , newPool
+    , withResource
+    )
 import Kupo.App
     ( ChainSyncClient
     , TraceConsumer (..)
@@ -48,9 +53,10 @@ import Kupo.App.Configuration
     , startOrResume
     )
 import Kupo.App.Database
-    ( ConnectionType (..)
+    ( Database (..)
+    , createShortLivedConnection
     , newLock
-    , withDatabase
+    , withLongLivedConnection
     )
 import Kupo.App.Health
     ( connectionStatusToggle
@@ -70,7 +76,6 @@ import Kupo.Control.MonadAsync
     )
 import Kupo.Control.MonadLog
     ( TracerDefinition (..)
-    , nullTracer
     , withTracers
     )
 import Kupo.Control.MonadSTM
@@ -170,7 +175,19 @@ kupoWith tr withProducer withFetchBlock =
             InMemory -> "file::memory:?cache=shared"
 
     lock <- liftIO newLock
-    liftIO $ withDatabase (tracerDatabase tr) LongLived lock longestRollback dbFile $ \db -> do
+
+    pool <- liftIO $ newPool $ PoolConfig
+        { createResource =
+            createShortLivedConnection (tracerDatabase tr) lock longestRollback dbFile
+        , freeResource =
+            \Database{close} -> close
+        , poolCacheTTL =
+            1
+        , poolMaxResources =
+            100
+        }
+
+    liftIO $ withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile $ \db -> do
         patterns <- newPatternsCache (tracerConfiguration tr) config db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
@@ -181,12 +198,7 @@ kupoWith tr withProducer withFetchBlock =
                     -- HTTP Server
                     ( httpServer
                         (tracerHttp tr)
-                        -- NOTE: This should / could probably use a resource pool to
-                        -- avoid re-creating a new connection on every requests. This is
-                        -- however pretty cheap with SQLite anyway and the HTTP server
-                        -- isn't meant to be a public-facing web server serving millions
-                        -- of clients.
-                        (withDatabase nullTracer ShortLived lock longestRollback dbFile)
+                        (withResource pool)
                         forceRollback
                         fetchBlock
                         patterns
@@ -210,7 +222,7 @@ kupoWith tr withProducer withFetchBlock =
                         (tracerGardener tr)
                         config
                         patterns
-                        (withDatabase (tracerDatabase tr) ShortLived lock longestRollback dbFile)
+                        (withResource pool)
                     )
 
                     -- Block producer, fetching blocks from the network
