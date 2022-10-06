@@ -171,6 +171,7 @@ library
     , ouroboros-network-framework
     , prometheus
     , relude
+    , resource-pool
     , safe
     , safe-exceptions
     , sqlite-simple
@@ -181,6 +182,7 @@ library
     , transformers
     , typed-protocols
     , unix
+    , uuid
     , wai
     , warp
     , websockets

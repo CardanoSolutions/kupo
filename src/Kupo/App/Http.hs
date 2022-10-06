@@ -19,6 +19,9 @@ module Kupo.App.Http
 
 import Kupo.Prelude
 
+import Data.UUID
+    ( UUID
+    )
 import Kupo.App.Database
     ( Database (..)
     )
@@ -147,6 +150,8 @@ import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.UUID.V4 as UUID.V4
+import qualified GHC.Clock
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
 import qualified Network.HTTP.Types.Header as Http
@@ -773,11 +778,17 @@ requestBodyJson parser req = do
 -- Tracer
 --
 
+
 tracerMiddleware :: Tracer IO TraceHttpServer -> Middleware
 tracerMiddleware tr runApp req send = do
+    start <- GHC.Clock.getMonotonicTimeNSec
+    identifier <- UUID.V4.nextRandom
+    logWith tr $ TraceRequest {identifier, path, method}
     runApp req $ \res -> do
+        end <- GHC.Clock.getMonotonicTimeNSec
+        let time = mkRequestTime start end
         let status = mkStatus (responseStatus res)
-        logWith tr $ TraceRequest {method, path, status}
+        logWith tr $ TraceResponse {identifier, status, time}
         send res
   where
     method = decodeUtf8 (requestMethod req)
@@ -788,15 +799,30 @@ data TraceHttpServer where
         :: { host :: String, port :: Int }
         -> TraceHttpServer
     TraceRequest
-        :: { method :: Text, path :: [Text], status :: Status }
+        :: { identifier :: UUID, path :: [Text], method :: Text }
+        -> TraceHttpServer
+    TraceResponse
+        :: { identifier :: UUID, status :: Status, time :: RequestTime }
         -> TraceHttpServer
     deriving stock (Generic)
 
 instance HasSeverityAnnotation TraceHttpServer where
     getSeverityAnnotation = \case
         TraceServerListening{} -> Notice
-        TraceRequest{} -> Info
+        TraceRequest{}         -> Info
+        TraceResponse{}        -> Info
 
 instance ToJSON TraceHttpServer where
+    toEncoding =
+        defaultGenericToEncoding
+
+newtype RequestTime = RequestTime { milliseconds :: Word64 }
+    deriving stock (Generic, Show)
+
+mkRequestTime :: Word64 -> Word64 -> RequestTime
+mkRequestTime start end =
+    RequestTime $ (end - start) `div` 1_000_000
+
+instance ToJSON RequestTime where
     toEncoding =
         defaultGenericToEncoding

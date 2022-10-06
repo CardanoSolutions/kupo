@@ -80,6 +80,7 @@ library:
     - ouroboros-network-framework
     - prometheus
     - relude
+    - resource-pool
     - safe
     - safe-exceptions
     - strict-containers
@@ -90,6 +91,7 @@ library:
     - transformers
     - typed-protocols
     - unix
+    - uuid
     - yaml
     - wai
     - warp
