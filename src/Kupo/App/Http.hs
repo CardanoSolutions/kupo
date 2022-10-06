@@ -28,6 +28,9 @@ import Kupo.App.Database
 import Kupo.App.Http.HealthCheck
     ( healthCheck
     )
+import Kupo.Control.MonadCatch
+    ( MonadCatch (..)
+    )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..)
     , MonadLog (..)
@@ -135,6 +138,7 @@ import Network.Wai
     , Middleware
     , Request
     , Response
+    , ResponseReceived
     , pathInfo
     , queryString
     , requestHeaders
@@ -167,7 +171,7 @@ httpServer
         ( IsBlock block
         )
     => Tracer IO TraceHttpServer
-    -> (forall a. (Database IO -> IO a) -> IO a)
+    -> ((Database IO -> IO ResponseReceived) -> IO ResponseReceived)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)
@@ -178,23 +182,31 @@ httpServer
 httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host port =
     Warp.runSettings settings
         $ tracerMiddleware tr
-        $ app withDatabase forceRollback fetchBlock patternsVar readHealth
+        $ app withDatabaseWrapped forceRollback fetchBlock patternsVar readHealth
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
         & Warp.setHost (fromString host)
         & Warp.setServerName "kupo"
-        & Warp.setBeforeMainLoop (logWith tr TraceServerListening{host,port})
+        & Warp.setBeforeMainLoop (logWith tr HttpServerListening{host,port})
+
+    withDatabaseWrapped send action =
+        withDatabase action `catch` onServerError
+      where
+        onServerError (hint :: SomeException) = do
+            logWith tr $ HttpUnexpectedError (toText $ displayException hint)
+            send Errors.serverError
 
 --
 -- Router
 --
 
 app
-    :: forall block.
+    :: forall block res.
         ( IsBlock block
+        , res ~ ResponseReceived
         )
-    => (forall a. (Database IO -> IO a) -> IO a)
+    => ((Response -> IO res) -> (Database IO -> IO res) -> IO res)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)
@@ -242,11 +254,11 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routeCheckpoints = \case
         ("GET", []) ->
-            withDatabase $ \db -> do
+            withDatabase send $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send (handleGetCheckpoints headers db)
         ("GET", [arg]) ->
-            withDatabase $ \db -> do
+            withDatabase send $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetCheckpointBySlot
                             headers
@@ -260,7 +272,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routeMatches = \case
         ("GET", args) ->
-            withDatabase $ \db -> do
+            withDatabase send $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send $ handleGetMatches
                             headers
@@ -268,7 +280,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
                             (queryString req)
                             db
         ("DELETE", args) ->
-            withDatabase $ \db -> do
+            withDatabase send $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleDeleteMatches
                             headers
@@ -280,7 +292,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routeDatums = \case
         ("GET", [arg]) ->
-            withDatabase $ \db -> do
+            withDatabase send $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetDatum
                             headers
@@ -293,7 +305,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routeScripts = \case
         ("GET", [arg]) ->
-            withDatabase $ \db -> do
+            withDatabase send $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetScript
                             headers
@@ -306,7 +318,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routeMetadata = \case
         ("GET", [arg]) ->
-            withDatabase $ \db -> do
+            withDatabase send $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetMetadata
                             headers
@@ -334,7 +346,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
             send res
         ("PUT", args) -> do
             pointOrSlotNo <- requestBodyJson decodeForcedRollback req
-            withDatabase $ \db -> do
+            withDatabase send $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handlePutPattern
                             headers
@@ -345,7 +357,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
                             (pathParametersToText args)
                             db
         ("DELETE", args) ->
-            withDatabase $ \db -> do
+            withDatabase send $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
                 send =<< handleDeletePattern
                             headers
@@ -788,35 +800,39 @@ tracerMiddleware :: Tracer IO TraceHttpServer -> Middleware
 tracerMiddleware tr runApp req send = do
     start <- GHC.Clock.getMonotonicTimeNSec
     identifier <- UUID.V4.nextRandom
-    logWith tr $ TraceRequest {identifier, path, method}
+    logWith tr $ HttpRequest {identifier, path, method}
     runApp req $ \res -> do
         result <- send res
         end <- GHC.Clock.getMonotonicTimeNSec
         let time = mkRequestTime start end
         let status = mkStatus (responseStatus res)
-        logWith tr $ TraceResponse {identifier, status, time}
+        logWith tr $ HttpResponse {identifier, status, time}
         pure result
   where
     method = decodeUtf8 (requestMethod req)
     path = pathInfo req
 
 data TraceHttpServer where
-    TraceServerListening
+    HttpServerListening
         :: { host :: String, port :: Int }
         -> TraceHttpServer
-    TraceRequest
+    HttpUnexpectedError
+        :: { hint :: Text }
+        -> TraceHttpServer
+    HttpRequest
         :: { identifier :: UUID, path :: [Text], method :: Text }
         -> TraceHttpServer
-    TraceResponse
+    HttpResponse
         :: { identifier :: UUID, status :: Status, time :: RequestTime }
         -> TraceHttpServer
     deriving stock (Generic)
 
 instance HasSeverityAnnotation TraceHttpServer where
     getSeverityAnnotation = \case
-        TraceServerListening{} -> Notice
-        TraceRequest{}         -> Info
-        TraceResponse{}        -> Info
+        HttpServerListening{} -> Notice
+        HttpUnexpectedError{} -> Error
+        HttpRequest{}         -> Info
+        HttpResponse{}        -> Info
 
 instance ToJSON TraceHttpServer where
     toEncoding =

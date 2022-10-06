@@ -190,3 +190,9 @@ unsupportedContentType types =
         { hint = "Unsupported content-type requested in 'Accept' header. \
                  \This endpoint only understands: " <> T.intercalate " or " types <> "."
         }
+
+serverError :: Response
+serverError =
+    responseJson status500 Default.headers $ HttpError
+        { hint = "Unexpected server error. See server logs for details."
+        }
