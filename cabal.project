@@ -44,7 +44,7 @@ source-repository-package
   type: git
   location: https://github.com/scrive/pool
   tag: 71867699c5d19fb31e897a972607275b05338d01
-  --sha256: 0000000000000000000000000000000000000000000000000000
+  --sha256: 0qqmzsxjjx261sjka91y3hjiigpv4lbwk9vz1p0i7cj813na5bnp
 
 source-repository-package
   type: git
