@@ -564,9 +564,7 @@ databaseStub = Database
             pure $ mk . scriptToRow scriptHash <$> script
     , rollbackTo =
         \_ -> return Nothing
-    , runReadOnlyTransaction = \r ->
-        runReaderT r (error "Connection")
-    , runReadWriteTransaction = \r ->
+    , runTransaction = \r ->
         runReaderT r (error "Connection")
     }
 

@@ -239,7 +239,7 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
         let lastKnownSlot = getPointSlotNo lastKnownPoint
         let Match{consumed, produced, datums, scripts} =
                 foldMap (matchBlock codecs patterns . snd) blks
-        isNonEmptyBlock <- runReadWriteTransaction $ do
+        isNonEmptyBlock <- runTransaction $ do
             insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
             insertInputs produced
             nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot consumed
@@ -267,7 +267,7 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
     rollBackward :: (Tip, Point) -> m ()
     rollBackward (tip, pt) = do
         logWith tr (ConsumerRollBackward { point = getPointSlotNo pt })
-        runReadWriteTransaction $ do
+        runTransaction $ do
             lastKnownSlot <- rollbackTo (unSlotNo (getPointSlotNo pt))
             notifyTip tip (SlotNo <$> lastKnownSlot)
 
@@ -339,7 +339,7 @@ gardener tr config patterns withDatabase = forever $ do
     xs <- readTVarIO patterns
     withDatabase $ \Database{..} -> do
         (prunedInputs, prunedBinaryData) <-
-            runReadWriteTransaction $ do
+            runTransaction $ do
                 let
                     pruneInputsWhenApplicable =
                         case inputManagement of

@@ -28,6 +28,7 @@ import Kupo.App.Database
     ( ConnectionType (..)
     , DBLock
     , Database (..)
+    , DatabaseFile (..)
     , createShortLivedConnection
     , newLock
     , withLongLivedConnection
@@ -220,8 +221,8 @@ spec = parallel $ do
         prop "list checkpoints after inserting them" $
             forAllCheckpoints k $ \pts -> monadicIO $ do
                 cps <- withInMemoryDatabase k $ \Database{..} -> do
-                    runReadWriteTransaction $ insertCheckpoints (pointToRow <$> pts)
-                    runReadOnlyTransaction $ fmap getPointSlotNo <$> listCheckpointsDesc pointFromRow
+                    runTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    runTransaction $ fmap getPointSlotNo <$> listCheckpointsDesc pointFromRow
                 monitor $ counterexample (show cps)
                 assert $ all (uncurry (>)) (zip cps (drop 1 cps))
                 assert $ Prelude.head cps == maximum (getPointSlotNo <$> pts)
@@ -229,14 +230,14 @@ spec = parallel $ do
         prop "get ancestor of any checkpoint" $
             forAllCheckpoints k $ \pts -> monadicIO $ do
                 oneByOne <- withInMemoryDatabase k $ \Database{..} -> do
-                    runReadWriteTransaction $ insertCheckpoints (pointToRow <$> pts)
-                    fmap mconcat $ runReadOnlyTransaction $ forM pts $ \pt -> do
+                    runTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    fmap mconcat $ runTransaction $ forM pts $ \pt -> do
                         let slotNo = unSlotNo (getPointSlotNo pt)
                         listAncestorsDesc slotNo 1 pointFromRow
 
                 allAtOnce <- withInMemoryDatabase k $ \Database{..} -> do
-                    runReadWriteTransaction $ insertCheckpoints (pointToRow <$> pts)
-                    fmap reverse $ runReadOnlyTransaction $ do
+                    runTransaction $ insertCheckpoints (pointToRow <$> pts)
+                    fmap reverse $ runTransaction $ do
                         let slotNo = unSlotNo (maximum (getPointSlotNo <$> pts))
                         listAncestorsDesc slotNo (fromIntegral $ length pts) pointFromRow
 
@@ -295,17 +296,17 @@ spec = parallel $ do
                     (asc, desc) <- withInMemoryDatabase 10 $ \Database{..} -> do
                         let matchAll = patternToSql (MatchAny IncludingBootstrap)
 
-                        runReadWriteTransaction $ do
+                        runTransaction $ do
                             insertInputs (resultToRow <$> results)
                             insertCheckpoints (pointToRow . createdAt <$> results)
                             insertCheckpoints (pointToRow <$> mapMaybe spentAt results)
 
                         qAsc <- newTBQueueIO (fromIntegral $ length results)
-                        runReadOnlyTransaction $ foldInputs matchAll Asc
+                        runTransaction $ foldInputs matchAll Asc
                             (atomically . writeTBQueue qAsc . resultFromRow)
 
                         qDesc <- newTBQueueIO (fromIntegral $ length results)
-                        runReadOnlyTransaction $ foldInputs matchAll Desc
+                        runTransaction $ foldInputs matchAll Desc
                             (atomically . writeTBQueue qDesc . resultFromRow)
 
                         atomically $ (,) <$> flushTBQueue qAsc <*> flushTBQueue qDesc
@@ -320,29 +321,30 @@ spec = parallel $ do
                     monitor (.&&. pAsc .&&. pDesc)
 
     context "concurrent read / write" $ do
-        specify "1 long-lived worker vs 2 short-lived workers (in-memory)" $ do
-            lock <- newLock
-            waitGroup <- newTVarIO False
-            let allow = atomically (writeTVar waitGroup True)
-            let await = atomically (readTVar waitGroup >>= check)
-            let filename = "file:concurrent-read-write?cache=shared&mode=memory"
-            mapConcurrently_ identity
-                [ longLivedWorker filename lock allow
-                , await >> shortLivedWorker filename lock
-                , await >> shortLivedWorker filename lock
-                ]
-
-        specify "1 long-lived worker vs 2 short-lived workers (filesystem)" $ do
-            withSystemTempDirectory "kupo-database-concurrent" $ \dir -> do
-                lock <- newLock
-                waitGroup <- newTVarIO False
-                let allow = atomically (writeTVar waitGroup True)
-                let await = atomically (readTVar waitGroup >>= check)
-                mapConcurrently_ identity
-                    [ longLivedWorker  (dir </> "db.sqlite3") lock allow
-                    , await >> shortLivedWorker (dir </> "db.sqlite3") lock
-                    , await >> shortLivedWorker (dir </> "db.sqlite3") lock
-                    ]
+        mapM_
+            (\(title, withDatabaseFile) -> do
+                specify ("1 long-lived worker vs 2 short-lived workers (" <> title <> ")") $ do
+                    withDatabaseFile $ \file -> do
+                        lock <- newLock
+                        waitGroup <- newTVarIO False
+                        let allow = atomically (writeTVar waitGroup True)
+                        let await = atomically (readTVar waitGroup >>= check)
+                        mapConcurrently_ identity
+                            [ longLivedWorker file lock allow
+                            , await >> shortLivedWorker file ReadOnly lock
+                            , await >> shortLivedWorker file ReadWrite lock
+                            ]
+            )
+            [ ( "in-memory"
+              , \test ->
+                    test (InMemory (Just "file:concurrent-read-write:?cache=shared"))
+              )
+            , ( "on-disk"
+              , \test ->
+                    withSystemTempDirectory "kupo-database-concurrent" $ \dir ->
+                        test (OnDisk (dir </> "db.sqlite3"))
+              )
+            ]
 
 --
 -- Workers
@@ -353,9 +355,9 @@ loudly e = do
     print e
     throwIO e
 
-longLivedWorker :: FilePath -> DBLock IO -> IO () -> IO ()
-longLivedWorker dir lock allow =
-    handle loudly $ withLongLivedConnection nullTracer lock 42 dir $ \db -> do
+longLivedWorker :: DatabaseFile -> DBLock IO -> IO () -> IO ()
+longLivedWorker fp lock allow =
+    handle loudly $ withLongLivedConnection nullTracer lock 42 fp $ \db -> do
         allow
         loop db 0
   where
@@ -364,15 +366,15 @@ longLivedWorker dir lock allow =
         25 -> pure ()
         n   -> do
             result <- generate (chooseVector (100, 500) genResult)
-            runReadWriteTransaction $ insertInputs (resultToRow <$> result)
+            runTransaction $ insertInputs (resultToRow <$> result)
             ms <- millisecondsToDiffTime <$> generate (choose (1, 15))
             threadDelay ms
             loop db (next n)
 
-shortLivedWorker :: FilePath -> DBLock IO -> IO ()
-shortLivedWorker dir lock = do
+shortLivedWorker :: DatabaseFile -> ConnectionType -> DBLock IO -> IO ()
+shortLivedWorker fp mode lock = do
     handle loudly $ bracket
-        (createShortLivedConnection nullTracer ReadWrite lock 42 dir)
+        (createShortLivedConnection nullTracer mode lock 42 fp)
         (\Database{close} -> close)
         (`loop` 0)
   where
@@ -380,30 +382,35 @@ shortLivedWorker dir lock = do
     loop db@Database{..} = \case
         25 -> pure ()
         n   -> do
-            void $ join $ generate $ frequency
+            void $ join $ generate $ frequency $
                 [ (10, do
-                    pure $ void $ runReadOnlyTransaction $ listCheckpointsDesc pointFromRow
+                    pure $ void $ runTransaction $ listCheckpointsDesc pointFromRow
                   )
                 , (2, do
                     p <- genPattern
                     let q = patternToSql p
                     sortDir <- elements [Asc, Desc]
-                    pure $ runReadOnlyTransaction $ foldInputs q sortDir (\_ -> pure ())
-                  )
-                , (1, do
-                    p <- genPattern
-                    let q = patternToSql p
-                    pure $ void $ runReadWriteTransaction $ deleteInputsByAddress q
-                  )
-                , (1, do
-                    p <- genPattern
-                    pure $ runReadWriteTransaction $ insertPatterns [patternToRow p]
-                  )
-                , (1, do
-                    p <- genPattern
-                    pure $ void $ runReadWriteTransaction $ deletePattern (patternToRow p)
+                    pure $ runTransaction $ foldInputs q sortDir (\_ -> pure ())
                   )
                 ]
+                ++
+                case mode of
+                    ReadOnly -> []
+                    ReadWrite ->
+                        [ (1, do
+                            p <- genPattern
+                            let q = patternToSql p
+                            pure $ void $ runTransaction $ deleteInputsByAddress q
+                          )
+                        , (1, do
+                            p <- genPattern
+                            pure $ runTransaction $ insertPatterns [patternToRow p]
+                          )
+                        , (1, do
+                            p <- genPattern
+                            pure $ void $ runTransaction $ deletePattern (patternToRow p)
+                          )
+                        ]
             ms <- millisecondsToDiffTime <$> generate (choose (15, 50))
             threadDelay ms
             loop db (next n)
@@ -495,7 +502,7 @@ withInMemoryDatabase k action = do
         nullTracer
         lock
         (LongestRollback k)
-        ":memory:"
+        (InMemory (Just ":memory:"))
         action
 
 forAllCheckpoints

@@ -239,7 +239,7 @@ executable kupo
       base >=4.7 && <5
     , kupo
   if flag(production)
-    ghc-options: -O2 -Werror "-with-rtsopts=-N2 -A16m -qb -qg"
+    ghc-options: -O2 -Werror "-with-rtsopts=-N -A16m -qb -qg"
   default-language: Haskell2010
 
 test-suite unit

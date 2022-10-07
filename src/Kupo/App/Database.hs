@@ -17,6 +17,7 @@ module Kupo.App.Database
     , withLongLivedConnection
     , Connection
     , ConnectionType (..)
+    , DatabaseFile (..)
 
       -- ** Lock
     , DBLock
@@ -179,19 +180,7 @@ data Database (m :: Type -> Type) = Database
         :: Word64  -- slot_no
         -> DBTransaction m (Maybe Word64)
 
-    -- Run a read-only transaction, that is, a set of SELECT operations that
-    -- leave the database unchanged. It acquires a different type of lock than
-    -- the 'runReadwriteTransaction' which also leads to different behavior when
-    -- it comes to retrying.
-    -- Multiple read-only transactions can happen at the same time, whereas a
-    -- read-write transaction will need to wait.
-    , runReadOnlyTransaction
-        :: forall a. ()
-        => DBTransaction m a
-        -> m a
-
-    -- See note on 'runReadOnlyTransaction' above.
-    , runReadWriteTransaction
+    , runTransaction
         :: forall a. ()
         => DBTransaction m a
         -> m a
@@ -207,57 +196,97 @@ type family DBTransaction (m :: Type -> Type) :: (Type -> Type) where
     DBTransaction IO = ReaderT Connection IO
 
 data ConnectionType = ReadOnly | ReadWrite
-    deriving (Generic, Show)
+    deriving (Generic, Eq, Show)
 
 instance ToJSON ConnectionType where
     toEncoding = defaultGenericToEncoding
 
+data DatabaseFile = OnDisk !FilePath | InMemory !(Maybe FilePath)
+    deriving (Generic, Eq, Show)
+
+-- | Construct a connection string for the SQLite database. This utilizes (and assumes) the URI
+-- recognition from SQLite to choose between read-only or read-write database. By default also, when
+-- no filepath is provided, the database is created in-memory with a shared cache.
+--
+-- For testing purpose however, it is also possible to create a in-memory database in isolation by
+-- simply passing `:memory:` as a filepath.
+mkConnectionString
+    :: DatabaseFile
+    -> ConnectionType
+    -> String
+mkConnectionString filePath mode =
+    case (filePath, mode) of
+        (OnDisk fp, ReadOnly)  ->
+           "file:" <> fp <> "?mode=ro"
+        (OnDisk fp, ReadWrite) ->
+           "file:" <> fp <> "?mode=rwc"
+        (InMemory Nothing, _ ) ->
+           "file::kupo:?mode=memory&cache=shared"
+        (InMemory (Just fp), _) ->
+            fp
+
+-- | A short-lived connection meant to be used in a resource-pool. These connections can be opened
+-- either as read-only connection or read-write; depending on the client needs. Read-only connections
+-- are non-blocking and can access data even when the database is being written concurrently.
 createShortLivedConnection
     :: Tracer IO TraceDatabase
     -> ConnectionType
     -> DBLock IO
     -> LongestRollback
-    -> FilePath
+    -> DatabaseFile
     -> IO (Database IO)
-createShortLivedConnection tr connectionType (DBLock shortLived longLived) k filePath = do
-    traceWith tr $ DatabaseConnection (ConnectionCreateShortLived connectionType)
-    conn <- Sqlite.open (filePath <> "?" <> modeStr)
-    return $ mkDatabase (contramap DatabaseConnection tr) k (bracketConnection conn)
+createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
+    traceWith tr $ DatabaseConnection ConnectionCreateShortLived{mode}
+    conn <- Sqlite.open $ mkConnectionString file mode
+    execute_ conn "PRAGMA page_size = 16184"
+    execute_ conn "PRAGMA cache_size = -50000"
+    when (mode == ReadOnly) $ execute_ conn "PRAGMA read_uncommitted = 1"
+    return $ mkDatabase (contramap DatabaseConnection tr) mode k (bracketConnection conn)
   where
-    modeStr = case connectionType of
-        ReadOnly  -> "mode=ro"
-        ReadWrite -> "mode=rw"
-
     bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
     bracketConnection conn between =
-        bracket_
-            (atomically $ do
-                readTVar longLived >>= check . not
-                modifyTVar' shortLived next
-            )
-            (atomically (modifyTVar' shortLived prev))
-            (between conn)
+        case mode of
+            ReadOnly ->
+                between conn
+            ReadWrite ->
+                bracket_
+                    -- read-write connections only run when the longLived isn't busy working. Multiple
+                    -- short-lived read-write connections may still conflict with one another, but
+                    -- since they mostly are one-off requests, we simply retry them when busy/locked.
+                    (atomically $ do
+                        readTVar longLived >>= check . not
+                        modifyTVar' shortLived next
+                    )
+                    (atomically (modifyTVar' shortLived prev))
+                    (between conn)
 
+-- | A resource acquisition bracket for a single long-lived connection. The system is assumed to use
+-- with only once, at the application start-up and provide this connection to a privileged one which
+-- takes priority over any other connections.
+--
+-- It is therefore also the connection from which we check for and run database migrations when
+-- needed. Note that this bracket will also create the database if it doesn't exist.
 withLongLivedConnection
     :: Tracer IO TraceDatabase
     -> DBLock IO
     -> LongestRollback
-    -> FilePath
+    -> DatabaseFile
     -> (Database IO -> IO a)
     -> IO a
-withLongLivedConnection tr (DBLock shortLived longLived) k filePath action = do
-    withConnection filePath $ \conn -> do
+withLongLivedConnection tr (DBLock shortLived longLived) k file action = do
+    withConnection (mkConnectionString file ReadWrite) $ \conn -> do
         databaseVersion conn >>= runMigrations tr conn
         execute_ conn "PRAGMA synchronous = NORMAL"
         execute_ conn "PRAGMA journal_mode = WAL"
-        action (mkDatabase (contramap DatabaseConnection tr) k (bracketConnection conn))
+        execute_ conn "PRAGMA page_size = 16184"
+        action (mkDatabase (contramap DatabaseConnection tr) ReadWrite k (bracketConnection conn))
   where
     bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
     bracketConnection conn between =
         bracket_
             (do
-                atomically (writeTVar longLived True)
-                atomically (readTVar shortLived >>= check . (== 0))
+                atomically (writeTVar longLived True) -- acquire
+                atomically (readTVar shortLived >>= check . (== 0)) -- wait for read-write short-lived
             )
             (atomically $ writeTVar longLived False)
             (between conn)
@@ -275,13 +304,14 @@ newLock = DBLock <$> newTVarIO 0 <*> newTVarIO True
 
 mkDatabase
     :: Tracer IO TraceConnection
+    -> ConnectionType
     -> LongestRollback
     -> (forall a. (Connection -> IO a) -> IO a)
     -> Database IO
-mkDatabase tr longestRollback bracketConnection = Database
+mkDatabase tr mode longestRollback bracketConnection = Database
     { longestRollback
     , close = do
-        traceWith tr ConnectionDestroyShortLived
+        traceWith tr ConnectionDestroyShortLived{mode}
         bracketConnection Sqlite.close
     , insertInputs = \inputs -> ReaderT $ \conn -> do
         mapM_
@@ -549,11 +579,8 @@ mkDatabase tr longestRollback bracketConnection = Database
             xs ->
                 throwIO $ UnexpectedRow ("MAX(" <> show slotNo <> ")") xs
 
-    , runReadOnlyTransaction = \r -> bracketConnection $ \conn ->
-        retryWhenBusy tr $ withTransaction conn False (runReaderT r conn)
-
-    , runReadWriteTransaction = \r -> bracketConnection $ \conn ->
-        retryWhenBusy tr $ withTransaction conn True (runReaderT r conn)
+    , runTransaction = \r -> bracketConnection $ \conn ->
+        retryWhenBusy tr $ withTransaction conn mode (runReaderT r conn)
     }
 
 insertRow
@@ -607,17 +634,19 @@ retryWhenBusy tr action =
 -- it?). So, this slightly modified version makes sure to also rollback on a
 -- failed commit; allowing caller to simply retry the whole transaction on
 -- failure.
-withTransaction :: Connection -> Bool -> IO a -> IO a
-withTransaction conn immediate action =
+withTransaction :: Connection -> ConnectionType -> IO a -> IO a
+withTransaction conn mode action =
   mask $ \restore -> do
-    begin
+    begin mode
     r <- restore action `onException` rollback
     commit `onException` rollback
     return r
   where
-    begin
-        | immediate = execute_ conn "BEGIN IMMEDIATE TRANSACTION"
-        | otherwise = execute_ conn "BEGIN TRANSACTION"
+    begin = \case
+        ReadOnly ->
+            execute_ conn "BEGIN DEFERRED TRANSACTION"
+        ReadWrite ->
+            execute_ conn "BEGIN IMMEDIATE TRANSACTION"
     commit   = execute_ conn "COMMIT TRANSACTION"
     rollback = execute_ conn "ROLLBACK TRANSACTION"
 
@@ -665,7 +694,7 @@ runMigrations tr conn currentVersion = do
         [] -> do
             pure ()
         (instructions):rest -> do
-            void $ withTransaction conn True $ traverse (execute_ conn) instructions
+            void $ withTransaction conn ReadWrite $ traverse (execute_ conn) instructions
             executeMigrations rest
 
 migrations :: [Migration]
@@ -741,7 +770,8 @@ data TraceConnection where
         :: { mode :: ConnectionType }
         -> TraceConnection
     ConnectionDestroyShortLived
-        :: TraceConnection
+        :: { mode :: ConnectionType }
+        -> TraceConnection
     ConnectionLocked
         :: { retryingIn :: DiffTime }
         -> TraceConnection
@@ -762,9 +792,9 @@ instance ToJSON TraceConnection where
 
 instance HasSeverityAnnotation TraceConnection where
     getSeverityAnnotation = \case
-        ConnectionCreateShortLived{} -> Debug
-        ConnectionDestroyShortLived  -> Debug
-        ConnectionLocked{}           -> Debug
-        ConnectionBusy{}             -> Debug
-        ConnectionBeginQuery{}       -> Debug
-        ConnectionExitQuery{}        -> Debug
+        ConnectionCreateShortLived{}  -> Debug
+        ConnectionDestroyShortLived{} -> Debug
+        ConnectionLocked{}            -> Debug
+        ConnectionBusy{}              -> Debug
+        ConnectionBeginQuery{}        -> Debug
+        ConnectionExitQuery{}         -> Debug

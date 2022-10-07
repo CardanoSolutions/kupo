@@ -110,19 +110,19 @@ startOrResume
     -> Database m
     -> m (Maybe SlotNo, [Point])
 startOrResume tr configuration Database{..} = do
-    checkpoints <- runReadOnlyTransaction (listCheckpointsDesc pointFromRow)
+    checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
 
     let slots = unSlotNo . getPointSlotNo <$> checkpoints
     logWith tr $ ConfigurationCheckpointsForIntersection { slots }
 
     case (since, checkpoints) of
         (Nothing, []) -> do
-            logWith tr errNoStartingPoint
-            throwIO NoStartingPointException
+            logWith tr (ConfigurationInvalidOrMissingOption errNoStartingPoint)
+            throwIO (NoStartingPointException errNoStartingPoint)
         (Just point, mostRecentCheckpoint:_) -> do
             if getPointSlotNo point > getPointSlotNo mostRecentCheckpoint then do
-                logWith tr errConflictingSinceOptions
-                throwIO ConflictingOptionsException
+                logWith tr (ConfigurationInvalidOrMissingOption errConflictingSinceOptions)
+                throwIO (ConflictingOptionsException errConflictingSinceOptions)
             else do
                 pure
                     ( Just (getPointSlotNo mostRecentCheckpoint)
@@ -135,12 +135,12 @@ startOrResume tr configuration Database{..} = do
   where
     Configuration{since} = configuration
 
-    errNoStartingPoint = ConfigurationInvalidOrMissingOption
+    errNoStartingPoint =
         "No '--since' provided and no checkpoints found in the \
         \database. An explicit starting point (e.g. 'origin') is \
         \required the first time launching the application."
 
-    errConflictingSinceOptions = ConfigurationInvalidOrMissingOption
+    errConflictingSinceOptions =
         "The point provided through '--since' is more recent than \
         \any of the known checkpoints and it isn't possible to make \
         \a choice for resuming the application: should synchronization \
@@ -160,19 +160,19 @@ newPatternsCache
     -> Database m
     -> m (TVar m (Set Pattern))
 newPatternsCache tr configuration Database{..} = do
-    alreadyKnownPatterns <- runReadOnlyTransaction (listPatterns patternFromRow)
+    alreadyKnownPatterns <- runTransaction (listPatterns patternFromRow)
     patterns <- case (alreadyKnownPatterns, configuredPatterns) of
         (x:xs, []) ->
             pure (x:xs)
         ([], y:ys) -> do
-            runReadWriteTransaction (insertPatterns (patternToRow <$> (y:ys)))
+            runTransaction (insertPatterns (patternToRow <$> (y:ys)))
             pure (y:ys)
         ([], []) -> do
-            logWith tr errNoPatterns
-            throwIO ConflictingOptionsException
+            logWith tr (ConfigurationInvalidOrMissingOption errNoPatterns)
+            throwIO (ConflictingOptionsException errNoPatterns)
         (xs, ys) | sort xs /= sort ys -> do
-            logWith tr errConflictingOptions
-            throwIO ConflictingOptionsException
+            logWith tr $ ConfigurationInvalidOrMissingOption errConflictingOptions
+            throwIO (ConflictingOptionsException errConflictingOptions)
         (xs, _) ->
             pure xs
     logWith tr $ ConfigurationPatterns (patternToText <$> patterns)
@@ -180,7 +180,7 @@ newPatternsCache tr configuration Database{..} = do
   where
     Configuration{patterns = configuredPatterns} = configuration
 
-    errNoPatterns = ConfigurationInvalidOrMissingOption
+    errNoPatterns =
         "Hey! It looks like the current configuration has no pattern defined. \
         \This would cause the indexer to run and index... nothing! You should \
         \try to define matching patterns using --match because there are much \
@@ -188,17 +188,17 @@ newPatternsCache tr configuration Database{..} = do
         \about how to use patterns, have a look at the 'pattern' section on \
         \the user guide: <https://cardanosolutions.github.io/kupo/#section/Pattern>."
 
-    errConflictingOptions = ConfigurationInvalidOrMissingOption
+    errConflictingOptions =
         "Configuration patterns are different from previously known \
         \patterns. Restarting a running server using different \
         \command-line patterns is not allowed for it may likely be \
         \an error. If you do intent do dynamically manage patterns, \
         \please use the HTTP API instead of the command-line options."
 
-data NoStartingPointException = NoStartingPointException deriving (Show)
+data NoStartingPointException = NoStartingPointException Text deriving (Show)
 instance Exception NoStartingPointException
 
-data ConflictingOptionsException = ConflictingOptionsException  deriving (Show)
+data ConflictingOptionsException = ConflictingOptionsException Text deriving (Show)
 instance Exception ConflictingOptionsException
 
 --

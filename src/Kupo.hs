@@ -34,6 +34,7 @@ import Kupo.Prelude
 
 import Data.Pool
     ( PoolConfig (..)
+    , destroyAllResources
     , newPool
     , withResource
     )
@@ -82,6 +83,9 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
+import Kupo.Control.MonadThrow
+    ( finally
+    )
 import Kupo.Data.Cardano
     ( IsBlock
     , Point
@@ -112,6 +116,8 @@ import Kupo.Version
 import System.FilePath
     ( (</>)
     )
+
+import qualified Kupo.App.Database as Database
 
 --
 -- Environment
@@ -172,8 +178,8 @@ kupoWith tr withProducer withFetchBlock =
         } <- ask
 
     let dbFile = case workDir of
-            Dir dir  -> "file:" <> dir </> "kupo.sqlite3"
-            InMemory -> "file::memory:"
+            Dir dir  -> Database.OnDisk (dir </> "kupo.sqlite3")
+            InMemory -> Database.InMemory Nothing
 
     lock <- liftIO newLock
 
@@ -185,7 +191,7 @@ kupoWith tr withProducer withFetchBlock =
         , poolCacheTTL =
             30
         , poolMaxResources =
-            10
+            50
         }
 
     readWritePool <- liftIO $ newPool $ PoolConfig
@@ -199,7 +205,13 @@ kupoWith tr withProducer withFetchBlock =
             5
         }
 
-    liftIO $ withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile $ \db -> do
+    let run action =
+            withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile action
+                `finally` do
+                    destroyAllResources readOnlyPool
+                    destroyAllResources readWritePool
+
+    liftIO $ run $ \db -> do
         patterns <- newPatternsCache (tracerConfiguration tr) config db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health

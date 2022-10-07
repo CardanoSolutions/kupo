@@ -36,6 +36,9 @@ import Kupo.App.Http
 import Kupo.Control.MonadAsync
     ( race_
     )
+import Kupo.Control.MonadCatch
+    ( MonadCatch (..)
+    )
 import Kupo.Control.MonadDelay
     ( threadDelay
     )
@@ -43,6 +46,9 @@ import Kupo.Control.MonadLog
     ( Severity (..)
     , TracerDefinition (..)
     , defaultTracers
+    )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..)
     )
 import Kupo.Control.MonadTime
     ( DiffTime
@@ -142,12 +148,6 @@ import Type.Reflection
     , typeRepTyCon
     )
 
-import Kupo.Control.MonadCatch
-    ( MonadCatch (..)
-    )
-import Kupo.Control.MonadSTM
-    ( MonadSTM (..)
-    )
 import qualified Prelude
 
 spec :: Spec
@@ -500,7 +500,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             , since = Just lastAllegraPoint
             , patterns = [MatchAny OnlyShelley]
             }
-        timeoutOrThrow 10 (debug httpLogs) $ race_
+        timeoutOrThrow 20 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
                 waitSlot (> someSlotWithMetadata)
