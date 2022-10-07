@@ -129,6 +129,11 @@ spec = parallel $ do
             { inputManagement = RemoveSpentInputs
             }
           )
+        , ( defaultArgs ++ [ "--max-concurrency", "42" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { maxConcurrency = 42
+            }
+          )
         , ( defaultArgs ++ [ "--since", "51292637.2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771" ]
           , shouldParseAppConfiguration $ defaultConfiguration
             { since = Just somePoint }
@@ -215,6 +220,15 @@ spec = parallel $ do
           , shouldFail
           )
         , ( defaultArgs ++ [ "--gc-interval", "14.42" ]
+          , shouldFail
+          )
+        , ( defaultArgs ++ [ "--max-concurrency", "foo" ]
+          , shouldFail
+          )
+        , ( defaultArgs ++ [ "--max-concurrency", "14.42" ]
+          , shouldFail
+          )
+        , ( defaultArgs ++ [ "--max-concurrency", "3" ]
           , shouldFail
           )
         ]

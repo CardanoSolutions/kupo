@@ -168,7 +168,7 @@ httpServer
         ( IsBlock block
         )
     => Tracer IO TraceHttpServer
-    -> (ConnectionType -> (Database IO -> IO ResponseReceived) -> IO ResponseReceived)
+    -> (ConnectionType -> (Database IO -> IO ResponseReceived) -> IO (Maybe ResponseReceived))
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)
@@ -187,12 +187,17 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
         & Warp.setServerName "kupo"
         & Warp.setBeforeMainLoop (logWith tr HttpServerListening{host,port})
 
-    withDatabaseWrapped send connectionType action =
-        withDatabase connectionType action `catch` onServerError
+    withDatabaseWrapped send connectionType action = do
+        (withDatabase connectionType action `catch` onServerError) >>= \case
+            Nothing -> onServiceUnavailable
+            Just r  -> return r
       where
         onServerError (hint :: SomeException) = do
             logWith tr $ HttpUnexpectedError (toText $ displayException hint)
-            send Errors.serverError
+            Just <$> send Errors.serverError
+
+        onServiceUnavailable = do
+            send Errors.serviceUnavailable
 
 --
 -- Router
@@ -809,11 +814,11 @@ tracerMiddleware tr runApp req send = do
     path = pathInfo req
 
 data TraceHttpServer where
-    HttpServerListening
-        :: { host :: String, port :: Int }
-        -> TraceHttpServer
     HttpUnexpectedError
         :: { hint :: Text }
+        -> TraceHttpServer
+    HttpServerListening
+        :: { host :: String, port :: Int }
         -> TraceHttpServer
     HttpRequest
         :: { path :: [Text], method :: Text }
@@ -825,10 +830,10 @@ data TraceHttpServer where
 
 instance HasSeverityAnnotation TraceHttpServer where
     getSeverityAnnotation = \case
-        HttpServerListening{} -> Notice
-        HttpUnexpectedError{} -> Error
-        HttpRequest{}         -> Info
-        HttpResponse{}        -> Info
+        HttpUnexpectedError{}  -> Error
+        HttpServerListening{}  -> Notice
+        HttpRequest{}          -> Info
+        HttpResponse{}         -> Info
 
 instance ToJSON TraceHttpServer where
     toEncoding =

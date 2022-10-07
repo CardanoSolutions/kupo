@@ -88,6 +88,8 @@ data Configuration = Configuration
         -- ^ Number of slots before which data can be considered immutable
     , garbageCollectionInterval :: !DiffTime
         -- ^ Delay between each garbage-collection of database data
+    , maxConcurrency :: !Word
+        -- ^ Maximum number of connections to create in the db resource pool
     } deriving (Generic, Eq, Show)
 
 -- | Where does kupo pulls its data from. Both 'cardano-node' and 'ogmios' are

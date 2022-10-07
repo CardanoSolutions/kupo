@@ -239,6 +239,7 @@ spec = do
                         , inputManagement
                         , longestRollback
                         , garbageCollectionInterval
+                        , maxConcurrency
                         }
                 env <- run (newEnvironment config)
                 producer <- run (newMockProducer <$> atomically (dupTChan chan))
@@ -272,6 +273,7 @@ spec = do
     serverPort = 1442
     longestRollback = 10
     garbageCollectionInterval = 0.4
+    maxConcurrency = 50
     tracers = configureTracers (defaultTracers Nothing) nullTracer
 
 --------------------------------------------------------------------------------

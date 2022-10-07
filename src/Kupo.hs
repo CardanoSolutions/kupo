@@ -36,6 +36,7 @@ import Data.Pool
     ( PoolConfig (..)
     , destroyAllResources
     , newPool
+    , tryWithResource
     , withResource
     )
 import Kupo.App
@@ -174,6 +175,7 @@ kupoWith tr withProducer withFetchBlock =
             , workDir
             , inputManagement
             , longestRollback
+            , maxConcurrency
             }
         } <- ask
 
@@ -191,7 +193,7 @@ kupoWith tr withProducer withFetchBlock =
         , poolCacheTTL =
             30
         , poolMaxResources =
-            50
+            fromIntegral maxConcurrency
         }
 
     readWritePool <- liftIO $ newPool $ PoolConfig
@@ -202,7 +204,7 @@ kupoWith tr withProducer withFetchBlock =
         , poolCacheTTL =
             30
         , poolMaxResources =
-            5
+            fromIntegral (maxConcurrency `div` 10)
         }
 
     let run action =
@@ -223,8 +225,8 @@ kupoWith tr withProducer withFetchBlock =
                     ( httpServer
                         (tracerHttp tr)
                         (\case
-                            ReadOnly  -> withResource readOnlyPool
-                            ReadWrite -> withResource readWritePool
+                            ReadOnly  -> tryWithResource readOnlyPool
+                            ReadWrite -> tryWithResource readWritePool
                         )
                         forceRollback
                         fetchBlock

@@ -16,6 +16,7 @@ import Network.HTTP.Types.Status
     , status404
     , status406
     , status500
+    , status503
     )
 import Network.Wai
     ( Response
@@ -189,6 +190,17 @@ unsupportedContentType types =
     responseJson status400 Default.headers $ HttpError
         { hint = "Unsupported content-type requested in 'Accept' header. \
                  \This endpoint only understands: " <> T.intercalate " or " types <> "."
+        }
+
+serviceUnavailable :: Response
+serviceUnavailable =
+    responseJson status503 Default.headers $ HttpError
+        { hint = "The server is (too) busy! There's no resource available to handle this request. \
+                 \While the requested *could be* enqueued for later, this error is meant to give \
+                 \that choice to you, the client, to chose whether to retry it now or prioritize \
+                 \some other more important query. Depending on your hardware resources, you may \
+                 \also want to increase the server's maximum internal connections using \
+                 \'--max-concurrency'."
         }
 
 serverError :: Response
