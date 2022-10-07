@@ -34,8 +34,10 @@ See [projects 🎯](https://github.com/CardanoSolutions/kupo/projects?type=class
 | CPU              | 2 cores                                   |
 | Disk Storage     | Variable (few MB, up to 40GB)<sup>2</sup> |
 
+> **Note**
 > <sup><strong>1</strong></sup> The maximum memory usage depends on runtime flags and internal settings. This can be made lower if necessary (possibly as small as a hundred megabytes) by tweaking those settings. The obvious counter-part being slower synchronization times when syncing over large chunks of data. When synchronized, however, this has close to no impact.
 
+> **Note**
 > <sup><strong>2</strong></sup> The size of the database depends on the patterns the indexer is configured with. Storing every single entry of Mainnet currently come close to ~40GB. However, if pruned (i.e. only keep unspent entries), Mainnet is around 4GB.
 >
 

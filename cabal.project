@@ -4,13 +4,13 @@ packages:
   ./
   modules/websockets-json
 
-tests: False
+tests: false
 
 test-show-details: direct
 
 package kupo
   flags: +production
-  tests: false
+  tests: true
 
 package websockets-json
   tests: false

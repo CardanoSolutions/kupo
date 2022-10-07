@@ -12,12 +12,11 @@ Do not hesitate to add _thumbs up :+1:_ to open issues to show your interest.
 
 Feel like tossing some coins for the project? Become a [sponsor](https://github.com/sponsors/KtorZ) !
 
-
 #### 3. Code
 
 Make sure to first read the [user-manual 📖](https://cardanosolutions.github.io/kupo) if you're willing to hack a bit on Kupo. Then, `make help` should provide a good starting point.
 
-![](./docs/makefile.png)
+<img alt="Makefile help" src="./docs/makefile.png" width=500 />
 
 For development, [cabal](https://cabal.readthedocs.io/en/latest/) should work _out-of-the-box_<sup>TM</sup> provided
 that you have the right system dependencies. That is, you'd need the following:
@@ -70,4 +69,5 @@ If you've already got a clear idea, open a [Proposal ticket](https://github.com/
 
 Create a [Q&A Discussion](https://github.com/CardanoSolutions/kupo/discussions/new?category=q-a)
 
+> **Warning**
 > Make sure to mark your question as _Answered_ once resolved!
