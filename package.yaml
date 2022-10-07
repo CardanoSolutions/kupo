@@ -91,7 +91,6 @@ library:
     - transformers
     - typed-protocols
     - unix
-    - uuid
     - yaml
     - wai
     - warp

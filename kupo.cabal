@@ -182,7 +182,6 @@ library
     , transformers
     , typed-protocols
     , unix
-    , uuid
     , wai
     , warp
     , websockets

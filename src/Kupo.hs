@@ -183,7 +183,7 @@ kupoWith tr withProducer withFetchBlock =
         , freeResource =
             \Database{close} -> close
         , poolCacheTTL =
-            1
+            30
         , poolMaxResources =
             10
         }
@@ -194,7 +194,7 @@ kupoWith tr withProducer withFetchBlock =
         , freeResource =
             \Database{close} -> close
         , poolCacheTTL =
-            1
+            30
         , poolMaxResources =
             5
         }

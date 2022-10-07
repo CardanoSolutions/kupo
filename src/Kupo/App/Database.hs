@@ -54,9 +54,6 @@ import Data.Severity
     ( HasSeverityAnnotation (..)
     , Severity (..)
     )
-import Data.UUID
-    ( UUID
-    )
 import Database.SQLite.Simple
     ( Connection
     , Error (..)
@@ -97,7 +94,6 @@ import Numeric
 
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
-import qualified Data.UUID.V4 as UUID.V4
 import qualified Database.SQLite.Simple as Sqlite
 
 data Database (m :: Type -> Type) = Database
@@ -224,10 +220,9 @@ createShortLivedConnection
     -> FilePath
     -> IO (Database IO)
 createShortLivedConnection tr connectionType (DBLock shortLived longLived) k filePath = do
-    uuid <- Just <$> UUID.V4.nextRandom
-    traceWith tr $ DatabaseConnection uuid $ ConnectionCreateShortLived connectionType
+    traceWith tr $ DatabaseConnection (ConnectionCreateShortLived connectionType)
     conn <- Sqlite.open (filePath <> "?" <> modeStr)
-    return $ mkDatabase (contramap (DatabaseConnection uuid) tr) k (bracketConnection conn)
+    return $ mkDatabase (contramap DatabaseConnection tr) k (bracketConnection conn)
   where
     modeStr = case connectionType of
         ReadOnly  -> "mode=ro"
@@ -255,11 +250,8 @@ withLongLivedConnection tr (DBLock shortLived longLived) k filePath action = do
         databaseVersion conn >>= runMigrations tr conn
         execute_ conn "PRAGMA synchronous = NORMAL"
         execute_ conn "PRAGMA journal_mode = WAL"
-        action (mkDatabase trConnection k (bracketConnection conn))
+        action (mkDatabase (contramap DatabaseConnection tr) k (bracketConnection conn))
   where
-    trConnection :: Tracer IO TraceConnection
-    trConnection = contramap (DatabaseConnection Nothing) tr
-
     bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
     bracketConnection conn between =
         bracket_
@@ -718,7 +710,7 @@ instance Exception UnexpectedRowException
 
 data TraceDatabase where
     DatabaseConnection
-        :: { identifier :: Maybe UUID, message :: TraceConnection }
+        :: { message :: TraceConnection }
         -> TraceDatabase
     DatabaseCurrentVersion
         :: { currentVersion :: Int }

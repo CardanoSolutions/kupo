@@ -19,9 +19,6 @@ module Kupo.App.Http
 
 import Kupo.Prelude
 
-import Data.UUID
-    ( UUID
-    )
 import Kupo.App.Database
     ( ConnectionType (..)
     , Database (..)
@@ -155,7 +152,6 @@ import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import qualified Data.UUID.V4 as UUID.V4
 import qualified GHC.Clock
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
@@ -800,14 +796,13 @@ requestBodyJson parser req = do
 tracerMiddleware :: Tracer IO TraceHttpServer -> Middleware
 tracerMiddleware tr runApp req send = do
     start <- GHC.Clock.getMonotonicTimeNSec
-    identifier <- UUID.V4.nextRandom
-    logWith tr $ HttpRequest {identifier, path, method}
+    logWith tr $ HttpRequest {path, method}
     runApp req $ \res -> do
         result <- send res
         end <- GHC.Clock.getMonotonicTimeNSec
         let time = mkRequestTime start end
         let status = mkStatus (responseStatus res)
-        logWith tr $ HttpResponse {identifier, status, time}
+        logWith tr $ HttpResponse {status, time}
         pure result
   where
     method = decodeUtf8 (requestMethod req)
@@ -821,10 +816,10 @@ data TraceHttpServer where
         :: { hint :: Text }
         -> TraceHttpServer
     HttpRequest
-        :: { identifier :: UUID, path :: [Text], method :: Text }
+        :: { path :: [Text], method :: Text }
         -> TraceHttpServer
     HttpResponse
-        :: { identifier :: UUID, status :: Status, time :: RequestTime }
+        :: { status :: Status, time :: RequestTime }
         -> TraceHttpServer
     deriving stock (Generic)
 
