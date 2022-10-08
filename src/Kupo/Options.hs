@@ -281,7 +281,7 @@ maxConcurrencyOption = option (eitherReader readerMaxConcurrency) $ mempty
     readerMaxConcurrency (toText -> txt) = do
         (maxN, remMaxN) <- T.decimal txt
         unless (T.null remMaxN) $ fail "should be an integer but isn't"
-        unless (maxN > 10) $ fail "should be at least greater than 10"
+        unless (maxN >= 10) $ fail "should be at least greater than 10"
         pure maxN
 
 -- | [--log-level-{COMPONENT}=SEVERITY], default: Info
