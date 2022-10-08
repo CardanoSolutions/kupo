@@ -20,9 +20,16 @@ CREATE TABLE `inputs` (
   `created_at` INTEGER NOT NULL,
   `spent_at` INTEGER
 );
-CREATE INDEX `inputsByAddress`   ON `inputs` (`address` COLLATE NOCASE, `spent_at`);
-CREATE INDEX `inputsByCreatedAt` ON `inputs` (`created_at`, substr(output_reference, -2));
-CREATE INDEX `inputsByDatumHash` ON `inputs` (`datum_hash`);
+
+ALTER TABLE `inputs`
+ADD COLUMN `payment_credential` TEXT COLLATE NOCASE NOT NULL
+GENERATED ALWAYS AS (substr(`address`, -56))
+VIRTUAL;
+
+CREATE INDEX `inputsByAddress`           ON `inputs` (`address` COLLATE NOCASE, `spent_at`);
+CREATE INDEX `inputsByPaymentCredential` ON `inputs` (`payment_credential` COLLATE NOCASE);
+CREATE INDEX `inputsByCreatedAt`         ON `inputs` (`created_at`, substr(output_reference, -2));
+CREATE INDEX `inputsByDatumHash`         ON `inputs` (`datum_hash`);
 
 CREATE TABLE `checkpoints` (
   `header_hash` BLOB NOT NULL,
@@ -49,6 +56,17 @@ CREATE TABLE `patterns` (
 </details>
 
 ## Changelog
+
+<p align="right"><code>v2.1.0</code></p>
+<hr/>
+
+### Migration to `version=7`
+
+- Add a virtual column `payment_credential` to `inputs` and a corresponding index on that column.
+
+### Migration to `version=6`
+
+- Rework the format of `output_reference` to also now be serialized with the transaction index of the corresponding output.
 
 <p align="right"><code>v2.0.0-beta</code></p>
 <hr/>
