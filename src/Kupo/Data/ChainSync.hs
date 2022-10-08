@@ -5,13 +5,22 @@
 module Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
     , IntersectionNotFoundException (..)
+
+    -- * Pipelining Decision
+    , DistanceFromTip
+    , mkDistanceFromTip
+    , maxInFlight
     ) where
 
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( SlotNo
+    ( Point
+    , SlotNo
+    , Tip
     , WithOrigin (..)
+    , distanceToTip
+    , getPointSlotNo
     )
 
 data ForcedRollbackHandler (m :: Type -> Type) = ForcedRollbackHandler
@@ -34,3 +43,27 @@ data IntersectionNotFoundException
         }
     deriving (Show)
 instance Exception IntersectionNotFoundException
+
+-- | A number of slots between the current cursor and the node's tip.
+newtype DistanceFromTip = DistanceFromTip Integer
+    deriving (Generic, Show)
+
+-- | A smart constructor for constructing 'DistanceFromTip'
+mkDistanceFromTip :: Tip -> Point -> DistanceFromTip
+mkDistanceFromTip tip =
+    DistanceFromTip . toInteger . distanceToTip tip . getPointSlotNo
+
+-- | Decision has to whether pipeline an extra message. This is meant to create an 'elastic'
+-- pipelining where we do pipeline many messages when catching up from a point far in the past, but
+-- do not needlessly pipeline too many messages when close to the tip.
+--
+-- This may sound like a needless "optimization" but it is actually crucial in order to support
+-- forced-rollback from clients. Indeed, if we've pipelined too many messages, we can't simply ask for
+-- a new intersection before all responses to these messages have been collected! When the client is
+-- already synchronized, this means it can take a long time as responses come one-by-one every ~20s or
+-- so.
+maxInFlight :: DistanceFromTip -> Integer
+maxInFlight (DistanceFromTip d)
+    | d > 6000  = 100
+    | d > 1000  = 5
+    | otherwise = 1

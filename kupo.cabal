@@ -326,6 +326,7 @@ test-suite unit
     , kupo
     , lens-aeson
     , openapi3
+    , process
     , quickcheck-state-machine
     , relude
     , sqlite-simple

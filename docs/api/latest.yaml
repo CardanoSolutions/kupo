@@ -1361,8 +1361,13 @@ paths:
       tags: [ "Patterns" ]
       summary: Add Pattern (*)
       description: |
-        Add a new pattern to watch. This **does not** cause the server to re-sync however!
-        Only new blocks will be matched against the pattern.
+        Add a new pattern to watch and force the server to re-sync from a given point. Only blocks discovered from that point will be matched against the new pattern.
+
+        This endpoint may not be instantaneous as the forced rollback may only occur after the next block arrives in the indexer. On the main network, this takes usually
+        no more than 20 seconds. On test networks however where the block density tends to be much lower, this may take longer.
+
+        Note also that, very long rollback will take a substantial amount of time to be processed by the server; if the server is shut down while a rollback is ongoing, the
+        rollback will be aborted and the server will remain where it was, although with the extra pattern added.
       parameters:
         - $ref: "#/components/parameters/pattern"
       requestBody:

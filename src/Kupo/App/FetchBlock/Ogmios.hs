@@ -33,7 +33,7 @@ withFetchBlockClient host port action =
         WS.sendJson ws (encodeFindIntersect [point])
         WS.receiveJson ws (decodeFindIntersectResponse identity) >>= \case
             Left _notFound -> reply Nothing
-            Right () -> do
+            Right{} -> do
                 replicateM_ 2 (WS.sendJson ws encodeRequestNext)
                 -- NOTE: The first reply is always a 'Roll-Backward' to the requested point. Ignore.
                 void (WS.receiveJson ws decodeRequestNextResponse)

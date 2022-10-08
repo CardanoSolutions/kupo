@@ -698,19 +698,18 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
     mPoint <- traverse
         (\ForcedRollback{since, limit} -> (, limit) <$> resolvePointOrSlot since)
         mPointOrSlot
-
     case (query >>= patternFromText, mPoint) of
-        (Nothing, _) ->
+        (Nothing, _) -> do
             pure Errors.invalidPattern
-        (_, Nothing) ->
+        (_, Nothing) -> do
             pure Errors.malformedPoint
-        (_, Just (Nothing, _)) ->
+        (_, Just (Nothing, _)) -> do
             pure Errors.nonExistingPoint
         (Just p, Just (Just point, lim)) -> do
             tip <- mostRecentNodeTip <$> readHealth
             let d = distanceToSlot <$> tip <*> pure (getPointSlotNo point)
             case ((LongestRollback <$> d) > Just longestRollback, lim) of
-                (True, OnlyAllowRollbackWithinSafeZone) ->
+                (True, OnlyAllowRollbackWithinSafeZone) -> do
                     pure Errors.unsafeRollbackBeyondSafeZone
                 _safeRollbackOrAllowedUnsafe ->
                     putPatternAt p point

@@ -20,15 +20,16 @@ import Kupo.Control.MonadThrow
     ( MonadThrow (..)
     )
 import Kupo.Data.Cardano
-    ( Point
+    ( IsBlock (..)
+    , Point
     , Tip
     )
 import Kupo.Data.ChainSync
-    ( ForcedRollbackHandler (..)
+    ( DistanceFromTip
+    , ForcedRollbackHandler (..)
     , IntersectionNotFoundException (..)
-    )
-import Kupo.Data.Configuration
-    ( maxInFlight
+    , maxInFlight
+    , mkDistanceFromTip
     )
 import Network.TypedProtocol.Pipelined
     ( Nat (..)
@@ -49,7 +50,8 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
 -- defer handling of requests to callbacks.
 mkChainSyncClient
     :: forall m block.
-        ( MonadThrow m
+        ( IsBlock block
+        , MonadThrow m
         , MonadSTM m
         )
     => TMVar m (Point, ForcedRollbackHandler m)
@@ -78,10 +80,10 @@ mkChainSyncClient var0 mailbox pts =
         -> Maybe (Point, ForcedRollbackHandler m)
         -> ClientPipelinedStIntersect block Point Tip m ()
     clientStIntersect var forcedRollback = ClientPipelinedStIntersect
-        { recvMsgIntersectFound = \_point _tip -> do
+        { recvMsgIntersectFound = \point tip -> do
             whenJust forcedRollback $ \(_, ForcedRollbackHandler{onSuccess}) ->
                 onSuccess
-            clientStIdle var Zero
+            clientStIdle var (mkDistanceFromTip tip point) Zero
         , recvMsgIntersectNotFound = \(getTipSlotNo -> tip) -> do
             case forcedRollback of
                 Just (pointSlot -> point, ForcedRollbackHandler{onFailure}) -> do
@@ -96,15 +98,16 @@ mkChainSyncClient var0 mailbox pts =
     clientStIdle
         :: forall n. ()
         => TMVar m (Point, ForcedRollbackHandler m)
+        -> DistanceFromTip
         -> Nat n
         -> m (ClientPipelinedStIdle n block Point Tip m ())
-    clientStIdle var n = do
+    clientStIdle var d n = do
         atomically (tryTakeTMVar var) >>= \case
-            Nothing ->
+            Nothing -> do
                 pure $ SendMsgRequestNextPipelined $ CollectResponse
-                    (guard (natToInt n < maxInFlight) $> clientStIdle var (Succ n))
+                    (guard (succ (natToInteger n) < maxInFlight d) $> clientStIdle var d (Succ n))
                     (clientStNext var n)
-            Just (pt, handler) ->
+            Just (pt, handler) -> do
                 pure (clientStCollect var (pt, handler) n)
 
     -- | When receiving a 'forcedRollback' request, we simply collect and drop
@@ -153,8 +156,12 @@ mkChainSyncClient var0 mailbox pts =
         ClientStNext
             { recvMsgRollForward = \block tip -> do
                 atomically (putHighFrequencyMessage mailbox (tip, block))
-                clientStIdle var n
+                clientStIdle var (mkDistanceFromTip tip (getPoint block)) n
             , recvMsgRollBackward = \point tip -> do
                 atomically (putIntermittentMessage mailbox (tip, point))
-                clientStIdle var n
+                clientStIdle var (mkDistanceFromTip tip point) n
             }
+
+natToInteger :: Nat n -> Integer
+natToInteger = toInteger . natToInt
+{-# INLINABLE natToInteger #-}

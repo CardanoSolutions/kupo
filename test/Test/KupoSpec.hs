@@ -12,6 +12,11 @@ module Test.KupoSpec
 
 import Kupo.Prelude
 
+import Data.Aeson.Lens
+    ( _Integer
+    , _String
+    , key
+    )
 import Data.List
     ( maximum
     , (\\)
@@ -30,7 +35,7 @@ import Kupo.App.Configuration
     ( ConflictingOptionsException
     , NoStartingPointException
     )
-import Kupo.App.Http
+import Kupo.App.Http.HealthCheck
     ( healthCheck
     )
 import Kupo.Control.MonadAsync
@@ -55,10 +60,12 @@ import Kupo.Control.MonadTime
     , timeout
     )
 import Kupo.Data.Cardano
-    ( getPointSlotNo
+    ( Point
+    , getPointSlotNo
     , hasPolicyId
     , mkOutputReference
     , pattern GenesisPoint
+    , pointFromText
     )
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException
@@ -94,6 +101,11 @@ import System.Environment
 import System.IO.Temp
     ( withSystemTempDirectory
     , withTempFile
+    )
+import System.Process
+    ( CreateProcess (..)
+    , proc
+    , readCreateProcess
     )
 import Test.Hspec
     ( Spec
@@ -148,7 +160,20 @@ import Type.Reflection
     , typeRepTyCon
     )
 
+import qualified Data.Aeson as Json
 import qualified Prelude
+
+varCardanoNodeSocket :: String
+varCardanoNodeSocket = "CARDANO_NODE_SOCKET"
+
+varCardanoNodeConfig :: String
+varCardanoNodeConfig = "CARDANO_NODE_CONFIG"
+
+varOgmiosHost :: String
+varOgmiosHost = "OGMIOS_HOST"
+
+varOgmiosPort :: String
+varOgmiosPort = "OGMIOS_PORT"
 
 spec :: Spec
 spec = skippableContext "End-to-end" $ \manager -> do
@@ -362,7 +387,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     `shouldReturn` someScriptInOutput
             )
 
-    specify "Dynamically add pattern and restart to a past point" $ \(tmp, tr, cfg, httpLogs) -> do
+    specify "Dynamically add pattern and restart to a past point when syncing" $ \(tmp, tr, cfg, httpLogs) -> do
         let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
@@ -381,9 +406,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             (do
                 waitSlot (>= maxSlot)
                 xs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
-                res <- putPatternSince
-                    (MatchDelegation someOtherStakeKey)
-                    (Right lastByronPoint)
+                res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right lastByronPoint)
                 res `shouldBe` True
                 waitSlot (< maxSlot) -- Observe rollback
                 waitSlot (>= maxSlot)
@@ -410,6 +433,22 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     ys \\ zs `shouldBe` xs
                 )
 
+    specify "Dynamically add pattern and restart to a past point when at the tip" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
+        tip <- currentNetworkTip
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just tip
+            , patterns = [MatchAny IncludingBootstrap]
+            }
+        timeoutOrThrow 180 (debug httpLogs) $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitSlot (>= getPointSlotNo tip)
+                res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right tip)
+                res `shouldBe` True
+            )
+
     specify "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(tmp, tr, cfg, httpLogs) -> do
         let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         env <- newEnvironment $ cfg
@@ -423,9 +462,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                 let maxSlot = getPointSlotNo lastByronPoint + 10_000
                 waitSlot (>= maxSlot)
                 slot <- maximum . fmap getPointSlotNo <$> listCheckpoints
-                res <- putPatternSince
-                    (MatchDelegation someOtherStakeKey)
-                    (Left (maxSlot - 20_000))
+                res <- putPatternSince (MatchDelegation someOtherStakeKey) (Left (maxSlot - 20_000))
                 slot' <- maximum . fmap getPointSlotNo <$> listCheckpoints
                 res `shouldBe` False
                 listPatterns `shouldReturn` [MatchAny OnlyShelley]
@@ -517,7 +554,7 @@ type EndToEndSpec
 
 skippableContext :: String -> EndToEndSpec -> Spec
 skippableContext prefix skippableSpec = do
-    ref <- runIO $ newIORef 1442
+    ref <- runIO $ newTVarIO 1442
     let cardanoNode = prefix <> " (cardano-node)"
     runIO ((,) <$> lookupEnv varCardanoNodeSocket <*> lookupEnv varCardanoNodeConfig) >>= \case
         (Just nodeSocket, Just nodeConfig) -> do
@@ -560,30 +597,40 @@ skippableContext prefix skippableSpec = do
         _skipOtherwise ->
             xcontext ogmios (pure ())
   where
-    varCardanoNodeSocket :: String
-    varCardanoNodeSocket = "CARDANO_NODE_SOCKET"
-
-    varCardanoNodeConfig :: String
-    varCardanoNodeConfig = "CARDANO_NODE_CONFIG"
-
-    varOgmiosHost :: String
-    varOgmiosHost = "OGMIOS_HOST"
-
-    varOgmiosPort :: String
-    varOgmiosPort = "OGMIOS_PORT"
-
     withTempDirectory
-        :: IORef Int
+        :: TVar IO Int
         -> Configuration
         -> ((FilePath, Tracers IO 'Concrete, Configuration, TVar IO [Text]) -> IO ())
         -> IO ()
     withTempDirectory ref cfg action = do
-        serverPort <- atomicModifyIORef' ref $ \port -> (next port, port)
+        serverPort <- atomically $ stateTVar ref $ \port -> (port, next port)
         httpLogs <- newTVarIO []
         withSystemTempDirectory "kupo-end-to-end" $ \dir -> do
             withTempFile dir "traces" $ \_ h ->
                 withTracers h version (defaultTracers (Just Info)) $ \tr ->
                     action (dir, tr, cfg { serverPort }, httpLogs)
+
+currentNetworkTip :: IO Point
+currentNetworkTip = do
+    lookupEnv varCardanoNodeSocket >>= \case
+        Nothing ->
+            fail $ varCardanoNodeSocket <> " not set but necessary for this test."
+        Just socket -> do
+            let env = Just [("CARDANO_NODE_SOCKET_PATH", socket)]
+            let args =
+                    [ "query", "tip"
+                    , "--testnet-magic", "1097911063"
+                    , "--cardano-mode"
+                    ]
+            out <- readCreateProcess ((proc "cardano-cli" args) { env }) ""
+            case Json.eitherDecode @Json.Value (encodeUtf8 out) of
+                Left err ->
+                    fail err
+                Right json -> do
+                    maybe (fail "couldn't decode tip from cardano-cli") pure $ do
+                        slotNo <- json ^? key "slot" . _Integer
+                        headerHash <- json ^? key "hash" ._String
+                        pointFromText (show slotNo <> "." <> headerHash)
 
 debug :: TVar IO [Text] -> IO ()
 debug logs = do

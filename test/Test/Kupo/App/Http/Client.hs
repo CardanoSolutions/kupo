@@ -92,8 +92,10 @@ import Network.HTTP.Client
     , defaultManagerSettings
     , httpLbs
     , httpNoBody
+    , managerResponseTimeout
     , newManager
     , parseRequest
+    , responseTimeoutNone
     )
 import Network.HTTP.Types.Status
     ( status200
@@ -140,7 +142,7 @@ data HttpClient (m :: Type -> Type) = HttpClient
 
 newHttpClient :: (String, Int) -> IO (HttpClient IO)
 newHttpClient config = do
-    manager <- newManager defaultManagerSettings
+    manager <- newManager (defaultManagerSettings { managerResponseTimeout = responseTimeoutNone })
     logs <- newTVarIO []
     pure (newHttpClientWith manager config logs)
 

@@ -2,13 +2,14 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
--- | A simple eDSL on top of TBQueue to have a concurrent producer / consumer
--- interface to decouple two processes. The main hypotheseses are:
+-- | A simple eDSL on top of a TBQueue to have a concurrent producer / consumer
+-- interface to decouple two processes.
 --
--- - The producer produces message one-by-one
--- - The produces produces message a lot faster than the consumer can consome
---   then sequentially
--- - The consumer can however consume multiple messages at once.
+-- The main hypotheseses are as follows:
+--
+--   - The producer produces messages one-by-one
+--   - The producer produces messages a lot faster than the consumer can consume them sequentially
+--   - The consumer can however efficiently consume multiple messages at once (i.e. by batches)
 module Kupo.App.Mailbox
     ( Mailbox
     , newMailbox
@@ -61,13 +62,13 @@ flushMailbox
     => Mailbox m a b
     -> STM m (Either (NonEmpty a) b)
 flushMailbox Mailbox{highFrequencyMessages, intermittentMessages} = do
-    -- NOTE: This favor high frequency messages over intermittent messages so
-    -- that intermitted messages are only consumed when there's no more high
-    -- frequency messages. Plus, it isn't possible to enqueue new high frequency
-    -- messages if there's a pending intermitted message. This ensures liveness
-    -- of the intermittent messages as well as enforcing sequentiality between
-    -- high-frequency and intermitted message so long as there's only a single
-    -- producer of those messages.
+    -- NOTE: This favor high frequency messages over intermittent messages so that intermittent
+    -- messages are only consumed when there's no more high-frequency messages. Plus, it isn't
+    -- possible to enqueue new high frequency messages if there's a pending intermittent message.
+    --
+    -- This ensures liveness of the intermittent messages as well as enforcing sequentiality between
+    -- high-frequency and intermittent messages so long as there's only a single producer of those
+    -- messages.
     a_or_b <-
         (Left <$> readTBQueue highFrequencyMessages)
         `orElse`

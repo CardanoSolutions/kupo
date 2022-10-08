@@ -17,7 +17,6 @@ module Kupo.Data.Configuration
     , ChainProducer (..)
     , LongestRollback (..)
     , mailboxCapacity
-    , maxInFlight
 
     -- * NetworkParameters
     , NetworkParameters (..)
@@ -150,13 +149,6 @@ newtype LongestRollback = LongestRollback
 mailboxCapacity :: Natural
 mailboxCapacity = 200
 {-# INLINABLE mailboxCapacity #-}
-
--- | Maximum pipelining at any given time. No need to go too high here, it only
--- arms performance beyond a certain point. This also goes hand-in-hand with the
--- 'mailboxCapacity'
-maxInFlight :: Int
-maxInFlight = 100
-{-# INLINABLE maxInFlight #-}
 
 data NetworkParameters = NetworkParameters
     { networkMagic :: !NetworkMagic

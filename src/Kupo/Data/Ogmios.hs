@@ -142,13 +142,15 @@ encodePoint = \case
 decodeFindIntersectResponse
     :: (WithOrigin SlotNo -> e)
     -> Json.Value
-    -> Json.Parser (Either e ())
+    -> Json.Parser (Either e (Point, Tip))
 decodeFindIntersectResponse wrapException json =
     decodeIntersectionFound json <|> decodeIntersectionNotFound json
   where
     decodeIntersectionFound = Json.withObject "FindIntersectResponse" $ \o -> do
-        (_ :: Json.Value) <- o .: "result" >>= (.: "IntersectionFound")
-        return (Right ())
+        result <- o .: "result" >>= (.: "IntersectionFound")
+        point <- result .: "point" >>= decodePointOrOrigin
+        tip <- result .: "tip" >>= decodeTipOrOrigin
+        return (Right (point, tip))
 
     decodeIntersectionNotFound = Json.withObject "FindIntersectResponse" $ \o -> do
         tip <- o .: "result" >>= (.: "IntersectionNotFound") >>= (.: "tip") >>= decodeSlotNoOrOrigin

@@ -119,6 +119,7 @@ tests:
     - kupo
     - lens-aeson
     - openapi3
+    - process
     - QuickCheck
     - quickcheck-state-machine
     - relude

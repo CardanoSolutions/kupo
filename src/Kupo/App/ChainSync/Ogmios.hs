@@ -25,14 +25,12 @@ import Kupo.Control.MonadThrow
     ( MonadThrow (..)
     )
 import Kupo.Data.Cardano
-    ( Point
+    ( IsBlock (..)
+    , Point
     , SlotNo
     , Tip
     , WithOrigin
     , pointSlot
-    )
-import Kupo.Data.Configuration
-    ( maxInFlight
     )
 import Kupo.Data.Ogmios
     ( PartialBlock
@@ -46,6 +44,8 @@ import Kupo.Data.Ogmios
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
     , IntersectionNotFoundException (..)
+    , maxInFlight
+    , mkDistanceFromTip
     )
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
@@ -63,33 +63,50 @@ runChainSyncClient
     -> m ()
 runChainSyncClient forcedRollbackVar mailbox pts ws = do
     WS.sendJson ws (encodeFindIntersect pts)
-    WS.receiveJson ws (decodeFindIntersectResponse (intersectionNotFound pts)) >>= \case
+    inFlight <- WS.receiveJson ws (decodeFindIntersectResponse (intersectionNotFound pts)) >>= \case
         Left notFound -> throwIO notFound
-        Right () -> burst
-    forever $ atomically (tryTakeTMVar forcedRollbackVar) >>= \case
-        Nothing -> do
-            WS.receiveJson ws decodeRequestNextResponse >>= \case
-                RollBackward tip point -> do
-                    atomically (putIntermittentMessage mailbox (tip, point))
-                RollForward tip block -> do
-                    atomically (putHighFrequencyMessage mailbox (tip, block))
-            WS.sendJson ws encodeRequestNext
-
-        Just (pt, handler) -> do
-            replicateM_ maxInFlight (WS.receiveJson ws decodeRequestNextResponse)
-            WS.sendJson ws (encodeFindIntersect [pt])
-            WS.receiveJson ws (decodeFindIntersectResponse (forcedIntersectionNotFound pt)) >>= \case
-                Left notFound -> do
-                    onFailure handler
-                    throwIO notFound
-                Right () -> do
-                    onSuccess handler
-                    burst
+        Right (point, tip) -> pure (maxInFlight (mkDistanceFromTip tip point))
+    burst inFlight
+    loop inFlight
   where
     -- Burst the server with some initial requests, to leverage pipelining.
-    burst :: m ()
-    burst = replicateM_ maxInFlight (WS.sendJson ws encodeRequestNext)
+    burst :: Integer -> m ()
+    burst n = replicateM_ (fromInteger n) (WS.sendJson ws encodeRequestNext)
 
+    -- Forever request and collect next blocks; the process can be interrupted by a forced rollback,
+    -- in which case it simply look for a new intersection and start over.
+    --
+    -- We keep track of how many messages are in-flight to keep the synchronization 'elastic'; that
+    -- is, the closer we get to the tip, the least messages we end up pipelining. When the tip is
+    -- reached, we only fetch blocks one-by-one and enqueue a single message.
+    loop :: Integer -> m ()
+    loop !inFlight = do
+        d <- WS.receiveJson ws decodeRequestNextResponse >>= \case
+            RollBackward tip point -> do
+                atomically (putIntermittentMessage mailbox (tip, point))
+                pure $ mkDistanceFromTip tip point
+            RollForward tip block -> do
+                atomically (putHighFrequencyMessage mailbox (tip, block))
+                pure $ mkDistanceFromTip tip (getPoint block)
+
+        atomically (tryTakeTMVar forcedRollbackVar) >>= \case
+            Nothing -> do
+                let delta = max 0 (maxInFlight d - inFlight + 1)
+                burst delta
+                loop (inFlight + delta - 1)
+
+            Just (pt, handler) -> do
+                replicateM_ (fromInteger inFlight - 1) (WS.receiveJson ws decodeRequestNextResponse)
+                WS.sendJson ws (encodeFindIntersect [pt])
+                WS.receiveJson ws (decodeFindIntersectResponse (forcedIntersectionNotFound pt)) >>= \case
+                    Left notFound -> do
+                        onFailure handler
+                        throwIO notFound
+                    Right (point, tip) -> do
+                        onSuccess handler
+                        let inFlight' = maxInFlight (mkDistanceFromTip tip point)
+                        burst inFlight'
+                        loop inFlight'
 --
 -- Exceptions
 --
