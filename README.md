@@ -13,7 +13,7 @@
     <source media="(prefers-color-scheme: dark and min-width: 780px)" srcset="./docs/architecture-diagram-dark.png 600w" sizes="600px">
     <source media="(min-width: 480px)" srcset="./docs/architecture-diagram-light.png 450w" sizes="450px">
     <source media="(min-width: 780px)" srcset="./docs/architecture-diagram-light.png 600w" sizes="600px">
-    <img alt="Kupo: components diagram" src="./docs/architecture-diagram-light.png" width="780">
+    <img alt="Kupo: components diagram" src="./docs/architecture-diagram-light.png" width="675">
   </picture>
 </p>
 
