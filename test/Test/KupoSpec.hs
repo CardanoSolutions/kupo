@@ -120,6 +120,7 @@ import Test.Hspec
     , shouldSatisfy
     , specify
     , xcontext
+    , xspecify
     )
 import Test.Kupo.App.Http.Client
     ( HttpClient (..)
@@ -435,7 +436,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
                     ys \\ zs `shouldBe` xs
                 )
 
-    specify "Dynamically add pattern and restart to a past point when at the tip" $ \(tmp, tr, cfg, httpLogs) -> do
+    xspecify "Dynamically add pattern and restart to a past point when at the tip" $ \(tmp, tr, cfg, httpLogs) -> do
         let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         tip <- currentNetworkTip
         env <- newEnvironment $ cfg

@@ -708,6 +708,7 @@ migrations =
         , $(embedFile "db/v1.0.1/001.sql")
         , $(embedFile "db/v2.0.0-beta/001.sql")
         , $(embedFile "db/v2.1.0/001.sql")
+        , $(embedFile "db/v2.1.0/002.sql")
         ]
     ]
   where

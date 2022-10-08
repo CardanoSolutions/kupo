@@ -592,11 +592,11 @@ patternToSql = \case
     App.MatchExact addr ->
         "address = '" <> addressToRow addr <> "'"
     App.MatchPayment payment ->
-        "address LIKE '%" <> encodeBase16 payment <> "'"
+        "payment_credential = '" <> encodeBase16 payment <> "'"
     App.MatchDelegation delegation ->
         "address LIKE '01" <> encodeBase16 delegation <> "%'"
     App.MatchPaymentAndDelegation payment delegation ->
-        "address LIKE '01" <> encodeBase16 delegation <> "__" <> encodeBase16 payment <> "'"
+        "address LIKE '01" <> encodeBase16 delegation <> "%' AND payment_credential = '" <> encodeBase16 payment <> "'"
     App.MatchOutputReference ref ->
         let
             lowerBound = extendedOutputReferenceToRowBase16 (ref, minBound)

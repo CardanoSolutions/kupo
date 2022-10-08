@@ -464,7 +464,8 @@ withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
     withTransaction conn $ do
         execute_ conn
             "CREATE TABLE IF NOT EXISTS addresses (\
-            \  address TEXT NOT NULL\
+            \  address TEXT NOT NULL,\
+            \  payment_credential TEXT NOT NULL GENERATED ALWAYS AS (substr(address, -56)) VIRTUAL\
             \)"
         execute_ conn
             "CREATE TABLE IF NOT EXISTS output_references (\
