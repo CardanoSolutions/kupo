@@ -337,7 +337,7 @@ spec = parallel $ do
             )
             [ ( "in-memory"
               , \test ->
-                    test (InMemory (Just "file:concurrent-read-write:?cache=shared"))
+                    test (InMemory (Just "file::concurrent-read-write:?cache=shared&mode=memory"))
               )
             , ( "on-disk"
               , \test ->
