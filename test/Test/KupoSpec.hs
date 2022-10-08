@@ -92,8 +92,10 @@ import Kupo.Options
     )
 import Network.HTTP.Client
     ( Manager
+    , ManagerSettings (..)
     , defaultManagerSettings
     , newManager
+    , responseTimeoutNone
     )
 import System.Environment
     ( lookupEnv
@@ -579,7 +581,8 @@ skippableContext prefix skippableSpec = do
     let ogmios = prefix <> " (ogmios)"
     runIO ((,) <$> lookupEnv varOgmiosHost <*> lookupEnv varOgmiosPort) >>= \case
         (Just ogmiosHost, Just (Prelude.read -> ogmiosPort)) -> do
-            manager <- runIO $ newManager defaultManagerSettings
+            manager <- runIO $ newManager $
+                defaultManagerSettings { managerResponseTimeout = responseTimeoutNone }
             let defaultCfg = Configuration
                     { chainProducer = Ogmios { ogmiosHost, ogmiosPort }
                     , workDir = InMemory

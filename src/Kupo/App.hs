@@ -44,7 +44,8 @@ import Kupo.App.Mailbox
     , newMailbox
     )
 import Kupo.Control.MonadAsync
-    ( race_
+    ( MonadAsync (..)
+    , race_
     )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..)
@@ -76,7 +77,7 @@ import Kupo.Data.Cardano
     , getPointSlotNo
     )
 import Kupo.Data.ChainSync
-    ( ForcedRollbackHandler
+    ( ForcedRollbackHandler (..)
     , IntersectionNotFoundException (..)
     )
 import Kupo.Data.Configuration
@@ -143,8 +144,25 @@ newProducer tr chainProducer callback = do
             logWith tr ConfigurationOgmios{ogmiosHost, ogmiosPort}
             mailbox <- atomically (newMailbox mailboxCapacity)
             callback forcedRollbackCallback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
-                Ogmios.connect statusToggle ogmiosHost ogmiosPort $
-                    Ogmios.runChainSyncClient forcedRollbackVar mailbox checkpoints
+                let runOgmios pts beforeMainLoop onIntersectionNotFound continuation = do
+                        res <- race
+                            (Ogmios.connect statusToggle ogmiosHost ogmiosPort $
+                                Ogmios.runChainSyncClient mailbox beforeMainLoop pts
+                            )
+                            (atomically (takeTMVar forcedRollbackVar))
+                        case res of
+                            Left notFound ->
+                                onIntersectionNotFound notFound
+                            Right (point, handler) ->
+                                continuation point handler
+
+                let restart point handler =
+                        runOgmios [point]
+                            (onSuccess handler)
+                            (\e -> onFailure handler >> throwIO e)
+                            restart
+
+                runOgmios checkpoints (return ()) throwIO restart
 
         CardanoNode{nodeSocket, nodeConfig} -> do
             logWith tr ConfigurationCardanoNode{nodeSocket,nodeConfig}
