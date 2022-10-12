@@ -2,7 +2,19 @@
   <img src="./docs/kupo.png" width="320" />
 </p>
 
-<hr/>
+---
+
+<p align="center">
+  <a href="https://cardanosolutions.github.io/kupo">📖 User Manual</a>
+  |
+  <a href="CONTRIBUTING.md">🤝 Contributing</a>
+  |
+  <a href="CHANGELOG.md"> 💾 Changelog</a>
+  |
+  <a href="https://twitter.com/_KtorZ_"><img src=".github/twitter.svg" alt="Twitter"> Twitter (@_KtorZ_)</a>
+</p>
+
+---
 
 **Kupo** is fast, lightweight and configurable **chain-index** for the Cardano blockchain. It synchronizes data from the blockchain according to **patterns** matching addresses present in transaction outputs and builds a **lookup table** from matches to their associated **output references**, **values**, **datums** and **scripts**.
 
@@ -17,29 +29,19 @@
   </picture>
 </p>
 
-# Getting Started
-
-See the [user-manual 📖](https://cardanosolutions.github.io/kupo).
-
 # Roadmap
 
 See [projects 🎯](https://github.com/CardanoSolutions/kupo/projects?type=classic).
 
 # System Requirements
 
-| Category         | Value                                     |
-| ---              | ---                                       |
-| Operating System | Linux 64-bit                              |
-| RAM              | 1280MB<sup>1</sup>                        |
-| CPU              | 2 cores                                   |
-| Disk Storage     | Variable (few MB, up to 40GB)<sup>2</sup> |
-
-> **Note**
-> <sup><strong>1</strong></sup> The maximum memory usage depends on runtime flags and internal settings. This can be made lower if necessary (possibly as small as a hundred megabytes) by tweaking those settings. The obvious counter-part being slower synchronization times when syncing over large chunks of data. When synchronized, however, this has close to no impact.
-
-> **Note**
-> <sup><strong>2</strong></sup> The size of the database depends on the patterns the indexer is configured with. Storing every single entry of Mainnet currently come close to ~40GB. However, if pruned (i.e. only keep unspent entries), Mainnet is around 4GB.
->
+| Category         | Value            |
+| ---              | ---              |
+| Operating System | Linux / MacOS    |
+| Architecture     | arm64 / amd64    |
+| RAM              | 256MB-2048MB[^1] |
+| CPU              | 2+ cores         |
+| Disk Storage     | 1MB-40GB[^2]     |
 
 # Continuous Integration
 
@@ -103,38 +105,28 @@ Key differences(s): the plutus-chain-index is the native component behind the PA
 ## Sponsors 💖
 
 <p align="center">
-  <a href="https://rraayy.com/"><img src="https://avatars.githubusercontent.com/u/65092852?v=4" width=70 /></a>
-  <a href="https://sundaeswap.finance/"><img src="https://avatars.githubusercontent.com/u/83610786?v=4" width=70 /></a>
-  <a href="https://github.com/savaki"><img src="https://avatars.githubusercontent.com/u/108710?v=4" width=70 /></a>
-  <a href="https://blockfrost.io/"><img src="https://avatars.githubusercontent.com/u/70073210?v=4" width=70 /></a>
-  <a href="https://jpeg.store/"><img src="https://avatars.githubusercontent.com/u/98781883?v=4" width=70 /></a>
-  <a href="https://github.com/jacoblambda"><img src="https://avatars.githubusercontent.com/u/9424043?v=4" width=70 /></a>
-  <a href="https://github.com/minswap"><img src="https://avatars.githubusercontent.com/u/80548193?v=4" width=70 /></a>
-  <a href="https://github.com/Quantumplation"><img src="https://avatars.githubusercontent.com/u/49870?v=4" width=70 /></a>
-  <a href="https://github.com/codybutz"><img src="https://avatars.githubusercontent.com/u/3670430?v=4" width=70 /></a>
-  <a href="https://github.com/scarmuega"><img src="https://avatars.githubusercontent.com/u/653886?v=4" width=70 /></a>
-  <a href="https://github.com/mrbrinker"><img src="https://avatars.githubusercontent.com/u/41247403?v=4" width=70 /></a>
-  <a href="https://github.com/sacrelege"><img src="https://avatars.githubusercontent.com/u/7289595?v=4" width=70 /></a>
-  <a href="https://ccvault.io/"><img src="https://avatars.githubusercontent.com/u/86010408?v=4" width=70 /></a>
-  <a href="https://github.com/artemwright"><img src="https://avatars.githubusercontent.com/u/83517471?v=4" width=70 /></a>
-  <a href="https://github.com/kayandra"><img src="https://avatars.githubusercontent.com/u/5002506?v=4" width=70 /></a>
-  <a href="https://github.com/tapiocapool"><img src="https://avatars.githubusercontent.com/u/80033713?v=4" width=70 /></a>
-  <a href="https://github.com/will991"><img src="https://avatars.githubusercontent.com/u/9065638?v=4" width=70 /></a>
+  <a href="https://rraayy.com/"><img src="https://avatars.githubusercontent.com/u/65092852?v=4" width=50 /></a>
+  <a href="https://sundaeswap.finance/"><img src="https://avatars.githubusercontent.com/u/83610786?v=4" width=50 /></a>
+  <a href="https://github.com/savaki"><img src="https://avatars.githubusercontent.com/u/108710?v=4" width=50 /></a>
+  <a href="https://blockfrost.io/"><img src="https://avatars.githubusercontent.com/u/70073210?v=4" width=50 /></a>
+  <a href="https://jpeg.store/"><img src="https://avatars.githubusercontent.com/u/98781883?v=4" width=50 /></a>
+  <a href="https://github.com/jacoblambda"><img src="https://avatars.githubusercontent.com/u/9424043?v=4" width=50 /></a>
+  <a href="https://github.com/minswap"><img src="https://avatars.githubusercontent.com/u/80548193?v=4" width=50 /></a>
+  <a href="https://github.com/Quantumplation"><img src="https://avatars.githubusercontent.com/u/49870?v=4" width=50 /></a>
+  <a href="https://github.com/codybutz"><img src="https://avatars.githubusercontent.com/u/3670430?v=4" width=50 /></a>
+  <a href="https://github.com/scarmuega"><img src="https://avatars.githubusercontent.com/u/653886?v=4" width=50 /></a>
+  <a href="https://github.com/mrbrinker"><img src="https://avatars.githubusercontent.com/u/41247403?v=4" width=50 /></a>
+  <a href="https://github.com/sacrelege"><img src="https://avatars.githubusercontent.com/u/7289595?v=4" width=50 /></a>
+  <a href="https://ccvault.io/"><img src="https://avatars.githubusercontent.com/u/86010408?v=4" width=50 /></a>
+  <a href="https://github.com/artemwright"><img src="https://avatars.githubusercontent.com/u/83517471?v=4" width=50 /></a>
+  <a href="https://github.com/kayandra"><img src="https://avatars.githubusercontent.com/u/5002506?v=4" width=50 /></a>
+  <a href="https://github.com/tapiocapool"><img src="https://avatars.githubusercontent.com/u/80033713?v=4" width=50 /></a>
+  <a href="https://github.com/will991"><img src="https://avatars.githubusercontent.com/u/9065638?v=4" width=50 /></a>
 </p>
-
----
-
-<p align="center">
-  <a href="https://cardanosolutions.github.io/kupo">📖 User Manual</a>
-  |
-  <a href="CONTRIBUTING.md">🤝 Contributing</a>
-  |
-  <a href="CHANGELOG.md"> 💾 Changelog</a>
-  |
-  <a href="https://twitter.com/_KtorZ_"><img src=".github/twitter.svg" alt="Twitter"> Twitter (@_KtorZ_)</a>
-</p>
-
-<p align="center"><a href="https://github.com/cardanosolutions/kupo/blob/master/LICENSE"><img src=".github/license.svg" alt="license=MPL-2.0" /></a></p>
 
 [testing strategy]: https://github.com/CardanoSolutions/kupo/tree/master/test#testing-strategy
 [user manual]: https://cardanosolutions.github.io/kupo
+
+[^1]: The maximum memory usage depends on runtime flags and internal settings. This can be made lower if necessary (possibly as small as a hundred megabytes) by tweaking those settings. The obvious counter-part being slower synchronization times when syncing over large chunks of data. When synchronized, however, this has close to no impact.
+
+[^2]: The size of the database depends on the patterns the indexer is configured with. Storing every single entry of Mainnet currently come close to ~40GB. However, if pruned (i.e. only keep unspent entries), Mainnet is around 4GB.
