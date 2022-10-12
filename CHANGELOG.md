@@ -1,4 +1,4 @@
-### [2.1.0] - UNRELEASE
+### [2.1.0] - UNRELEASED
 
 > **Warning**
 > **Internal Breaking-Change**
@@ -10,7 +10,7 @@
 
 #### Added
 
-- [📌 #25](https://github.com/CardanoSolutions/kupo/issues/25) - New pattern format to match results by transaction id or by output reference.
+- [📌 #25](https://github.com/CardanoSolutions/kupo/issues/25) - New pattern format to match results by transaction id or by output reference. Also added two new HTTP query parameters for filtering matches: `transaction_id` & `output_index`. See more information in the [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches).
 
   <details><summary>See syntax</summary>
 
@@ -21,14 +21,11 @@
   ```
   </details>
 
-  Also added two new HTTP query parameters for filtering matches: `transaction_id` & `output_index`
-
   > **Note**
   > Filtering is done by scanning linearly over all results, whereas matching is much faster and leverages the database. One can however combine filters and matches in all kind of ways.
 
-  See more information in the [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches).
 
-- [📌 #56](https://github.com/CardanoSolutions/kupo/issues/56) - New pattern format to match results by policy id or asset id.
+- [📌 #56](https://github.com/CardanoSolutions/kupo/issues/56) - New pattern format to match results by policy id or asset id. Also added two new HTTP query parameters for filtering matches: `policy_id` & `asset_name`. See more information in the [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches).
 
   <details><summary>see syntax</summary>
 
@@ -39,12 +36,8 @@
   ```
   </details>
 
-  Also added two new HTTP query parameters for filtering matches: `policy_id` & `asset_name`
-
   > **Note**
   > Filtering is done by scanning linearly over all results, whereas matching is much faster and leverages the database. One can however combine filters and matches in all kind of ways.
-
-  See more information in the [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches).
 
 - [📌 #51](https://github.com/CardanoSolutions/kupo/issues/51) - New endpoint to retrieve transaction metadata by slot number, possibly filtered by transaction id or output reference.
 
