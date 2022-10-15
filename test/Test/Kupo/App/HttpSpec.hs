@@ -299,6 +299,19 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson schema
 
+        session specification put "/patterns" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            reqBody <- liftIO $ generate genPutPatternsRequestBody
+            res <- Wai.srequest $ Wai.SRequest
+                { Wai.simpleRequest = Wai.defaultRequest
+                    { Wai.requestMethod = "PUT" }
+                    & flip Wai.setPath "/patterns"
+                , Wai.simpleRequestBody =
+                    reqBody
+                }
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson schema
+
         session specification put "/patterns/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             reqBody <- liftIO $ generate genPutPatternRequestBody
@@ -727,6 +740,21 @@ genPutPatternRequestBody = elements
 
     , "{ \"rollback_to\": { \"slot_no\": 14, \"header_hash\": \"0000000000000000000000000000000000000000000000000000000000000000\" }\
       \, \"limit\": \"unsafe_allow_beyond_safe_zone\"\
+      \}"
+    ]
+
+genPutPatternsRequestBody :: Gen LByteString
+genPutPatternsRequestBody = elements
+    [ "{ \"rollback_to\": { \"slot_no\": 42 }\
+      \, \"patterns\": []\
+      \}"
+
+    , "{ \"rollback_to\": { \"slot_no\": 42 }\
+      \, \"patterns\": [\"*\"]\
+      \}"
+
+    , "{ \"rollback_to\": { \"slot_no\": 42 }\
+      \, \"patterns\": [\"*\", \"*/*\"]\
       \}"
     ]
 

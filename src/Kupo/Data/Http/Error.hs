@@ -33,10 +33,20 @@ data HttpError = HttpError
 invalidPattern :: Response
 invalidPattern =
     responseJson status400 Default.headers $ HttpError
-        { hint = "Invalid pattern! To fetch matches, you may provide any valid \
-                 \pattern, including wildcards ('*') or full addresses. Make \
-                 \sure to double-check the documentation at: \
-                 \<https://cardanosolutions.github.io/kupo>!"
+        { hint = "Invalid pattern! To fetch matches or add a pattern, you must provide \
+                 \a valid pattern, including wildcards ('*') or full addresses. \
+                 \Make sure to double-check the documentation at: \
+                 \<https://cardanosolutions.github.io/kupo#section/Patterns>!"
+        }
+
+invalidPatterns :: [Text] -> Response
+invalidPatterns validPatterns =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Found an invalid pattern in the provided list! Here's a list of all \
+                 \the *valid* patterns successfully recognised in your request: "
+                 <> T.intercalate ", " validPatterns
+                 <> ". Any doubts? Check the documentation at: \
+                 \<https://cardanosolutions.github.io/kupo#section/Patterns>!"
         }
 
 invalidStatusFlag :: Response

@@ -47,6 +47,10 @@
 
 - [📌 #65](https://github.com/CardanoSolutions/kupo/issues/65) - Added `transaction_index` to each result, referring to the index in the block of the transaction carrying the matched output.
 
+- [📌 #72](https://github.com/CardanoSolutions/kupo/pulls/72) - Clients can now bulk-add many patterns at once.
+
+  - `PUT /patterns` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/putPatterns)
+
 - The server now makes use of an internal resource pool when it comes to database connections. This pool can be configured using a new command-line option `--max-concurrency`. Users running an instance of Kupo on a capable machine (e.g. 32-cores) may want to increase the default of 50.
 
 #### Changed
