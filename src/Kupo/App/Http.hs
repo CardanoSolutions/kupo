@@ -19,6 +19,9 @@ module Kupo.App.Http
 
 import Kupo.Prelude
 
+import Data.Aeson
+    ( (.:)
+    )
 import Kupo.App.Database
     ( ConnectionType (..)
     , Database (..)
@@ -346,17 +349,34 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
                         <*> pure (pathParametersToText args)
                         <*> fmap (flip included) (readTVarIO patternsVar)
             send res
+        ("PUT", []) -> do
+            args <- requestBodyJson
+                (\json -> do
+                    pointOrSlotNo <- decodeForcedRollback json
+                    patterns <- Json.withObject "" (.: "patterns") json
+                    pure (pointOrSlotNo, patterns)
+                ) req
+            withDatabase send ReadWrite $ \db -> do
+                headers <- responseHeaders readHealth Default.headers
+                send =<< handlePutPatterns
+                            headers
+                            readHealth
+                            forceRollback
+                            patternsVar
+                            (fst <$> args)
+                            (snd <$> args)
+                            db
         ("PUT", args) -> do
             pointOrSlotNo <- requestBodyJson decodeForcedRollback req
             withDatabase send ReadWrite $ \db -> do
                 headers <- responseHeaders readHealth Default.headers
-                send =<< handlePutPattern
+                send =<< handlePutPatterns
                             headers
                             readHealth
                             forceRollback
                             patternsVar
                             pointOrSlotNo
-                            (pathParametersToText args)
+                            (pure <$> pathParametersToText args)
                             db
         ("DELETE", args) ->
             withDatabase send ReadWrite $ \db -> do
@@ -685,34 +705,37 @@ handleDeletePattern headers patternsVar query Database{..} = do
                     [ Json.pair "deleted" (Json.int n)
                     ]
 
-handlePutPattern
+handlePutPatterns
     :: [Http.Header]
     -> IO Health
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> TVar IO (Set Pattern)
     -> Maybe ForcedRollback
-    -> Maybe Text
+    -> Maybe [Text]
     -> Database IO
     -> IO Response
-handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query Database{..} = do
+handlePutPatterns headers readHealth forceRollback patternsVar mPointOrSlot query Database{..} = do
     mPoint <- traverse
         (\ForcedRollback{since, limit} -> (, limit) <$> resolvePointOrSlot since)
         mPointOrSlot
-    case (query >>= patternFromText, mPoint) of
+    case (traverse patternFromText <$> query, mPoint) of
         (Nothing, _) -> do
             pure Errors.invalidPattern
+        (Just Nothing, _) -> do
+            let validPatterns = mapMaybe (fmap patternToText . patternFromText) (fromMaybe [] query)
+            pure $ Errors.invalidPatterns validPatterns
         (_, Nothing) -> do
             pure Errors.malformedPoint
         (_, Just (Nothing, _)) -> do
             pure Errors.nonExistingPoint
-        (Just p, Just (Just point, lim)) -> do
+        (Just (Just ps), Just (Just point, lim)) -> do
             tip <- mostRecentNodeTip <$> readHealth
             let d = distanceToSlot <$> tip <*> pure (getPointSlotNo point)
             case ((LongestRollback <$> d) > Just longestRollback, lim) of
                 (True, OnlyAllowRollbackWithinSafeZone) -> do
                     pure Errors.unsafeRollbackBeyondSafeZone
-                _safeRollbackOrAllowedUnsafe ->
-                    putPatternAt p point
+                _safeRollbackOrAllowedUnsafe -> do
+                    ps `putPatternsAt` point
   where
     resolvePointOrSlot :: Either SlotNo Point -> IO (Maybe Point)
     resolvePointOrSlot = \case
@@ -739,14 +762,14 @@ handlePutPattern headers readHealth forceRollback patternsVar mPointOrSlot query
                 _unexpectedPoint ->
                     Nothing
 
-    putPatternAt :: Pattern -> Point -> IO Response
-    putPatternAt p point = do
+    putPatternsAt :: [Pattern] -> Point -> IO Response
+    putPatternsAt ps point = do
         response <- newEmptyTMVarIO
         forceRollback point $ ForcedRollbackHandler
             { onSuccess = do
-                runTransaction $ insertPatterns [patternToRow p]
+                runTransaction $ insertPatterns (patternToRow <$> ps)
                 patterns <- atomically $ do
-                    modifyTVar' patternsVar (Set.insert p)
+                    modifyTVar' patternsVar (Set.union (fromList ps))
                     readTVar patternsVar
                 atomically $ putTMVar response $ responseJsonEncoding status200 headers $
                     Json.list

@@ -1306,6 +1306,49 @@ paths:
                 items:
                   $ref: "#/components/schemas/Pattern"
 
+    put: &putPatterns
+      operationId: putPatterns
+      tags: [ "Patterns" ]
+      summary: Bulk Add Patterns
+      description: |
+        Add many patterns at once. See [Add Pattern (*)](#operation/putPattern) for more details.
+      requestBody:
+        content:
+          "application/json;charset=utf-8":
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - patterns
+                - rollback_to
+              properties:
+                patterns:
+                  type: array
+                  description:
+                    A list of patterns on addresses, assets or transactions as described in [Patterns](#section/Patterns).
+                  items:
+                    $ref: "#/components/schemas/Pattern"
+                rollback_to:
+                    $ref: "#/components/schemas/ForcedRollback/properties/rollback_to"
+                limit:
+                    $ref: "#/components/schemas/ForcedRollback/properties/limit"
+      responses:
+        200:
+          description: OK
+          headers: *default-headers
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pattern"
+        400:
+          description: Bad Request
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+
   /patterns/{pattern}:
     get: &getPattern
       operationId: matchPattern
