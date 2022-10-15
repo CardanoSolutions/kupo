@@ -42,7 +42,7 @@ language_extensions: &default-extensions
 - TypeSynonymInstances
 - ViewPatterns
 
-columns: 0 # Should match .editorconfig
+columns: 0
 steps:
   - imports:
       align: none

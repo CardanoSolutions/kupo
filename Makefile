@@ -5,7 +5,23 @@ ARCH := $(shell uname -m)
 VERSION := $(shell cat package.yaml| grep "version:" | sed "s/.*\([0-9].[0-9].[0-9]\)\(-.*\)*/\1\2/")
 STYLISH_HASKELL_VERSION := 0.13.0.0
 
-all: $(OUT)/bin/kupo $(OUT)/share/zsh/site-functions/_kupo $(OUT)/share/bash-completion/completions/kupo $(OUT)/share/kupo/api.yaml $(OUT)/share/kupo/LICENSE $(OUT)/share/man/man1/kupo.1 # Build everything
+LD_LIBRARY_PATH := $(shell echo $$LD_LIBRARY_PATH | sed "s/:/ /g")
+LIBSODIUM := $(shell find $(LD_LIBRARY_PATH) -type file -name "*libsodium.*.dylib" | uniq)
+LIBSECP256K1 := $(shell find $(LD_LIBRARY_PATH) -type file -name "*libsecp256k1.*.dylib" | uniq)
+
+all: $(OUT)/bin/kupo \
+		 $(OUT)/lib/$(shell basename $(LIBSODIUM)) \
+		 $(OUT)/lib/$(shell basename $(LIBSECP256K1)) \
+		 $(OUT)/share/zsh/site-functions/_kupo \
+		 $(OUT)/share/bash-completion/completions/kupo \
+		 $(OUT)/share/kupo/api.yaml \
+		 $(OUT)/share/kupo/LICENSE \
+		 $(OUT)/share/man/man1/kupo.1
+ifeq ($(OS),Darwin)
+	@otool -L $(OUT)/bin/kupo
+else
+	@ldd $(OUT)/bin/kupo
+endif
 
 kupo-$(VERSION)-$(ARCH)-$(OS).tar.gz: all
 	tar -czf $@ dist/*
@@ -36,13 +52,17 @@ ifeq ($(OS),Darwin)
 	cabal install kupo:exe:kupo --flags +production --installdir=$(@D) --install-method=copy
 	@echo "Build successful."
 	@echo ""
-	@echo "    ╔═══ NOTE ═════════════════════════════════════════════════╗"
-	@echo "    ║                                                          ║"
-	@echo "    ║  The executable is dynamically linked and not portable.  ║"
-	@echo "    ║                                                          ║"
-	@echo "    ╚══════════════════════════════════════════════════════════╝"
-	@echo ""
-	@otool -L $@
+	@echo "    ╔═══ NOTE ═════════════════════════════════════════════════════════════╗"
+	@echo "    ║                                                                      ║"
+	@echo "    ║  The executable is dynamically linked and has limited portability,   ║"
+	@echo "    ║                                                                      ║"
+	@echo "    ║  Dynamic system libraries should work across same versions of MacOS. ║"
+	@echo "    ║  However, other dependencies such as secpk256k1 or libsodium assume  ║"
+	@echo "    ║  to be provided as standalone .dylib in a 'lib' directory next your  ║"
+	@echo "    ║  installation folder.                                                ║"
+	@echo "    ║                                                                      ║"
+	@echo "    ║  In brief: do not change the folder structure of the archive.        ║"
+	@echo "    ╚══════════════════════════════════════════════════════════════════════╝"
 	@echo ""
 else
 	nix-build -A kupo.components.exes.kupo
@@ -56,6 +76,25 @@ else
 	@echo "    ║                                                                   ║"
 	@echo "    ╚═══════════════════════════════════════════════════════════════════╝"
 	@echo ""
+endif
+
+$(OUT)/lib:
+	@mkdir -p $@
+
+$(OUT)/lib/$(shell basename $(LIBSODIUM)): $(OUT)/lib $(OUT)/bin/kupo
+ifeq ($(OS),Darwin)
+	@cp $(LIBSODIUM) $@
+	@install_name_tool -change $(LIBSODIUM) ../lib/$(shell basename $(LIBSODIUM)) $(OUT)/bin/kupo
+else
+	@echo "libsodium is statically linked on Linux. Nothing to do."
+endif
+
+$(OUT)/lib/$(shell basename $(LIBSECP256K1)): $(OUT)/lib $(OUT)/bin/kupo
+ifeq ($(OS),Darwin)
+	@cp $(LIBSECP256K1) $@
+	@install_name_tool -change $(LIBSECP256K1) ../lib/$(shell basename $(LIBSECP256K1)) $(OUT)/bin/kupo
+else
+	@echo "libsecp256k1 is statically linked on Linux. Nothing to do."
 endif
 
 .PHONY: archive lint man doc check clean clean-all help
