@@ -19,8 +19,6 @@ all: $(OUT)/bin/kupo \
 		 $(OUT)/share/man/man1/kupo.1
 ifeq ($(OS),Darwin)
 	@otool -L $(OUT)/bin/kupo
-else
-	@ldd $(OUT)/bin/kupo
 endif
 
 kupo-$(VERSION)-$(ARCH)-$(OS).tar.gz: all
