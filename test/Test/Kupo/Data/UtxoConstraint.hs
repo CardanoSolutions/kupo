@@ -7,7 +7,9 @@ import Kupo.Data.Cardano
     , ExtendedOutputReference
     , Output
     , OutputReference
+    , PolicyId
     , TransactionId
+    , Value
     , mkOutput
     , mkOutputReference
     )
@@ -17,6 +19,7 @@ import Test.Kupo.Data.Generators
     , genNonBootstrapAddress
     , genOutputReference
     , genOutputValue
+    , genOutputValueWith
     , genScript
     , genTransactionIndex
     )
@@ -31,6 +34,7 @@ data UtxoConstraint
     | MustHaveShelleyAddress
     | MustHaveTransactionId !TransactionId
     | MustHaveOutputReference !OutputReference
+    | MustHavePolicyId !PolicyId
 
 class ArbitrarySatisfying a where
     genSatisfying :: [UtxoConstraint] -> Gen a
@@ -43,7 +47,7 @@ instance ArbitrarySatisfying (ExtendedOutputReference, Output) where
         k <- genSatisfying constraints
         v <- mkOutput
             <$> genSatisfying constraints
-            <*> genOutputValue
+            <*> genSatisfying constraints
             <*> genDatum
             <*> frequency [(5, pure Nothing), (1, Just <$> genScript)]
         pure (k, v)
@@ -56,6 +60,15 @@ instance ArbitrarySatisfying Address where
             genNonBootstrapAddress
         (MustHaveAddress addr):_ ->
             pure addr
+        _:rest ->
+            genSatisfying rest
+
+instance ArbitrarySatisfying Value where
+    genSatisfying = \case
+        [] ->
+            genOutputValue
+        (MustHavePolicyId policy):_ -> do
+            genOutputValueWith policy
         _:rest ->
             genSatisfying rest
 

@@ -12,8 +12,12 @@
 
 ```sql
 CREATE TABLE `inputs` (
-  `output_reference` BLOB PRIMARY KEY NOT NULL,
+  `ext_output_reference` BLOB PRIMARY KEY NOT NULL,
+  `output_reference` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, 1, 34)) VIRTUAL,
+  `output_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -4, 2)) VIRTUAL,
+  `transaction_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -2)) VIRTUAL,
   `address` TEXT COLLATE NOCASE NOT NULL,
+  `payment_credential` TEXT COLLATE NOCASE NOT NULL GENERATED ALWAYS AS (substr(`address`, -56)),
   `value` BLOB NOT NULL,
   `datum_hash` BLOB,
   `script_hash` BLOB,
@@ -21,33 +25,38 @@ CREATE TABLE `inputs` (
   `spent_at` INTEGER
 );
 
-ALTER TABLE `inputs`
-ADD COLUMN `payment_credential` TEXT COLLATE NOCASE NOT NULL
-GENERATED ALWAYS AS (substr(`address`, -56))
-VIRTUAL;
+CREATE UNIQUE INDEX `inputsByOutputReference` ON `inputs` (`output_reference`);
 
-CREATE INDEX `inputsByAddress`           ON `inputs` (`address` COLLATE NOCASE, `spent_at`);
-CREATE INDEX `inputsByPaymentCredential` ON `inputs` (`payment_credential` COLLATE NOCASE);
-CREATE INDEX `inputsByCreatedAt`         ON `inputs` (`created_at`, substr(output_reference, -2));
-CREATE INDEX `inputsByDatumHash`         ON `inputs` (`datum_hash`);
+CREATE INDEX `inputsByAddress` ON `inputs` (`address` COLLATE NOCASE, `spent_at`);
+CREATE INDEX `inputsByPaymentCredential` ON `inputs` (`payment_credential` COLLATE NOCASE, `spent_at`);
+CREATE INDEX `inputsByDatumHash` ON `inputs` (`datum_hash`);
+CREATE INDEX `inputsByCreatedAt` ON `inputs` (`created_at`);
+CREATE INDEX `inputsBySpentAt` ON `inputs` (`spent_at`);
+
+CREATE TABLE `policies` (
+  `output_reference` BLOB NOT NULL,
+  `policy_id` BLOB NOT NULL,
+  PRIMARY KEY (`output_reference`, `policy_id`),
+  CONSTRAINT `fk_policies_inputs`
+    FOREIGN KEY (`output_reference`)
+    REFERENCES inputs(`output_reference`)
+    ON DELETE CASCADE
+);
 
 CREATE TABLE `checkpoints` (
   `header_hash` BLOB NOT NULL,
   `slot_no` INTEGER PRIMARY KEY NOT NULL
 );
-CREATE INDEX `checkpointsBySlot` ON `checkpoints` (`slot_no`);
 
 CREATE TABLE `binary_data` (
   `binary_data_hash` BLOB PRIMARY KEY NOT NULL,
   `binary_data` BLOB NOT NULL
 );
-CREATE INDEX `binaryDataByHash` ON `binary_data` (`binary_data_hash`);
 
 CREATE TABLE `scripts` (
   `script_hash` BLOB PRIMARY KEY NOT NULL,
   `script` BLOB NOT NULL
 );
-CREATE INDEX `scriptByHash` ON `scripts` (`script_hash`);
 
 CREATE TABLE `patterns` (
   `pattern` TEXT PRIMARY KEY NOT NULL
@@ -59,6 +68,15 @@ CREATE TABLE `patterns` (
 
 <p align="right"><code>v2.1.0</code></p>
 <hr/>
+
+### Migration to `version=8`
+
+- Rename column `output_reference` into `ext_output_reference`
+- Add a virtual column `output_reference` to inputs, and add a unique index to index
+- Add a virtual column `transaction_index` to inputs, capturing the transaction index of an `ext_output_reference`
+- Add a virtual column `output_index` to inputs, capturing the output index of an `ext_output_reference`
+- Create a new table `policies` with a foreign key on `inputs.output_reference`
+- Also remove all indexes from previous migrations, indexes are now created by the application logic and can be deferred to after full sync.
 
 ### Migration to `version=7`
 

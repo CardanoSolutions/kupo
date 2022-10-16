@@ -30,6 +30,27 @@ info:
     [latest releases](https://github.com/CardanoSolutions/kupo/releases) or the
     continuous [`Nix` Github workflow](https://github.com/CardanoSolutions/kupo/actions).
 
+    ```
+    ...
+    ├── bin
+    │   └── kupo
+    └── share
+        ├── bash-completion
+        │   └── completions
+        │       └── kupo
+        ├── kupo
+        │   ├── LICENSE
+        │   └── api.yaml
+        ├── man
+        │   └── man1
+        │       └── kupo.1
+        └── zsh
+            └── site-functions
+                └── _kupo
+    ```
+
+    Once installed, `man kupo` or `kupo --help` comes in handy.
+
     ### From Docker
 
     Kupo is available as a standalone Docker image on [DockerHub](https://hub.docker.com/repository/docker/cardanosolutions/kupo).
@@ -57,16 +78,17 @@ info:
 
     Kupo connects to a _local [cardano-node](https://github.com/input-output-hk/cardano-node/)_
     in order to receive information from the blockchain. It goes without saying
-    that an up-and-running cardano-node is required to run kupo!
+    that an up-and-running cardano-node (or an equivalent Ogmios connection) is
+    required to run Kupo!
 
-    A single kupo server is meant to build an index for a specific set of
-    addresses. Addresses are matched according to flexible patterns. Once
+    A single Kupo server is meant to build an index for a specific set of outputs.
+    Outputs are matched according to flexible patterns. Once
     matched, results can be queried as JSON via HTTP GET requests.  For
     instance, it is possible to synchronize all addresses associated with a
     given stake key (e.g.  `stake_vkh14hkp0sncfkt76spuqydtww4r900hfmsseezztzlh9sjkkjx6d7q`).
 
     Provided that the configuration and IPC socket for a cardano-node are
-    available in `some-folder/cardano-node`, one can start a kupo server as
+    available in `some-folder/cardano-node`, one can start a Kupo server as
     follows:
 
     ```console
@@ -74,6 +96,7 @@ info:
       --node-socket some-folder/cardano-node/node.socket \
       --node-config some-folder/cardano-node/config.json \
       --since origin \
+      --defer-db-indexes \
       --match "*/stake_vkh14hkp0sncfkt76spuqydtww4r900hfmsseezztzlh9sjkkjx6d7q" \
       --in-memory
     ```
@@ -82,7 +105,7 @@ info:
 
     This will build an index from the beginning of the blockchain (i.e.`origin`)
     of all transaction outputs where that stake key has been involved in. The
-    `--in-memory` option tells kupo to not persist the index on-disk but to
+    `--in-memory` option tells Kupo to not persist the index on-disk but to
     build it fully in-memory. When building such a large index (from origin!),
     this is not recommended as it may cause the program memory usage to grow
     unbounded.
@@ -94,12 +117,13 @@ info:
       --node-socket some-folder/cardano-node/node.socket \
       --node-config some-folder/cardano-node/config.json \
       --since origin \
+      --defer-db-indexes \
       --match "*/stake_vkh14hkp0sncfkt76spuqydtww4r900hfmsseezztzlh9sjkkjx6d7q" \
       --workdir ./db
     ```
 
-    Perfect, now kupo will store all the information in a database on-disk at
-    the location pointed by `--workdir`. Incidentally, this also allows kupo to
+    Perfect, now Kupo will store all the information in a database on-disk at
+    the location pointed by `--workdir`. Incidentally, this also allows Kupo to
     resume its work from where it lefts it in case the server is interrupted.
     Neat!
 
@@ -116,13 +140,14 @@ info:
       --node-socket some-folder/cardano-node/node.socket \
       --node-config some-folder/cardano-node/config.json \
       --since 16588737.4e9bbbb67e3ae262133d94c3da5bffce7b1127fc436e7433b87668dba34c354a \
+      --defer-db-indexes \
       --match "*/stake_vkh14hkp0sncfkt76spuqydtww4r900hfmsseezztzlh9sjkkjx6d7q" \
       --workdir ./db
     ```
 
-    Points are given as `{slot_no}.{header_hash}` and defines an exclusive
-    boundary. Said differently, kupo will start synchronizing from the next
-    block following the given point. In case you need them, see the section
+    Points are given as `{slot_no}.{header_hash}` and define an exclusive
+    boundary. Said differently, Kupo will start synchronizing from the **next**
+    block **following the given point**. In case you need them, see the section
     [#era-boundaries] which references points at which era ends for mainnet and
     testnet; useful to start syncing from a specific era.
 
@@ -133,6 +158,22 @@ info:
     for addresses. This allows for example to build an index for a list of
     payment keys known of a wallet. The syntax for patterns is explained in
     greater details in the [Patterns](#section/Patterns) section below.
+
+    #### --defer-db-indexes
+
+    The careful reader that you are would have noticed the `--defer-db-indexes`
+    flag that we've been passing around. This is a little trick to speed up the
+    initial indexer synchronization. Indeed, when synchronizing over large chunks
+    of the chain, Kupo needs to ingest and filter a lot of data. Later, to serve
+    this data back through structured queries, Kupo leverages fast lookup indexes
+    in the database. Yet, lookup indexes come with a little extra cost for writing
+    stuff into the database.
+
+    Deferring the creation of indexes only to when you'll need to query therefore
+    comes in handy and can reduce overall synchronization time by a factor of 2 or
+    3. The creation of each index is relatively fast (few seconds to a couple of
+    minutes) and can therefore happen only after a full synchronization by restarting
+    Kupo without the `--defer-db-indexes` flag.
 
     #### --prune-utxo
 
@@ -146,12 +187,12 @@ info:
     and spent inputs are instead marked to know if and when they were spent.
 
     Note that spent inputs aren't removed immediately but only after _at least_
-    12h (or 2160 blocks). This is because data on-chain only becomes truly
-    immutable after 2160 blocks (though it is stable with a high probability
+    36h (or 2160 guaranteed blocks). This is because data on-chain only becomes
+    truly immutable after 2160 blocks (though it is stable with a high probability
     much before that).
 
-    You can then using query-flag in the API to filter results based on whether
-    or not they've been spent.
+    You can then use query flags in the API (`?spent` or `?unspent`) to filter
+    results based on whether or not they've been spent.
 
     #### --ogmios-host \<hostname> / --ogmios-port \<port-number>
 
@@ -160,9 +201,11 @@ info:
     [Ogmios](https://github.com/CardanoSolutions/ogmios#readme); and this works
     for either a local or remote instance of Ogmios! To do so, simply swap the
     `--node-socket` and `--node-config` options for `--ogmios-host` and
-    `--ogmios-port`. For instance:
+    `--ogmios-port`.
 
-    ```
+    For example:
+
+    ```console
     $ kupo \
       --ogmios-host my-ogmios-server.io \
       --ogmios-port 443 \
@@ -181,33 +224,44 @@ info:
     $ kupo --help
     ```
 
+    Should you have installed Kupo using the pre-packaged archive from releases, you should also have
+    access to the user manual through
+
+    ```console
+    $ man kupo
+    ```
+
     # Patterns
 
     Kupo can construct patterns from pretty much every constituant of an
-    address, in any kind of format (bech32, base16, base58, you name it!). It
-    also accepts wildcards using the asterisk symbol `*`.  Conceptually, patterns
-    match the logical structure of (Shelley) addresses which are divided into two
-    parts: a payment part and a delegation part. To learn more about Cardano
-    addresses, feel free to look [CIP-0019](https://github.com/cardano-foundation/CIPs/tree/master/CIP-0019#readme)
+    address, an asset id or an output reference, in any kind of format
+    (bech32, base16, base58, you name it!).
+
+    It also accepts wildcards using the asterisk symbol `*` in certain places.
+    Conceptually, patterns match the logical structure of addresses, asset ids
+    or output references. Each are divided in two parts:
+
+    - for addresses: a payment part and a delegation part, separated by a `/`;
+    - for asset ids: a policy id and an asset name, separated by a `.`;
+    - for output references: an output index and a transaction id, separated by a `@`
+
+    > **Note**
+    >
+    > To learn more about Cardano addresses, feel free to look [CIP-0019](https://github.com/cardano-foundation/CIPs/tree/master/CIP-0019#readme)
     for a deep dive!
 
     Here below is summarized the general syntax for valid patterns. Note that
-    different patterns may match the same object. Note also that while `*`
-    will match _any_ Cardano address (Byron included), `*/*` will match only
-    Shelley addresses (since Byron addresses do not have any delegation part!).
+    different patterns may match the same object. By convention `*` will match
+    _any Cardano address (Byron included)_, whereby `*/*` will match only
+    Shelley-based addresses (since legacy Byron addresses do not have any
+    delegation part!).
 
     ```
-    PATTERN:
+    PATTERN =
 
            ┏━━━━━━━━━┓
         ╾┬─┫ ADDRESS ┣───────────────────────────────┬╼
          │ ┗━━━━━━━━━┛                               │
-         │ ┏━━━━━━━━━━━━━━━┓                         │
-         ├─┫ STAKE_ADDRESS ┣─────────────────────────┤
-         │ ┗━━━━━━━━━━━━━━━┛                         │
-         │ ┏━━━━━━━━━━━━┓                            │
-         ├─┫ CREDENTIAL ┣────────────────────────────┤
-         │ ┗━━━━━━━━━━━━┛                            │
          │ ┏━━━━━━━━━━━━┓   ╭───╮ ┏━━━━━━━━━━━━┓     │
          ├─┫ CREDENTIAL ┣───┤ / ├─┫ CREDENTIAL ┣─────┤
          │ ┗━━━━━━━━━━━━┛   ╰───╯ ┗━━━━━━━━━━━━┛     │
@@ -215,15 +269,26 @@ info:
          ├─┫ POLICY_ID ┣────┤ . ├─┫ ASSET_NAME ┣─────┤
          │ ┗━━━━━━━━━━━┛    ╰───╯ ┗━━━━━━━━━━━━┛     │
          │ ┏━━━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━━━━━┓ │
-         ├─┫ OUTPUT_INDEX ┣─┤ @ ├─┫ TRANSACTION_ID ┣─┤
-         │ ┗━━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━━━━┛ │
+         └─┫ OUTPUT_INDEX ┣─┤ @ ├─┫ TRANSACTION_ID ┣─┘
+           ┗━━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━━━━┛
+    ```
+
+    ```
+    ADDRESS =
+
+           ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+        ╾┬─┫ ADDRESS OR LEGACY ADDRESS ┣─────────────┬╼
+         │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛             │
+         │ ┏━━━━━━━━━━━━━━━┓                         │
+         ├─┫ STAKE ADDRESS ┣─────────────────────────┤
+         │ ┗━━━━━━━━━━━━━━━┛                         │
          │ ╭───╮                                     │
          └─┤ * ├─────────────────────────────────────┘
            ╰───╯
     ```
 
     ```
-    CREDENTIAL:
+    CREDENTIAL =
 
            ┏━━━━━━━━━━━┓
         ╾┬─┫ 64 HEXDIG ┣───────────────────────────────────────────┬╼
@@ -240,10 +305,12 @@ info:
          │ ╭───╮                                                   │
          └─┤ * ├───────────────────────────────────────────────────┘
            ╰───╯
+
+    BECH32DIG = %x61 / %x63-68 / %x6A-6E / %x70-7A / 0-9
     ```
 
     ```
-    POLICY_ID:                              ASSET_NAME:
+    POLICY_ID =                             ASSET_NAME =
 
            ┏━━━━━━━━━━━┓                           ┏━━━━━━━━━━━━━┓
         ╾┬─┫ 56 HEXDIG ┣─┬╼                     ╾┬─┫ 0*64 HEXDIG ┣─┬╼
@@ -254,7 +321,7 @@ info:
     ```
 
     ```
-    OUTPUT_INDEX:                           TRANSACTION_ID:
+    OUTPUT_INDEX =                          TRANSACTION_ID =
 
            ┏━━━━━━━━━━━┓                          ┏━━━━━━━━━━━┓
         ╾┬─┫ 1*3 DIGIT ┣─┬╼                     ╾─┫ 64 HEXDIG ┣─╼
@@ -265,20 +332,23 @@ info:
     ```
 
     ```
-    BECH32DIG = %x61 / %x63-68 / %x6A-6E / %x70-7A / 0-9
-
     HEXDIG = %x30–39 / %x41-%46
     ```
 
     ### Examples:
 
-    - `addr1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgz4xq9p`
-    - `addr_vk1x7da0l25j04my8sej5ntrgdn38wmshxhplxdfjskn07ufavsgtkqn5hljl/*`
-    - `*/script1cda3khwqv60360rp5m7akt50m6ttapacs8rqhn5w342z7r35m37`
-    - `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e/*`
-    - `*/4fc6bb0c93780ad706425d9f7dc1d3c5e3ddbf29ba8486dce904a5fc`
-    - `*`
-    - `*/*`
+    | Pattern                                                                    | Description                                                           |
+    | ---                                                                        | ---                                                                   |
+    | `*`                                                                        | Any output (incl. to legacy addresses)                                |
+    | `*/*`                                                                      | Any output to a Shelley-based address                                 |
+    | `addr1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgz4xq9p`               | Outputs to a specific address                                         |
+    | `stake1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgydsx9n`              | Outputs whose address is delegated to a specific stake address        |
+    | `addr_vk1x7da0l25j04my8sej5ntrgdn38wmshxhplxdfjskn07ufavsgtkqn5hljl/*`     | Outputs whose address carries a specific payment key (bech32 encoded) |
+    | `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e/*`       | Outputs whose address carries a specific payment key (hex encoded)    |
+    | `*/script1cda3khwqv60360rp5m7akt50m6ttapacs8rqhn5w342z7r35m37`             | Outputs whose stake is governed by a specific script                  |
+    | `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e.*`       | Outputs that contains a token from a specific policy                  |
+    | `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e.TOKNAME` | Outputs that contains a specific token (any quantity)                 |
+    | `*@dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e`       | Outputs from a specific transaction                                   |
 
     # Accessing Results
 

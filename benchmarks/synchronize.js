@@ -84,7 +84,7 @@ async function main() {
 }
 
 function findNodeConfigurationSync() {
-  const out = cp.execSync(`ps aux | grep 'cardano-node.*run'`).toString().split('\n')[0];
+  const out = cp.execSync(`ps aux | grep 'cardano-node.*run' | grep -v 'grep'`).toString().split('\n')[0];
   const configFile = out.replace(/.*--config ([^ ]*) ?.*/gm, "$1").trim();
   const socketFile = out.replace(/.*--socket-path ([^ ]*) ?.*/gm, "$1").trim();
 

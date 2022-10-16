@@ -85,6 +85,8 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
     them. This delay depends on the consensus algorithm and protocol parameters. Currently, it is exactly
     129600 slots (36 hours).
 
+    (default: *disabled*).
+
 **--gc-interval**
 :   Number of seconds between background database garbage collections pruning obsolete or unnecessary data. Garbage collections are typically short (few seconds or less) and short remain unnoticed. This parameter exists however to give some level of control if necessary.
 
@@ -96,6 +98,15 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
     The more cores are available on the host machine, the higher can this number be in theory. The default is sensible for a medium hardware.
 
     (default: *50*).
+
+**--defer-db-indexes**
+:   When enabled, defer the creation of database indexes to the next start. This is useful to make the first-ever synchronization faster but will make certain queries considerably slower.
+
+    Indeed, Kupo makes a heavy use of database indexes on columns and virtual columns which can increase the overall synchronization time by a factor 2 or 3. Maintaining these indexes during synchronization has little benefits and can therefore be postponed to only after the database has been fully synchronized. Consider restarting the application without that flag once synchronized.
+
+    This flag has no effect if a database with indexes already exists. So make sure to turn it on for the very first run.
+
+    (default: *disabled*).
 
 **--log-level**
 :   Minimal severity of all log messages.
@@ -220,6 +231,7 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
   --node-config /usr/share/cardano/network/mainnet/cardano-node/config.json \
   --workdir $HOME/.cache/kupo \
   --match * \
+  --defer-db-indexes \
   --since origin \
   --prune-utxo
 

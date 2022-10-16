@@ -19,6 +19,10 @@ module Kupo.Data.Database
     , resultToRow
     , resultFromRow
 
+      -- * Policy
+    , Policy (..)
+    , policyToRow
+
       -- * ExtendedOutputReference / OutputReference
     , outputReferenceToRow
     , extendedOutputReferenceToRow
@@ -50,8 +54,8 @@ module Kupo.Data.Database
     , addressToRow
     , addressFromRow
 
-      -- * Filtering
-    , applyStatusFlag
+      -- * StatusFlag
+    , statusFlagToSql
 
       -- * Sorting
     , SortDirection (..)
@@ -143,7 +147,7 @@ pointToRow = \case
 --
 
 data Input = Input
-    { outputReference :: !ByteString
+    { extendedOutputReference :: !ByteString
     , address :: !Text
     , value :: !ByteString
     , datum :: !(Maybe BinaryData)
@@ -161,7 +165,7 @@ resultFromRow
     -> App.Result
 resultFromRow row = App.Result
     { App.outputReference =
-        extendedOutputReferenceFromRow (outputReference row)
+        extendedOutputReferenceFromRow (extendedOutputReference row)
     , App.address =
         addressFromRow (address row)
     , App.value =
@@ -182,7 +186,7 @@ resultToRow
 resultToRow x =
     Input {..}
   where
-    outputReference =
+    extendedOutputReference =
         extendedOutputReferenceToRow (App.outputReference x)
 
     address =
@@ -204,6 +208,22 @@ resultToRow x =
     (spentAtSlotNo, spentAtHeaderHash) =
         let row = pointToRow <$> (App.spentAt x)
          in (checkpointSlotNo <$> row, checkpointHeaderHash <$> row)
+
+--
+-- Policy
+--
+
+data Policy = Policy
+    { outputReference :: !ByteString
+    , policyId :: !ByteString
+    } deriving (Show, Eq, Ord)
+
+policyToRow
+    :: App.OutputReference
+    -> App.PolicyId
+    -> Policy
+policyToRow (outputReferenceToRow -> outputReference) (App.policyIdToBytes -> policyId) =
+    Policy { outputReference, policyId }
 
 --
 -- Output Reference
@@ -586,46 +606,43 @@ patternToSql
     -> Text
 patternToSql = \case
     App.MatchAny App.IncludingBootstrap ->
-        "address LIKE '%'"
+        "WHERE address LIKE '%'"
     App.MatchAny App.OnlyShelley ->
-        "address NOT LIKE '00%'"
+        "WHERE address NOT LIKE '00%'"
     App.MatchExact addr ->
-        "address = '" <> addressToRow addr <> "'"
+        "WHERE address = '" <> addressToRow addr <> "'"
     App.MatchPayment payment ->
-        "payment_credential = '" <> encodeBase16 payment <> "'"
+        "WHERE payment_credential = '" <> x payment <> "'"
     App.MatchDelegation delegation ->
-        "address LIKE '01" <> encodeBase16 delegation <> "%'"
+        "WHERE address LIKE '01" <> x delegation <> "%'"
     App.MatchPaymentAndDelegation payment delegation ->
-        "address LIKE '01" <> encodeBase16 delegation <> "%' AND payment_credential = '" <> encodeBase16 payment <> "'"
+        "WHERE address LIKE '01" <> x delegation <> "%' AND payment_credential = '" <> x payment <> "'"
     App.MatchOutputReference ref ->
-        let
-            lowerBound = extendedOutputReferenceToRowBase16 (ref, minBound)
-            upperBound = extendedOutputReferenceToRowBase16 (ref, maxBound)
-        in
-            "(    output_reference >= x'" <> lowerBound <> "'\
-            \ AND output_reference <= x'" <> upperBound <> "')"
+        "WHERE output_reference = x'" <> x (outputReferenceToRow ref) <> "'"
     App.MatchTransactionId txId ->
         let
-            lowerBound = extendedOutputReferenceToRowBase16 (mkOutputReference txId minBound, minBound)
-            upperBound = extendedOutputReferenceToRowBase16 (mkOutputReference txId maxBound, maxBound)
+            lowerBound = outputReferenceToRow (mkOutputReference txId minBound)
+            upperBound = outputReferenceToRow (mkOutputReference txId maxBound)
         in
-            "(    output_reference >= x'" <> lowerBound <> "'\
-            \ AND output_reference <= x'" <> upperBound <> "')"
-    App.MatchPolicyId{} ->
-        "address LIKE '%'"
-    App.MatchAssetId{} ->
-        "address LIKE '%'"
+            "WHERE (output_reference >= x'" <> x lowerBound <> "'\
+            \   AND output_reference <= x'" <> x upperBound <> "')"
+    App.MatchPolicyId pid ->
+        "JOIN policies \
+        \ON inputs.output_reference = policies.output_reference \
+        \WHERE policies.output_reference >= 0 AND policy_id = x'" <> x (App.policyIdToBytes pid) <> "'"
+    App.MatchAssetId (pid, _) ->
+        patternToSql (App.MatchPolicyId pid)
   where
-    extendedOutputReferenceToRowBase16 = encodeBase16 . extendedOutputReferenceToRow
+    x = encodeBase16
 
-applyStatusFlag :: StatusFlag -> Text -> Text
-applyStatusFlag = \case
+statusFlagToSql  :: StatusFlag -> Text
+statusFlagToSql  = \case
     NoStatusFlag ->
-        identity
+        ""
     OnlyUnspent ->
-        (<> " AND spent_at IS NULL")
+        "AND spent_at IS NULL"
     OnlySpent ->
-        (<> " AND spent_at IS NOT NULL")
+        "AND spent_at IS NOT NULL"
 
 data SortDirection = Asc | Desc
     deriving (Generic)

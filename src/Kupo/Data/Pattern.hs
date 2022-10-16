@@ -44,7 +44,6 @@ import Kupo.Data.Cardano
     , Datum
     , DatumHash
     , ExtendedOutputReference
-    , Input
     , IsBlock (..)
     , Output
     , OutputReference
@@ -65,6 +64,7 @@ import Kupo.Data.Cardano
     , datumHashToJson
     , digest
     , digestSize
+    , foldrValue
     , getAddress
     , getDatum
     , getDelegationPartBytes
@@ -146,10 +146,10 @@ overlaps p =
             a == a'
         (MatchPolicyId a, MatchPolicyId a') ->
             a == a'
+        (MatchPolicyId a, MatchAssetId (a', _b')) ->
+            a == a'
         (MatchAssetId a, MatchAssetId a') ->
             a == a'
-        (MatchAssetId a, MatchPolicyId a') ->
-            fst a == a'
         _nonOverlappingPatterns ->
             False
 
@@ -180,6 +180,12 @@ includes x y = case (x, y) of
     (MatchOutputReference a, MatchTransactionId a') ->
         getTransactionId a == a'
     (MatchTransactionId a, MatchTransactionId a') ->
+        a == a'
+    (MatchPolicyId a, MatchPolicyId a') ->
+        a == a'
+    (MatchAssetId a, MatchAssetId a') ->
+        a == a'
+    (MatchPolicyId a, MatchAssetId (a', _b')) ->
         a == a'
     _nonIncludedPatterns ->
         False
@@ -439,32 +445,33 @@ resultToJson Result{..} = Json.pairs $ mconcat
 -- | Codecs to encode data-type to some target structure. This allows to encode
 -- on-the-fly as we traverse the structure, rather than traversing all results a
 -- second time.
-data Codecs result slotNo input bin script = Codecs
+data Codecs result bin script policy = Codecs
     { toResult :: !(Result -> result)
-    , toSlotNo :: !(SlotNo -> slotNo)
-    , toInput :: !(Input -> input)
     , toBinaryData :: !(DatumHash -> BinaryData -> bin)
     , toScript :: !(ScriptHash -> Script -> script)
+    , toPolicy :: !(OutputReference -> PolicyId -> policy)
     }
 
 -- | A higher-level record to represent the aggregation of matched results.
-data Match result slotNo input bin script = Match
-    { consumed :: !(Map slotNo (Set input))
+data Match result bin script policy = Match
+    { consumed :: !(Map SlotNo (Set Pattern))
     , produced :: ![result]
     , datums :: ![bin]
     , scripts :: ![script]
+    , policies :: !(Set policy)
     }
 
-instance Ord slotNo => Semigroup (Match result slotNo input bin script) where
+instance (Ord policy) => Semigroup (Match result bin script policy) where
     a <> b = Match
         { consumed = consumed a <> consumed b
         , produced = produced a <> produced b
         , datums = datums a <> datums b
         , scripts = scripts a <> scripts b
+        , policies = policies a <> policies b
         }
 
-instance Ord slotNo => Monoid (Match result slotNo input bin script) where
-    mempty = Match mempty mempty mempty mempty
+instance (Ord policy) => Monoid (Match result bin script policy) where
+    mempty = Match mempty mempty mempty mempty mempty
 
 
 -- | Match all outputs in transactions from a block that match any of the given
@@ -474,36 +481,35 @@ instance Ord slotNo => Monoid (Match result slotNo input bin script) where
 -- multiple patterns. This is to facilitate building an index of matches to
 -- results.
 matchBlock
-    :: forall block result slotNo input bin script.
+    :: forall block result bin script policy.
         ( IsBlock block
-        , Ord input
-        , Ord slotNo
+        , Ord policy
         )
-    => Codecs result slotNo input bin script
+    => Codecs result bin script policy
     -> Set Pattern
     -> block
-    -> Match result slotNo input bin script
+    -> Match result bin script policy
 matchBlock Codecs{..} patterns blk =
-    let pt = getPoint blk in foldBlock (fn pt) (Match mempty mempty mempty mempty) blk
+    let pt = getPoint blk in foldBlock (fn pt) mempty blk
   where
     fn
         :: Point
         -> TransactionIndex
         -> BlockBody block
-        -> Match result slotNo input bin script
-        -> Match result slotNo input bin script
-    fn pt ix tx Match{consumed, produced, datums, scripts} = Match
+        -> Match result bin script policy
+        -> Match result bin script policy
+    fn pt ix tx Match{consumed, produced, datums, scripts, policies} = Match
         { consumed = Map.alter
             (\st -> Just $ Set.foldr
-                (Set.insert . toInput)
+                (Set.insert . MatchOutputReference)
                 (fromMaybe mempty st)
                 (spentInputs @block tx)
             )
-            (toSlotNo (getPointSlotNo pt))
+            (getPointSlotNo pt)
             consumed
 
         , produced =
-            matched ++ produced
+            newProduced
 
         , datums = Map.foldrWithKey
             (\k v accum -> toBinaryData k v : accum)
@@ -514,28 +520,40 @@ matchBlock Codecs{..} patterns blk =
             (\k v accum -> toScript k v : accum)
             scripts
             (witnessedScripts @block tx)
+
+        , policies =
+            newPolicies
         }
       where
-        matched =
-            concatMap
-                (flip (mapMaybeOutputs @block) tx . match pt ix)
+        (newProduced, newPolicies) =
+            foldr
+                (\pattern_ ->
+                    flip
+                        (foldr (\(r, p) (rs, ps) -> (r:rs, Set.union p ps)))
+                        (mapMaybeOutputs @block (match pt ix pattern_) tx)
+                )
+                (produced, policies)
                 patterns
-
     match
         :: Point
         -> TransactionIndex
         -> Pattern
         -> OutputReference
         -> Output
-        -> Maybe result
+        -> Maybe (result, Set policy)
     match pt ix m outRef output = do
-        matching outRef output m
-        pure $ toResult Result
-            { outputReference = (outRef, ix)
-            , address = getAddress output
-            , value = getValue output
-            , datum = getDatum output
-            , scriptReference = mkScriptReference (getScript output)
-            , createdAt = pt
-            , spentAt = Nothing
-            }
+        matching outRef output m $>
+            ( toResult Result
+                { outputReference = (outRef, ix)
+                , address = getAddress output
+                , value = getValue output
+                , datum = getDatum output
+                , scriptReference = mkScriptReference (getScript output)
+                , createdAt = pt
+                , spentAt = Nothing
+                }
+            , foldrValue
+                (\policy _ -> Set.insert (toPolicy outRef policy))
+                Set.empty
+                (getValue output)
+            )

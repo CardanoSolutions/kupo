@@ -17,9 +17,11 @@ import Kupo.Data.Cardano
     ( Address
     , ExtendedOutputReference
     , Output
+    , PolicyId
     , TransactionId
     , mkOutputReference
     , unsafeAddressFromBytes
+    , unsafePolicyIdFromBytes
     , unsafeTransactionIdFromBytes
     )
 import Kupo.Data.Pattern
@@ -133,6 +135,17 @@ patterns =
       , [ matches !! 6
         ]
       )
+
+    , ( "3c011ab73aa32bdf74ebf72c256bc37b121adeedb10ce4425897ed40.*"
+      , MatchPolicyId (policyIds !! 0)
+      , [ matches !! 7
+        ]
+      )
+
+    , ( "2bdf74ee10ce44258bf72c256bc37b121adec197ed403c011ab73aa3.*"
+      , MatchPolicyId (policyIds !! 1)
+      , []
+      )
     ]
 
 matches
@@ -166,12 +179,22 @@ matches = generateWith 14 $ sequence
         [ MustHaveTransactionId (transactionIds !! 1)
         , MustHaveShelleyAddress
         ]
+    , genSatisfying
+        [ MustHavePolicyId (policyIds !! 0)
+        , MustHaveShelleyAddress
+        ]
     ]
 
 transactionIds :: [TransactionId]
 transactionIds = unsafeTransactionIdFromBytes . unsafeDecodeBase16 <$>
     [ "edb10ce4425897ed403c011ab73aa32bdf74ebf72c256bc37b121adec17c2784"
     , "97ed403c011ab73aa32bdf74ee10ce44258bf72c256bc37b121adec17c2784db"
+    ]
+
+policyIds :: [PolicyId]
+policyIds = unsafePolicyIdFromBytes . unsafeDecodeBase16 <$>
+    [ "3c011ab73aa32bdf74ebf72c256bc37b121adeedb10ce4425897ed40"
+    , "2bdf74ee10ce44258bf72c256bc37b121adec197ed403c011ab73aa3"
     ]
 
 addresses :: [Address]

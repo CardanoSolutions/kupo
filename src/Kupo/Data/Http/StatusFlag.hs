@@ -20,6 +20,7 @@ data StatusFlag
     = NoStatusFlag
     | OnlySpent
     | OnlyUnspent
+    deriving (Show)
 
 isNoStatusFlag :: StatusFlag -> Bool
 isNoStatusFlag = \case

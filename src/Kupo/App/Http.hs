@@ -73,16 +73,7 @@ import Kupo.Data.Configuration
     ( LongestRollback (..)
     )
 import Kupo.Data.Database
-    ( applyStatusFlag
-    , binaryDataFromRow
-    , datumHashToRow
-    , mkSortDirection
-    , patternToRow
-    , patternToSql
-    , pointFromRow
-    , resultFromRow
-    , scriptFromRow
-    , scriptHashToRow
+    ( mkSortDirection
     )
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
@@ -449,7 +440,7 @@ handleGetCheckpoints
     -> Response
 handleGetCheckpoints headers Database{..} = do
     responseStreamJson headers pointToJson $ \yield done -> do
-        points <- runTransaction (listCheckpointsDesc pointFromRow)
+        points <- runTransaction listCheckpointsDesc
         mapM_ yield points
         done
 
@@ -469,8 +460,8 @@ handleGetCheckpointBySlot headers mSlotNo query Database{..} =
             handleGetCheckpointBySlot' slotNo mode
   where
     handleGetCheckpointBySlot' slotNo mode = do
-        let successor = next (unSlotNo slotNo)
-        points <- runTransaction (listAncestorsDesc successor 1 pointFromRow)
+        let successor = next slotNo
+        points <- runTransaction (listAncestorsDesc successor 1)
         pure $ responseJsonEncoding status200 headers $ case (points, mode) of
             ([point], GetCheckpointStrict) | getPointSlotNo point == slotNo ->
                 pointToJson point
@@ -490,22 +481,20 @@ handleGetMatches
     -> Database IO
     -> Response
 handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $ do
-    p <- (patternQuery >>= patternFromText)
+    pattern_ <- (patternQuery >>= patternFromText)
         `orAbort` Errors.invalidPattern
 
     statusFlag <- statusFlagFromQueryParams queryParams
         `orAbort` Errors.invalidStatusFlag
 
-    yieldIf <- (mkYieldIf p <$> filterMatchesBy queryParams)
+    yieldIf <- (mkYieldIf pattern_ <$> filterMatchesBy queryParams)
         `orAbort` Errors.invalidMatchFilter
 
     sortDirection <- mkSortDirection <$> orderMatchesBy queryParams
         `orAbort` Errors.invalidSortDirection
 
-    let query = applyStatusFlag statusFlag (patternToSql p)
-
     pure $ responseStreamJson headers resultToJson $ \yield done -> do
-        runTransaction $ foldInputs query sortDirection (yieldIf yield . resultFromRow)
+        runTransaction $ foldInputs pattern_ statusFlag sortDirection (yieldIf yield)
         done
   where
     -- NOTE: kupo does support two different ways for fetching results, via query parameters or via
@@ -562,7 +551,7 @@ handleDeleteMatches headers patternsVar query Database{..} = do
         Just p | p `overlaps` patterns -> do
             pure Errors.stillActivePattern
         Just p -> do
-            n <- runTransaction $ deleteInputsByAddress (patternToSql p)
+            n <- runTransaction $ deleteInputs (Set.singleton p)
             pure $ responseJsonEncoding status200 headers $
                 Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)
@@ -583,7 +572,7 @@ handleGetDatum headers datumArg Database{..} = do
             pure Errors.malformedDatumHash
         Just datumHash -> do
             datum <- runTransaction $
-                getBinaryData (datumHashToRow datumHash) binaryDataFromRow
+                getBinaryData datumHash
             pure $ responseJsonEncoding status200 headers $
                 case datum of
                     Nothing ->
@@ -608,7 +597,7 @@ handleGetScript headers scriptArg Database{..} = do
             pure Errors.malformedScriptHash
         Just scriptHash -> do
             script <- runTransaction $
-                getScript (scriptHashToRow scriptHash) scriptFromRow
+                getScript scriptHash
             pure $ responseJsonEncoding status200 headers $
                 maybe Json.null_ scriptToJson script
 
@@ -630,10 +619,10 @@ handleGetMetadata baseHeaders slotArg queryParams Database{..} fetchBlock =
     case slotArg of
         Nothing ->
             pure Errors.invalidSlotNo
-        Just (SlotNo slotNo) | slotNo == 0 -> do
+        Just slotNo | slotNo == 0 -> do
             pure $ responseStreamJson baseHeaders metadataToJson' $ \_yield done -> done
-        Just (SlotNo slotNo) -> do
-            ancestor <- runTransaction (listAncestorsDesc slotNo 1 pointFromRow) <&> \case
+        Just slotNo -> do
+            ancestor <- runTransaction (listAncestorsDesc slotNo 1) <&> \case
                 [ancestor]  -> ancestor
                 _noAncestor -> GenesisPoint
             case filterMatchesBy queryParams of
@@ -698,7 +687,7 @@ handleDeletePattern headers patternsVar query Database{..} = do
         Nothing ->
             pure Errors.invalidPattern
         Just p -> do
-            n <- runTransaction $ deletePattern (patternToRow p)
+            n <- runTransaction $ deletePattern p
             atomically $ modifyTVar' patternsVar (Set.delete p)
             pure $ responseJsonEncoding status200 headers $
                 Json.pairs $ mconcat
@@ -740,8 +729,8 @@ handlePutPatterns headers readHealth forceRollback patternsVar mPointOrSlot quer
     resolvePointOrSlot :: Either SlotNo Point -> IO (Maybe Point)
     resolvePointOrSlot = \case
         Right pt -> do
-            let successor = unSlotNo $ next $ getPointSlotNo pt
-            pts <- runTransaction $ listAncestorsDesc successor 1 pointFromRow
+            let successor = next $ getPointSlotNo pt
+            pts <- runTransaction $ listAncestorsDesc successor 1
             return $ case pts of
                 [pt'] | pt == pt' ->
                     Just pt
@@ -754,8 +743,8 @@ handlePutPatterns headers readHealth forceRollback patternsVar mPointOrSlot quer
                     Nothing
 
         Left sl -> do
-            let successor = unSlotNo (next sl)
-            pts <- runTransaction $ listAncestorsDesc successor 1 pointFromRow
+            let successor = next sl
+            pts <- runTransaction $ listAncestorsDesc successor 1
             return $ case pts of
                 [pt] | sl == getPointSlotNo pt ->
                     Just pt
@@ -767,7 +756,7 @@ handlePutPatterns headers readHealth forceRollback patternsVar mPointOrSlot quer
         response <- newEmptyTMVarIO
         forceRollback point $ ForcedRollbackHandler
             { onSuccess = do
-                runTransaction $ insertPatterns (patternToRow <$> ps)
+                runTransaction $ insertPatterns ps
                 patterns <- atomically $ do
                     modifyTVar' patternsVar (Set.union (fromList ps))
                     readTVar patternsVar

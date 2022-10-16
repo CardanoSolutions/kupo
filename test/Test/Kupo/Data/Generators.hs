@@ -13,6 +13,7 @@ import Data.Bits
     )
 import Kupo.Data.Cardano
     ( Address
+    , AssetId
     , BinaryData
     , Blake2b_224
     , Blake2b_256
@@ -45,8 +46,10 @@ import Kupo.Data.Cardano
     , mkOutputReference
     , noDatum
     , pattern BlockPoint
+    , policyIdToBytes
     , scriptHashToBytes
     , unsafeAddressFromBytes
+    , unsafeAssetNameFromBytes
     , unsafeBinaryDataFromBytes
     , unsafeDatumHashFromBytes
     , unsafeHeaderHashFromBytes
@@ -188,6 +191,10 @@ genPolicyId :: Gen PolicyId
 genPolicyId =
     unsafePolicyIdFromBytes . scriptHashToBytes <$> genScriptHash
 
+genAssetId :: Gen AssetId
+genAssetId =
+    (,) <$> genPolicyId <*> (fmap unsafeAssetNameFromBytes genAssetName)
+
 genBinaryData :: Gen BinaryData
 genBinaryData = elements plutusDataVectors
 
@@ -284,19 +291,23 @@ genTransactionId =
 -- they can't.
 genOutputValue :: Gen Value
 genOutputValue = do
-    ada <- arbitrary `suchThat` (> 0)
     nPolicy <- choose (0, 3)
-    nAssets <- choose (nPolicy, 3 * nPolicy)
-    fmap (unsafeValueFromList ada) $ zip3
-        <$> fmap cycle (vectorOf nPolicy genPolicyIdWithSmallEntropy)
-        <*> vectorOf nAssets genAssetName
-        <*> listOf (arbitrary `suchThat` (> 0))
+    policies <- vectorOf nPolicy genPolicyIdWithSmallEntropy
+    mconcat <$> mapM genOutputValueWith policies
   where
-    genPolicyIdWithSmallEntropy :: Gen ByteString
+    genPolicyIdWithSmallEntropy :: Gen PolicyId
     genPolicyIdWithSmallEntropy = elements
-        [ generateWith seed (genBytes (digestSize @Blake2b_224))
+        [ unsafePolicyIdFromBytes $ generateWith seed (genBytes (digestSize @Blake2b_224))
         | seed <- [ 0 .. 10 ]
         ]
+
+genOutputValueWith :: PolicyId -> Gen Value
+genOutputValueWith policy = do
+    ada <- arbitrary `suchThat` (> 0)
+    nAssets <- choose (1, 3)
+    fmap (unsafeValueFromList ada) $ zip3 (repeat (policyIdToBytes policy))
+        <$> vectorOf nAssets genAssetName
+        <*> listOf (arbitrary `suchThat` (> 0))
 
 genInputManagement :: Gen InputManagement
 genInputManagement =

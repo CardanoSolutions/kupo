@@ -85,6 +85,7 @@ module Kupo.Data.Cardano
 
     -- * Value
     , Value
+    , foldrValue
     , hasAssetId
     , hasPolicyId
     , unsafeValueFromList
@@ -101,6 +102,7 @@ module Kupo.Data.Cardano
 
     -- * PolicyId
     , PolicyId
+    , policyIdToBytes
     , unsafePolicyIdFromBytes
     , policyIdFromText
     , policyIdToText
@@ -1515,6 +1517,14 @@ type Value =
 type Value' crypto =
     Ledger.Value crypto
 
+foldrValue
+    :: (PolicyId -> Map AssetName Integer -> a -> a)
+    -> a
+    -> Value
+    -> a
+foldrValue fn a0 (Ledger.Value _ assets) =
+    Map.foldrWithKey fn a0 assets
+
 hasAssetId :: Value -> AssetId -> Bool
 hasAssetId value (policyId, assetName) =
     Ledger.lookup policyId assetName value > 0
@@ -1584,6 +1594,11 @@ type AssetId = (PolicyId, Ledger.AssetName)
 -- PolicyId
 
 type PolicyId = Ledger.PolicyID StandardCrypto
+
+policyIdToBytes :: PolicyId -> ByteString
+policyIdToBytes (Ledger.PolicyID h) =
+    scriptHashToBytes h
+{-# INLINABLE policyIdToBytes #-}
 
 unsafePolicyIdFromBytes :: ByteString -> PolicyId
 unsafePolicyIdFromBytes =

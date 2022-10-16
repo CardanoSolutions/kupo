@@ -90,8 +90,7 @@ import Kupo.Data.Configuration
     )
 import Kupo.Data.Database
     ( binaryDataToRow
-    , outputReferenceToRow
-    , pointToRow
+    , policyToRow
     , resultToRow
     , scriptToRow
     )
@@ -255,11 +254,11 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
         let (lastKnownTip, lastKnownBlk) = last blks
         let lastKnownPoint = getPoint lastKnownBlk
         let lastKnownSlot = getPointSlotNo lastKnownPoint
-        let Match{consumed, produced, datums, scripts} =
+        let Match{consumed, produced, datums, scripts, policies} =
                 foldMap (matchBlock codecs patterns . snd) blks
         isNonEmptyBlock <- runTransaction $ do
-            insertCheckpoints (foldr ((:) . pointToRow . getPoint . snd) [] blks)
             insertInputs produced
+            insertPolicies policies
             nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot consumed
             -- NOTE: In case where the user has entered a relatively restrictive
             -- pattern (e.g. one specific address), we do a best-effort at not
@@ -274,6 +273,7 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
                 insertBinaryData datums
                 insertScripts scripts
             notifyTip lastKnownTip (Just lastKnownSlot)
+            insertCheckpoints (foldr ((:) . getPoint . snd) [] blks)
             return isNonEmptyBlock
         logWith tr $ ConsumerRollForward
             { slotNo = lastKnownSlot
@@ -286,34 +286,33 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
     rollBackward (tip, pt) = do
         logWith tr (ConsumerRollBackward { point = getPointSlotNo pt })
         runTransaction $ do
-            lastKnownSlot <- rollbackTo (unSlotNo (getPointSlotNo pt))
-            notifyTip tip (SlotNo <$> lastKnownSlot)
+            lastKnownSlot <- rollbackTo (getPointSlotNo pt)
+            notifyTip tip lastKnownSlot
 
     codecs = Codecs
         { toResult = resultToRow
-        , toSlotNo = unSlotNo
-        , toInput = outputReferenceToRow
         , toBinaryData = binaryDataToRow
         , toScript = scriptToRow
+        , toPolicy = policyToRow
         }
 
     onSpentInputs
         :: Tip
         -> SlotNo
-        -> Map Word64 (Set ByteString)
+        -> Map SlotNo (Set Pattern)
         -> DBTransaction m Int
     onSpentInputs = case inputManagement of
         MarkSpentInputs ->
-            \_ _ -> fmap sum . Map.traverseWithKey markInputsByReference
+            \_ _ -> fmap sum . Map.traverseWithKey markInputs
         RemoveSpentInputs ->
             \lastKnownTip lastKnownSlot ->
                 -- Only delete when safe (i.e. deep enough in the chain).
                 -- Otherwise, mark as 'spent' and leave the pruning to the
                 -- periodic 'gardener' / garbage-collector.
                 if distanceToTip lastKnownTip lastKnownSlot > unstableWindow then
-                    fmap sum . traverse deleteInputsByReference
+                    fmap sum . traverse deleteInputs
                 else
-                    fmap sum . Map.traverseWithKey markInputsByReference
+                    fmap sum . Map.traverseWithKey markInputs
       where
         unstableWindow =
             getLongestRollback longestRollback
@@ -368,8 +367,12 @@ gardener tr config patterns withDatabase = forever $ do
                             (MarkSpentInputs, s) | not (Set.null s) -> pure 0
                             _needPruning -> pruneBinaryData
                  in
-                    (,) <$> pruneInputsWhenApplicable <*> pruneBinaryDataWhenApplicable
-        logWith tr $ GardenerExitGarbageCollection { prunedInputs, prunedBinaryData }
+                    (,) <$> pruneInputsWhenApplicable
+                        <*> pruneBinaryDataWhenApplicable
+        logWith tr $ GardenerExitGarbageCollection
+            { prunedInputs
+            , prunedBinaryData
+            }
   where
     Configuration
         { garbageCollectionInterval
