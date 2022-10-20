@@ -26,6 +26,7 @@ extra-source-files:
     db/v2.0.0-beta/001.sql
     db/v2.1.0/001.sql
     db/v2.1.0/002.sql
+    db/v2.1.0/003.sql
 data-files:
     docs/api/latest.yaml
     docs/api/v1.0.0.yaml

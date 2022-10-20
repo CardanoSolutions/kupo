@@ -176,6 +176,7 @@ kupoWith tr withProducer withFetchBlock =
             , inputManagement
             , longestRollback
             , maxConcurrency
+            , deferIndexes
             }
         } <- ask
 
@@ -208,7 +209,7 @@ kupoWith tr withProducer withFetchBlock =
         }
 
     let run action =
-            withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile action
+            withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile deferIndexes action
                 `finally` do
                     destroyAllResources readOnlyPool
                     destroyAllResources readWritePool

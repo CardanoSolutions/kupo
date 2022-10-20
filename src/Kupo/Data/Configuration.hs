@@ -16,6 +16,7 @@ module Kupo.Data.Configuration
     , InputManagement (..)
     , ChainProducer (..)
     , LongestRollback (..)
+    , DeferIndexesInstallation (..)
     , mailboxCapacity
 
     -- * NetworkParameters
@@ -89,6 +90,11 @@ data Configuration = Configuration
         -- ^ Delay between each garbage-collection of database data
     , maxConcurrency :: !Word
         -- ^ Maximum number of connections to create in the db resource pool
+    , deferIndexes :: !DeferIndexesInstallation
+        -- ^ Whether to install non-essential database indexes on start-up.
+        --
+        -- Non-essential refers to indexes that make query faster but that aren't
+        -- necessary for the application to synchronize at high speed.
     } deriving (Generic, Eq, Show)
 
 -- | Where does kupo pulls its data from. Both 'cardano-node' and 'ogmios' are
@@ -136,6 +142,19 @@ data InputManagement
 newtype LongestRollback = LongestRollback
     { getLongestRollback :: Word64
     } deriving newtype (Integral, Real, Num, Enum, Ord, Eq, Show)
+
+-- | Defer installation of non-essential database indexes. Non-essential refers to
+-- indexes that are not crucial to synchronization but that are only useful for
+-- speeding up certain lookup queries. Kupo makes a heavy use of database indexes on
+-- columns and virtual columns which can increase the overall synchronization time
+-- by a factor 2 or 3.
+-- Maintaining these indexes during synchronization has little
+-- benefits and can therefore be postponed to only after the database has been
+-- fully synchronized.
+data DeferIndexesInstallation
+    = SkipNonEssentialIndexes
+    | InstallIndexesIfNotExist
+    deriving (Generic, Eq, Show)
 
 -- Mailbox's capacity, or how many messages can be enqueued in the queue between
 -- the consumer and the producer workers. More means faster synchronization (up

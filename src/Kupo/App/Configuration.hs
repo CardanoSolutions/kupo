@@ -53,11 +53,6 @@ import Kupo.Data.Configuration
     ( Configuration (..)
     , NetworkParameters (..)
     )
-import Kupo.Data.Database
-    ( patternFromRow
-    , patternToRow
-    , pointFromRow
-    )
 import Kupo.Data.Pattern
     ( Pattern (..)
     , patternToText
@@ -110,7 +105,7 @@ startOrResume
     -> Database m
     -> m (Maybe SlotNo, [Point])
 startOrResume tr configuration Database{..} = do
-    checkpoints <- runTransaction (listCheckpointsDesc pointFromRow)
+    checkpoints <- runTransaction listCheckpointsDesc
 
     let slots = unSlotNo . getPointSlotNo <$> checkpoints
     logWith tr $ ConfigurationCheckpointsForIntersection { slots }
@@ -160,12 +155,12 @@ newPatternsCache
     -> Database m
     -> m (TVar m (Set Pattern))
 newPatternsCache tr configuration Database{..} = do
-    alreadyKnownPatterns <- runTransaction (listPatterns patternFromRow)
+    alreadyKnownPatterns <- runTransaction listPatterns
     patterns <- case (alreadyKnownPatterns, configuredPatterns) of
         (x:xs, []) ->
             pure (x:xs)
         ([], y:ys) -> do
-            runTransaction (insertPatterns (patternToRow <$> (y:ys)))
+            runTransaction (insertPatterns (y:ys))
             pure (y:ys)
         ([], []) -> do
             logWith tr (ConfigurationInvalidOrMissingOption errNoPatterns)

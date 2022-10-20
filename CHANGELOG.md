@@ -27,7 +27,7 @@
 
 - [📌 #56](https://github.com/CardanoSolutions/kupo/issues/56) - New pattern format to match results by policy id or asset id. Also added two new HTTP query parameters for filtering matches: `policy_id` & `asset_name`. See more information in the [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches).
 
-  <details><summary>see syntax</summary>
+  <details><summary>See syntax</summary>
 
   ```
     ┏━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━┓

@@ -73,6 +73,7 @@ import Kupo.Data.ChainSync
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
+    , DeferIndexesInstallation (..)
     , InputManagement (..)
     , WorkDir (..)
     )
@@ -573,6 +574,7 @@ skippableContext prefix skippableSpec = do
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
                     , maxConcurrency = 50
+                    , deferIndexes = InstallIndexesIfNotExist
                     }
             context cardanoNode $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager
@@ -595,6 +597,7 @@ skippableContext prefix skippableSpec = do
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
                     , maxConcurrency = 50
+                    , deferIndexes = InstallIndexesIfNotExist
                     }
             context ogmios $ around (withTempDirectory ref defaultCfg) $
                 skippableSpec manager

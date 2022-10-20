@@ -12,6 +12,26 @@ module Kupo.App.Database
       Database (..)
     , DBTransaction
 
+      -- ** Queries
+      -- *** Inputs
+    , deleteInputsQry
+    , markInputsQry
+    , pruneInputsQry
+    , foldInputsQry
+      -- *** Checkpoints
+    , listCheckpointsQry
+    , listAncestorQry
+      -- *** Binary Data
+    , getBinaryDataQry
+    , pruneBinaryDataQry
+      -- *** Scripts
+    , getScriptQry
+      -- *** Rollback
+    , selectMaxCheckpointQry
+    , rollbackQry1
+    , rollbackQry2
+    , rollbackQry3
+
       -- * Setup
     , createShortLivedConnection
     , withLongLivedConnection
@@ -79,106 +99,112 @@ import GHC.TypeLits
 import Kupo.Control.MonadTime
     ( DiffTime
     )
+import Kupo.Data.Cardano
+    ( BinaryData
+    , DatumHash
+    , Point
+    , Script
+    , ScriptHash
+    , SlotNo (..)
+    )
 import Kupo.Data.Configuration
-    ( LongestRollback (..)
+    ( DeferIndexesInstallation (..)
+    , LongestRollback (..)
     )
 import Kupo.Data.Database
-    ( BinaryData (..)
-    , Checkpoint (..)
-    , Input (..)
-    , ScriptReference (..)
-    , SortDirection (..)
+    ( SortDirection (..)
+    , patternToSql
+    , statusFlagToSql
+    )
+import Kupo.Data.Http.StatusFlag
+    ( StatusFlag
+    )
+import Kupo.Data.Pattern
+    ( Pattern
+    , Result
+    , patternToText
     )
 import Numeric
     ( Floating (..)
     )
 
-import qualified Data.ByteString as BS
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
+import qualified Kupo.Data.Database as DB
 
 data Database (m :: Type -> Type) = Database
     { insertInputs
-        :: [Input]
+        :: [DB.Input]
         -> DBTransaction m ()
 
-    , deleteInputsByAddress
-        :: Text  -- An address-like query
+    , deleteInputs
+        :: Set Pattern
         -> DBTransaction m Int
 
-    , deleteInputsByReference
-        :: Set ByteString  -- Output references
-        -> DBTransaction m Int
-
-    , markInputsByReference
-        :: Word64 -- Slot
-        -> Set ByteString  -- Output references
+    , markInputs
+        :: SlotNo
+        -> Set Pattern
         -> DBTransaction m Int
 
     , pruneInputs
         :: DBTransaction m Int
 
     , foldInputs
-        :: Text  -- An address-like query
+        :: Pattern
+        -> StatusFlag
         -> SortDirection
-        -> (Input -> m ())
+        -> (Result -> m ())
+        -> DBTransaction m ()
+
+    , insertPolicies
+        :: Set DB.Policy
         -> DBTransaction m ()
 
     , insertCheckpoints
-        :: [Checkpoint]
+        :: [Point]
         -> DBTransaction m ()
 
     , listCheckpointsDesc
-        :: forall checkpoint. ()
-        => (Checkpoint -> checkpoint)
-        -> DBTransaction m [checkpoint]
+        :: DBTransaction m [Point]
 
     , listAncestorsDesc
-        :: forall checkpoint. ()
-        => Word64 -- Slot
+        :: SlotNo
         -> Int64 -- Number of ancestors to retrieve
-        -> (Checkpoint -> checkpoint)
-        -> DBTransaction m [checkpoint]
+        -> DBTransaction m [Point]
 
     , insertPatterns
-        :: [Text]
+        :: [Pattern]
         -> DBTransaction m ()
 
     , deletePattern
-        :: Text
+        :: Pattern
         -> DBTransaction m Int
 
     , listPatterns
-        :: forall result. ()
-        => (Text -> result)
-        -> DBTransaction m [result]
+        :: DBTransaction m [Pattern]
 
     , insertBinaryData
-        :: [BinaryData]
+        :: [DB.BinaryData]
         -> DBTransaction m ()
 
     , getBinaryData
-        :: forall binaryData. ()
-        => ByteString -- binary_data_hash
-        -> (BinaryData -> binaryData)
-        -> DBTransaction m (Maybe binaryData)
+        :: DatumHash
+        -> DBTransaction m (Maybe BinaryData)
 
     , pruneBinaryData
         :: DBTransaction m Int
 
     , insertScripts
-        :: [ScriptReference]
+        :: [DB.ScriptReference]
         -> DBTransaction m ()
 
     , getScript
-        :: forall script. ()
-        => ByteString -- script_hash
-        -> (ScriptReference -> script)
-        -> DBTransaction m (Maybe script)
+        :: ScriptHash
+        -> DBTransaction m (Maybe Script)
 
     , rollbackTo
-        :: Word64  -- slot_no
-        -> DBTransaction m (Maybe Word64)
+        :: SlotNo
+        -> DBTransaction m (Maybe SlotNo)
 
     , runTransaction
         :: forall a. ()
@@ -271,14 +297,17 @@ withLongLivedConnection
     -> DBLock IO
     -> LongestRollback
     -> DatabaseFile
+    -> DeferIndexesInstallation
     -> (Database IO -> IO a)
     -> IO a
-withLongLivedConnection tr (DBLock shortLived longLived) k file action = do
+withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes action = do
     withConnection (mkConnectionString file ReadWrite) $ \conn -> do
         databaseVersion conn >>= runMigrations tr conn
+        installIndexes tr conn deferIndexes
         execute_ conn "PRAGMA synchronous = NORMAL"
         execute_ conn "PRAGMA journal_mode = WAL"
         execute_ conn "PRAGMA page_size = 16184"
+        execute_ conn "PRAGMA foreign_keys = ON"
         action (mkDatabase (contramap DatabaseConnection tr) ReadWrite k (bracketConnection conn))
   where
     bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
@@ -310,14 +339,16 @@ mkDatabase
     -> Database IO
 mkDatabase tr mode longestRollback bracketConnection = Database
     { longestRollback
+
     , close = do
         traceWith tr ConnectionDestroyShortLived{mode}
         bracketConnection Sqlite.close
+
     , insertInputs = \inputs -> ReaderT $ \conn -> do
         mapM_
-            (\Input{..} -> do
+            (\DB.Input{..} -> do
                 insertRow @"inputs" conn
-                    [ SQLBlob outputReference
+                    [ SQLBlob extendedOutputReference
                     , SQLText address
                     , SQLBlob value
                     , maybe SQLNull SQLBlob datumHash
@@ -328,7 +359,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                 case datum of
                     Nothing ->
                         pure ()
-                    Just BinaryData{..} ->
+                    Just DB.BinaryData{..} ->
                         insertRow @"binary_data" conn
                             [ SQLBlob binaryDataHash
                             , SQLBlob binaryData
@@ -336,7 +367,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                 case refScript of
                     Nothing ->
                         pure ()
-                    Just ScriptReference{..} ->
+                    Just DB.ScriptReference{..} ->
                         insertRow @"scripts" conn
                             [ SQLBlob scriptHash
                             , SQLBlob script
@@ -344,76 +375,33 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             )
             inputs
 
-    , deleteInputsByAddress = \addressLike -> ReaderT $ \conn -> do
-        let qry = Query $ "DELETE FROM inputs WHERE " <> addressLike
-        execute_ conn qry
-        changes conn
+    , deleteInputs = \(toList -> refs) -> ReaderT $ \conn -> do
+        fmap sum $ forM refs $ \ref -> do
+            execute_ conn (deleteInputsQry ref)
+            changes conn
+
+    , markInputs = \(fromIntegral . unSlotNo -> slotNo) (toList -> refs) -> ReaderT $ \conn -> do
+        fmap sum $ forM refs $ \ref -> do
+            execute conn (markInputsQry ref)
+                [ SQLInteger slotNo
+                ]
+            changes conn
 
     , pruneInputs = ReaderT $ \conn -> do
         traceWith tr (ConnectionBeginQuery "pruneInputs")
-        -- NOTE: There's a (not-so) pointless query on the 'address' column
-        -- to force SQLite to use the compound index 'inputsByAddress' which
-        -- drastically speed up the query. Indeed, SQLite will only use an index
-        -- if the left-most column(s) of an index are used in a WHERE or ORDER
-        -- BY clause.
-        -- Incidentally, the clause has no effect on the filtering because all
-        -- stored addresses start with  '0'.
-        let qry = "DELETE FROM inputs \
-                  \WHERE address LIKE '0%' AND spent_at < ( \
-                  \  (SELECT MAX(slot_no) FROM checkpoints) - ?\
-                  \)"
-        execute conn qry [ SQLInteger (fromIntegral longestRollback) ]
+        withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $ do
+            execute conn pruneInputsQry [ SQLInteger (fromIntegral longestRollback) ]
         traceWith tr (ConnectionExitQuery "pruneInputs")
         changes conn
 
-    , deleteInputsByReference = \(toList -> refs) -> ReaderT $ \conn -> do
-        fmap sum $ forM refs $ \ref ->  do
-            let qry = "DELETE FROM inputs WHERE output_reference >= ? AND output_reference <= ?"
-            execute conn qry
-                [ SQLBlob (ref <> BS.replicate 2 minBound)
-                , SQLBlob (ref <> BS.replicate 2 maxBound)
-                ]
-            changes conn
-
-    , markInputsByReference = \(fromIntegral -> slotNo) (toList -> refs) -> ReaderT $ \conn -> do
-        fmap sum $ forM refs $ \ref -> do
-            let qry = "UPDATE inputs SET spent_at = ? WHERE output_reference >= ? AND output_reference <= ?"
-            execute conn qry
-                [ SQLInteger slotNo
-                , SQLBlob (ref <> BS.replicate 2 minBound)
-                , SQLBlob (ref <> BS.replicate 2 maxBound)
-                ]
-            changes conn
-
-    , foldInputs = \whereClause sortDirection yield -> ReaderT $ \conn -> do
+    , foldInputs = \pattern_ statusFlag sortDirection yield -> ReaderT $ \conn -> do
         traceWith tr (ConnectionBeginQuery "foldInputs")
-        let qry = "SELECT \
-                    \output_reference, address, value, datum_hash, script_hash ,\
-                    \created_at, createdAt.header_hash, \
-                    \spent_at, spentAt.header_hash \
-                  \FROM inputs \
-                  \JOIN \
-                    \checkpoints AS createdAt ON createdAt.slot_no = created_at \
-                  \LEFT OUTER JOIN \
-                    \checkpoints AS spentAt ON spentAt.slot_no = spent_at \
-                  \WHERE "
-                    <> whereClause <> " \
-                  \ORDER BY \
-                    \created_at " <> ordering <> ", \
-                    \substr(output_reference, -2) " <> ordering <> ", \
-                    \substr(output_reference, -4, 2) " <> ordering
-              where
-                ordering = case sortDirection of
-                    Asc -> "ASC"
-                    Desc -> "DESC"
-
         -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
         --
         -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
         let (datum, refScript) = (Nothing, Nothing)
-
-        Sqlite.fold_ conn (Query qry) () $ \() -> \case
-            [  SQLBlob outputReference
+        Sqlite.fold_ conn (foldInputsQry pattern_ statusFlag sortDirection) () $ \() -> \case
+            [  SQLBlob extendedOutputReference
              , SQLText address
              , SQLBlob value
              , matchMaybeBytes -> datumHash
@@ -423,14 +411,24 @@ mkDatabase tr mode longestRollback bracketConnection = Database
              , matchMaybeWord64 -> spentAtSlotNo
              , matchMaybeBytes -> spentAtHeaderHash
              ] ->
-                yield Input{..}
+                yield (DB.resultFromRow DB.Input{..})
             (xs :: [SQLData]) ->
-                throwIO (UnexpectedRow whereClause [xs])
+                throwIO (UnexpectedRow (patternToText pattern_) [xs])
         traceWith tr (ConnectionExitQuery "foldInputs")
+
+    , insertPolicies = \policies -> ReaderT $ \conn ->
+        mapM_
+            (\DB.Policy{..} -> do
+                insertRow @"policies" conn
+                    [ SQLBlob outputReference
+                    , SQLBlob policyId
+                    ]
+            )
+            policies
 
     , insertCheckpoints = \cps -> ReaderT $ \conn -> do
         mapM_
-            (\Checkpoint{..} ->
+            (\(DB.pointToRow -> DB.Checkpoint{..}) ->
                 insertRow @"checkpoints" conn
                     [ SQLBlob checkpointHeaderHash
                     , SQLInteger (fromIntegral checkpointSlotNo)
@@ -438,7 +436,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             )
             cps
 
-    , listCheckpointsDesc = \mk -> ReaderT $ \conn -> do
+    , listCheckpointsDesc = ReaderT $ \conn -> do
         let k = fromIntegral longestRollback
         let points =
                 [ 0, 10 .. k `div` 2 ^ n ]
@@ -446,36 +444,29 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                 [ k `div` (2 ^ e) | (e :: Integer) <- [ n-1, n-2 .. 0 ] ]
               where
                 n = ceiling (log (fromIntegral @_ @Double k))
-        let qry = "SELECT * FROM checkpoints \
-                  \WHERE slot_no >= ((SELECT MAX(slot_no) FROM checkpoints) - ?) \
-                  \ORDER BY slot_no ASC \
-                  \LIMIT 1"
-        fmap (fmap mk . nubOn checkpointSlotNo . mconcat) $ forM points $ \pt ->
-            Sqlite.fold conn qry [SQLInteger pt] [] $
+        fmap (fmap DB.pointFromRow . nubOn DB.checkpointSlotNo . mconcat) $ forM points $ \pt ->
+            Sqlite.fold conn listCheckpointsQry [SQLInteger pt] [] $
                 \xs (checkpointHeaderHash, checkpointSlotNo) ->
-                    pure (Checkpoint{..} : xs)
+                    pure (DB.Checkpoint{..} : xs)
 
-    , listAncestorsDesc = \slotNo n mk -> ReaderT $ \conn -> do
-        let qry = "SELECT * FROM checkpoints \
-                  \WHERE slot_no < ? \
-                  \ORDER BY slot_no DESC \
-                  \LIMIT ?"
-        fmap reverse $ Sqlite.fold conn qry (SQLInteger <$> [fromIntegral slotNo, n]) [] $
-            \xs (checkpointHeaderHash, checkpointSlotNo) ->
-                pure ((mk Checkpoint{..}) : xs)
+    , listAncestorsDesc = \(SlotNo slotNo) n -> ReaderT $ \conn -> do
+        fmap reverse $
+            Sqlite.fold conn listAncestorQry (SQLInteger <$> [fromIntegral slotNo, n]) [] $
+                \xs (checkpointHeaderHash, checkpointSlotNo) ->
+                    pure ((DB.pointFromRow DB.Checkpoint{..}) : xs)
 
     , insertPatterns = \patterns -> ReaderT $ \conn -> do
         mapM_
-            (\p ->
+            (\pattern_ ->
                 insertRow @"patterns" conn
-                    [ SQLText p
+                    [ SQLText (patternToText pattern_)
                     ]
             )
             patterns
 
     , insertBinaryData = \bin -> ReaderT $ \conn -> do
         mapM_
-            (\BinaryData{..} ->
+            (\DB.BinaryData{..} ->
                 insertRow @"binary_data" conn
                     [ SQLBlob binaryDataHash
                     , SQLBlob binaryData
@@ -483,39 +474,22 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             )
             bin
 
-    , getBinaryData = \binaryDataHash mk -> ReaderT $ \conn -> do
-        let qry = "SELECT binary_data FROM binary_data \
-                  \WHERE binary_data_hash = ? \
-                  \LIMIT 1"
-        Sqlite.query conn qry (Only (SQLBlob binaryDataHash)) <&> \case
+    , getBinaryData = \(DB.datumHashToRow -> binaryDataHash) -> ReaderT $ \conn -> do
+        Sqlite.query conn getBinaryDataQry (Only (SQLBlob binaryDataHash)) <&> \case
             [[SQLBlob binaryData]] ->
-                Just (mk BinaryData{..})
+                Just (DB.binaryDataFromRow DB.BinaryData{..})
             _notSQLBlob ->
                 Nothing
 
     , pruneBinaryData = ReaderT $ \conn -> do
         traceWith tr (ConnectionBeginQuery "pruneBinaryData")
-        -- NOTE: This removes all binary_data that aren't associted with any
-        -- known input. The 'ORDER BY' at the end may seem pointless but is
-        -- actually CRUCIAL for the query performance as it forces SQLite to use
-        -- the availables indexes of both tables on 'data_hash' and
-        -- 'binary_data_hash'. Without that, this query may take 1h+ on a large
-        -- database (e.g. mainnet matching '*').
-        let qry = " DELETE FROM binary_data \
-                  \ WHERE binary_data_hash IN ( \
-                  \   SELECT binary_data_hash FROM binary_data \
-                  \   LEFT JOIN inputs \
-                  \   ON binary_data_hash = inputs.datum_hash \
-                  \   WHERE inputs.output_reference IS NULL \
-                  \   ORDER BY inputs.datum_hash \
-                  \ );"
-        execute_ conn qry
+        execute_ conn pruneBinaryDataQry
         traceWith tr (ConnectionExitQuery "pruneBinaryData")
         changes conn
 
     , insertScripts = \scripts -> ReaderT $ \conn -> do
         mapM_
-            (\ScriptReference{..} ->
+            (\DB.ScriptReference{..} ->
                 insertRow @"scripts" conn
                     [ SQLBlob scriptHash
                     , SQLBlob script
@@ -523,29 +497,26 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             )
             scripts
 
-    , getScript = \scriptHash mk -> ReaderT $ \conn -> do
-        let qry = "SELECT script FROM scripts \
-                  \WHERE script_hash = ? \
-                  \LIMIT 1"
-        Sqlite.query conn qry (Only (SQLBlob scriptHash)) <&> \case
+    , getScript = \(DB.scriptHashToRow -> scriptHash)-> ReaderT $ \conn -> do
+        Sqlite.query conn getScriptQry (Only (SQLBlob scriptHash)) <&> \case
             [[SQLBlob script]] ->
-                Just (mk ScriptReference{..})
+                Just (DB.scriptFromRow DB.ScriptReference{..})
             _notSQLBlob ->
                 Nothing
 
-    , deletePattern = \p -> ReaderT $ \conn -> do
+    , deletePattern = \pattern_-> ReaderT $ \conn -> do
         execute conn "DELETE FROM patterns WHERE pattern = ?"
-            [ SQLText p
+            [ SQLText (DB.patternToRow pattern_)
             ]
         changes conn
 
-    , listPatterns = \mk -> ReaderT $ \conn -> do
+    , listPatterns = ReaderT $ \conn -> do
         fold_ conn "SELECT * FROM patterns" []
-            $ \xs (Only x) -> pure (mk x:xs)
+            $ \xs (Only x) -> pure (DB.patternFromRow x:xs)
 
-    , rollbackTo = \slotNo -> ReaderT $ \conn -> do
+    , rollbackTo = \(SlotNo slotNo) -> ReaderT $ \conn -> do
         let slotNoVar = SQLInteger (fromIntegral slotNo)
-        query_ conn "SELECT MAX(slot_no) FROM checkpoints" >>= \case
+        query_ conn selectMaxCheckpointQry >>= \case
             -- NOTE: Rolling back takes quite a bit of time and, when restarting
             -- the application, we'll always be asked to rollback to the
             -- _current tip_. In this case, there's nothing to delete or update,
@@ -554,15 +525,11 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                 pure ()
             _otherwise -> do
                 traceWith tr $ ConnectionBeginQuery "rollbackTo"
-                execute conn "DELETE FROM inputs WHERE created_at > ?"
-                    [ slotNoVar
-                    ]
-                execute conn "UPDATE inputs SET spent_at = NULL WHERE address LIKE '0%' AND spent_at > ?"
-                    [ slotNoVar
-                    ]
-                execute conn "DELETE FROM checkpoints WHERE slot_no > ?"
-                    [ slotNoVar
-                    ]
+                withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $
+                    withTemporaryIndex tr conn "inputsByCreatedAt" "inputs(created_at)" $ do
+                        execute conn rollbackQry1 [ slotNoVar ]
+                        execute conn rollbackQry2 [ slotNoVar ]
+                        execute conn rollbackQry3 [ slotNoVar ]
                 traceWith tr $ ConnectionExitQuery "rollbackTo"
         -- NOTE: It is good to run the 'PRAGMA optimize' every now-and-then. The
         -- SQLite's official documentation recommend to do so either upon
@@ -571,7 +538,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
         -- after a rollback, a lot of things gets re-organized in the database
         -- so it's a good opportunity to tidy things up.
         execute_ conn "PRAGMA optimize"
-        query_ conn "SELECT MAX(slot_no) FROM checkpoints" >>= \case
+        query_ conn selectMaxCheckpointQry >>= \case
             [[SQLInteger slotNo']] ->
                 return $ Just (fromIntegral slotNo')
             [[SQLNull]] ->
@@ -598,6 +565,101 @@ insertRow conn r =
      in
         execute conn qry r
 
+deleteInputsQry :: Pattern -> Query
+deleteInputsQry pattern_ =
+    Query $ "DELETE FROM inputs " <> patternToSql pattern_
+
+markInputsQry :: Pattern -> Query
+markInputsQry pattern_ =
+    Query $ "UPDATE inputs SET spent_at = ? " <> patternToSql pattern_
+
+pruneInputsQry :: Query
+pruneInputsQry =
+    "DELETE FROM inputs \
+    \WHERE spent_at < ( \
+    \  (SELECT MAX(slot_no) FROM checkpoints) - ?\
+    \)"
+
+foldInputsQry :: Pattern -> StatusFlag -> SortDirection -> Query
+foldInputsQry pattern_ statusFlag sortDirection = Query $
+    "SELECT \
+      \ext_output_reference, address, value, datum_hash, script_hash ,\
+      \created_at, createdAt.header_hash, \
+      \spent_at, spentAt.header_hash \
+    \FROM inputs \
+    \JOIN \
+      \checkpoints AS createdAt ON createdAt.slot_no = created_at \
+    \LEFT OUTER JOIN \
+      \checkpoints AS spentAt ON spentAt.slot_no = spent_at "
+    <> patternToSql pattern_ <> " " <> statusFlagToSql statusFlag <> " \
+    \ORDER BY \
+      \created_at " <> ordering <> ", \
+      \transaction_index " <> ordering <> ", \
+      \output_index " <> ordering
+  where
+    ordering = case sortDirection of
+        Asc -> "ASC"
+        Desc -> "DESC"
+
+listCheckpointsQry :: Query
+listCheckpointsQry =
+    "SELECT * FROM checkpoints \
+    \WHERE slot_no >= ((SELECT MAX(slot_no) FROM checkpoints) - ?) \
+    \ORDER BY slot_no ASC \
+    \LIMIT 1"
+
+listAncestorQry :: Query
+listAncestorQry =
+    "SELECT * FROM checkpoints \
+    \WHERE slot_no < ? \
+    \ORDER BY slot_no DESC \
+    \LIMIT ?"
+
+getBinaryDataQry :: Query
+getBinaryDataQry =
+    "SELECT binary_data FROM binary_data \
+    \WHERE binary_data_hash = ? \
+    \LIMIT 1"
+
+-- NOTE: This removes all binary_data that aren't associted with any
+-- known input. The 'ORDER BY' at the end may seem pointless but is
+-- actually CRUCIAL for the query performance as it forces SQLite to use
+-- the availables indexes of both tables on 'data_hash' and
+-- 'binary_data_hash'. Without that, this query may take 1h+ on a large
+-- database (e.g. mainnet matching '*').
+pruneBinaryDataQry :: Query
+pruneBinaryDataQry =
+    " DELETE FROM binary_data \
+    \ WHERE binary_data_hash IN ( \
+    \   SELECT binary_data_hash FROM binary_data \
+    \   LEFT JOIN inputs \
+    \   ON binary_data_hash = inputs.datum_hash \
+    \   WHERE inputs.ext_output_reference IS NULL \
+    \   ORDER BY inputs.datum_hash \
+    \ )"
+
+getScriptQry :: Query
+getScriptQry =
+    "SELECT script FROM scripts \
+    \WHERE script_hash = ? \
+    \LIMIT 1"
+
+selectMaxCheckpointQry :: Query
+selectMaxCheckpointQry =
+    "SELECT MAX(slot_no) FROM checkpoints"
+
+rollbackQry1 :: Query
+rollbackQry1 =
+    "DELETE FROM inputs WHERE created_at > ?"
+
+rollbackQry2 :: Query
+rollbackQry2 =
+    "UPDATE inputs SET spent_at = NULL WHERE spent_at > ?"
+
+rollbackQry3 :: Query
+rollbackQry3 =
+    "DELETE FROM checkpoints WHERE slot_no > ?"
+
 --
 -- Helpers
 --
@@ -623,7 +685,6 @@ retryWhenBusy tr action =
     )
   where
     retryingIn = 0.1
-
 
 -- NOTE: Not using sqlite-simple's version because it lacks the crucial
 -- 'onException' on commits; The commit operation may throw an 'SQLiteBusy'
@@ -661,6 +722,96 @@ matchMaybeWord64 = \case
     SQLInteger (fromIntegral -> wrd) -> Just wrd
     _notSQLInteger -> Nothing
 {-# INLINABLE matchMaybeWord64 #-}
+
+--
+-- Indexes
+--
+
+-- | Install database indexes if they do not already exists. Database indexes
+-- make queries faster but they tend to make overall synchronization faster. Thus, when synchronizing
+-- from scratch or over a long window it may be good idea to defer installation of some non-essential
+-- database indexes.
+installIndexes
+    :: Tracer IO TraceDatabase
+    -> Connection
+    -> DeferIndexesInstallation
+    -> IO ()
+installIndexes tr conn = \case
+    SkipNonEssentialIndexes -> do
+        indexDoesExist conn "inputsByAddress" >>= \case
+            True  -> do
+                traceWith tr $ DatabaseDeferIndexes
+                    "Asked to defer creation of database indexes but they already exist: did you \
+                    \already start the indexer once and forgot to defer creation of indexes? \
+                    \Consider creating the database anew and deferring indexes from the start if this \
+                    \is indeed the intention."
+            False -> do
+                traceWith tr $ DatabaseDeferIndexes
+                    "Creation of lookup indexes has been deferred: synchronization will be faster \
+                    \but many queries will also be a lot longer. Consider installing indexes once \
+                    \synchronization is done to speed up queries."
+    InstallIndexesIfNotExist -> do
+        installIndex tr conn
+            "inputsByAddress"
+            "inputs(address COLLATE NOCASE, spent_at)"
+        installIndex tr conn
+            "inputsByPaymentCredential"
+            "inputs(payment_credential COLLATE NOCASE, spent_at)"
+        installIndex tr conn
+            "inputsByDatumHash"
+            "inputs(datum_hash)"
+        installIndex tr conn
+            "inputsBySpentAt"
+            "inputs(spent_at)"
+        installIndex tr conn
+            "inputsByCreatedAt"
+            "inputs(created_at)"
+
+-- Create the given index with some extra logging around it.
+installIndex :: Tracer IO TraceDatabase -> Connection -> Text -> Text -> IO ()
+installIndex tr conn name definition = do
+    indexDoesExist conn name >>= \case
+        False -> do
+            traceWith tr (DatabaseCreateIndex name)
+            execute_ conn $ Query $ unwords
+                [ "CREATE INDEX IF NOT EXISTS"
+                , name
+                , "ON"
+                , definition
+                ]
+        True ->
+            traceWith tr (DatabaseIndexAlreadyExists name)
+
+-- This creates an index on-the-fly if it is missing to make the subsequent queries fast-enough on
+-- large databases. If the index was not there, it is removed afterwards. Otherwise, it is simply used
+-- as such.
+withTemporaryIndex :: Tracer IO TraceConnection -> Connection -> Text -> Text -> IO a -> IO a
+withTemporaryIndex tr conn name definition action = do
+    exists <- indexDoesExist conn "inputsByCreatedAt"
+    unless exists $ traceWith tr (ConnectionCreateTemporaryIndex name)
+    execute_ conn $ Query $ unwords
+        [ "CREATE INDEX IF NOT EXISTS"
+        , name
+        , "ON"
+        , definition
+        ]
+    a <- action
+    unless exists $ do
+        traceWith tr (ConnectionRemoveTemporaryIndex name)
+        execute_ conn $ Query $ unwords
+            [ "DROP INDEX"
+            , name
+            ]
+    return a
+
+-- | Check whether an index exists in the database. Handy to customize the behavior (e.g. logging)
+-- depending on whether or not indexes are already there since 'CREATE INDEX IF NOT EXISTS' will not
+-- tell whether or not it has indeed created something.
+indexDoesExist :: Connection -> Text -> IO Bool
+indexDoesExist conn name =
+    query_ @[SQLData] conn (Query $ "PRAGMA index_info('" <> name <> "')") <&> \case
+        [] -> False
+        _doesExist -> True
 
 --
 -- Migrations
@@ -709,6 +860,7 @@ migrations =
         , $(embedFile "db/v2.0.0-beta/001.sql")
         , $(embedFile "db/v2.1.0/001.sql")
         , $(embedFile "db/v2.1.0/002.sql")
+        , $(embedFile "db/v2.1.0/003.sql")
         ]
     ]
   where
@@ -750,6 +902,15 @@ data TraceDatabase where
     DatabaseRunningMigration
         :: { from :: Int, to :: Int }
         -> TraceDatabase
+    DatabaseCreateIndex
+        :: { newIndex :: Text }
+        -> TraceDatabase
+    DatabaseIndexAlreadyExists
+        :: { index :: Text }
+        -> TraceDatabase
+    DatabaseDeferIndexes
+        :: { warning :: Text }
+        -> TraceDatabase
     DatabaseRunningInMemory
         :: TraceDatabase
     deriving stock (Generic, Show)
@@ -765,6 +926,9 @@ instance HasSeverityAnnotation TraceDatabase where
         DatabaseNoMigrationNeeded{}    -> Debug
         DatabaseRunningMigration{}     -> Notice
         DatabaseRunningInMemory{}      -> Warning
+        DatabaseCreateIndex{}          -> Notice
+        DatabaseIndexAlreadyExists{}   -> Debug
+        DatabaseDeferIndexes{}         -> Warning
 
 data TraceConnection where
     ConnectionCreateShortLived
@@ -785,6 +949,12 @@ data TraceConnection where
     ConnectionExitQuery
         :: { exitQuery :: Text }
         -> TraceConnection
+    ConnectionCreateTemporaryIndex
+        :: { newTemporaryIndex :: Text }
+        -> TraceConnection
+    ConnectionRemoveTemporaryIndex
+        :: { dropTemporaryIndex :: Text }
+        -> TraceConnection
     deriving stock (Generic, Show)
 
 instance ToJSON TraceConnection where
@@ -793,9 +963,11 @@ instance ToJSON TraceConnection where
 
 instance HasSeverityAnnotation TraceConnection where
     getSeverityAnnotation = \case
-        ConnectionCreateShortLived{}  -> Debug
-        ConnectionDestroyShortLived{} -> Debug
-        ConnectionLocked{}            -> Debug
-        ConnectionBusy{}              -> Debug
-        ConnectionBeginQuery{}        -> Debug
-        ConnectionExitQuery{}         -> Debug
+        ConnectionCreateShortLived{}     -> Debug
+        ConnectionDestroyShortLived{}    -> Debug
+        ConnectionLocked{}               -> Debug
+        ConnectionBusy{}                 -> Debug
+        ConnectionBeginQuery{}           -> Debug
+        ConnectionExitQuery{}            -> Debug
+        ConnectionCreateTemporaryIndex{} -> Notice
+        ConnectionRemoveTemporaryIndex{} -> Debug

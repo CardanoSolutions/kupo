@@ -62,6 +62,7 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
+    , DeferIndexesInstallation (..)
     , InputManagement (..)
     , WorkDir (..)
     )
@@ -128,6 +129,7 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> pure 129600 -- TODO: should be pulled from genesis parameters
                     <*> garbageCollectionIntervalOption
                     <*> maxConcurrencyOption
+                    <*> deferIndexesOption
                 )
             <*> (tracersOption <|> Tracers
                     <$> fmap Const (logLevelOption "http-server")
@@ -140,8 +142,7 @@ parserInfo = info (helper <*> parser) $ mempty
 
     footer' = hsep
         [ "See more details on <https://cardanosolutions.github.io/kupo/> or in the manual for"
-        , bold "kupo(1)"
-        , "(i.e. `man kupo`)"
+        , bold "kupo(1)."
         ]
 
 --
@@ -255,10 +256,7 @@ patternOption = option (maybeReader (patternFromText . toText)) $ mempty
 inputManagementOption :: Parser InputManagement
 inputManagementOption = flag MarkSpentInputs RemoveSpentInputs $ mempty
     <> long "prune-utxo"
-    <> helpDoc (Just doc)
-  where
-    doc =
-        string "When enabled, eventually remove inputs from the index when spent, instead of marking them as 'spent'."
+    <> help "When enabled, eventually remove inputs from the index when spent, instead of marking them as 'spent'."
 
 -- | [--gc-interval=SECONDS]
 garbageCollectionIntervalOption :: Parser DiffTime
@@ -266,7 +264,7 @@ garbageCollectionIntervalOption = option diffTime $ mempty
     <> long "gc-interval"
     <> metavar "SECONDS"
     <> help "Number of seconds between background database garbage collections pruning obsolete or unnecessary data."
-    <> value 600
+    <> value 300
     <> showDefault
 
 -- | [--max-concurrency=INT]
@@ -283,6 +281,14 @@ maxConcurrencyOption = option (eitherReader readerMaxConcurrency) $ mempty
         unless (T.null remMaxN) $ fail "should be an integer but isn't"
         unless (maxN >= 10) $ fail "should be at least greater than 10"
         pure maxN
+
+-- | [--defer-db-indexes]
+deferIndexesOption :: Parser DeferIndexesInstallation
+deferIndexesOption = flag InstallIndexesIfNotExist SkipNonEssentialIndexes $ mempty
+    <> long "defer-db-indexes"
+    <> help "When enabled, defer the creation of database indexes to the next start. \
+            \This is useful to make the first-ever synchronization faster but will make certain \
+            \queries considerably slower."
 
 -- | [--log-level-{COMPONENT}=SEVERITY], default: Info
 logLevelOption :: Text -> Parser (Maybe Severity)

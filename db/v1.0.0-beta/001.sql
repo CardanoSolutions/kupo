@@ -7,8 +7,6 @@ CREATE TABLE IF NOT EXISTS inputs (
   PRIMARY KEY (output_reference)
 );
 
-CREATE INDEX IF NOT EXISTS inputsByAddress ON inputs(address);
-
 CREATE TABLE IF NOT EXISTS checkpoints (
   header_hash BLOB NOT NULL,
   slot_no INTEGER NOT NULL,

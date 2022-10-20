@@ -10,6 +10,4 @@ CREATE TABLE IF NOT EXISTS inputs (
   PRIMARY KEY (output_reference)
 );
 
-CREATE INDEX IF NOT EXISTS inputsByAddress ON inputs(address);
-
 DELETE FROM checkpoints;

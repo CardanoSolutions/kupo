@@ -102,6 +102,7 @@ import Kupo.Data.ChainSync
     )
 import Kupo.Data.Configuration
     ( Configuration (..)
+    , DeferIndexesInstallation (..)
     , InputManagement (..)
     , LongestRollback (..)
     , WorkDir (..)
@@ -240,6 +241,7 @@ spec = do
                         , longestRollback
                         , garbageCollectionInterval
                         , maxConcurrency
+                        , deferIndexes
                         }
                 env <- run (newEnvironment config)
                 producer <- run (newMockProducer <$> atomically (dupTChan chan))
@@ -274,6 +276,7 @@ spec = do
     longestRollback = 10
     garbageCollectionInterval = 0.4
     maxConcurrency = 50
+    deferIndexes = InstallIndexesIfNotExist
     tracers = configureTracers (defaultTracers Nothing) nullTracer
 
 --------------------------------------------------------------------------------

@@ -56,13 +56,6 @@ import Kupo.Data.Cardano
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
     )
-import Kupo.Data.Database
-    ( binaryDataToRow
-    , patternToRow
-    , pointToRow
-    , resultToRow
-    , scriptToRow
-    )
 import Kupo.Data.Health
     ( ConnectionStatus (..)
     , Health (..)
@@ -102,13 +95,11 @@ import Test.Hspec.QuickCheck
     )
 import Test.Kupo.Data.Generators
     ( genBinaryData
-    , genDatumHash
     , genMetadata
     , genNonGenesisPoint
     , genPattern
     , genResult
     , genScript
-    , genScriptHash
     , genTransactionId
     , generateWith
     )
@@ -529,52 +520,48 @@ databaseStub = Database
         return ()
     , insertInputs =
         \_ -> return ()
-    , foldInputs = \_ _ callback -> lift $ do
-        rows <- fmap resultToRow <$> generate (listOf1 genResult)
+    , foldInputs = \_ _ _ callback -> lift $ do
+        rows <- generate (listOf1 genResult)
         mapM_ callback rows
-    , deleteInputsByAddress =
+    , deleteInputs =
         \_ -> liftIO (abs <$> generate arbitrary)
-    , deleteInputsByReference =
-        \_ -> lift (generate arbitrary)
-    , markInputsByReference =
+    , markInputs =
         \_ _ -> lift (generate arbitrary)
     , pruneInputs =
         liftIO (generate arbitrary)
+    , insertPolicies =
+        \_ -> return ()
     , insertCheckpoints =
         \_ -> return ()
-    , listCheckpointsDesc = \mk -> lift $ do
-        fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
-    , listAncestorsDesc = \sl n mk -> lift $ do
+    , listCheckpointsDesc = lift $ do
+        generate (listOf1 genNonGenesisPoint)
+    , listAncestorsDesc = \sl n -> lift $ do
         case n of
             1 -> do
                 let headerHash = unsafeHeaderHashFromBytes $ unsafeDecodeBase16
                         "0000000000000000000000000000000000000000000000000000000000000000"
-                let point = BlockPoint (SlotNo (prev sl)) headerHash
-                pure [mk (pointToRow point)]
+                let point = BlockPoint (prev sl) headerHash
+                pure [point]
             _otherwise -> do
-                fmap (mk . pointToRow) <$> generate (listOf1 genNonGenesisPoint)
+                generate (listOf1 genNonGenesisPoint)
     , insertPatterns =
         \_ -> return ()
     , deletePattern =
         \_ -> liftIO (abs <$> generate arbitrary)
-    , listPatterns = \mk -> lift $ do
-        fmap (mk . patternToRow) <$> generate (listOf1 genPattern)
+    , listPatterns = lift $ do
+        generate (listOf1 genPattern)
     , insertBinaryData =
         \_ -> return ()
     , getBinaryData =
-        \_ mk -> liftIO $ generate $ do
-            binaryDataHash <- genDatumHash
-            binaryData <- oneof [pure Nothing, Just <$> genBinaryData]
-            pure $ mk . binaryDataToRow binaryDataHash <$> binaryData
+        \_ -> liftIO $ generate $ do
+            oneof [pure Nothing, Just <$> genBinaryData]
     , pruneBinaryData =
         liftIO (generate arbitrary)
     , insertScripts =
         \_ -> return ()
     , getScript =
-        \_ mk -> liftIO $ generate $ do
-            scriptHash <- genScriptHash
-            script <- oneof [pure Nothing, Just <$> genScript]
-            pure $ mk . scriptToRow scriptHash <$> script
+        \_ -> liftIO $ generate $ do
+            oneof [pure Nothing, Just <$> genScript]
     , rollbackTo =
         \_ -> return Nothing
     , runTransaction = \r ->
