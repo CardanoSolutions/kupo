@@ -264,7 +264,7 @@ garbageCollectionIntervalOption = option diffTime $ mempty
     <> long "gc-interval"
     <> metavar "SECONDS"
     <> help "Number of seconds between background database garbage collections pruning obsolete or unnecessary data."
-    <> value 300
+    <> value 3600
     <> showDefault
 
 -- | [--max-concurrency=INT]

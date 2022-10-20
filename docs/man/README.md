@@ -90,7 +90,7 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
 **--gc-interval**
 :   Number of seconds between background database garbage collections pruning obsolete or unnecessary data. Garbage collections are typically short (few seconds or less) and short remain unnoticed. This parameter exists however to give some level of control if necessary.
 
-    (default: *600s*).
+    (default: *3600s*).
 
 **--max-concurrency**
 :   Maximum number of concurrent connections to the database. This also seemingly refer to the maximum number of client requests that the server can handle in parallel, beyond which the server will return *503 Service Unavailable* errors as response to new requests.
