@@ -89,6 +89,7 @@ import Database.SQLite.Simple
     , fold_
     , nextRow
     , query_
+    , totalChanges
     , withConnection
     , withStatement
     )
@@ -375,17 +376,16 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             )
             inputs
 
-    , deleteInputs = \(toList -> refs) -> ReaderT $ \conn -> do
-        fmap sum $ forM refs $ \ref -> do
-            execute_ conn (deleteInputsQry ref)
-            changes conn
+    , deleteInputs = \refs -> ReaderT $ \conn -> do
+        withTotalChanges conn $
+            mapM_ (execute_ conn . deleteInputsQry) refs
 
-    , markInputs = \(fromIntegral . unSlotNo -> slotNo) (toList -> refs) -> ReaderT $ \conn -> do
-        fmap sum $ forM refs $ \ref -> do
-            execute conn (markInputsQry ref)
-                [ SQLInteger slotNo
-                ]
-            changes conn
+    , markInputs = \(fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> do
+        withTotalChanges conn $
+            forM_ refs $ \ref -> do
+                execute conn (markInputsQry ref)
+                    [ SQLInteger slotNo
+                    ]
 
     , pruneInputs = ReaderT $ \conn -> do
         traceWith tr (ConnectionBeginQuery "pruneInputs")
@@ -710,6 +710,15 @@ withTransaction conn mode action =
             execute_ conn "BEGIN IMMEDIATE TRANSACTION"
     commit   = execute_ conn "COMMIT TRANSACTION"
     rollback = execute_ conn "ROLLBACK TRANSACTION"
+
+-- Run one or more effectful queries (DELETE, UPDATE, ...) and return the total number
+-- of changes.
+withTotalChanges :: Connection -> IO () -> IO Int
+withTotalChanges conn between = do
+    n1 <- totalChanges conn
+    between
+    n2 <- totalChanges conn
+    return (n2 - n1)
 
 matchMaybeBytes :: SQLData -> Maybe ByteString
 matchMaybeBytes = \case
