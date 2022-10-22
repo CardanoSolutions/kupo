@@ -369,6 +369,7 @@ gardener tr config patterns withDatabase = forever $ do
                  in
                     (,) <$> pruneInputsWhenApplicable
                         <*> pruneBinaryDataWhenApplicable
+        runTransaction optimize
         logWith tr $ GardenerExitGarbageCollection
             { prunedInputs
             , prunedBinaryData

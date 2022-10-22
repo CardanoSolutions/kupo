@@ -207,6 +207,9 @@ data Database (m :: Type -> Type) = Database
         :: SlotNo
         -> DBTransaction m (Maybe SlotNo)
 
+    , optimize
+        :: DBTransaction  m ()
+
     , runTransaction
         :: forall a. ()
         => DBTransaction m a
@@ -339,6 +342,14 @@ mkDatabase
     -> Database IO
 mkDatabase tr mode longestRollback bracketConnection = Database
     { longestRollback
+
+    , optimize = ReaderT $ \conn -> do
+        -- NOTE: It is good to run the 'PRAGMA optimize' every now-and-then. The
+        -- SQLite's official documentation recommend to do so either upon
+        -- closing every connection, or, every few hours.
+        traceWith tr $ ConnectionBeginQuery "PRAGMA optimize"
+        execute_ conn "PRAGMA optimize"
+        traceWith tr $ ConnectionExitQuery "PRAGMA optimize"
 
     , close = do
         traceWith tr ConnectionDestroyShortLived{mode}
@@ -530,13 +541,6 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                         execute conn rollbackQry2 [ slotNoVar ]
                         execute conn rollbackQry3 [ slotNoVar ]
                 traceWith tr $ ConnectionExitQuery "rollbackTo"
-        -- NOTE: It is good to run the 'PRAGMA optimize' every now-and-then. The
-        -- SQLite's official documentation recommend to do so either upon
-        -- closing every connection, or, every few hours. We do it after rolling
-        -- back since this happens regularly but not too often, and, because
-        -- after a rollback, a lot of things gets re-organized in the database
-        -- so it's a good opportunity to tidy things up.
-        execute_ conn "PRAGMA optimize"
         query_ conn selectMaxCheckpointQry >>= \case
             [[SQLInteger slotNo']] ->
                 return $ Just (fromIntegral slotNo')

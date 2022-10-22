@@ -516,6 +516,8 @@ databaseStub :: Database IO
 databaseStub = Database
     { longestRollback =
         10
+    , optimize =
+        return ()
     , close =
         return ()
     , insertInputs =
