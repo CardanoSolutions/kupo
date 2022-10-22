@@ -259,8 +259,8 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
         isNonEmptyBlock <- runTransaction $ do
             insertCheckpoints (foldr ((:) . getPoint . snd) [] blks)
             insertInputs produced
-            nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot consumed
             insertPolicies policies
+            nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot consumed
             -- NOTE: In case where the user has entered a relatively restrictive
             -- pattern (e.g. one specific address), we do a best-effort at not
             -- storing all the garbage of the world and only store scripts and
