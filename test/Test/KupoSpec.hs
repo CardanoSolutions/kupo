@@ -181,30 +181,13 @@ varOgmiosPort = "OGMIOS_PORT"
 
 spec :: Spec
 spec = skippableContext "End-to-end" $ \manager -> do
-    specify "in memory" $ \(_, tr, cfg, httpLogs) -> do
-        env <- newEnvironment $ cfg
-            { workDir = InMemory
-            , since = Just GenesisPoint
-            , patterns = [MatchAny IncludingBootstrap]
-            }
-        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
-        let timeLimit = case chainProducer cfg of
-                CardanoNode{} -> 5
-                Ogmios{} -> 10
-        timeoutOrThrow timeLimit (debug httpLogs) $ race_
-            (kupo tr `runWith` env)
-            (do
-                waitUntilM $ do
-                    matches <- getAllMatches NoStatusFlag
-                    pure (length matches > 10)
-                healthCheck (serverHost cfg) (serverPort cfg)
-            )
-
     forM_ eraBoundaries $ \(era, point) -> specify ("quick sync through " <> era) $ \(_, tr, cfg, httpLogs) -> do
         env <- newEnvironment $ cfg
             { workDir = InMemory
+
             , since = Just point
             , patterns = [MatchAny IncludingBootstrap]
+            , deferIndexes = SkipNonEssentialIndexes
             }
         let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
         timeoutOrThrow 5 (debug httpLogs) $ race_
