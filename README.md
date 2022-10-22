@@ -31,7 +31,7 @@
 
 # Roadmap
 
-See [projects 🎯](https://github.com/CardanoSolutions/kupo/projects?type=classic).
+See [projects 🎯][roadmap] for planned tasks or [discussions 💡][discussions] for ongoing discussions regarding the future of Kupo.
 
 # System Requirements
 
@@ -132,6 +132,9 @@ Key differences(s): In a similar fashion to Carp, Marconi offers a modular index
 
 [testing strategy]: https://github.com/CardanoSolutions/kupo/tree/master/test#testing-strategy
 [user manual]: https://cardanosolutions.github.io/kupo
+[discussions]: https://github.com/CardanoSolutions/kupo/discussions/categories/ideas?discussions_q=category%3AIdeas+sort%3Atop
+[roadmap]: https://github.com/CardanoSolutions/kupo/projects?type=classic
+
 
 [^1]: The maximum memory usage depends on runtime flags and internal settings. This can be made lower if necessary (possibly as small as a hundred megabytes) by tweaking those settings. The obvious counter-part being slower synchronization times when syncing over large chunks of data. When synchronized, however, this has close to no impact.
 
