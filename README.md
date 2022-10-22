@@ -54,15 +54,25 @@ See [projects 🎯](https://github.com/CardanoSolutions/kupo/projects?type=class
 
 # Alternatives
 
-Kupo is well-suited for small applications which need either:
+Kupo is well-suited for small (or large) applications which need either:
 
-- a global chain index for resolving output references;
-- a on-the-fly monitoring of an address over a short period of time.
+- a global chain index for resolving outputs by address, policy id or output reference;
+- a on-the-fly monitoring of an address, policy id or specific transaction output over a short period of time.
 
 It runs in constant memory and is blazing fast. Yet, its use-cases are limited. Here below we provide some possible alternatives with different trade-offs:
 
 <details>
-  <summary>oura</summary>
+  <summary>Scrolls</summary>
+
+Key differences(s): Scrolls provides (at this stage) an in-memory aggregation engine via Redis. It allows applications to watch and react instantly on the evolution of some aggregated metric (see Scrolls' README for details about what metrics are supported). Because the data is fully stored in-memory, it is not possible to index the entire chain without resorting to large memory requirements. Hence it is more tailored to specific handpicked pieces of information. It also synchronizes blocks from the chain using the node-to-node protocol which means that it can do so on any remote node relay, but it is also slower (because a more defensive protocol) than the node-to-client protocol upon which Kupo relies.
+
+<p align="right">
+  <a href="https://github.com/txpipe/scrolls">Learn more</a>
+  </p>
+</details>
+
+<details>
+  <summary>Oura</summary>
 
 Key difference(s): Oura in itself does not provide any chain-indexing, but it supports pluggable sinks where filtered data from the Cardano blockchain can be dumped into (e.g. Elastic Search or Kafka). It also supports a wider variety of events. All-in-all, a good fit for more elaborate solutions.
 
@@ -72,20 +82,19 @@ Key difference(s): Oura in itself does not provide any chain-indexing, but it su
 </details>
 
 <details>
-  <summary>scrolls</summary>
+  <summary>Carp</summary>
 
-Key differences(s): Scrolls provides (at this stage) only an in-memory storage via Redis. This means that it's not possible to index the entire chain without resorting to large memory requirements. It also synchronizes blocks from the chain using the node-to-node protocol which means that it can do so on any remote node relay, but it is also slower (because a more defensive protocol) than the node-to-client protocol upon which Kupo relies.
+Key difference(s): Carp is a modular blockchain indexer built on top of Oura; it synchronizes data in a PostgreSQL database based on behaviors described in _tasks_ (Rust standalone plugins). Some pre-defined common tasks are already available, other can be written on-demand to fit one's use case. As a primary interface, Carps fully relies on PostgreSQL.
 
 <p align="right">
-  <a href="https://github.com/txpipe/scrolls">Learn more</a>
-  </p>
+  <a href="https://dcspark.github.io/carp/docs/intro/">Learn more</a>
+</p>
 </details>
-
 
 <details>
   <summary>cardano-db-sync</summary>
 
-Key difference(s): cardano-db-sync synchronizes ALL data from the Cardano blockchain, whereas Kupo focuses only on transaction outputs. This comes with obvious trade-offs in both on-disk storage but also runtime requirements.
+Key difference(s): cardano-db-sync synchronizes ALL data from the Cardano blockchain, whereas Kupo focuses only on transaction outputs. This comes with obvious trade-offs in both on-disk storage, runtime requirements and performances. Kupo is usually an order of magnitude faster for retrieving outputs by address, stake address or policy id. Note also that like Carp, cardano-db-sync's primary interface is a PostgreSQL database whereas Kupo offers a higher-level HTTP API over JSON.
 
 <p align="right">
   <a href="https://github.com/input-output-hk/cardano-db-sync#cardano-db-sync">Learn more</a>
@@ -93,19 +102,18 @@ Key difference(s): cardano-db-sync synchronizes ALL data from the Cardano blockc
 </details>
 
 <details>
-  <summary>plutus-chain-index</summary>
+  <summary>Marconi</summary>
 
-Key differences(s): the plutus-chain-index is the native component behind the PAB (Plutus Application Backend). It is however intended to be user-facing and as such, does not provide a friendly user experience for uses outside of the PAB's internals.
+Key differences(s): In a similar fashion to Carp, Marconi offers a modular indexer infrastructure where users can customize data streams through standalone plugins (however written in Haskell). It synchronizes data across multiple streams (utxo, datums and scripts), filters them based on custom plugins and stores them in a SQLite database. At this stage, Marconi is also in at an early development phase.
 
 <p align="right">
-  <a href="https://github.com/input-output-hk/plutus-apps/tree/main/plutus-chain-index-core#plutus-chain-index">Learn more</a>
+  <a href="https://github.com/input-output-hk/plutus-apps/tree/main/marconi#marconi">Learn more</a>
 </p>
 </details>
 
 ## Sponsors 💖
 
 <p align="center">
-  <a href="https://rraayy.com/"><img src="https://avatars.githubusercontent.com/u/65092852?v=4" width=50 /></a>
   <a href="https://sundaeswap.finance/"><img src="https://avatars.githubusercontent.com/u/83610786?v=4" width=50 /></a>
   <a href="https://github.com/savaki"><img src="https://avatars.githubusercontent.com/u/108710?v=4" width=50 /></a>
   <a href="https://blockfrost.io/"><img src="https://avatars.githubusercontent.com/u/70073210?v=4" width=50 /></a>
@@ -117,10 +125,8 @@ Key differences(s): the plutus-chain-index is the native component behind the PA
   <a href="https://github.com/scarmuega"><img src="https://avatars.githubusercontent.com/u/653886?v=4" width=50 /></a>
   <a href="https://github.com/mrbrinker"><img src="https://avatars.githubusercontent.com/u/41247403?v=4" width=50 /></a>
   <a href="https://github.com/sacrelege"><img src="https://avatars.githubusercontent.com/u/7289595?v=4" width=50 /></a>
-  <a href="https://ccvault.io/"><img src="https://avatars.githubusercontent.com/u/86010408?v=4" width=50 /></a>
   <a href="https://github.com/artemwright"><img src="https://avatars.githubusercontent.com/u/83517471?v=4" width=50 /></a>
   <a href="https://github.com/kayandra"><img src="https://avatars.githubusercontent.com/u/5002506?v=4" width=50 /></a>
-  <a href="https://github.com/tapiocapool"><img src="https://avatars.githubusercontent.com/u/80033713?v=4" width=50 /></a>
   <a href="https://github.com/will991"><img src="https://avatars.githubusercontent.com/u/9065638?v=4" width=50 /></a>
 </p>
 

@@ -1,6 +1,6 @@
 % KUPO
 % Matthias Benkort <matthias.benkort+kupo@cardanofoundation.org>
-% September 2022
+% October 2022
 
 # NAME
 kupo - Fast, lightweight & configurable chain-index for Cardano.

@@ -1,4 +1,4 @@
-### [2.1.0] - UNRELEASED
+### [2.1.0] - 2022-10-22
 
 > **Warning**
 > **Internal Breaking-Change**
@@ -22,7 +22,7 @@
   </details>
 
   > **Note**
-  > Filtering is done by scanning linearly over all results, whereas matching is much faster and leverages the database. One can however combine filters and matches in all kind of ways.
+  > Filtering is done by scanning linearly over all results, whereas matching is much faster and leverages the database's internal indexes. One can however combine filters and matches in all kind of ways.
 
 
 - [📌 #56](https://github.com/CardanoSolutions/kupo/issues/56) - New pattern format to match results by policy id or asset id. Also added two new HTTP query parameters for filtering matches: `policy_id` & `asset_name`. See more information in the [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches).
@@ -37,7 +37,7 @@
   </details>
 
   > **Note**
-  > Filtering is done by scanning linearly over all results, whereas matching is much faster and leverages the database. One can however combine filters and matches in all kind of ways.
+  > Filtering is done by scanning linearly over all results, whereas matching is much faster and leverages the database's internal indexes. One can however combine filters and matches in all kind of ways.
 
 - [📌 #51](https://github.com/CardanoSolutions/kupo/issues/51) - New endpoint to retrieve transaction metadata by slot number, possibly filtered by transaction id or output reference.
 
@@ -50,6 +50,8 @@
 - [📌 #72](https://github.com/CardanoSolutions/kupo/pulls/72) - Clients can now bulk-add many patterns at once.
 
   - `PUT /patterns` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/putPatterns)
+
+- New command-line flag `--defer-db-indexes` to be given during the **very first** synchronization to postpone the creation of some non-essential database indexes. Non-essential refers to indexes that are needed to speed up some queries (e.g. querying by payment credentials) but that do not play a role in synchronization. In fact, maintaining such indexes during synchronizations (millions of blocks) adds a lot of unnecessary overhead. Indexes can be created after the facts in a couple of minutes on a standard laptop. This flag therefore comes in handy to speed up an initial synchronization. Once synchronized, the server can be restarted without the flag to automatically create the necessary indexes.
 
 - The server now makes use of an internal resource pool when it comes to database connections. This pool can be configured using a new command-line option `--max-concurrency`. Users running an instance of Kupo on a capable machine (e.g. 32-cores) may want to increase the default of 50.
 
