@@ -28,9 +28,9 @@ module Kupo.App.Database
     , getScriptQry
       -- *** Rollback
     , selectMaxCheckpointQry
-    , rollbackQry1
-    , rollbackQry2
-    , rollbackQry3
+    , rollbackQryDeleteInputs
+    , rollbackQryUpdateInputs
+    , rollbackQryDeleteCheckpoints
 
       -- * Setup
     , createShortLivedConnection
@@ -38,6 +38,10 @@ module Kupo.App.Database
     , Connection
     , ConnectionType (..)
     , DatabaseFile (..)
+
+      -- * Internal
+    , installIndexes
+    , installIndex
 
       -- ** Lock
     , DBLock
@@ -524,22 +528,21 @@ mkDatabase tr mode longestRollback bracketConnection = Database
         fold_ conn "SELECT * FROM patterns" []
             $ \xs (Only x) -> pure (DB.patternFromRow x:xs)
 
-    , rollbackTo = \(SlotNo slotNo) -> ReaderT $ \conn -> do
-        let slotNoVar = SQLInteger (fromIntegral slotNo)
+    , rollbackTo = \(SQLInteger . fromIntegral . unSlotNo -> minSlotNo) -> ReaderT $ \conn -> do
         query_ conn selectMaxCheckpointQry >>= \case
             -- NOTE: Rolling back takes quite a bit of time and, when restarting
             -- the application, we'll always be asked to rollback to the
             -- _current tip_. In this case, there's nothing to delete or update,
             -- so we can safely skip it.
-            [[SQLInteger slotNo']] | fromIntegral slotNo' == slotNo -> do
+            [[currentSlotNo]] | currentSlotNo == minSlotNo -> do
                 pure ()
             _otherwise -> do
                 traceWith tr $ ConnectionBeginQuery "rollbackTo"
-                withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $
-                    withTemporaryIndex tr conn "inputsByCreatedAt" "inputs(created_at)" $ do
-                        execute conn rollbackQry1 [ slotNoVar ]
-                        execute conn rollbackQry2 [ slotNoVar ]
-                        execute conn rollbackQry3 [ slotNoVar ]
+                withTemporaryIndex tr conn "inputsByCreatedAt" "inputs(created_at)" $ do
+                    withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $ do
+                        execute conn rollbackQryDeleteInputs [ minSlotNo ]
+                        execute conn rollbackQryUpdateInputs [ minSlotNo ]
+                        execute conn rollbackQryDeleteCheckpoints [ minSlotNo ]
                 traceWith tr $ ConnectionExitQuery "rollbackTo"
         query_ conn selectMaxCheckpointQry >>= \case
             [[SQLInteger slotNo']] ->
@@ -547,7 +550,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             [[SQLNull]] ->
                 return Nothing
             xs ->
-                throwIO $ UnexpectedRow ("MAX(" <> show slotNo <> ")") xs
+                throwIO $ UnexpectedRow (fromQuery selectMaxCheckpointQry) xs
 
     , runTransaction = \r -> bracketConnection $ \conn ->
         retryWhenBusy tr $ withTransaction conn mode (runReaderT r conn)
@@ -579,9 +582,10 @@ markInputsQry pattern_ =
 pruneInputsQry :: Query
 pruneInputsQry =
     "DELETE FROM inputs \
-    \WHERE spent_at < ( \
-    \  (SELECT MAX(slot_no) FROM checkpoints) - ?\
-    \)"
+    \WHERE \
+    \    spent_at < ( \
+    \        (SELECT MAX(slot_no) FROM checkpoints) - ? \
+    \    )"
 
 foldInputsQry :: Pattern -> StatusFlag -> SortDirection -> Query
 foldInputsQry pattern_ statusFlag sortDirection = Query $
@@ -651,16 +655,16 @@ selectMaxCheckpointQry :: Query
 selectMaxCheckpointQry =
     "SELECT MAX(slot_no) FROM checkpoints"
 
-rollbackQry1 :: Query
-rollbackQry1 =
+rollbackQryDeleteInputs :: Query
+rollbackQryDeleteInputs =
     "DELETE FROM inputs WHERE created_at > ?"
 
-rollbackQry2 :: Query
-rollbackQry2 =
+rollbackQryUpdateInputs :: Query
+rollbackQryUpdateInputs =
     "UPDATE inputs SET spent_at = NULL WHERE spent_at > ?"
 
-rollbackQry3 :: Query
-rollbackQry3 =
+rollbackQryDeleteCheckpoints :: Query
+rollbackQryDeleteCheckpoints =
     "DELETE FROM checkpoints WHERE slot_no > ?"
 
 --
@@ -770,12 +774,6 @@ installIndexes tr conn = \case
             "inputsByPaymentCredential"
             "inputs(payment_credential COLLATE NOCASE, spent_at)"
         installIndex tr conn
-            "inputsByDatumHash"
-            "inputs(datum_hash)"
-        installIndex tr conn
-            "inputsBySpentAt"
-            "inputs(spent_at)"
-        installIndex tr conn
             "inputsByCreatedAt"
             "inputs(created_at)"
 
@@ -799,7 +797,7 @@ installIndex tr conn name definition = do
 -- as such.
 withTemporaryIndex :: Tracer IO TraceConnection -> Connection -> Text -> Text -> IO a -> IO a
 withTemporaryIndex tr conn name definition action = do
-    exists <- indexDoesExist conn "inputsByCreatedAt"
+    exists <- indexDoesExist conn name
     unless exists $ traceWith tr (ConnectionCreateTemporaryIndex name)
     execute_ conn $ Query $ unwords
         [ "CREATE INDEX IF NOT EXISTS"
@@ -981,5 +979,5 @@ instance HasSeverityAnnotation TraceConnection where
         ConnectionBusy{}                 -> Debug
         ConnectionBeginQuery{}           -> Debug
         ConnectionExitQuery{}            -> Debug
-        ConnectionCreateTemporaryIndex{} -> Notice
+        ConnectionCreateTemporaryIndex{} -> Debug
         ConnectionRemoveTemporaryIndex{} -> Debug
