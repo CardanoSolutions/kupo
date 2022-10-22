@@ -267,7 +267,6 @@ createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
     conn <- Sqlite.open $ mkConnectionString file mode
     execute_ conn "PRAGMA page_size = 16184"
     execute_ conn "PRAGMA cache_size = -50000"
-    when (mode == ReadOnly) $ execute_ conn "PRAGMA read_uncommitted = 1"
     return $ mkDatabase (contramap DatabaseConnection tr) mode k (bracketConnection conn)
   where
     bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))

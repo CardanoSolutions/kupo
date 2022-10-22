@@ -257,9 +257,10 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
         let Match{consumed, produced, datums, scripts, policies} =
                 foldMap (matchBlock codecs patterns . snd) blks
         isNonEmptyBlock <- runTransaction $ do
+            insertCheckpoints (foldr ((:) . getPoint . snd) [] blks)
             insertInputs produced
-            insertPolicies policies
             nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot consumed
+            insertPolicies policies
             -- NOTE: In case where the user has entered a relatively restrictive
             -- pattern (e.g. one specific address), we do a best-effort at not
             -- storing all the garbage of the world and only store scripts and
@@ -273,7 +274,6 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
                 insertBinaryData datums
                 insertScripts scripts
             notifyTip lastKnownTip (Just lastKnownSlot)
-            insertCheckpoints (foldr ((:) . getPoint . snd) [] blks)
             return isNonEmptyBlock
         logWith tr $ ConsumerRollForward
             { slotNo = lastKnownSlot
