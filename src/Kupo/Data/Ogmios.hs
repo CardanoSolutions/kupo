@@ -35,6 +35,7 @@ import Kupo.Data.Cardano
     , BinaryData
     , Blake2b_256
     , BlockNo (..)
+    , Datum (..)
     , DatumHash
     , Input
     , KeyHash (..)
@@ -51,15 +52,12 @@ import Kupo.Data.Cardano
     , WithOrigin (..)
     , binaryDataFromBytes
     , datumHashFromBytes
-    , fromBinaryData
-    , fromDatumHash
     , fromNativeScript
     , hashScript
     , headerHashToJson
     , metadataFromJson
     , mkOutput
     , mkOutputReference
-    , noDatum
     , pattern BlockPoint
     , pattern GenesisPoint
     , pattern GenesisTip
@@ -292,11 +290,11 @@ decodeOutput = Json.withObject "Output" $ \o -> do
         <*> (o .: "value" >>= decodeValue)
         <*> case (datumHash, datum) of
                 (Just x, _) ->
-                    pure (fromDatumHash x)
+                    pure (Reference (Left x))
                 (Nothing, Just x) ->
-                    fromBinaryData <$> decodeBinaryData x
+                    Inline . Right <$> decodeBinaryData x
                 (Nothing, Nothing) ->
-                    pure noDatum
+                    pure NoDatum
         <*> (o .:? "script" >>= traverse decodeScript)
 
 decodeScripts'

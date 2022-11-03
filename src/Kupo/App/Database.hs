@@ -366,7 +366,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                     [ SQLBlob extendedOutputReference
                     , SQLText address
                     , SQLBlob value
-                    , maybe SQLNull SQLBlob datumHash
+                    , maybe SQLNull SQLBlob datumInfo
                     , maybe SQLNull SQLBlob refScriptHash
                     , SQLInteger (fromIntegral createdAtSlotNo)
                     , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
@@ -418,7 +418,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             [  SQLBlob extendedOutputReference
              , SQLText address
              , SQLBlob value
-             , matchMaybeBytes -> datumHash
+             , matchMaybeBytes -> datumInfo
              , matchMaybeBytes -> refScriptHash
              , SQLInteger (fromIntegral -> createdAtSlotNo)
              , SQLBlob createdAtHeaderHash
@@ -590,7 +590,7 @@ pruneInputsQry =
 foldInputsQry :: Pattern -> StatusFlag -> SortDirection -> Query
 foldInputsQry pattern_ statusFlag sortDirection = Query $
     "SELECT \
-      \ext_output_reference, address, value, datum_hash, script_hash ,\
+      \ext_output_reference, address, value, datum_info, script_hash ,\
       \created_at, createdAt.header_hash, \
       \spent_at, spentAt.header_hash \
     \FROM inputs \
@@ -871,6 +871,7 @@ migrations =
         , $(embedFile "db/v2.1.0/001.sql")
         , $(embedFile "db/v2.1.0/002.sql")
         , $(embedFile "db/v2.1.0/003.sql")
+        , $(embedFile "db/v2.2.0/001.sql")
         ]
     ]
   where

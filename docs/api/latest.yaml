@@ -5,7 +5,7 @@ servers:
 
 info:
   title: Kupo
-  version: "latest: v2.1.0"
+  version: latest/unstable
   license:
     name: MPL-2.0
     url: https://raw.githubusercontent.com/cardanosolutions/kupo/master/LICENSE
@@ -14,13 +14,17 @@ info:
     altText: Kupo!
 
   description: |
+    > **Disclaimer**
+    >
+    > This version of the documentation might contain features that **haven't been**
+    > **released yet**. This is meant to preview what's coming.
+    >
+    > If you're using a specific version, please refer to the appropriate
+    > documentation's revision as well _(see buttons at the top)_.
+
     # Overview
 
-    **Kupo** is a lightweight, configurable, **chain-index** for the Cardano
-    blockchain. It synchronizes data from the blockchain according to
-    **patterns** matching addresses present in transaction outputs, to build a
-    **lookup table** from matches to their associated **output references,
-    values and datum hashes.**
+    **Kupo** is fast, lightweight and configurable **chain-index** for the Cardano blockchain. It synchronizes data from the blockchain according to **patterns** matching addresses present in transaction outputs and builds a **lookup table** from matches to their associated **output references**, **values**, **datums** and **scripts**.
 
     # Installation
 
@@ -31,22 +35,26 @@ info:
     continuous [`Nix` Github workflow](https://github.com/CardanoSolutions/kupo/actions).
 
     ```
-    ...
+    kupo-{x.y.z}-{arch}-{os}.tar.gz
+    │
     ├── bin
     │   └── kupo
+    │
     └── share
-        ├── bash-completion
-        │   └── completions
-        │       └── kupo
         ├── kupo
         │   ├── LICENSE
         │   └── api.yaml
-        ├── man
-        │   └── man1
-        │       └── kupo.1
-        └── zsh
-            └── site-functions
-                └── _kupo
+        │
+        ├── bash-completion
+        │   └── completions
+        │       └── kupo
+        ├── zsh
+        │   └── site-functions
+        │       └── _kupo
+        │
+        └── man
+            └── man1
+                └── kupo.1
     ```
 
     Once installed, `man kupo` or `kupo --help` comes in handy.
@@ -566,6 +574,23 @@ components:
           description: N/A
           type: "null"
 
+    DatumType:
+      description: |
+        Categorize the type of datum in the output:
+
+        - `hash`: means that the output only contains a reference to the datum;
+        - `inline`: means that the ouput originally contained a full inline datum.
+
+        In both cases however, Kupo returns only a `datum_hash`, and full datums
+        can be retrieved via the [`GET /datums/{datum-hash}`](#tag/Datums/paths/~1datums~1{datum-hash}/get)
+        endpoint.
+
+        This field is only present when `datum_hash` is not `null`.
+      type: string
+      enum:
+        - hash
+        - inline
+
     Deleted:
       type: object
       required:
@@ -591,7 +616,7 @@ components:
             Note that the synchronization will therefore begin starting from the point **immediately after** the provided point!
 
             > <sup><strong>NOTE (1)</strong></sup> <br/>
-            > If you need to query ancestors from any given known point, see [GET /checkpoints/{slot-no}](http://localhost:8000/#operation/getCheckpointBySlot)
+            > If you need to query ancestors from any given known point, see [`GET /checkpoints/{slot-no}`](#operation/getCheckpointBySlot)
 
             > <sup><strong>NOTE (2)</strong></sup> <br/>
             > The `header_hash` is **optional**! However if provided, Kupo will check that it rolls back exactly to the specified point by comparing header hashes.
@@ -1013,6 +1038,8 @@ components:
           $ref: "#/components/schemas/Value"
         datum_hash:
           $ref: "#/components/schemas/DatumHash"
+        datum_type:
+          $ref: "#/components/schemas/DatumType"
         script_hash:
           $ref: "#/components/schemas/ScriptHash"
         created_at:

@@ -114,11 +114,8 @@ module Kupo.Data.Cardano
     , assetNameToText
 
     -- * Datum
-    , Datum
+    , Datum (..)
     , getBinaryData
-    , fromBinaryData
-    , fromDatumHash
-    , noDatum
     , hashDatum
 
     -- * DatumHash
@@ -1036,7 +1033,7 @@ mkOutput address value datum script =
     Ledger.Babbage.TxOut
         address
         value
-        datum
+        (toBabbageDatum datum)
         (maybeToStrictMaybe script)
 {-# INLINABLE mkOutput #-}
 
@@ -1108,7 +1105,7 @@ getDatum
     :: Output
     -> Datum
 getDatum (Ledger.Babbage.TxOut _address _value datum _refScript) =
-    datum
+    fromBabbageDatum datum
 {-# INLINABLE getDatum #-}
 
 getScript
@@ -1125,7 +1122,7 @@ data ComparableOutput = ComparableOutput
     , comparableOutputValue :: !ComparableValue
     , comparableOutputDatum :: !Datum
     , comparableOutputScript :: !(Maybe Script)
-    } deriving (Generic, Eq, Show, Ord)
+    } deriving (Generic, Show, Eq, Ord)
 
 toComparableOutput
     :: Output
@@ -1352,43 +1349,49 @@ scriptHashToJson =
 
 -- Datum
 
-type Datum =
-    Ledger.Datum (BabbageEra StandardCrypto)
+data Datum
+    = NoDatum
+    | Reference !(Either DatumHash BinaryData)
+    | Inline !(Either DatumHash BinaryData)
+    deriving (Generic, Show, Eq, Ord)
+
+toBabbageDatum
+    :: Datum
+    -> Ledger.Datum (BabbageEra StandardCrypto)
+toBabbageDatum = \case
+    NoDatum -> Ledger.NoDatum
+    Reference (Left ref) -> Ledger.DatumHash ref
+    Reference (Right bin) -> Ledger.Datum bin
+    Inline (Left ref) -> Ledger.DatumHash ref
+    Inline (Right bin) -> Ledger.Datum bin
+
+fromBabbageDatum
+    :: Ledger.Datum (BabbageEra StandardCrypto)
+    -> Datum
+fromBabbageDatum = \case
+    Ledger.NoDatum -> NoDatum
+    Ledger.DatumHash ref -> Reference (Left ref)
+    Ledger.Datum bin -> Inline (Right bin)
 
 getBinaryData
     :: Datum
     -> Maybe BinaryData
 getBinaryData = \case
-    Ledger.Datum bin -> Just bin
-    Ledger.NoDatum -> Nothing
-    Ledger.DatumHash{} -> Nothing
-
-noDatum
-    :: Datum
-noDatum =
-    Ledger.NoDatum
-{-# INLINEABLE noDatum #-}
-
-fromDatumHash
-    :: DatumHash
-    -> Datum
-fromDatumHash =
-    Ledger.DatumHash
-{-# INLINEABLE fromDatumHash #-}
-
-fromBinaryData
-    :: BinaryData
-    -> Datum
-fromBinaryData =
-    Ledger.Datum
-{-# INLINEABLE fromBinaryData #-}
+    NoDatum -> Nothing
+    Reference (Right bin) -> Just bin
+    Reference{} -> Nothing
+    Inline (Right bin) -> Just bin
+    Inline Left{} -> Nothing
 
 hashDatum
     :: Datum
     -> Maybe DatumHash
-hashDatum =
-    strictMaybeToMaybe . Ledger.datumDataHash
-{-# INLINABLE hashDatum #-}
+hashDatum = \case
+    NoDatum -> Nothing
+    Reference (Left ref) -> Just ref
+    Reference (Right bin) -> Just (hashBinaryData bin)
+    Inline (Left ref) -> Just ref
+    Inline (Right bin) -> Just (hashBinaryData bin)
 
 -- DatumHash
 

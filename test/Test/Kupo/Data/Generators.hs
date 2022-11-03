@@ -18,7 +18,7 @@ import Kupo.Data.Cardano
     , Blake2b_224
     , Blake2b_256
     , Block
-    , Datum
+    , Datum (..)
     , DatumHash
     , ExtendedOutputReference
     , HeaderHash
@@ -39,12 +39,9 @@ import Kupo.Data.Cardano
     , Value
     , assetNameMaxLength
     , digestSize
-    , fromBinaryData
-    , fromDatumHash
     , mkMetadata
     , mkOutput
     , mkOutputReference
-    , noDatum
     , pattern BlockPoint
     , policyIdToBytes
     , scriptHashToBytes
@@ -168,9 +165,11 @@ genDatumHash =
 
 genDatum :: Gen Datum
 genDatum = frequency
-    [ (1, pure noDatum)
-    , (5, fromDatumHash <$> genDatumHash)
-    , (5, fromBinaryData <$> genBinaryData)
+    [ (1, pure NoDatum)
+    , (5, Reference . Left <$> genDatumHash)
+    , (5, Reference . Right <$> genBinaryData)
+    , (5, Inline . Left <$> genDatumHash)
+    , (5, Inline . Right <$> genBinaryData)
     ]
 
 genScript :: Gen Script

@@ -37,6 +37,7 @@ module Kupo.Data.Database
     , BinaryData (..)
     , datumToRow
     , datumFromRow
+    , datumInfoToRow
     , datumHashToRow
     , binaryDataToRow
     , binaryDataFromRow
@@ -99,7 +100,6 @@ import Ouroboros.Consensus.Block
     )
 
 import qualified Cardano.Ledger.Address as Ledger
-import qualified Cardano.Ledger.Alonzo.Data as Ledger
 import qualified Cardano.Ledger.BaseTypes as Ledger
 import qualified Cardano.Ledger.Credential as Ledger
 import qualified Cardano.Ledger.Hashes as Ledger
@@ -107,6 +107,7 @@ import qualified Cardano.Ledger.Keys as Ledger
 import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Data.Binary.Get as B
 import qualified Data.Binary.Put as B
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import qualified Kupo.Data.Cardano as App
 import qualified Kupo.Data.Pattern as App
@@ -151,7 +152,7 @@ data Input = Input
     , address :: !Text
     , value :: !ByteString
     , datum :: !(Maybe BinaryData)
-    , datumHash :: !(Maybe ByteString)
+    , datumInfo :: !(Maybe ByteString)
     , refScript :: !(Maybe ScriptReference)
     , refScriptHash :: !(Maybe ByteString)
     , createdAtSlotNo :: !Word64
@@ -171,7 +172,7 @@ resultFromRow row = App.Result
     , App.value =
         unsafeDeserialize' (value row)
     , App.datum =
-        datumFromRow (datumHash row) (datum row)
+        datumFromRow (datumInfo row) (datum row)
     , App.scriptReference =
         scriptReferenceFromRow (refScriptHash row) (refScript row)
     , App.createdAt =
@@ -195,7 +196,7 @@ resultToRow x =
     value =
         serialize' (App.value x)
 
-    (datumHash, datum) =
+    (datumInfo, datum) =
         datumToRow (App.datum x)
 
     (refScriptHash, refScript) =
@@ -292,34 +293,90 @@ patternFromRow p =
 -- BinaryData / Datum
 --
 
+referenceDatum :: Word8
+referenceDatum = 0
+{-# INLINABLE referenceDatum #-}
+
+inlineDatum :: Word8
+inlineDatum = 1
+{-# INLINABLE inlineDatum #-}
+
 data BinaryData = BinaryData
     { binaryDataHash :: !ByteString
     , binaryData :: !ByteString
     } deriving (Show)
 
+-- | Deserialise a datum from the database. This takes two parts arguments:
+--
+-- - A 'BinaryData' and;
+-- - A serialized "datum_info":
+--
+--     ┏━━━━━━━━━━━━┯━━━━━━━━━━━━┓
+--     ┃ datum flag │ datum hash ┃
+--     ┗━━ 1 byte ━━┷━ 32 bytes ━┛
+--
+-- The `datum_info` carries a flag which can be either `0` to identify a datum that was only
+-- referenced by hash in an output, or `1` to identify an inline datum. The binary data is
+-- only provided when the full datum is fetched from the database (and is available!);
+--
+-- The `datum_info` may also simply be null (i.e. `Nothing`) meaning that there's simply no datum.
+--
+-- Invariant (1): 2nd arg is `Just`    => 1st arg is `Just`.
+-- Invariant (2): 1st arg is `Nothing` => 2nd arg is `Nothing`
 datumFromRow
     :: Maybe ByteString
     -> Maybe BinaryData
     -> App.Datum
 datumFromRow hash = \case
     Just BinaryData{..} ->
-        App.fromBinaryData (App.unsafeBinaryDataFromBytes binaryData)
+        maybe
+            (error "Database integrity issue: presence of a binary data without associated datum info?")
+            (datumInfoFromRow (const (Right bin)))
+            hash
+      where
+        bin = App.unsafeBinaryDataFromBytes binaryData
     Nothing ->
-        maybe App.noDatum (App.fromDatumHash . App.unsafeDatumHashFromBytes) hash
+        maybe
+            App.NoDatum
+            (datumInfoFromRow (Left . App.unsafeDatumHashFromBytes))
+            hash
+  where
+    datumInfoFromRow mk h =
+        case BS.uncons h of
+            Just (flag, bytes) | flag == referenceDatum ->
+                App.Reference (mk bytes)
+            Just (flag, bytes) | flag == inlineDatum ->
+                App.Inline (mk bytes)
+            _unknownFlag ->
+                error "Unexpected flag prefix for serialized datum info. \
+                      \Should be either: 0 => reference; or 1 => inline."
 {-# INLINABLE datumFromRow #-}
 
 datumToRow
     :: App.Datum
     -> (Maybe ByteString, Maybe BinaryData)
 datumToRow = \case
-    Ledger.NoDatum ->
+    App.NoDatum ->
         (Nothing, Nothing)
-    Ledger.DatumHash h ->
-        (Just (datumHashToRow h), Nothing)
-    Ledger.Datum bin ->
-        let h = App.hashBinaryData bin
-         in (Just (datumHashToRow h), Just (binaryDataToRow h bin))
+    App.Reference (Left ref) ->
+        (Just (datumInfoToRow referenceDatum ref), Nothing)
+    App.Reference (Right bin) ->
+        let ref = App.hashBinaryData bin
+         in (Just (datumInfoToRow referenceDatum ref), Just (binaryDataToRow ref bin))
+    App.Inline (Left ref) ->
+        (Just (datumInfoToRow inlineDatum ref), Nothing)
+    App.Inline (Right bin) ->
+        let ref = App.hashBinaryData bin
+         in (Just (datumInfoToRow inlineDatum ref), Just (binaryDataToRow ref bin))
 {-# INLINABLE datumToRow #-}
+
+datumInfoToRow
+    :: Word8 -- ^ 0 => reference, 1 => inline
+    -> App.DatumHash
+    -> ByteString
+datumInfoToRow flag =
+    BS.cons flag . datumHashToBytes
+{-# INLINABLE datumInfoToRow #-}
 
 datumHashToRow
     :: App.DatumHash
@@ -449,9 +506,9 @@ scriptReferenceFromRow hash = \case
 --
 -- Kupo serialises them slightly differently:
 --
---     ┏━━━━━┯━━━━━━━━━━━━━━━━━━━━━━━━┯━━━━━━━━┯━━━━━━━━━━━━━━━━━━━━━┓
---     ┃ tag │ delegation credentials │ header │ payment credentials ┃
---     ┗━━━━━┷━━━━━━━━━━━━━━━━━━━━━━━━┷━━━━━━━━┷━━━━━━━━━━━━━━━━━━━━━┛
+--     ┏━━━━━━━━━━┯━━━━━━━━━━━━━━━━━━━━━━━━┯━━━━━━━━━━┯━━━━━━━━━━━━━━━━━━━━━┓
+--     ┃    tag   │ delegation credentials │  header  │ payment credentials ┃
+--     ┗━ 1 byte ━┷━━━━━━━ 28 bytes ━━━━━━━┷━ 1 byte ━┷━━━━━━ 28 bytes ━━━━━┛
 --
 -- The tag is nothing more than a simplified address discriminator which, unlike
 -- the header, doesn't include a network id, and only distinguish addresses

@@ -41,7 +41,7 @@ import Kupo.Data.Cardano
     , BinaryData
     , Blake2b_224
     , Blake2b_256
-    , Datum
+    , Datum (..)
     , DatumHash
     , ExtendedOutputReference
     , IsBlock (..)
@@ -419,6 +419,13 @@ resultToJson Result{..} = Json.pairs $ mconcat
         (valueToJson value)
     , Json.pair "datum_hash"
         (maybe Json.null_ datumHashToJson (hashDatum datum))
+    , case datum of
+        NoDatum ->
+            mempty
+        Inline{} ->
+            Json.pair "datum_type" (Json.text "inline")
+        Reference{} ->
+            Json.pair "datum_type" (Json.text "hash")
     , Json.pair "script_hash"
         (maybe Json.null_ scriptHashToJson (hashScriptReference scriptReference))
     , Json.pair "created_at"

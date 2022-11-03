@@ -1,3 +1,17 @@
+### [2.2.0] - UNRELEASED
+
+#### Added
+
+- Results now contain a new field `datum_type` only present when `datum_hash` is **not** null. It indicates whether the datum in the output is `inline` or only a `hash` reference.
+
+#### Changed
+
+N/A
+
+#### Removed
+
+N/A
+
 ### [2.1.0] - 2022-10-22
 
 > **Warning**

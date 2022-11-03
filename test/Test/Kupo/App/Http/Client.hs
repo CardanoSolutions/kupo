@@ -36,7 +36,7 @@ import Kupo.Data.Cardano
     ( Address
     , BinaryData
     , Blake2b_256
-    , Datum
+    , Datum (..)
     , DatumHash
     , ExtendedOutputReference
     , Metadata
@@ -51,12 +51,10 @@ import Kupo.Data.Cardano
     , binaryDataFromBytes
     , datumHashFromBytes
     , datumHashToText
-    , fromDatumHash
     , getPointSlotNo
     , metadataFromText
     , metadataHashFromText
     , mkOutputReference
-    , noDatum
     , pointFromText
     , scriptFromBytes
     , scriptHashFromBytes
@@ -412,12 +410,18 @@ decodeDatumHash k = do
 
 decodeDatum
     :: Maybe Text
+    -> Maybe Text
     -> Json.Parser Datum
-decodeDatum = \case
-    Nothing ->
-        pure noDatum
-    Just str ->
-        fromDatumHash <$> decodeDatumHash str
+decodeDatum mDatumType mRef =
+    case (mDatumType, mRef) of
+        (Nothing, Nothing) ->
+            pure NoDatum
+        (Just "inline", Just ref) ->
+            Inline . Left <$> decodeDatumHash ref
+        (Just "hash", Just ref) ->
+            Reference . Left <$> decodeDatumHash ref
+        _unexpectedResponse ->
+            fail $ "decodeDatum: malformed datum response: " <> show (mDatumType, mRef)
 
 decodeScriptHash
     :: Text
@@ -492,7 +496,7 @@ decodeResult = Json.withObject "Result" $ \o -> Result
     <$> (decodeOutputReference o)
     <*> (decodeAddress =<< (o .: "address"))
     <*> (decodeValue =<< (o .: "value"))
-    <*> (decodeDatum =<< (o .:? "datum_hash"))
+    <*> join (liftA2 decodeDatum (o .:? "datum_type") (o .:? "datum_hash"))
     <*> (decodeScriptReference =<< (o .:? "script_hash"))
     <*> (decodePoint =<< (o .: "created_at"))
     <*> (traverse decodePoint =<< (o .:? "spent_at"))

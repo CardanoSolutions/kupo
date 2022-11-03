@@ -13,25 +13,25 @@
 ```sql
 CREATE TABLE `inputs` (
   `ext_output_reference` BLOB PRIMARY KEY NOT NULL,
+  `address` TEXT COLLATE NOCASE NOT NULL,
+  `value` BLOB NOT NULL,
+  `datum_info` BLOB,
+  `script_hash` BLOB,
+  `created_at` INTEGER NOT NULL,
+  `spent_at` INTEGER,
+
   `output_reference` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, 1, 34)) VIRTUAL,
   `output_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -4, 2)) VIRTUAL,
   `transaction_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -2)) VIRTUAL,
-  `address` TEXT COLLATE NOCASE NOT NULL,
-  `payment_credential` TEXT COLLATE NOCASE NOT NULL GENERATED ALWAYS AS (substr(`address`, -56)),
-  `value` BLOB NOT NULL,
-  `datum_hash` BLOB,
-  `script_hash` BLOB,
-  `created_at` INTEGER NOT NULL,
-  `spent_at` INTEGER
+  `payment_credential` TEXT COLLATE NOCASE NOT NULL GENERATED ALWAYS AS (substr(`address`, -56)) VIRTUAL,
+  `datum_hash` BLOB NOT NULL GENERATED ALWAYS AS (substr(`datum_info`, 2)) VIRTUAL
 );
 
 CREATE UNIQUE INDEX `inputsByOutputReference` ON `inputs` (`output_reference`);
 
 CREATE INDEX `inputsByAddress` ON `inputs` (`address` COLLATE NOCASE, `spent_at`);
 CREATE INDEX `inputsByPaymentCredential` ON `inputs` (`payment_credential` COLLATE NOCASE, `spent_at`);
-CREATE INDEX `inputsByDatumHash` ON `inputs` (`datum_hash`);
 CREATE INDEX `inputsByCreatedAt` ON `inputs` (`created_at`);
-CREATE INDEX `inputsBySpentAt` ON `inputs` (`spent_at`);
 
 CREATE TABLE `policies` (
   `output_reference` BLOB NOT NULL,
@@ -65,6 +65,14 @@ CREATE TABLE `patterns` (
 </details>
 
 ## Changelog
+
+<p align="right"><code>v2.2.0</code></p>
+<hr/>
+### Migration to `version=9`
+
+- Rename column `datum_hash` to `datum_info`
+- Add a virtual column `datum_hash` to inputs, as a substring of `datum_info` (with the same semantic as before)
+- Delete all inputs with datums, and rollback checkpoints to before the first block with a datum
 
 <p align="right"><code>v2.1.0</code></p>
 <hr/>
