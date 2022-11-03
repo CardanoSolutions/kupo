@@ -31,7 +31,19 @@
 
 # Roadmap
 
-See [projects 🎯][roadmap] for planned tasks or [discussions 💡][discussions] for ongoing discussions regarding the future of Kupo.
+### Cutting-edge work
+
+The project keeps a [changelog 💾](./CHANGELOG.md) in which all _recent-but-not-yet-released_ changes can be seen. Changes in the changelog have been implemented and are available in latest builds from the `master` branch.
+
+> **Warning** Work available on the `master` branch shall be considered _unstable_ in the sense that interfaces may slightly change and database migrations may not work from a previous `master` commit. Keeping stability between unreleased commits is only a best-effort.
+
+### Planned work
+
+The [projects boards 🎯][roadmap] list planned tasks that haven't been implemented but have reached enough maturity to be well-defined and scoped.
+
+### Future work
+
+Finally, [discussions 💡][discussions] contains ongoing discussions regarding the future of Kupo, with design decisions still under consideration.
 
 # System Requirements
 
