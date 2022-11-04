@@ -67,6 +67,47 @@
     div.menu-content {
       top: 3em !important;
     }
+
+    div.tabs input {
+      display: none;
+    }
+
+    div.tabs label {
+      display: block;
+      float: left;
+      padding: 0.5rem 1rem;
+      cursor: pointer
+    }
+
+    div.tabs input:checked + label {
+      background: rgb(50, 50, 159);
+      color: rgb(250, 250, 250);
+      cursor: default;
+    }
+
+    div.tabs div.tab {
+      display: none;
+      clear: left;
+    }
+
+    div.tabs table tr > td:first-child {
+      min-width: 11em;
+    }
+
+    div.tabs table {
+      padding-bottom: 0.5rem;
+    }
+
+    div.tabs div.tab ~ p {
+      display: none;
+    }
+
+    div.tabs input:nth-of-type(1):checked ~ .tab:nth-of-type(1),
+    div.tabs input:nth-of-type(2):checked ~ .tab:nth-of-type(2),
+    div.tabs input:nth-of-type(3):checked ~ .tab:nth-of-type(3),
+    div.tabs input:nth-of-type(4):checked ~ .tab:nth-of-type(4){
+      display: block;
+    }
   </style>
 </head>
 <body>

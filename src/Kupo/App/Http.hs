@@ -499,26 +499,27 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
   where
     -- NOTE: kupo does support two different ways for fetching results, via query parameters or via
     -- path parameters. Historically, there were only query parameters. Yet, with the introduction
-    -- of patterns, both approaches are now redundant with one another.
+    -- of patterns, users can go either way. While this may seem redundant, it is actually useful to
+    -- combine filters (one as path-parameter, and one as query-parameter).
     --
-    -- When it comes to asset id / policy id, querying via pattern or via query parameters will have
-    -- the same effect & performance. However, when querying output reference / transaction id from
-    -- a pattern, the query is optimized through a first pre-filtering via SQL.
+    -- Querying by path-parameter leverages database indexes and is fast. Querying by query parameter
+    -- however happens _after the fact_, linearly. The cost of filtering is relatively small because
+    -- of the way results are streamed. However, if the original pattern provided as path-parameter
+    -- yields large queries, this may end up doing a lot of useless work.
     --
-    -- Removing query parameters now would be a breaking change, although it would remove quite a
-    -- bunch of code. This note serves as a reminder. For the next major version, filters should
-    -- likely be removed.
+    -- Note also that when querying by asset-id as path-parameter, Kupo still performs an on-the-fly
+    -- filtering for the asset id. This is because we store results by policy id and only match them
+    -- by policy id when querying the database. Hence the database only yields a pre-filtered results
+    -- when fetching by asset id, which still needs to be filtered out fully to discards those
+    -- elements not containing the target asset id.
     mkYieldIf pattern_ filter_ =
         let
             predicateA =
                 case pattern_ of
                     MatchAssetId assetId ->
                         \result -> hasAssetId (value result) assetId
-                    MatchPolicyId policyId ->
-                        \result -> hasPolicyId (value result) policyId
                     _otherCasesAlreadyMatchedFromSQL ->
                         const True
-
             predicateB =
                 case filter_ of
                     NoFilter ->
