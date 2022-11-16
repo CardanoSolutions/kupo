@@ -80,6 +80,15 @@ somePointNearScripts = pointFromRow $ Checkpoint
         "1d29ed9e913c88593f0827b7579909e164541498e302da349047496d7360c74a"
     }
 
+-- | An ancestor point near 'somePhase2FailedTransactionIdWithReturn'.
+somePointNearPhase2Failure :: Point
+somePointNearPhase2Failure = pointFromRow $ Checkpoint
+    { checkpointSlotNo =
+        63806106
+    , checkpointHeaderHash = unsafeDecodeBase16
+        "154C7E0DB314D23D9C091B64F71AF4632EB4A642D273E5B06B051315C57D6EEA"
+    }
+
 lastByronPoint :: Point
 lastByronPoint = pointFromRow $ Checkpoint
     { checkpointSlotNo =
@@ -225,3 +234,9 @@ someMetadata = unsafeMetadataHashFromBytes . unsafeDecodeBase16 <$>
 someTransactionIdWithMetadata :: TransactionId
 someTransactionIdWithMetadata = unsafeTransactionIdFromBytes $ unsafeDecodeBase16
     "4DC5093D26FDD8D82BA30615EDA72D96B80ED28D3750D916AB1D3AB6FEE4B4B3"
+
+
+-- | A transaction id of a failed (phase-2) transaction, with collateral return (in Babbage era)
+somePhase2FailedTransactionIdWithReturn :: TransactionId
+somePhase2FailedTransactionIdWithReturn = unsafeTransactionIdFromBytes $ unsafeDecodeBase16
+    "26D6C82E535507470DD0DEFE3A10597241D13C43D6B5A88068D9515C38C86969"

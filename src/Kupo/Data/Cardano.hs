@@ -693,7 +693,9 @@ instance IsBlock Block where
                     Ledger.Alonzo.IsValid True ->
                         traverseAndTransform identity txId 0 outs
                     Ledger.Alonzo.IsValid False ->
-                        []
+                        case Ledger.Babbage.collateralReturn' body of
+                            SNothing -> []
+                            SJust r  -> traverseAndTransform identity txId 0 (r :<| mempty)
       where
         traverseAndTransformByron
             :: forall output. ()
@@ -1007,6 +1009,9 @@ outputReferenceToText outRef =
 
 type ExtendedOutputReference =
     (OutputReference, TransactionIndex)
+
+instance HasTransactionId ExtendedOutputReference StandardCrypto where
+    getTransactionId (Ledger.TxIn i _, _) = i
 
 -- TransactionIndex
 

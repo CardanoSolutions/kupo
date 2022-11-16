@@ -66,6 +66,7 @@ import Kupo.Data.Cardano
     , mkOutputReference
     , pattern GenesisPoint
     , pointFromText
+    , unsafeValueFromList
     )
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException
@@ -141,8 +142,10 @@ import Test.Kupo.Fixture
     , someNonExistingPoint
     , someOtherPoint
     , someOtherStakeKey
+    , somePhase2FailedTransactionIdWithReturn
     , somePoint
     , somePointAncestor
+    , somePointNearPhase2Failure
     , somePointNearScripts
     , somePointSuccessor
     , somePolicyId
@@ -533,6 +536,25 @@ spec = skippableContext "End-to-end" $ \manager -> do
 
                 xs' <- lookupMetadataBySlotNo someSlotWithMetadata (Just someTransactionIdWithMetadata)
                 [ hash | (hash, _meta) <- xs' ] `shouldBe` take 1 someMetadata
+            )
+
+    specify "Index collateral return from failed transactions" $ \(tmp, tr, cfg, httpLogs) -> do
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
+            , since = Just somePointNearPhase2Failure
+            , patterns = [MatchTransactionId somePhase2FailedTransactionIdWithReturn]
+            }
+        timeoutOrThrow 5 (debug httpLogs) $ race_
+            (kupo tr `runWith` env)
+            (do
+                let predicate = (== (mkOutputReference somePhase2FailedTransactionIdWithReturn 0)) . fst . outputReference
+                waitUntilM $ do
+                    results <- getAllMatches NoStatusFlag
+                    return (any predicate results)
+                (find predicate <$> getAllMatches NoStatusFlag) >>= \case
+                    Nothing -> fail "impossible: the result disappeared?"
+                    Just r  -> value r `shouldBe` unsafeValueFromList 7000000 []
             )
 
 type EndToEndSpec

@@ -4,9 +4,11 @@
 
 - Results now contain a new field `datum_type` only present when `datum_hash` is **not** null. It indicates whether the datum in the output is `inline` or only a `hash` reference.
 
+  See `GET /matches/{pattern}` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getMatches)
+
 #### Changed
 
-N/A
+- Fixed a bug where utxo entries from collateral returns (on phase-2 failed transaction) would be missing from the index. In fact, Kupo does not index outputs from failed transaction, but since the Babbage era, failed transactions may contain an extra field "collateral return" which becomes a legitimate transaction output on-chain. These are now properly indexed as well.
 
 #### Removed
 
