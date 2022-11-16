@@ -96,6 +96,7 @@ else
 endif
 
 .PHONY: archive lint man doc check clean clean-all help
+.SILENT: doc clean clean-all
 
 archive: kupo-$(VERSION)-$(ARCH)-$(OS).tar.gz # Package the application as a tarball
 
@@ -112,10 +113,10 @@ check: # Run tests; May require a running cardano-node for end-to-end scenarios
 man: $(OUT)/share/man/man1/kupo.1 # Build man page
 
 doc: # Serve the rendered documentation on \033[0;33m<http://localhost:8000>\033[00m
-	cd docs && python -m SimpleHTTPServer
+	@cd docs && python -m SimpleHTTPServer
 
 clean: # Remove build artifacts
-	rm -r $(OUT) || echo "Nothing to remove."
+	(rm -r $(OUT) 2>/dev/null && echo "Build artifacts removed.") || echo "Nothing to remove."
 
 clean-all: clean # Remove build artifacts & build cache
 	cabal clean
