@@ -12,7 +12,7 @@
 
 ```sql
 CREATE TABLE `inputs` (
-  `ext_output_reference` BLOB PRIMARY KEY NOT NULL,
+  `ext_output_reference` BLOB NOT NULL,
   `address` TEXT COLLATE NOCASE NOT NULL,
   `value` BLOB NOT NULL,
   `datum_info` BLOB,
@@ -23,8 +23,10 @@ CREATE TABLE `inputs` (
   `output_reference` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, 1, 34)) VIRTUAL,
   `output_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -4, 2)) VIRTUAL,
   `transaction_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -2)) VIRTUAL,
+  `datum_hash` BLOB GENERATED ALWAYS AS (substr(`datum_info`, 2)) VIRTUAL,
   `payment_credential` TEXT COLLATE NOCASE NOT NULL GENERATED ALWAYS AS (substr(`address`, -56)) VIRTUAL,
-  `datum_hash` BLOB NOT NULL GENERATED ALWAYS AS (substr(`datum_info`, 2)) VIRTUAL
+
+  PRIMARY KEY (`ext_output_reference`)
 );
 
 CREATE UNIQUE INDEX `inputsByOutputReference` ON `inputs` (`output_reference`);
