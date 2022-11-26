@@ -124,7 +124,7 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> serverHostOption
                     <*> serverPortOption
                     <*> optional sinceOption
-                    <*> many patternOption
+                    <*> fmap fromList (many patternOption)
                     <*> inputManagementOption
                     <*> pure 129600 -- TODO: should be pulled from genesis parameters
                     <*> garbageCollectionIntervalOption

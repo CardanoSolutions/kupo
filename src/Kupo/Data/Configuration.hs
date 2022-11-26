@@ -80,7 +80,7 @@ data Configuration = Configuration
         -- ^ Port for the API HTTP Server
     , since :: !(Maybe Point)
         -- ^ Point from when a *new* synchronization should start
-    , patterns :: ![Pattern]
+    , patterns :: !(Set Pattern)
         -- ^ List of address patterns to look for when synchronizing
     , inputManagement :: !InputManagement
         -- ^ Behavior to adopt towards spent inputs (prune or mark-and-leave)

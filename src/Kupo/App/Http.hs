@@ -753,18 +753,18 @@ handlePutPatterns headers readHealth forceRollback patternsVar mPointOrSlot quer
                     Nothing
 
     putPatternsAt :: [Pattern] -> Point -> IO Response
-    putPatternsAt ps point = do
+    putPatternsAt (fromList -> newPatterns) point = do
         response <- newEmptyTMVarIO
         forceRollback point $ ForcedRollbackHandler
             { onSuccess = do
-                runTransaction $ insertPatterns ps
-                patterns <- atomically $ do
-                    modifyTVar' patternsVar (Set.union (fromList ps))
+                runTransaction $ insertPatterns newPatterns
+                allPatterns <- atomically $ do
+                    modifyTVar' patternsVar (Set.union newPatterns)
                     readTVar patternsVar
                 atomically $ putTMVar response $ responseJsonEncoding status200 headers $
                     Json.list
                         (Json.text . patternToText)
-                        (toList patterns)
+                        (toList allPatterns)
             , onFailure = do
                 atomically (putTMVar response Errors.failedToRollback)
             }

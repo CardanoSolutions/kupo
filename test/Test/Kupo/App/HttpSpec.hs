@@ -551,7 +551,7 @@ databaseStub = Database
     , deletePattern =
         \_ -> liftIO (abs <$> generate arbitrary)
     , listPatterns = lift $ do
-        generate (listOf1 genPattern)
+        generate (fromList <$> listOf1 genPattern)
     , insertBinaryData =
         \_ -> return ()
     , getBinaryData =

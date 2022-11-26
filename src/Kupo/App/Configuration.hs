@@ -62,6 +62,7 @@ import System.FilePath.Posix
     )
 
 import qualified Data.Aeson as Json
+import qualified Data.Set as Set
 import qualified Data.Yaml as Yaml
 
 
@@ -156,22 +157,23 @@ newPatternsCache
     -> m (TVar m (Set Pattern))
 newPatternsCache tr configuration Database{..} = do
     alreadyKnownPatterns <- runTransaction listPatterns
-    patterns <- case (alreadyKnownPatterns, configuredPatterns) of
-        (x:xs, []) ->
-            pure (x:xs)
-        ([], y:ys) -> do
-            runTransaction (insertPatterns (y:ys))
-            pure (y:ys)
-        ([], []) -> do
+    patterns <- if
+        | null alreadyKnownPatterns && null configuredPatterns -> do
             logWith tr (ConfigurationInvalidOrMissingOption errNoPatterns)
             throwIO (ConflictingOptionsException errNoPatterns)
-        (xs, ys) | sort xs /= sort ys -> do
-            logWith tr $ ConfigurationInvalidOrMissingOption errConflictingOptions
-            throwIO (ConflictingOptionsException errConflictingOptions)
-        (xs, _) ->
-            pure xs
-    logWith tr $ ConfigurationPatterns (patternToText <$> patterns)
-    newTVarIO (fromList patterns)
+        | null configuredPatterns -> do
+            pure alreadyKnownPatterns
+        | null alreadyKnownPatterns -> do
+            runTransaction (insertPatterns configuredPatterns)
+            pure configuredPatterns
+        | otherwise ->
+            if alreadyKnownPatterns /= configuredPatterns then do
+                logWith tr $ ConfigurationInvalidOrMissingOption errConflictingOptions
+                throwIO (ConflictingOptionsException errConflictingOptions)
+            else
+                pure alreadyKnownPatterns
+    logWith tr $ ConfigurationPatterns (Set.map patternToText patterns)
+    newTVarIO patterns
   where
     Configuration{patterns = configuredPatterns} = configuration
 
@@ -211,7 +213,7 @@ data TraceConfiguration where
         :: { nodeSocket :: FilePath, nodeConfig :: FilePath }
         -> TraceConfiguration
     ConfigurationPatterns
-        :: { patterns :: [Text] }
+        :: { patterns :: Set Text }
         -> TraceConfiguration
     ConfigurationCheckpointsForIntersection
         :: { slots :: [Word64] }

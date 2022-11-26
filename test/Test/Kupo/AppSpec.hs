@@ -236,7 +236,7 @@ spec = do
                         , serverHost
                         , serverPort
                         , since = Just GenesisPoint
-                        , patterns = [MatchAny IncludingBootstrap]
+                        , patterns = fromList [MatchAny IncludingBootstrap]
                         , inputManagement
                         , longestRollback
                         , garbageCollectionInterval

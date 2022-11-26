@@ -189,7 +189,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             { workDir = InMemory
 
             , since = Just point
-            , patterns = [MatchAny IncludingBootstrap]
+            , patterns = fromList [MatchAny IncludingBootstrap]
             , deferIndexes = SkipNonEssentialIndexes
             }
         let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
@@ -207,7 +207,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             env <- newEnvironment $ cfg
                 { workDir = Dir tmp
                 , since = Just somePoint
-                , patterns = [MatchAny OnlyShelley]
+                , patterns = fromList [MatchAny OnlyShelley]
                 }
             timeoutOrThrow 5 (debug httpLogs) $ race_
                 (kupo tr `runWith` env)
@@ -220,7 +220,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             env <- newEnvironment $ cfg
                 { workDir = Dir tmp
                 , since = Just somePoint
-                , patterns = [MatchAny OnlyShelley]
+                , patterns = fromList [MatchAny OnlyShelley]
                 }
             timeoutOrThrow 5 (debug httpLogs) $ race_
                 (kupo tr `runWith` env)
@@ -234,7 +234,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             env <- newEnvironment $ cfg
                 { workDir = Dir tmp
                 , since = Just someOtherPoint
-                , patterns = [MatchAny OnlyShelley]
+                , patterns = fromList [MatchAny OnlyShelley]
                 }
             shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
           )
@@ -243,7 +243,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             env <- newEnvironment $ cfg
                 { workDir = Dir tmp
                 , since = Just somePoint
-                , patterns = [MatchAny IncludingBootstrap]
+                , patterns = fromList [MatchAny IncludingBootstrap]
                 }
             shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
           )
@@ -252,7 +252,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Nothing
-            , patterns = [MatchAny OnlyShelley]
+            , patterns = fromList [MatchAny OnlyShelley]
             }
         shouldThrowTimeout @NoStartingPointException 1 (kupo tr `runWith` env)
 
@@ -261,7 +261,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just GenesisPoint
-            , patterns = [MatchAny OnlyShelley]
+            , patterns = fromList [MatchAny OnlyShelley]
             , chainProducer =
                 case chainProducer cfg of
                     CardanoNode{nodeConfig} ->
@@ -288,7 +288,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just someNonExistingPoint
-            , patterns = [MatchAny OnlyShelley]
+            , patterns = fromList [MatchAny OnlyShelley]
             }
         shouldThrowTimeout @IntersectionNotFoundException 1 (kupo tr `runWith` env)
 
@@ -296,7 +296,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePoint
-            , patterns = []
+            , patterns = fromList []
             }
         shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
 
@@ -305,7 +305,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePoint
-            , patterns = [MatchAny OnlyShelley]
+            , patterns = fromList [MatchAny OnlyShelley]
             , inputManagement = RemoveSpentInputs
             }
 
@@ -322,7 +322,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePointAncestor
-            , patterns = [MatchAny OnlyShelley]
+            , patterns = fromList [MatchAny OnlyShelley]
             , inputManagement = RemoveSpentInputs
             }
         let strict = GetCheckpointStrict
@@ -348,7 +348,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastAlonzoPoint
-            , patterns = [MatchAny OnlyShelley]
+            , patterns = fromList [MatchAny OnlyShelley]
             }
         timeoutOrThrow 20 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
@@ -364,7 +364,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePointNearScripts
-            , patterns = [MatchAny OnlyShelley]
+            , patterns = fromList [MatchAny OnlyShelley]
             }
         timeoutOrThrow 20 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
@@ -382,7 +382,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastByronPoint
-            , patterns = [MatchDelegation someStakeKey]
+            , patterns = fromList [MatchDelegation someStakeKey]
             }
         let maxSlot = getPointSlotNo lastByronPoint + 100_000
         let onlyInWindow r
@@ -413,7 +413,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
             env' <- newEnvironment $ cfg
                 { workDir = Dir tmp'
                 , since = Just lastByronPoint
-                , patterns = [MatchDelegation someOtherStakeKey]
+                , patterns = fromList [MatchDelegation someOtherStakeKey]
                 }
             timeoutOrThrow 10 (debug httpLogs) $ race_
                 (kupo tr `runWith` env')
@@ -429,7 +429,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just tip
-            , patterns = [MatchAny IncludingBootstrap]
+            , patterns = fromList [MatchAny IncludingBootstrap]
             }
         timeoutOrThrow 180 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
@@ -444,7 +444,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastByronPoint
-            , patterns = [MatchAny OnlyShelley]
+            , patterns = fromList [MatchAny OnlyShelley]
             }
         timeoutOrThrow 10 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
@@ -464,7 +464,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastByronPoint
-            , patterns = [MatchAny OnlyShelley]
+            , patterns = fromList [MatchAny OnlyShelley]
             }
         timeoutOrThrow 5 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
@@ -486,7 +486,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastMaryPoint
-            , patterns =
+            , patterns = fromList
                 [ MatchTransactionId someTransactionId
                 , MatchOutputReference (mkOutputReference someThirdTransactionId 0)
                 ]
@@ -510,7 +510,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastMaryPoint
-            , patterns = [MatchPolicyId somePolicyId]
+            , patterns = fromList [MatchPolicyId somePolicyId]
             }
         timeoutOrThrow 10 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
@@ -525,7 +525,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just lastAllegraPoint
-            , patterns = [MatchAny OnlyShelley]
+            , patterns = fromList [MatchAny OnlyShelley]
             }
         timeoutOrThrow 20 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
@@ -543,7 +543,7 @@ spec = skippableContext "End-to-end" $ \manager -> do
         env <- newEnvironment $ cfg
             { workDir = Dir tmp
             , since = Just somePointNearPhase2Failure
-            , patterns = [MatchTransactionId somePhase2FailedTransactionIdWithReturn]
+            , patterns = fromList [MatchTransactionId somePhase2FailedTransactionIdWithReturn]
             }
         timeoutOrThrow 5 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
@@ -574,7 +574,7 @@ skippableContext prefix skippableSpec = do
                     , serverHost = "127.0.0.1"
                     , serverPort = 0
                     , since = Nothing
-                    , patterns = []
+                    , patterns = fromList []
                     , inputManagement = MarkSpentInputs
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
@@ -597,7 +597,7 @@ skippableContext prefix skippableSpec = do
                     , serverHost = "127.0.0.1"
                     , serverPort = 0
                     , since = Nothing
-                    , patterns = []
+                    , patterns = fromList []
                     , inputManagement = MarkSpentInputs
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180

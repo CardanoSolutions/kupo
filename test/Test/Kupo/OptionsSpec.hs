@@ -143,17 +143,22 @@ spec = parallel $ do
           )
         , ( defaultArgs ++ [ "--match", "*" ]
           , shouldParseAppConfiguration $ defaultConfiguration
-            { patterns = [ MatchAny IncludingBootstrap ]
+            { patterns = fromList [ MatchAny IncludingBootstrap ]
+            }
+          )
+        , ( defaultArgs ++ [ "--match", "*" ] ++ [ "--match", "*" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { patterns = fromList [ MatchAny IncludingBootstrap ]
             }
           )
         , ( defaultArgs ++ [ "--match", "*", "--match", "*/*" ]
           , shouldParseAppConfiguration $ defaultConfiguration
-            { patterns = [ MatchAny IncludingBootstrap, MatchAny OnlyShelley ]
+            { patterns = fromList [ MatchAny IncludingBootstrap, MatchAny OnlyShelley ]
             }
           )
         , ( defaultArgs ++ [ "--match", "stake1uxuweccthd5qqgfh49uq592qr8mh7a78g89jjv0u74vnzasr3safd" ]
           , shouldParseAppConfiguration $ defaultConfiguration
-            { patterns = [ MatchDelegation $ unsafeDecodeBase16 "b8ece30bbb68002137a9780a154019f77f77c741cb2931fcf5593176" ]
+            { patterns = fromList [ MatchDelegation $ unsafeDecodeBase16 "b8ece30bbb68002137a9780a154019f77f77c741cb2931fcf5593176" ]
             }
           )
         , ( defaultArgs ++ [ "--match", "14@2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771" ]
@@ -167,7 +172,7 @@ spec = parallel $ do
                             (unsafeTransactionIdFromBytes $ unsafeDecodeBase16 str)
                             14
                  in
-                    [ MatchOutputReference outRef ]
+                    fromList [ MatchOutputReference outRef ]
             }
           )
         , ( defaultArgs ++ [ "--match", "*@2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771" ]
@@ -179,7 +184,7 @@ spec = parallel $ do
                     txId =
                         unsafeTransactionIdFromBytes $ unsafeDecodeBase16 str
                  in
-                    [ MatchTransactionId txId ]
+                    fromList [ MatchTransactionId txId ]
             }
           )
         , ( defaultArgs ++ [ "--match", "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c3635.*" ]
@@ -191,7 +196,7 @@ spec = parallel $ do
                     policyId =
                         unsafePolicyIdFromBytes $ unsafeDecodeBase16 str
                  in
-                    [ MatchPolicyId policyId ]
+                    fromList [ MatchPolicyId policyId ]
             }
           )
         , ( defaultArgs ++ [ "--match", "2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c3635.706174617465" ]
@@ -205,7 +210,7 @@ spec = parallel $ do
                     assetName =
                         unsafeAssetNameFromBytes $ unsafeDecodeBase16 "706174617465"
                  in
-                    [ MatchAssetId (policyId, assetName) ]
+                    fromList [ MatchAssetId (policyId, assetName) ]
             }
           )
         , ( defaultArgs ++ [ "--match", "NOT-A-PATTERN" ]

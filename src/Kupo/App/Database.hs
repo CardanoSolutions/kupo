@@ -178,7 +178,7 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m [Point]
 
     , insertPatterns
-        :: [Pattern]
+        :: Set Pattern
         -> DBTransaction m ()
 
     , deletePattern
@@ -186,7 +186,7 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m Int
 
     , listPatterns
-        :: DBTransaction m [Pattern]
+        :: DBTransaction m (Set Pattern)
 
     , insertBinaryData
         :: [DB.BinaryData]
@@ -469,15 +469,6 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                 \xs (checkpointHeaderHash, checkpointSlotNo) ->
                     pure ((DB.pointFromRow DB.Checkpoint{..}) : xs)
 
-    , insertPatterns = \patterns -> ReaderT $ \conn -> do
-        mapM_
-            (\pattern_ ->
-                insertRow @"patterns" conn
-                    [ SQLText (patternToText pattern_)
-                    ]
-            )
-            patterns
-
     , insertBinaryData = \bin -> ReaderT $ \conn -> do
         mapM_
             (\DB.BinaryData{..} ->
@@ -518,6 +509,15 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             _notSQLBlob ->
                 Nothing
 
+    , insertPatterns = \patterns -> ReaderT $ \conn -> do
+        mapM_
+            (\pattern_ ->
+                insertRow @"patterns" conn
+                    [ SQLText (patternToText pattern_)
+                    ]
+            )
+            patterns
+
     , deletePattern = \pattern_-> ReaderT $ \conn -> do
         execute conn "DELETE FROM patterns WHERE pattern = ?"
             [ SQLText (DB.patternToRow pattern_)
@@ -525,7 +525,8 @@ mkDatabase tr mode longestRollback bracketConnection = Database
         changes conn
 
     , listPatterns = ReaderT $ \conn -> do
-        fold_ conn "SELECT * FROM patterns" []
+        fmap fromList
+            $ fold_ conn "SELECT * FROM patterns" []
             $ \xs (Only x) -> pure (DB.patternFromRow x:xs)
 
     , rollbackTo = \(SQLInteger . fromIntegral . unSlotNo -> minSlotNo) -> ReaderT $ \conn -> do

@@ -1,3 +1,17 @@
+### [2.2.1] - Unreleased
+
+#### Added
+
+N/A
+
+#### Changed
+
+- [📌 #86](https://github.com/CardanoSolutions/kupo/issues/86) - Fixed start-up configuration check to not fail when providing twice the same pattern on restart.
+
+#### Removed
+
+N/A
+
 ### [2.2.0] - 2022-11-16
 
 #### Added

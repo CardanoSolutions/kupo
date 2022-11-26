@@ -639,7 +639,7 @@ shortLivedWorker fp mode lock = do
                           )
                         , (1, do
                             pattern_ <- genPattern
-                            pure $ runTransaction $ insertPatterns [pattern_]
+                            pure $ runTransaction $ insertPatterns (fromList [pattern_])
                           )
                         , (1, do
                             pattern_ <- genPattern
