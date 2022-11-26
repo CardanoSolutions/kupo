@@ -184,10 +184,24 @@ varOgmiosPort = "OGMIOS_PORT"
 
 spec :: Spec
 spec = skippableContext "End-to-end" $ \manager -> do
-    forM_ eraBoundaries $ \(era, point) -> specify ("quick sync through " <> era) $ \(_, tr, cfg, httpLogs) -> do
+    specify "in-memory" $ \(_, tr, cfg, httpLogs) -> do
         env <- newEnvironment $ cfg
             { workDir = InMemory
+            , since = Just lastByronPoint
+            , patterns = fromList [MatchAny IncludingBootstrap]
+            , deferIndexes = SkipNonEssentialIndexes
+            }
+        let HttpClient{..} = newHttpClientWith manager (serverHost cfg, serverPort cfg) httpLogs
+        timeoutOrThrow 30 (debug httpLogs) $ race_
+            (kupo tr `runWith` env)
+            (do
+                waitSlot (> 1000)
+                healthCheck (serverHost cfg) (serverPort cfg)
+            )
 
+    forM_ eraBoundaries $ \(era, point) -> specify ("quick sync through " <> era) $ \(tmp, tr, cfg, httpLogs) -> do
+        env <- newEnvironment $ cfg
+            { workDir = Dir tmp
             , since = Just point
             , patterns = fromList [MatchAny IncludingBootstrap]
             , deferIndexes = SkipNonEssentialIndexes
@@ -196,7 +210,8 @@ spec = skippableContext "End-to-end" $ \manager -> do
         timeoutOrThrow 5 (debug httpLogs) $ race_
             (kupo tr `runWith` env)
             (do
-                waitSlot (> 1_000)
+                cp <- maximum . (<> [0]) . fmap getPointSlotNo <$> listCheckpoints
+                waitSlot (> (cp + 1_000))
                 healthCheck (serverHost cfg) (serverPort cfg)
             )
 
