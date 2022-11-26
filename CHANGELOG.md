@@ -7,7 +7,11 @@ N/A
 #### Changed
 
 - [📌 #86](https://github.com/CardanoSolutions/kupo/issues/86) - Fixed start-up configuration check to not fail when providing twice the same pattern on restart.
+
 - Fix Ogmios' parser for non-Babbage eras in the presence of collaterals without collateral return.
+
+- Provide better error message when starting Kupo with a misconfigured network. This is a pretty common case and the message used to be a bit cryptic. Kupo now detects
+  that and inform the end-user properly.
 
 #### Removed
 

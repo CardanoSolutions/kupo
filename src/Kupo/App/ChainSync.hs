@@ -18,6 +18,9 @@ import Kupo.Prelude
 import Control.Exception.Safe
     ( IOException
     )
+import Data.Char
+    ( isDigit
+    )
 import Data.List
     ( isInfixOf
     )
@@ -38,6 +41,9 @@ import Kupo.Control.MonadLog
     ( Tracer
     , traceWith
     )
+import Kupo.Control.MonadOuroboros
+    ( NodeToClientVersion
+    )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..)
     )
@@ -46,14 +52,21 @@ import Kupo.Data.Cardano
     , WithOrigin (..)
     )
 import Kupo.Data.ChainSync
-    ( IntersectionNotFoundException (..)
+    ( HandshakeException (..)
+    , IntersectionNotFoundException (..)
     )
 import Network.WebSockets
     ( ConnectionException (..)
     )
+import Ouroboros.Network.Protocol.Handshake
+    ( HandshakeProtocolError (..)
+    )
 import System.IO.Error
     ( isDoesNotExistError
     )
+
+import qualified Data.Text as T
+import qualified Ouroboros.Network.Protocol.Handshake as Handshake
 
 withChainSyncExceptionHandler
     :: Tracer IO TraceChainSync
@@ -65,10 +78,38 @@ withChainSyncExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
   where
     handleExceptions :: IO DiffTime -> IO DiffTime
     handleExceptions
-        = handle (onRetryableException 5 isRetryableIOException)
+        = handle onHandshakeException
+        . handle (onRetryableException 5 isRetryableIOException)
         . handle (onRetryableException 5 isRetryableConnectionException)
         . handle (onRetryableException 0 isRetryableIntersectionNotFoundException)
         . (`onException` toggleDisconnected)
+
+    onHandshakeException :: HandshakeProtocolError NodeToClientVersion -> IO a
+    onHandshakeException = \case
+        HandshakeError (Handshake.Refused _version reason) -> do
+            let hint = case T.splitOn "/=" reason of
+                    [T.filter isDigit -> remoteConfig, T.filter isDigit -> localConfig] ->
+                        unwords
+                            [ "Kupo is configured for", prettyNetwork localConfig
+                            , "but cardano-node is running on", prettyNetwork remoteConfig <> "."
+                            , "You probably want to use a different configuration."
+                            ]
+                    _unexpectedReasonMessage ->
+                        ""
+            throwIO $ HandshakeException $ unwords
+                [ "Unable to establish the connection with the cardano-node:"
+                , "it runs on a different network!"
+                , hint
+                ]
+        e ->
+            throwIO e
+      where
+        prettyNetwork = \case
+            "764824073" -> "'mainnet'"
+            "1097911063" -> "'testnet'"
+            "1" -> "'preview'"
+            "2" -> "'preprod'"
+            unknownMagic -> "'network-magic=" <> unknownMagic <> "'"
 
     onRetryableException :: Exception e => DiffTime -> (e -> Bool) -> e -> IO DiffTime
     onRetryableException retryingIn isRetryable e

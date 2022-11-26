@@ -5,6 +5,7 @@
 module Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
     , IntersectionNotFoundException (..)
+    , HandshakeException (..)
 
     -- * Pipelining Decision
     , DistanceFromTip
@@ -27,6 +28,10 @@ data ForcedRollbackHandler (m :: Type -> Type) = ForcedRollbackHandler
     { onSuccess :: !(m ())
     , onFailure :: !(m ())
     }
+
+-- | Exception thrown when first establishing a connection with a remote cardano-node.
+data HandshakeException = HandshakeException Text deriving (Show)
+instance Exception HandshakeException
 
 -- | Exception thrown when creating a chain-sync client from an invalid list of
 -- points.
