@@ -23,7 +23,6 @@ import Kupo.Prelude
 
 import Control.Monad.Trans.Except
     ( throwE
-    , withExceptT
     )
 import Data.Aeson.Lens
     ( _String
@@ -31,6 +30,9 @@ import Data.Aeson.Lens
     )
 import Kupo.App.Database
     ( Database (..)
+    )
+import Kupo.Control.MonadCatch
+    ( catch
     )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..)
@@ -57,6 +59,9 @@ import Kupo.Data.Pattern
     ( Pattern (..)
     , patternToText
     )
+import System.Directory
+    ( doesFileExist
+    )
 import System.FilePath.Posix
     ( replaceFileName
     )
@@ -64,7 +69,6 @@ import System.FilePath.Posix
 import qualified Data.Aeson as Json
 import qualified Data.Set as Set
 import qualified Data.Yaml as Yaml
-
 
 parseNetworkParameters :: FilePath -> IO NetworkParameters
 parseNetworkParameters configFile = runOrDie $ do
@@ -74,8 +78,7 @@ parseNetworkParameters configFile = runOrDie $ do
             <*> config ^? key "ShelleyGenesisFile" . _String
     case genesisFiles of
         Nothing ->
-            throwE "Missing 'ByronGenesisFile' and/or 'ShelleyGenesisFile' from \
-                   \Cardano's configuration (i.e. '--node-config' option)?"
+            throwE "missing or invalid 'ByronGenesisFile' and/or 'ShelleyGenesisFile' from Cardano's configuration"
         Just (toString -> byronGenesisFile, toString -> shelleyGenesisFile) -> do
             byronGenesis   <- decodeYaml (replaceFileName configFile byronGenesisFile)
             shelleyGenesis <- decodeYaml (replaceFileName configFile shelleyGenesisFile)
@@ -84,13 +87,16 @@ parseNetworkParameters configFile = runOrDie $ do
                 Json.Success params -> pure params
   where
     runOrDie :: ExceptT String IO a -> IO a
-    runOrDie = runExceptT >=> either (die . ("Failed to parse network parameters: " <>)) pure
-
-    prettyParseException :: Yaml.ParseException -> String
-    prettyParseException e = "Failed to decode JSON (or YAML) file: " <> show e
+    runOrDie = runExceptT >=> either (die . ("Failed to configure network parameters: " <>)) pure
 
     decodeYaml :: FromJSON a => FilePath -> ExceptT String IO a
-    decodeYaml = withExceptT prettyParseException . ExceptT . Yaml.decodeFileEither
+    decodeYaml filepath = Yaml.decodeFileThrow filepath `catch` (\(e :: Yaml.ParseException) -> do
+        lift (doesFileExist configFile) >>= \case
+            True ->
+                throwE $ "failed to parse configuration: malformed JSON/YAML: " <> show e
+            False ->
+                throwE $ "no configuration file found at the given location: " <> configFile
+        )
 
 --
 -- Application Bootstrapping

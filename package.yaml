@@ -60,6 +60,7 @@ library:
     - containers
     - contra-tracer
     - contra-tracers
+    - directory
     - fast-bech32
     - file-embed
     - filepath

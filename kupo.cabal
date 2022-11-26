@@ -34,6 +34,7 @@ data-files:
     docs/api/v1.0.1.yaml
     docs/api/v2.0.0-beta.yaml
     docs/api/v2.1.0.yaml
+    docs/api/v2.2.0.yaml
 
 source-repository head
   type: git
@@ -155,6 +156,7 @@ library
     , containers
     , contra-tracer
     , contra-tracers
+    , directory
     , fast-bech32
     , file-embed
     , filepath
