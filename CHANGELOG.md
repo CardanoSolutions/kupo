@@ -1,4 +1,4 @@
-### [2.2.1] - Unreleased
+### [2.2.1] - 2022-11-26
 
 #### Added
 
@@ -10,8 +10,7 @@ N/A
 
 - Fix Ogmios' parser for non-Babbage eras in the presence of collaterals without collateral return.
 
-- Provide better error message when starting Kupo with a misconfigured network. This is a pretty common case and the message used to be a bit cryptic. Kupo now detects
-  that and inform the end-user properly.
+- Provide better error message when starting Kupo with a misconfigured network. This is a pretty common case and the message used to be a bit cryptic. Kupo now detects that and inform the end-user properly.
 
 #### Removed
 
