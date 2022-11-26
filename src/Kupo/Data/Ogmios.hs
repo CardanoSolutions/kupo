@@ -421,7 +421,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     case inputSource of
         Just ("collaterals" :: Text) -> do
             inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "collaterals"))
-            outs <- traverse decodeOutput =<< (o .: "body" >>= (.: "collateralReturn"))
+            outs <- traverse decodeOutput =<< (o .: "body" >>= (.:? "collateralReturn"))
             pure PartialTransaction
                 { id
                 , inputs

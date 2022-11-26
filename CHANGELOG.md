@@ -7,6 +7,7 @@ N/A
 #### Changed
 
 - [📌 #86](https://github.com/CardanoSolutions/kupo/issues/86) - Fixed start-up configuration check to not fail when providing twice the same pattern on restart.
+- Fix Ogmios' parser for non-Babbage eras in the presence of collaterals without collateral return.
 
 #### Removed
 

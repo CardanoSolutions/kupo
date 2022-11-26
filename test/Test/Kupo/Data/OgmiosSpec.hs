@@ -32,14 +32,10 @@ import Test.Hspec
     , runIO
     )
 import Test.Hspec.QuickCheck
-    ( modifyMaxSize
-    , prop
+    ( prop
     )
 import Test.QuickCheck
     ( counterexample
-    , forAll
-    , sized
-    , withMaxSuccess
     )
 import Test.QuickCheck.Monadic
     ( assert
@@ -68,12 +64,10 @@ propVector
     -> (Json.Value -> Json.Parser a)
     -> SpecWith ()
 propVector vectors decoder = do
-    modifyMaxSize (const (length vectors)) $ do
-        prop "decode test vectors" $
-            withMaxSuccess (length vectors) $
-                forAll (sized $ \i -> pure (vectors !! i)) p
+    prop "decode test vectors" $ monadicIO $ do
+        forM_ [0 .. (length vectors) - 1] (\i -> shouldDecode (vectors !! i))
   where
-    p vector = monadicIO $ do
+    shouldDecode vector = do
         let errDecode = "Failed to decode JSON"
         value <- maybe (fail errDecode) pure =<< run (Json.decodeFileStrict vector)
         case Json.parse decoder value of
