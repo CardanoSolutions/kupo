@@ -1,8 +1,8 @@
 # websockets-json
 
-## Overview 
+## Overview
 
-Extras for websockets with JSON.
+Extras for working with websockets & JSON.
 
 <hr/>
 

@@ -1,18 +1,18 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.34.6.
 --
 -- see: https://github.com/sol/hpack
 
 name:           websockets-json
 version:        1.0.0
-synopsis:       Extras for websockets with JSON.
+synopsis:       Extras for working with websockets & JSON.
 description:    Please see the README on GitHub at <https://github.com/cardanosolutions/kupo/tree/master/server/modules/websockets-json>
 category:       Network
 homepage:       https://github.com/cardanosolutions/kupo#readme
 bug-reports:    https://github.com/cardanosolutions/kupo/issues
 author:         KtorZ <matthias.benkort@gmail.com>
-maintainer:     matthias.benkort@gmail.com
+maintainer:     KtorZ <matthias.benkort@gmail.com>
 copyright:      2022 KtorZ
 license:        MPL-2.0
 license-file:   LICENSE
@@ -73,7 +73,7 @@ library
   build-depends:
       aeson
     , base >=4.7 && <5
-    , io-classes
-    , relude
+    , bytestring
+    , exceptions
     , websockets
   default-language: Haskell2010

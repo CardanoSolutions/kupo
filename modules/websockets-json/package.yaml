@@ -5,10 +5,10 @@ version:             1.0.0
 github:              "cardanosolutions/kupo"
 license:             MPL-2.0
 author:              "KtorZ <matthias.benkort@gmail.com>"
-maintainer:          "matthias.benkort@gmail.com"
+maintainer:          "KtorZ <matthias.benkort@gmail.com>"
 copyright:           "2022 KtorZ"
 description:         Please see the README on GitHub at <https://github.com/cardanosolutions/kupo/tree/master/server/modules/websockets-json>
-synopsis:            Extras for websockets with JSON.
+synopsis:            Extras for working with websockets & JSON.
 category:            Network
 
 extra-source-files:
@@ -25,6 +25,6 @@ library:
   ghc-options: *ghc-options-lib
   dependencies:
     - aeson
-    - relude
-    - io-classes
+    - bytestring
+    - exceptions
     - websockets
