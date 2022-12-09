@@ -12,6 +12,9 @@ module Kupo.App.ChainSync.Ogmios
 
 import Kupo.Prelude
 
+import Control.Exception.Safe
+    ( MonadThrow
+    )
 import Kupo.App.Mailbox
     ( Mailbox
     , putHighFrequencyMessage
@@ -19,9 +22,6 @@ import Kupo.App.Mailbox
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
-    )
-import Kupo.Control.MonadThrow
-    ( MonadThrow (..)
     )
 import Kupo.Data.Cardano
     ( Point
