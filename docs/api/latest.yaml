@@ -605,6 +605,16 @@ components:
         type: string
         contentEncoding: base16
 
+  responses:
+    304:
+      description: |
+        Not Modified
+
+        Returned when a `If-None-Match` request header matches the current `ETag` for the response.
+        This is meant to provide efficient caching and polling. The `ETag` corresponds to the most
+        recent block header hash processed by Kupo.
+      headers: *default-headers
+
   schemas:
     Address_Shelley: &Address_Shelley
       title: Shelley
@@ -1457,6 +1467,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Match"
+        304:
+          $ref: "#/components/responses/304"
 
   /matches/{pattern}:
     get: &getMatches
@@ -1485,6 +1497,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Match"
+        304:
+          $ref: "#/components/responses/304"
         400:
           description: Bad Request
           content:
@@ -1535,6 +1549,8 @@ paths:
                   - $ref: "#/components/schemas/Datum"
                   - title: Nothing
                     type: "null"
+        304:
+          $ref: "#/components/responses/304"
         400:
           description: Bad Request
           content:
@@ -1576,6 +1592,8 @@ paths:
                   - $ref: "#/components/schemas/Script"
                   - title: Nothing
                     type: "null"
+        304:
+          $ref: "#/components/responses/304"
         400:
           description: Bad Request
           content:
@@ -1612,6 +1630,7 @@ paths:
           "application/json;charset=utf-8":
             schema:
               type: object
+
               additionalProperties: false
               required:
                 - patterns
@@ -1630,7 +1649,9 @@ paths:
       responses:
         200:
           description: OK
-          headers: *default-headers
+          headers:
+            Content-Type:
+              $ref: "#/components/headers/Content-Type"
           content:
             "application/json;charset=utf-8":
               schema:
@@ -1661,7 +1682,8 @@ paths:
       responses:
         200:
           description: OK
-          headers: *default-headers
+          Content-Type:
+            $ref: "#/components/headers/Content-Type"
           content:
             "application/json;charset=utf-8":
               schema:
@@ -1682,7 +1704,8 @@ paths:
       responses:
         200:
           description: OK
-          headers: *default-headers
+          Content-Type:
+            $ref: "#/components/headers/Content-Type"
           content:
             "application/json;charset=utf-8":
               schema:
@@ -1716,7 +1739,8 @@ paths:
       responses:
         200:
           description: OK
-          headers: *default-headers
+          Content-Type:
+            $ref: "#/components/headers/Content-Type"
           content:
             "application/json;charset=utf-8":
               schema:
@@ -1749,6 +1773,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Point"
+        304:
+          $ref: "#/components/responses/304"
 
   /checkpoints/{slot-no}:
     get:
@@ -1772,6 +1798,8 @@ paths:
                 oneOf:
                   - $ref: "#/components/schemas/Point"
                   - type: "null"
+        304:
+          $ref: "#/components/responses/304"
 
   /metadata/{slot-no}:
     get:
@@ -1801,6 +1829,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Metadata"
+        304:
+          $ref: "#/components/responses/304"
 
   /health:
     get:

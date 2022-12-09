@@ -52,6 +52,7 @@ import Kupo.Data.Cardano
     , distanceToSlot
     , foldBlock
     , getPoint
+    , getPointHeaderHash
     , getPointSlotNo
     , getTransactionId
     , hasAssetId
@@ -124,6 +125,7 @@ import Network.HTTP.Types
     ( hAccept
     , hContentType
     , status200
+    , status304
     )
 import Network.Wai
     ( Application
@@ -136,6 +138,7 @@ import Network.Wai
     , requestHeaders
     , requestMethod
     , responseBuilder
+    , responseLBS
     , responseStatus
     , strictRequestBody
     )
@@ -144,6 +147,7 @@ import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
+import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified GHC.Clock
@@ -216,19 +220,19 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
             routeHealth (requestMethod req, args)
 
         ("checkpoints" : args) ->
-            routeCheckpoints (requestMethod req, args)
+            cacheOr readHealth req send $ flip routeCheckpoints (requestMethod req, args)
 
         ("matches" : args) ->
-            routeMatches (requestMethod req, args)
+            cacheOr readHealth req send $ flip routeMatches (requestMethod req, args)
 
         ("datums" : args) ->
-            routeDatums (requestMethod req, args)
+            cacheOr readHealth req send $ flip routeDatums (requestMethod req, args)
 
         ("scripts" : args) ->
-            routeScripts (requestMethod req, args)
+            cacheOr readHealth req send $ flip routeScripts (requestMethod req, args)
 
         ("metadata" : args) ->
-            routeMetadata (requestMethod req, args)
+            cacheOr readHealth req send $ flip routeMetadata (requestMethod req, args)
 
         ("patterns" : args) ->
             routePatterns (requestMethod req, args)
@@ -248,14 +252,12 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
         (_, _) ->
             send Errors.methodNotAllowed
 
-    routeCheckpoints = \case
+    routeCheckpoints headers = \case
         ("GET", []) ->
             withDatabase send ReadOnly $ \db -> do
-                headers <- responseHeaders readHealth Default.headers
                 send (handleGetCheckpoints headers db)
         ("GET", [arg]) ->
             withDatabase send ReadOnly $ \db -> do
-                headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetCheckpointBySlot
                             headers
                             (slotNoFromText arg)
@@ -266,10 +268,9 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
         (_, _) ->
             send Errors.methodNotAllowed
 
-    routeMatches = \case
+    routeMatches headers = \case
         ("GET", args) ->
             withDatabase send ReadOnly $ \db -> do
-                headers <- responseHeaders readHealth Default.headers
                 send $ handleGetMatches
                             headers
                             (pathParametersToText args)
@@ -277,7 +278,6 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
                             db
         ("DELETE", args) ->
             withDatabase send ReadWrite $ \db -> do
-                headers <- responseHeaders readHealth Default.headers
                 send =<< handleDeleteMatches
                             headers
                             patternsVar
@@ -286,10 +286,9 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
         (_, _) ->
             send Errors.methodNotAllowed
 
-    routeDatums = \case
+    routeDatums headers = \case
         ("GET", [arg]) ->
             withDatabase send ReadOnly $ \db -> do
-                headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetDatum
                             headers
                             (datumHashFromText arg)
@@ -299,10 +298,9 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
         (_, _) ->
             send Errors.methodNotAllowed
 
-    routeScripts = \case
+    routeScripts headers = \case
         ("GET", [arg]) ->
             withDatabase send ReadOnly $ \db -> do
-                headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetScript
                             headers
                             (scriptHashFromText arg)
@@ -312,10 +310,9 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
         (_, _) ->
             send Errors.methodNotAllowed
 
-    routeMetadata = \case
+    routeMetadata headers = \case
         ("GET", [arg]) ->
             withDatabase send ReadOnly $ \db -> do
-                headers <- responseHeaders readHealth Default.headers
                 send =<< handleGetMetadata
                             headers
                             (slotNoFromText arg)
@@ -329,16 +326,12 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
 
     routePatterns = \case
         ("GET", []) -> do
-            res <- handleGetPatterns
-                        <$> responseHeaders readHealth Default.headers
-                        <*> pure (Just wildcard)
-                        <*> fmap const (readTVarIO patternsVar)
+            res <- handleGetPatterns Default.headers (Just wildcard)
+                        <$> fmap const (readTVarIO patternsVar)
             send res
         ("GET", args) -> do
-            res <- handleGetPatterns
-                        <$> responseHeaders readHealth Default.headers
-                        <*> pure (pathParametersToText args)
-                        <*> fmap (flip included) (readTVarIO patternsVar)
+            res <- handleGetPatterns Default.headers (pathParametersToText args)
+                        <$> fmap (flip included) (readTVarIO patternsVar)
             send res
         ("PUT", []) -> do
             args <- requestBodyJson
@@ -348,9 +341,8 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
                     pure (pointOrSlotNo, patterns)
                 ) req
             withDatabase send ReadWrite $ \db -> do
-                headers <- responseHeaders readHealth Default.headers
                 send =<< handlePutPatterns
-                            headers
+                            Default.headers
                             readHealth
                             forceRollback
                             patternsVar
@@ -360,9 +352,8 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
         ("PUT", args) -> do
             pointOrSlotNo <- requestBodyJson decodeForcedRollback req
             withDatabase send ReadWrite $ \db -> do
-                headers <- responseHeaders readHealth Default.headers
                 send =<< handlePutPatterns
-                            headers
+                            Default.headers
                             readHealth
                             forceRollback
                             patternsVar
@@ -371,14 +362,31 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
                             db
         ("DELETE", args) ->
             withDatabase send ReadWrite $ \db -> do
-                headers <- responseHeaders readHealth Default.headers
                 send =<< handleDeletePattern
-                            headers
+                            Default.headers
                             patternsVar
                             (pathParametersToText args)
                             db
         (_, _) ->
             send Errors.methodNotAllowed
+
+-- | Handle requests that provide a `if-none-match` request header with a proper response, or route
+-- the query through the normal handler path.
+cacheOr
+    :: IO Health
+    -> Request
+    -> (Response -> IO ResponseReceived)
+    -> ([Http.Header] -> IO ResponseReceived)
+    -> IO ResponseReceived
+cacheOr readHealth req send handler = do
+    health <- readHealth
+    let mostRecentHeaderHash =
+            (encodeUtf8 . headerHashToText) <$> (mostRecentCheckpoint health >>= getPointHeaderHash)
+    case List.lookup "if-none-match" (requestHeaders req) of
+        Just etag | Just etag == mostRecentHeaderHash ->
+            send $ responseLBS status304 (addCacheHeaders Default.headers health) ""
+        _etagMismatchOrNotPresent ->
+            handler (addCacheHeaders Default.headers health)
 
 pathParametersToText :: [Text] -> Maybe Text
 pathParametersToText = \case
@@ -402,16 +410,16 @@ handleGetHealth
 handleGetHealth reqHeaders health =
     case findContentType reqHeaders of
         Just ct | cTextPlain `BS.isInfixOf` ct -> do
-            resHeaders <- responseHeaders (pure health) [(hContentType, cTextPlain <> ";charset=utf-8")]
+            let resHeaders = addCacheHeaders [(hContentType, cTextPlain <> ";charset=utf-8")] health
             return $ responseBuilder status200 resHeaders (mkPrometheusMetrics health)
         Just ct | cApplicationJson `BS.isInfixOf` ct -> do
-            resHeaders <- responseHeaders (pure health) Default.headers
+            let resHeaders = addCacheHeaders Default.headers health
             return $ responseJson status200 resHeaders health
         Just ct | cAny `BS.isInfixOf` ct -> do
-            resHeaders <- responseHeaders (pure health) Default.headers
+            let resHeaders = addCacheHeaders Default.headers health
             return $ responseBuilder status200 resHeaders (mkPrometheusMetrics health)
         Nothing -> do
-            resHeaders <- responseHeaders (pure health) Default.headers
+            let resHeaders = addCacheHeaders Default.headers health
             return $ responseJson status200 resHeaders health
         Just{} ->
             return $ Errors.unsupportedContentType (prettyContentTypes <$> [cApplicationJson, cTextPlain])
@@ -782,18 +790,22 @@ handleRequest :: Either Response Response -> Response
 handleRequest = either identity identity
 {-# INLINABLE handleRequest #-}
 
-responseHeaders
-    :: Applicative m
-    => m Health
+addCacheHeaders
+    :: [Http.Header]
+    -> Health
     -> [Http.Header]
-    -> m [Http.Header]
-responseHeaders readHealth defaultHeaders =
-    toHeaders . mostRecentCheckpoint <$> readHealth
+addCacheHeaders defaultHeaders =
+    toHeaders . mostRecentCheckpoint
   where
-    toHeaders :: Maybe SlotNo -> [Http.Header]
-    toHeaders slot =
-        ("X-Most-Recent-Checkpoint", encodeUtf8 $ slotNoToText $ fromMaybe 0 slot)
-        : defaultHeaders
+    toHeaders :: Maybe Point -> [Http.Header]
+    toHeaders pt =
+        case liftA2 (,) (getPointSlotNo <$> pt) (getPointHeaderHash =<< pt) of
+            Nothing ->
+                ("X-Most-Recent-Checkpoint", "0") : defaultHeaders
+            Just (slot, headerHash) ->
+                ("X-Most-Recent-Checkpoint", encodeUtf8 $ slotNoToText slot) :
+                ("ETag", encodeUtf8 $ headerHashToText headerHash) :
+                defaultHeaders
 
 requestBodyJson
     :: (Json.Value -> Json.Parser a)
@@ -808,7 +820,6 @@ requestBodyJson parser req = do
 --
 -- Tracer
 --
-
 
 tracerMiddleware :: Tracer IO TraceHttpServer -> Middleware
 tracerMiddleware tr runApp req send = do

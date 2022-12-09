@@ -95,6 +95,7 @@ import Test.Hspec.QuickCheck
     )
 import Test.Kupo.Data.Generators
     ( genBinaryData
+    , genHeaderHash
     , genMetadata
     , genNonGenesisPoint
     , genPattern
@@ -155,7 +156,7 @@ spec = do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/health"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/health" $ \_assertJson _endpoint -> do
             res <- Wai.request $ Wai.defaultRequest
@@ -182,31 +183,31 @@ spec = do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/checkpoints"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/matches" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/matches?spent" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?spent"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/matches?unspent" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?unspent"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/matches?order=oldest_first" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?oldest_first"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/matches/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -214,7 +215,7 @@ spec = do
             res <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath ("/matches/" <> fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/matches/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -222,7 +223,7 @@ spec = do
             res <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath ("/matches/" <> fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/matches/{pattern}?order=most_recent_first" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -230,7 +231,7 @@ spec = do
             res <- Wai.request $ Wai.defaultRequest
                 & flip Wai.setPath ("/matches/" <> fragment <> "?order=most_recent_first")
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         sessionWith noWildcard specification delete "/matches/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -241,7 +242,7 @@ spec = do
                 { Wai.requestMethod = "DELETE" }
                 & flip Wai.setPath ("/matches/" <> encodeUtf8 fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/datums/{datum-hash}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -249,7 +250,7 @@ spec = do
                 { Wai.requestMethod = "GET" }
                 & flip Wai.setPath "/datums/309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/scripts/{script-hash}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -257,7 +258,7 @@ spec = do
                 { Wai.requestMethod = "GET" }
                 & flip Wai.setPath "/scripts/309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09ded"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/metadata/{slot-no}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -265,7 +266,7 @@ spec = do
                 { Wai.requestMethod = "GET" }
                 & flip Wai.setPath "/metadata/42"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/metadata/{slot-no}?transaction_id=309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -273,13 +274,13 @@ spec = do
                 { Wai.requestMethod = "GET" }
                 & flip Wai.setPath "/metadata/42?transaction_id=309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson True schema
 
         session specification get "/patterns" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/patterns"
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson False schema
 
         session specification delete "/patterns/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -288,7 +289,7 @@ spec = do
                 { Wai.requestMethod = "DELETE" }
                 & flip Wai.setPath ("/patterns/" <> encodeUtf8 fragment)
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson False schema
 
         session specification put "/patterns" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -301,7 +302,7 @@ spec = do
                     reqBody
                 }
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson False schema
 
         session specification put "/patterns/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -314,7 +315,7 @@ spec = do
                     reqBody
                 }
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson False schema
 
         session specification put "/patterns/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
@@ -327,7 +328,7 @@ spec = do
                     reqBody
                 }
             res & Wai.assertStatus (Http.statusCode Http.status200)
-            res & assertJson schema
+            res & assertJson False schema
 
         session' "† GET /does-not-exist" $ do
             resNotFound <- Wai.request $ Wai.defaultRequest
@@ -508,7 +509,7 @@ healthStub :: IO Health
 healthStub =
     pure $ Health
         { connectionStatus = Connected
-        , mostRecentCheckpoint = Just 42
+        , mostRecentCheckpoint = Just $ BlockPoint 42 (generateWith 42 genHeaderHash)
         , mostRecentNodeTip = Just 42
         }
 
@@ -607,7 +608,7 @@ session
     :: OpenApi
     -> Lens' PathItem (Maybe Operation)
     -> Text
-    -> ( (Schema -> Wai.SResponse -> Wai.Session (Json.Value, [ValidationError]))
+    -> ( (Bool -> Schema -> Wai.SResponse -> Wai.Session (Json.Value, [ValidationError]))
        -> Operation
        -> Wai.Session (Json.Value, [ValidationError])
        )
@@ -620,7 +621,7 @@ sessionWith
     -> OpenApi
     -> Lens' PathItem (Maybe Operation)
     -> Text
-    -> ( (Schema -> Wai.SResponse -> Wai.Session (Json.Value, [ValidationError]))
+    -> ( (Bool -> Schema -> Wai.SResponse -> Wai.Session (Json.Value, [ValidationError]))
        -> Operation
        -> Wai.Session (Json.Value, [ValidationError])
        )
@@ -683,9 +684,10 @@ sessionWith defaultPatterns specification opL path callback =
         _:rest ->
             paramAt paramName rest
 
-    assertJson schema res = do
+    assertJson shouldHaveMostRecentCheckpoint schema res = do
         res & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
-        liftIO $ (fst <$> Wai.simpleHeaders res) `shouldContain` ["X-Most-Recent-Checkpoint"]
+        when shouldHaveMostRecentCheckpoint $
+            liftIO $ (fst <$> Wai.simpleHeaders res) `shouldContain` ["X-Most-Recent-Checkpoint"]
         case Json.eitherDecode' (Wai.simpleBody res) of
             Left e ->
                 liftIO $ fail (show e)

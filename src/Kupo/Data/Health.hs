@@ -18,7 +18,9 @@ module Kupo.Data.Health
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( SlotNo (..)
+    ( Point
+    , SlotNo (..)
+    , getPointSlotNo
     , slotNoToJson
     )
 
@@ -53,7 +55,7 @@ import qualified Data.Map as Map
 data Health = Health
     { connectionStatus :: !ConnectionStatus
         -- ^ Condition of the connection with the underlying node.
-    , mostRecentCheckpoint :: !(Maybe SlotNo)
+    , mostRecentCheckpoint :: !(Maybe Point)
         -- ^ Absolute slot number of the most recent database checkpoint.
     , mostRecentNodeTip :: !(Maybe SlotNo)
         -- ^ Absolute slot number of the tip of the node
@@ -66,7 +68,7 @@ instance ToJSON Health where
             (toEncoding connectionStatus)
         , Json.pair
             "most_recent_checkpoint"
-            (maybe Json.null_ slotNoToJson mostRecentCheckpoint)
+            (maybe Json.null_ (slotNoToJson . getPointSlotNo) mostRecentCheckpoint)
         , Json.pair
             "most_recent_node_tip"
             (maybe Json.null_ slotNoToJson mostRecentNodeTip)
@@ -114,7 +116,7 @@ mkPrometheusMetrics Health{..} =
           ]
 
         , [ ( "most_recent_checkpoint"
-            , mkCounter $ fromEnum $ unSlotNo s
+            , mkCounter $ fromEnum $ unSlotNo $ getPointSlotNo s
             ) | Just s <- [mostRecentCheckpoint]
           ]
 

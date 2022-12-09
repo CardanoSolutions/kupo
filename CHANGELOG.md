@@ -1,3 +1,17 @@
+### [2.3.0] - UNRELEASED
+
+#### Added
+
+- Support for [ETag/If-None-Match](https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching#etagif-none-match) standard HTTP caching. `ETag` in kupo matches the most recent block header hash. This allows clients to perform efficient polling and caching on their end. This also comes as an additional protection for rollbacks as one can control the `ETag` between two requests and assess whether a rollback happened.
+
+#### Changed
+
+- N/A
+
+#### Removed
+
+- The `/patterns` family of endpoints no longer return a `X-Most-Recent-Checkpoint` for it doesn't make much sense for these endpoints. Indeed, they may change regardless of what is processed by the indexer.
+
 ### [2.2.1] - 2022-11-26
 
 #### Added

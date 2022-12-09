@@ -235,7 +235,7 @@ consumer
         )
     => Tracer IO TraceConsumer
     -> InputManagement
-    -> (Tip -> Maybe SlotNo -> DBTransaction m ())
+    -> (Tip -> Maybe Point -> DBTransaction m ())
     -> Mailbox m (Tip, block) (Tip, Point)
     -> TVar m (Set Pattern)
     -> Database m
@@ -273,7 +273,7 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
             when isNonEmptyBlock $ do
                 insertBinaryData datums
                 insertScripts scripts
-            notifyTip lastKnownTip (Just lastKnownSlot)
+            notifyTip lastKnownTip (Just lastKnownPoint)
             return isNonEmptyBlock
         logWith tr $ ConsumerRollForward
             { slotNo = lastKnownSlot

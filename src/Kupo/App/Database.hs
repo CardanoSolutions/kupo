@@ -209,7 +209,7 @@ data Database (m :: Type -> Type) = Database
 
     , rollbackTo
         :: SlotNo
-        -> DBTransaction m (Maybe SlotNo)
+        -> DBTransaction m (Maybe Point)
 
     , optimize
         :: DBTransaction  m ()
@@ -546,8 +546,8 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                         execute conn rollbackQryDeleteCheckpoints [ minSlotNo ]
                 traceWith tr $ ConnectionExitQuery "rollbackTo"
         query_ conn selectMaxCheckpointQry >>= \case
-            [[SQLInteger slotNo']] ->
-                return $ Just (fromIntegral slotNo')
+            [[SQLInteger (fromIntegral -> checkpointSlotNo), SQLBlob checkpointHeaderHash]] ->
+                return $ Just (DB.pointFromRow DB.Checkpoint{..})
             [[SQLNull]] ->
                 return Nothing
             xs ->
@@ -654,7 +654,7 @@ getScriptQry =
 
 selectMaxCheckpointQry :: Query
 selectMaxCheckpointQry =
-    "SELECT MAX(slot_no) FROM checkpoints"
+    "SELECT MAX(slot_no),header_hash FROM checkpoints"
 
 rollbackQryDeleteInputs :: Query
 rollbackQryDeleteInputs =

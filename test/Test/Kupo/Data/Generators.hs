@@ -204,7 +204,7 @@ genHeaderHash = do
 genHealth :: Gen Health
 genHealth = Health
     <$> genConnectionStatus
-    <*> frequency [(1, pure Nothing), (5, Just <$> genSlotNo)]
+    <*> frequency [(1, pure Nothing), (5, Just <$> genNonGenesisPoint)]
     <*> frequency [(1, pure Nothing), (5, Just <$> genSlotNo)]
 
 genNonGenesisPoint :: Gen Point

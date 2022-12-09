@@ -1776,6 +1776,10 @@ distanceToTip =
 
 type Point = Ouroboros.Point Block
 
+instance ToJSON Point where
+    toJSON = error "ToJSON Point called instead of 'toEncoding'."
+    toEncoding = pointToJson
+
 -- | Parse a 'Point' from a text string. This alternatively tries two patterns:
 --
 -- - "origin"        → for a points that refers to the beginning of the blockchain
