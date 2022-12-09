@@ -28,7 +28,7 @@ info:
 
     # Installation
 
-    ### From pre-compiled executables
+    ## From pre-compiled executables
 
     Pre-compiled static binaries can be downloaded as build artifacts from
     [latest releases](https://github.com/CardanoSolutions/kupo/releases) or the
@@ -59,7 +59,7 @@ info:
 
     Once installed, `man kupo` or `kupo --help` comes in handy.
 
-    ### From Docker
+    ## From docker
 
     Kupo is available as a standalone Docker image on [DockerHub](https://hub.docker.com/repository/docker/cardanosolutions/kupo).
 
@@ -67,22 +67,22 @@ info:
     $ docker pull cardanosolutions/kupo
     ```
 
-    ### From source
+    ## From source
 
-    #### Pre-requisite
+    ### Pre-requisite
 
     On Linux, make sure to have [nix](https://nixos.org/download.html#nix-install-linux) and [cachix](https://www.cachix.org/) installed.
     Configure cachix to use `kupo.cachix.org-1:RzYQ8KVjRJdPNt/Bhq/UqdyGYWFM8ShjEMNG8wzHBQ4=` (`cachix use kupo`).
 
     On MacOS, you'll need `cabal` as well as a few system dependencies. Follow the [instructions to install `cardano-node` on the developer portal](https://developers.cardano.org/docs/get-started/installing-cardano-node#macos) since Kupo share a similar set of dependencies.
 
-    #### Building
+    ### Building
 
     ```console
     $ make
     ```
 
-    # Getting Started
+    # Getting started
 
     Kupo connects to a _local [cardano-node](https://github.com/input-output-hk/cardano-node/)_
     in order to receive information from the blockchain. It goes without saying
@@ -109,7 +109,7 @@ info:
       --in-memory
     ```
 
-    #### --in-memory / --workdir \<dir>
+    ## --in-memory / --workdir {dir}
 
     This will build an index from the beginning of the blockchain (i.e.`origin`)
     of all transaction outputs where that stake key has been involved in. The
@@ -135,7 +135,7 @@ info:
     resume its work from where it lefts it in case the server is interrupted.
     Neat!
 
-    #### --since \<slot-no.header_hash>
+    ## --since {slot-no.header_hash}
 
     What if we only need to synchronize from a given point in time? For
     example, we may want to skip the entire Byron and Shelley eras because we
@@ -159,7 +159,7 @@ info:
     [#era-boundaries] which references points at which era ends for mainnet and
     testnet; useful to start syncing from a specific era.
 
-    #### --match \<pattern>
+    ## --match {pattern}
 
     Kupo can accept one or more matching patterns using the `--match` option.
     In case multiple patterns are provided, they'll ALL be used when looking
@@ -167,7 +167,7 @@ info:
     payment keys known of a wallet. The syntax for patterns is explained in
     greater details in the [Patterns](#section/Patterns) section below.
 
-    #### --defer-db-indexes
+    ## --defer-db-indexes
 
     The careful reader that you are would have noticed the `--defer-db-indexes`
     flag that we've been passing around. This is a little trick to speed up the
@@ -183,7 +183,7 @@ info:
     minutes) and can therefore happen only after a full synchronization by restarting
     Kupo without the `--defer-db-indexes` flag.
 
-    #### --prune-utxo
+    ## --prune-utxo
 
     Sometimes, it isn't necessary to keep old data around. Fear not, Kupo has
     got you covered! Using the `--prune-utxo` command-line flag, you can
@@ -202,7 +202,7 @@ info:
     You can then use query flags in the API (`?spent` or `?unspent`) to filter
     results based on whether or not they've been spent.
 
-    #### --ogmios-host \<hostname> / --ogmios-port \<port-number>
+    ## --ogmios-host {hostname} / --ogmios-port {port-number}
 
     So far, we've connected Kupo to a local cardano-node, using a unix domain
     socket as a communication channel. However, Kupo can also connect through
@@ -224,7 +224,7 @@ info:
 
     Kupo will synchronize data directly from Ogmios! Neat isn't it?
 
-    #### --help
+    ## --help
 
     In case you're lost, don't forget that a summary of this manual is available by running:
 
@@ -240,6 +240,8 @@ info:
     ```
 
     # Patterns
+
+    ## Overview
 
     Kupo can construct patterns from pretty much every constituant of an
     address, an asset id or an output reference, in any kind of format
@@ -281,6 +283,8 @@ info:
            ┗━━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━━━━┛
     ```
 
+    ## Address
+
     ```
     ADDRESS =
 
@@ -294,6 +298,16 @@ info:
          └─┤ * ├─────────────────────────────────────┘
            ╰───╯
     ```
+
+    ### Examples
+
+    | Pattern                                                       | Description                                                    |
+    | ---                                                           | ---                                                            |
+    | `addr1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgz4xq9p`  | Outputs to a specific address                                  |
+    | `stake1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgydsx9n` | Outputs whose address is delegated to a specific stake address |
+    | `*`                                                           | Any output (incl. to legacy addresses)                         |
+
+    ## Credential
 
     ```
     CREDENTIAL =
@@ -314,8 +328,23 @@ info:
          └─┤ * ├───────────────────────────────────────────────────┘
            ╰───╯
 
+    HEXDIG = %x30–39 / %x41-%46
+
     BECH32DIG = %x61 / %x63-68 / %x6A-6E / %x70-7A / 0-9
     ```
+
+    ### Examples
+
+    Examples below are given for patterns in the form of `CREDENTIAL / CREDENTIAL` since a `CREDENTIAL` is never specified alone.
+
+    | Pattern                                                                    | Description                                                           |
+    | ---                                                                        | ---                                                                   |
+    | `*/*`                                                                      | Any output to a Shelley-based address                                 |
+    | `addr_vk1x7da0l25j04my8sej5ntrgdn38wmshxhplxdfjskn07ufavsgtkqn5hljl/*`     | Outputs whose address carries a specific payment key (bech32 encoded) |
+    | `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e/*`       | Outputs whose address carries a specific payment key (hex encoded)    |
+    | `*/script1cda3khwqv60360rp5m7akt50m6ttapacs8rqhn5w342z7r35m37`             | Outputs whose stake is governed by a specific script                  |
+
+    ## Asset id
 
     ```
     POLICY_ID =                             ASSET_NAME =
@@ -326,7 +355,18 @@ info:
          │ ╭───╮         │                       │ ╭───╮           │
          └─┤ * ├─────────┘                       └─┤ * ├───────────┘
            ╰───╯                                   ╰───╯
+
+    HEXDIG = %x30–39 / %x41-%46
     ```
+
+    ### Examples
+
+    | Pattern                                                                   | Description                                            |
+    | ---                                                                       | ---                                                    |
+    | `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e.*`      | Outputs that contains any asset from a specific policy |
+    | `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e.FFCC00` | Outputs that contains any quantity of a specific asset |
+
+    ## Output reference
 
     ```
     OUTPUT_INDEX =                          TRANSACTION_ID =
@@ -337,28 +377,18 @@ info:
          │ ╭───╮         │
          └─┤ * ├─────────┘
            ╰───╯
-    ```
 
-    ```
     HEXDIG = %x30–39 / %x41-%46
     ```
 
-    ### Examples:
+    ### Examples
 
-    | Pattern                                                                    | Description                                                           |
-    | ---                                                                        | ---                                                                   |
-    | `*`                                                                        | Any output (incl. to legacy addresses)                                |
-    | `*/*`                                                                      | Any output to a Shelley-based address                                 |
-    | `addr1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgz4xq9p`               | Outputs to a specific address                                         |
-    | `stake1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgydsx9n`              | Outputs whose address is delegated to a specific stake address        |
-    | `addr_vk1x7da0l25j04my8sej5ntrgdn38wmshxhplxdfjskn07ufavsgtkqn5hljl/*`     | Outputs whose address carries a specific payment key (bech32 encoded) |
-    | `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e/*`       | Outputs whose address carries a specific payment key (hex encoded)    |
-    | `*/script1cda3khwqv60360rp5m7akt50m6ttapacs8rqhn5w342z7r35m37`             | Outputs whose stake is governed by a specific script                  |
-    | `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e.*`       | Outputs that contains a token from a specific policy                  |
-    | `dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e.TOKNAME` | Outputs that contains a specific token (any quantity)                 |
-    | `*@dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e`       | Outputs from a specific transaction                                   |
+    | Pattern                                                              | Description                                              |
+    | ---                                                                  | ---                                                      |
+    | `*@dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e` | Outputs from a specific transaction                      |
+    | `3@dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e` | The 4th output (0-based indexing) of a given transaction |
 
-    # Accessing Results
+    # Accessing results
 
     Matches can be queried from the server via HTTP GET requests. For example:
 
@@ -384,7 +414,75 @@ info:
 
     The complete API reference is available below.
 
-    # Era Boundaries
+    # Rollbacks & chain forks
+
+    ## Problem
+
+    Cardano is a distributed permissionless ledger and, as such, provides only
+    eventual consensus. This means that information in the system only becomes
+    immutable after some delay—however, the probability of something remaining
+    true increases exponentially as time passes.
+
+    This matters for client applications using an indexer like Kupo. Indeed,
+    any information obtained from Kupo only reflects the local view of the
+    global system that Kupo has (or, more specifically, the node it is
+    connected to). Recent information that enters the system may therefore be
+    invalidated at a later stage. This is typically called _a rollback_, which
+    happens when the node switches to a different version of the chain.
+
+    ## How Kupo deals with rollbacks
+
+    Rollbacks are relatively frequent on Cardano, but they remain usually small
+    (a couple of blocks) because the network resolves them promptly. Yet, in
+    theory, rollbacks can go as far as the protocol's security parameter,
+    defined in each network's genesis configuration. For example, on `mainnet`
+    and `preprod`, this security parameter equals `2160`; on `preview`, it
+    equals `432`. Furthermore, the Ouroboros Praos protocol (used by Cardano at
+    the moment) guarantees that there are at least `k` blocks in a window of
+    `3k / f` slots where `f` is the _active slot coefficient_.
+
+    Said differently, we can't guarantee that information newer than ~36h will
+    be immutable. However, the probability of non-settlement approaches 0
+    extremely fast, much sooner (after a hundred blocks, the likelihood of
+    rollback is typically less than 0.01%). This is why Kupo does not get rid
+    of any data immediately, even when `--prune-utxo` is specified. Instead,
+    Kupo takes a _mark and sweep_ approach akin to garbage collectors. First,
+    spent UTxO entries are marked until it is safe to remove them and such that
+    the indexer database can constantly be rolled back when necessary. Then,
+    after a rollback, Kupo automatically (and quickly) catches up with the
+    chain.
+
+    ## How can your application deal with rollbacks
+
+    As a client application, you have to care extra about using information
+    from the indexer and use patterns that are resilient to rollbacks. So
+    naturally, Kupo provides mechanisms to help you deal with rollbacks.
+
+    First, any results from Kupo are delivered with a timestamp `created_at`,
+    which gives you the absolute slot number at which an entry has been created
+    and the block header hash that contains the associated output. These pieces
+    of information are crucial to detect whether something has changed. Indeed,
+    when switching to a different fork of the chain, outputs may or may not
+    disappear. Yet, they may end up in another block than the one they were
+    initially advertised in. Thus controlling both the slot number and the
+    header hash between requests gives your application ways to notice if
+    something has changed. Plus, comparing the absolute slot number with the
+    network tip helps you build confidence about how immutable some information
+    is.
+
+    Second, any response from the server contains some practical header fields:
+
+    - `X-Most-Recent-Checkpoint`: an absolute slot number of the most recent block indexed by Kupo at the moment of the request.
+    - `ETag`: a hex-encoded block header hash digest of that same most recent block.
+
+    With this, client applications can know precisely which point on the chain
+    a query is accurate. Knowing this is also helpful when polling a specific
+    endpoint to see whether something has changed, particularly when combined
+    with standard HTTP caching practices. For example, a client application can
+    specify a [`If-None-Match`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching#etagif-none-match)
+    header in requests to only fetch a response if it has changed.
+
+    # Era boundaries
 
     <div class="tabs">
       <input type="radio" checked name="tab" id="tab-mainnet">
@@ -469,6 +567,21 @@ info:
       </pre>
     </div>
 
+x-tagGroups:
+  - name: General
+    tags:
+      - Matches
+      - Patterns
+  - name: Auxiliary Data
+    tags:
+      - Scripts
+      - Datums
+      - Metadata
+  - name: Monitoring
+    tags:
+      - Checkpoints
+      - Health
+
 components:
   headers: &default-headers
     Content-Type:
@@ -479,10 +592,18 @@ components:
 
     X-Most-Recent-Checkpoint:
       description: |
-        Kupo's most recent indexed checkpoint's slot number. This allows to know which slot a query is accurate of.
+        Kupo's most recent indexed block's slot number. This allows to know which slot a query is accurate of.
       schema:
         type: integer
         minimum: 0
+
+    ETag:
+      description: |
+        A cache value generated by the server to indicate whether a response has changed or not. The `ETag` always corresponds to the block header hash of the most recent indexed block.
+        This can be used in combination with [`If-None-Match`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching#etagif-none-match) to provide some efficient client-side caching.
+      schema:
+        type: string
+        contentEncoding: base16
 
   schemas:
     Address_Shelley: &Address_Shelley
