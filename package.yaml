@@ -35,6 +35,7 @@ library:
   when:
     condition: flag(production)
     ghc-options:
+    - -Wunused-packages
     - -Werror
     - -O2
   dependencies:
@@ -143,6 +144,7 @@ executables:
       condition: flag(production)
       ghc-options:
       - -O2
+      - -Wunused-packages
       - -Werror
       - '"-with-rtsopts=-N -A16m -qb -qg"'
     dependencies:

@@ -9,7 +9,6 @@ tests: false
 test-show-details: direct
 
 package kupo
-  flags: +production
   tests: true
 
 package websockets-json

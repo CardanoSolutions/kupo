@@ -17,7 +17,6 @@ ghc-options:
     - -Wincomplete-uni-patterns
     - -Wpartial-fields
     - -Wredundant-constraints
-    - -Wunused-packages
     - -fno-warn-unticked-promoted-constructors
     - -fno-warn-partial-fields
 
@@ -28,8 +27,7 @@ ghc-options:
     - -Wincomplete-record-updates   # | Same as &ghc-options-lib
     - -Wincomplete-uni-patterns     # |
     - -Wpartial-fields              # |
-    - -Wredundant-constraints       # |
-    - -Wunused-packages             # v
+    - -Wredundant-constraints       # v
     - -threaded
     - -rtsopts
 
@@ -40,8 +38,8 @@ ghc-options:
     - -Wincomplete-record-updates   # | Same as &ghc-options-lib
     - -Wincomplete-uni-patterns     # |
     - -Wpartial-fields              # |
-    - -Wredundant-constraints       # |
-    - -Wunused-packages             # v
+    - -Wredundant-constraints       # v
+    - -Wunused-packages
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
