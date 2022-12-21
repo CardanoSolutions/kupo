@@ -535,7 +535,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             -- the application, we'll always be asked to rollback to the
             -- _current tip_. In this case, there's nothing to delete or update,
             -- so we can safely skip it.
-            [[currentSlotNo]] | currentSlotNo == minSlotNo -> do
+            [[currentSlotNo, _]] | currentSlotNo == minSlotNo -> do
                 pure ()
             _otherwise -> do
                 traceWith tr $ ConnectionBeginQuery "rollbackTo"
@@ -548,7 +548,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
         query_ conn selectMaxCheckpointQry >>= \case
             [[SQLInteger (fromIntegral -> checkpointSlotNo), SQLBlob checkpointHeaderHash]] ->
                 return $ Just (DB.pointFromRow DB.Checkpoint{..})
-            [[SQLNull]] ->
+            [[SQLNull, SQLNull]] ->
                 return Nothing
             xs ->
                 throwIO $ UnexpectedRow (fromQuery selectMaxCheckpointQry) xs
