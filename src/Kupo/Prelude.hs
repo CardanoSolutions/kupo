@@ -1,3 +1,5 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 --  This Source Code Form is subject to the terms of the Mozilla Public
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -43,6 +45,26 @@ module Kupo.Prelude
     , decodeFull'
     , unsafeDeserialize'
 
+      -- * Crypto
+    , Blake2b_224
+    , Blake2b_256
+    , Crypto
+    , HASH
+    , Hash (..)
+    , HashAlgorithm (..)
+    , StandardCrypto
+    , digestSize
+    , hashFromBytes
+    , hashToJson
+    , unsafeHashFromBytes
+
+      -- * Ledger Eras
+    , AllegraEra
+    , AlonzoEra
+    , BabbageEra
+    , MaryEra
+    , ShelleyEra
+
       -- * System
     , hijackSigTerm
     , ConnectionStatusToggle (..)
@@ -56,6 +78,33 @@ import Cardano.Binary
     ( decodeFull'
     , serialize'
     , unsafeDeserialize'
+    )
+import Cardano.Crypto.Hash
+    ( Blake2b_224
+    , Blake2b_256
+    , Hash (..)
+    , HashAlgorithm (..)
+    , hashFromBytes
+    , sizeHash
+    )
+import Cardano.Ledger.Allegra
+    ( AllegraEra
+    )
+import Cardano.Ledger.Alonzo
+    ( AlonzoEra
+    )
+import Cardano.Ledger.Babbage
+    ( BabbageEra
+    )
+import Cardano.Ledger.Crypto
+    ( Crypto (HASH)
+    , StandardCrypto
+    )
+import Cardano.Ledger.Mary
+    ( MaryEra
+    )
+import Cardano.Ledger.Shelley
+    ( ShelleyEra
     )
 import Control.Arrow
     ( left
@@ -156,6 +205,7 @@ import qualified Data.Aeson.Key as Json
 import qualified Data.Aeson.Parser as Json
 import qualified Data.Aeson.Parser.Internal as Json
 import qualified Data.Aeson.Types as Json
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base58 as Base58
 import qualified Data.Map as Map
 
@@ -242,3 +292,22 @@ encodeObject =
 encodeBytes :: ByteString -> Json.Encoding
 encodeBytes =
     Json.text . encodeBase16
+
+-- * Crypto
+
+unsafeHashFromBytes :: forall alg a. (HasCallStack, HashAlgorithm alg) => ByteString -> Hash alg a
+unsafeHashFromBytes bytes
+    | BS.length bytes /= digestSize @alg =
+        error $ "failed to create " <> show (digestSize @alg) <> "-byte hash digest\
+              \ for from bytestring: " <> encodeBase16 bytes
+    | otherwise =
+        UnsafeHash (toShort bytes)
+
+digestSize :: forall alg. HashAlgorithm alg => Int
+digestSize =
+    fromIntegral (sizeHash (Proxy @alg))
+{-# INLINABLE digestSize #-}
+
+hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding
+hashToJson (UnsafeHash h) =
+    encodeBytes (fromShort h)

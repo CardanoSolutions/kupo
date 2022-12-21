@@ -69,6 +69,32 @@ library
       Kupo.Control.MonadThrow
       Kupo.Control.MonadTime
       Kupo.Data.Cardano
+      Kupo.Data.Cardano.Address
+      Kupo.Data.Cardano.AssetId
+      Kupo.Data.Cardano.AssetName
+      Kupo.Data.Cardano.BinaryData
+      Kupo.Data.Cardano.Block
+      Kupo.Data.Cardano.BlockNo
+      Kupo.Data.Cardano.Datum
+      Kupo.Data.Cardano.DatumHash
+      Kupo.Data.Cardano.HeaderHash
+      Kupo.Data.Cardano.Metadata
+      Kupo.Data.Cardano.MetadataHash
+      Kupo.Data.Cardano.NativeScript
+      Kupo.Data.Cardano.Output
+      Kupo.Data.Cardano.OutputIndex
+      Kupo.Data.Cardano.OutputReference
+      Kupo.Data.Cardano.Point
+      Kupo.Data.Cardano.PolicyId
+      Kupo.Data.Cardano.Script
+      Kupo.Data.Cardano.ScriptHash
+      Kupo.Data.Cardano.ScriptReference
+      Kupo.Data.Cardano.SlotNo
+      Kupo.Data.Cardano.Tip
+      Kupo.Data.Cardano.Transaction
+      Kupo.Data.Cardano.TransactionId
+      Kupo.Data.Cardano.TransactionIndex
+      Kupo.Data.Cardano.Value
       Kupo.Data.ChainSync
       Kupo.Data.Configuration
       Kupo.Data.Database

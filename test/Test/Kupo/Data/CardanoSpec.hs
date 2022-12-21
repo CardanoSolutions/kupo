@@ -11,12 +11,10 @@ module Test.Kupo.Data.CardanoSpec
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( Blake2b_224
-    , assetNameFromText
+    ( assetNameFromText
     , assetNameToText
     , datumHashFromText
     , datumHashToText
-    , digest
     , hashScript
     , headerHashFromText
     , metadataFromJson

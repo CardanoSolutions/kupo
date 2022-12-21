@@ -20,10 +20,11 @@ module Kupo.Data.Ogmios
 import Kupo.Prelude
 
 import Cardano.Crypto.Hash.Class
-    ( Hash
-    , HashAlgorithm
-    , hashFromTextAsHex
+    ( hashFromTextAsHex
     , hashToBytes
+    )
+import Cardano.Ledger.SafeHash
+    ( unsafeMakeSafeHash
     )
 import Data.Aeson
     ( (.!=)
@@ -33,7 +34,6 @@ import Data.Aeson
 import Kupo.Data.Cardano
     ( Address
     , BinaryData
-    , Blake2b_256
     , BlockNo (..)
     , Datum (..)
     , DatumHash
@@ -45,7 +45,6 @@ import Kupo.Data.Cardano
     , Script
     , ScriptHash
     , SlotNo (..)
-    , StandardCrypto
     , Tip
     , TransactionId
     , Value
@@ -72,7 +71,6 @@ import Kupo.Data.Cardano
     , scriptHashFromText
     , slotNoToJson
     , transactionIdFromHash
-    , unsafeMakeSafeHash
     , unsafeValueFromList
     , withReferences
     )

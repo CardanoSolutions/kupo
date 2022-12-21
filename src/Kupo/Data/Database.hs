@@ -76,15 +76,8 @@ import Data.Bits
     ( Bits (..)
     )
 import Kupo.Data.Cardano
-    ( Blake2b_224
-    , Blake2b_256
-    , Crypto
-    , Hash
-    , HashAlgorithm
-    , binaryDataToBytes
+    ( binaryDataToBytes
     , datumHashToBytes
-    , digestSize
-    , hashFromBytes
     , mkOutputReference
     , transactionIdToBytes
     , unsafeTransactionIdFromBytes
@@ -646,13 +639,6 @@ addressFromRow =
         case Ledger.word8ToNetwork (header .&. 0x0F) of
             Just network -> network
             Nothing -> error "unsafeNetworkFromHeader: invalid network id"
-
-    unsafeHashFromBytes :: forall alg a. HashAlgorithm alg => ByteString -> Hash alg a
-    unsafeHashFromBytes bytes =
-        case hashFromBytes bytes of
-            Nothing -> error "unsafeHashFromBytes: digest size mismatch"
-            Just !h -> h
-
 
 --
 -- Filters

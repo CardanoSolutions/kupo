@@ -23,9 +23,6 @@ import Kupo.Prelude
 import Cardano.Chain.Slotting
     ( EpochSlots (..)
     )
-import Cardano.Ledger.Crypto
-    ( StandardCrypto
-    )
 import Control.Tracer
     ( nullTracer
     )

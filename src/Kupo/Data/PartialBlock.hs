@@ -22,7 +22,6 @@ import Kupo.Data.Cardano
     , Point
     , Script
     , ScriptHash
-    , StandardCrypto
     , TransactionId
     )
 

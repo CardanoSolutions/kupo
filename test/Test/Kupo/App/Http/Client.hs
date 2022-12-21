@@ -7,9 +7,7 @@ module Test.Kupo.App.Http.Client where
 import Kupo.Prelude
 
 import Cardano.Crypto.Hash.Class
-    ( Hash
-    , HashAlgorithm
-    , hashFromTextAsHex
+    ( hashFromTextAsHex
     )
 import Data.Aeson
     ( (.!=)
@@ -35,7 +33,6 @@ import Kupo.Control.MonadSTM
 import Kupo.Data.Cardano
     ( Address
     , BinaryData
-    , Blake2b_256
     , Datum (..)
     , DatumHash
     , ExtendedOutputReference

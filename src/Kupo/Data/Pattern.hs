@@ -39,8 +39,6 @@ import Kupo.Data.Cardano
     ( Address
     , AssetId
     , BinaryData
-    , Blake2b_224
-    , Blake2b_256
     , Datum (..)
     , DatumHash
     , ExtendedOutputReference
@@ -62,8 +60,6 @@ import Kupo.Data.Cardano
     , assetNameFromText
     , assetNameToText
     , datumHashToJson
-    , digest
-    , digestSize
     , foldrValue
     , getAddress
     , getDatum

@@ -15,8 +15,6 @@ import Kupo.Data.Cardano
     ( Address
     , AssetId
     , BinaryData
-    , Blake2b_224
-    , Blake2b_256
     , Block
     , Datum (..)
     , DatumHash
@@ -38,7 +36,6 @@ import Kupo.Data.Cardano
     , TransactionIndex
     , Value
     , assetNameMaxLength
-    , digestSize
     , mkMetadata
     , mkOutput
     , mkOutputReference
