@@ -123,24 +123,9 @@ Key differences(s): In a similar fashion to Carp, Marconi offers a modular index
 </p>
 </details>
 
-## Sponsors 💖
+## Sponsors
 
-<p align="center">
-  <a href="https://sundaeswap.finance/"><img src="https://avatars.githubusercontent.com/u/83610786?v=4" width=50 /></a>
-  <a href="https://github.com/savaki"><img src="https://avatars.githubusercontent.com/u/108710?v=4" width=50 /></a>
-  <a href="https://blockfrost.io/"><img src="https://avatars.githubusercontent.com/u/70073210?v=4" width=50 /></a>
-  <a href="https://jpeg.store/"><img src="https://avatars.githubusercontent.com/u/98781883?v=4" width=50 /></a>
-  <a href="https://github.com/jacoblambda"><img src="https://avatars.githubusercontent.com/u/9424043?v=4" width=50 /></a>
-  <a href="https://github.com/minswap"><img src="https://avatars.githubusercontent.com/u/80548193?v=4" width=50 /></a>
-  <a href="https://github.com/Quantumplation"><img src="https://avatars.githubusercontent.com/u/49870?v=4" width=50 /></a>
-  <a href="https://github.com/codybutz"><img src="https://avatars.githubusercontent.com/u/3670430?v=4" width=50 /></a>
-  <a href="https://github.com/scarmuega"><img src="https://avatars.githubusercontent.com/u/653886?v=4" width=50 /></a>
-  <a href="https://github.com/mrbrinker"><img src="https://avatars.githubusercontent.com/u/41247403?v=4" width=50 /></a>
-  <a href="https://github.com/sacrelege"><img src="https://avatars.githubusercontent.com/u/7289595?v=4" width=50 /></a>
-  <a href="https://github.com/artemwright"><img src="https://avatars.githubusercontent.com/u/83517471?v=4" width=50 /></a>
-  <a href="https://github.com/kayandra"><img src="https://avatars.githubusercontent.com/u/5002506?v=4" width=50 /></a>
-  <a href="https://github.com/will991"><img src="https://avatars.githubusercontent.com/u/9065638?v=4" width=50 /></a>
-</p>
+A big thank to [all our sponsors 💖](https://github.com/CardanoSolutions#-sponsors).
 
 [testing strategy]: https://github.com/CardanoSolutions/kupo/tree/master/test#testing-strategy
 [user manual]: https://cardanosolutions.github.io/kupo
