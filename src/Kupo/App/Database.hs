@@ -33,6 +33,7 @@ module Kupo.App.Database
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
+    , newDatabaseFile
     , createShortLivedConnection
     , withLongLivedConnection
     , Connection
@@ -54,7 +55,9 @@ module Kupo.App.Database
 import Kupo.Prelude
 
 import Control.Exception
-    ( mask
+    ( IOException
+    , handle
+    , mask
     , onException
     , throwIO
     )
@@ -132,9 +135,23 @@ import Kupo.Data.Pattern
 import Numeric
     ( Floating (..)
     )
+import System.Directory
+    ( Permissions (..)
+    , createDirectoryIfMissing
+    , doesFileExist
+    , getCurrentDirectory
+    , getPermissions
+    )
+import System.FilePath
+    ( (</>)
+    )
+import System.IO.Error
+    ( isAlreadyExistsError
+    )
 
 import qualified Data.Text as T
 import qualified Database.SQLite.Simple as Sqlite
+import qualified Kupo.Data.Configuration as Configuration
 import qualified Kupo.Data.Database as DB
 
 data Database (m :: Type -> Type) = Database
@@ -237,6 +254,45 @@ instance ToJSON ConnectionType where
 
 data DatabaseFile = OnDisk !FilePath | InMemory !(Maybe FilePath)
     deriving (Generic, Eq, Show)
+
+data NewDatabaseFileException
+    = FailedToCreateDatabaseFile { reason :: FailedToCreateDatabaseFileReason }
+    deriving (Show)
+
+instance Exception NewDatabaseFileException
+
+data FailedToCreateDatabaseFileReason
+    = TargetDirectoryIsAFile { path :: !FilePath }
+    | TargetDirectoryIsReadOnly { path :: !FilePath }
+    | UnexpectedError { error :: !IOException }
+    deriving (Show)
+
+
+-- | Create a new 'DatabaseFile' in the expected workding directory. Create the target
+-- directory (recursively) if it doesn't exist.
+newDatabaseFile
+    :: (MonadIO m)
+    => Tracer IO TraceDatabase
+    -> Configuration.WorkDir
+    -> m DatabaseFile
+newDatabaseFile tr = \case
+    Configuration.InMemory -> do
+        return $ InMemory Nothing
+    Configuration.Dir dir -> liftIO $ do
+        absoluteDir <- (</> dir) <$> getCurrentDirectory
+        handle (onAlreadyExistsError absoluteDir) $ createDirectoryIfMissing True dir
+        permissions <- getPermissions absoluteDir
+        unless (writable permissions) $ bail (TargetDirectoryIsReadOnly absoluteDir)
+        let dbFile = absoluteDir </> "kupo.sqlite3"
+        unlessM (doesFileExist dbFile) $ traceWith tr (DatabaseCreateNew dbFile)
+        return $ OnDisk dbFile
+  where
+    bail = throwIO . FailedToCreateDatabaseFile
+    onAlreadyExistsError dir e
+      | isAlreadyExistsError e = do
+          bail (TargetDirectoryIsAFile dir)
+      | otherwise =
+          bail (UnexpectedError e)
 
 -- | Construct a connection string for the SQLite database. This utilizes (and assumes) the URI
 -- recognition from SQLite to choose between read-only or read-write database. By default also, when
@@ -903,6 +959,9 @@ instance Exception UnexpectedRowException
 --
 
 data TraceDatabase where
+    DatabaseCreateNew
+        :: { filePath :: FilePath }
+        -> TraceDatabase
     DatabaseConnection
         :: { message :: TraceConnection }
         -> TraceDatabase
@@ -933,6 +992,7 @@ instance ToJSON TraceDatabase where
 
 instance HasSeverityAnnotation TraceDatabase where
     getSeverityAnnotation = \case
+        DatabaseCreateNew{}            -> Notice
         DatabaseConnection { message } -> getSeverityAnnotation message
         DatabaseCurrentVersion{}       -> Info
         DatabaseNoMigrationNeeded{}    -> Debug

@@ -6,7 +6,7 @@
 
 #### Changed
 
-- N/A
+- [📌 #94](https://github.com/CardanoSolutions/kupo/issues/94) Improved user-experience on start-up when providing invalid or missing working directory. Kupo will now recursively create the working directory if it's missing and otherwise provide a more informative error if it can't (e.g. because the directory already exists and is a file or because of a lack of permissions).
 
 #### Removed
 

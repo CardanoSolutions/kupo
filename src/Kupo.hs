@@ -58,6 +58,7 @@ import Kupo.App.Database
     ( ConnectionType (..)
     , Database (..)
     , createShortLivedConnection
+    , newDatabaseFile
     , newLock
     , withLongLivedConnection
     )
@@ -97,7 +98,6 @@ import Kupo.Data.ChainSync
     )
 import Kupo.Data.Configuration
     ( Configuration (..)
-    , WorkDir (..)
     )
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
@@ -114,11 +114,6 @@ import Kupo.Options
 import Kupo.Version
     ( version
     )
-import System.FilePath
-    ( (</>)
-    )
-
-import qualified Kupo.App.Database as Database
 
 --
 -- Environment
@@ -180,9 +175,7 @@ kupoWith tr withProducer withFetchBlock =
             }
         } <- ask
 
-    let dbFile = case workDir of
-            Dir dir  -> Database.OnDisk (dir </> "kupo.sqlite3")
-            InMemory -> Database.InMemory Nothing
+    dbFile <- newDatabaseFile (tracerDatabase tr) workDir
 
     lock <- liftIO newLock
 
