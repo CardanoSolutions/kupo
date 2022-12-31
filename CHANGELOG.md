@@ -8,6 +8,8 @@
 
 - [📌 #94](https://github.com/CardanoSolutions/kupo/issues/94) Improved user-experience on start-up when providing invalid or missing working directory. Kupo will now recursively create the working directory if it's missing and otherwise provide a more informative error if it can't (e.g. because the directory already exists and is a file or because of a lack of permissions).
 
+- [📌 #95](https://github.com/CardanoSolutions/kupo/issues/95) The behavior associated with `rollback_to` (when dynamically inserting new patterns) has been slightly altered. Before, it used to fail when providing only a slot number not associated with any on-chain point. Now, Kupo will rollback to the closest ancestor of the given slot number. When there's an existing point, or when a header-hash is provided alonside the slot number; the behavior remains unchanged.
+
 #### Removed
 
 - The `/patterns` family of endpoints no longer return a `X-Most-Recent-Checkpoint` for it doesn't make much sense for these endpoints. Indeed, they may change regardless of what is processed by the indexer.

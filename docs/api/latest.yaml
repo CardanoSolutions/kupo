@@ -801,6 +801,7 @@ components:
 
             > <sup><strong>NOTE (2)</strong></sup> <br/>
             > The `header_hash` is **optional**! However if provided, Kupo will check that it rolls back exactly to the specified point by comparing header hashes.
+            > If it's omitted, Kupo will rollback to the given slot number or, any closest ancestor if no point is found at the given slot.
           properties:
             slot_no:
               $ref: "#/components/schemas/SlotNo"

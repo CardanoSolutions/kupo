@@ -755,7 +755,7 @@ handlePutPatterns headers readHealth forceRollback patternsVar mPointOrSlot quer
             let successor = next sl
             pts <- runTransaction $ listAncestorsDesc successor 1
             return $ case pts of
-                [pt] | sl == getPointSlotNo pt ->
+                [pt] ->
                     Just pt
                 _unexpectedPoint ->
                     Nothing
