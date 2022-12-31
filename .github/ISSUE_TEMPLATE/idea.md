@@ -1,7 +1,6 @@
 ---
 name: idea
 about: Propose an idea or request a feature.
-
 ---
 
 ### What is your idea? Provide a use case.
