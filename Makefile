@@ -118,10 +118,16 @@ man: $(OUT)/share/man/man1/kupo.1 # Build man page
 doc: # Serve the rendered documentation on \033[0;33m<http://localhost:8000>\033[00m
 	@cd docs && python -m SimpleHTTPServer
 
-dev: # Starts Kupo against the preview network, with the provided options
+dev-cardano-node: # Connects Kupo to a local cardano-node on the preview network, with the provided options
 	cabal run kupo:exe:kupo -- \
 		--node-config $(CONFIG)/cardano-node/config.json \
 		--node-socket /tmp/node.socket \
+		$(filter-out $@,$(MAKECMDGOALS))
+
+dev-ogmios: # Connects Kupo to a local ogmios bridge on the preview network, with the provided options
+	cabal run kupo:exe:kupo -- \
+		--ogmios-host 127.0.0.1 \
+		--ogmios-port 1337 \
 		$(filter-out $@,$(MAKECMDGOALS))
 
 clean: # Remove build artifacts

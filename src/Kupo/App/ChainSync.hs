@@ -55,6 +55,10 @@ import Kupo.Data.ChainSync
     ( HandshakeException (..)
     , IntersectionNotFoundException (..)
     )
+import Network.Mux
+    ( MuxError (..)
+    , MuxErrorType (..)
+    )
 import Network.WebSockets
     ( ConnectionException (..)
     )
@@ -80,36 +84,10 @@ withChainSyncExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
     handleExceptions
         = handle onHandshakeException
         . handle (onRetryableException 5 isRetryableIOException)
+        . handle (onRetryableException 5 isRetryableMuxError)
         . handle (onRetryableException 5 isRetryableConnectionException)
         . handle (onRetryableException 0 isRetryableIntersectionNotFoundException)
         . (`onException` toggleDisconnected)
-
-    onHandshakeException :: HandshakeProtocolError NodeToClientVersion -> IO a
-    onHandshakeException = \case
-        HandshakeError (Handshake.Refused _version reason) -> do
-            let hint = case T.splitOn "/=" reason of
-                    [T.filter isDigit -> remoteConfig, T.filter isDigit -> localConfig] ->
-                        unwords
-                            [ "Kupo is configured for", prettyNetwork localConfig
-                            , "but cardano-node is running on", prettyNetwork remoteConfig <> "."
-                            , "You probably want to use a different configuration."
-                            ]
-                    _unexpectedReasonMessage ->
-                        ""
-            throwIO $ HandshakeException $ unwords
-                [ "Unable to establish the connection with the cardano-node:"
-                , "it runs on a different network!"
-                , hint
-                ]
-        e ->
-            throwIO e
-      where
-        prettyNetwork = \case
-            "764824073" -> "'mainnet'"
-            "1097911063" -> "'testnet'"
-            "1" -> "'preview'"
-            "2" -> "'preprod'"
-            unknownMagic -> "'network-magic=" <> unknownMagic <> "'"
 
     onRetryableException :: Exception e => DiffTime -> (e -> Bool) -> e -> IO DiffTime
     onRetryableException retryingIn isRetryable e
@@ -120,18 +98,21 @@ withChainSyncExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
             throwIO e
 
     isRetryableIOException :: IOException -> Bool
-    isRetryableIOException e =
-        isResourceVanishedError e || isDoesNotExistError e || isTryAgainError e || isInvalidArgumentOnSocket e
-      where
-        isTryAgainError :: IOException -> Bool
-        isTryAgainError = isInfixOf "resource exhausted" . show
+    isRetryableIOException e
+        | isResourceVanishedError e = True
+        | isDoesNotExistError e = True
+        | isResourceExhaustedError e = True
+        | isInvalidArgumentOnSocket e = True
+        | otherwise = False
 
-        isResourceVanishedError :: IOException -> Bool
-        isResourceVanishedError = isInfixOf "resource vanished" . show
-
-        -- NOTE: MacOS
-        isInvalidArgumentOnSocket :: IOException -> Bool
-        isInvalidArgumentOnSocket = isInfixOf "invalid argument (Socket operation on non-socket)" . show
+    isRetryableMuxError :: MuxError -> Bool
+    isRetryableMuxError MuxError{errorType} =
+        case errorType of
+            MuxBearerClosed -> True
+            MuxSDUReadTimeout -> True
+            MuxSDUWriteTimeout -> True
+            MuxIOException e -> isRetryableIOException e
+            _notRetryable -> False
 
     isRetryableConnectionException :: ConnectionException -> Bool
     isRetryableConnectionException = \case
@@ -144,6 +125,54 @@ withChainSyncExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
     isRetryableIntersectionNotFoundException = \case
         ForcedIntersectionNotFound{} -> True
         IntersectionNotFound{} -> False
+
+--
+-- Helpers
+--
+
+-- | Show better errors when failing to handshake with the cardano-node. This is generally
+-- because users have misconfigured their instance.
+onHandshakeException :: HandshakeProtocolError NodeToClientVersion -> IO a
+onHandshakeException = \case
+    HandshakeError (Handshake.Refused _version reason) -> do
+        let hint = case T.splitOn "/=" reason of
+                [T.filter isDigit -> remoteConfig, T.filter isDigit -> localConfig] ->
+                    unwords
+                        [ "Kupo is configured for", prettyNetwork localConfig
+                        , "but cardano-node is running on", prettyNetwork remoteConfig <> "."
+                        , "You probably want to use a different configuration."
+                        ]
+                _unexpectedReasonMessage ->
+                    ""
+        throwIO $ HandshakeException $ unwords
+            [ "Unable to establish the connection with the cardano-node:"
+            , "it runs on a different network!"
+            , hint
+            ]
+    e ->
+        throwIO e
+
+-- | Show a named version of the network magic when we recognize it for better UX.
+prettyNetwork :: Text -> Text
+prettyNetwork = \case
+    "764824073" -> "'mainnet'"
+    "1097911063" -> "'testnet'"
+    "1" -> "'preview'"
+    "2" -> "'preprod'"
+    unknownMagic -> "'network-magic=" <> unknownMagic <> "'"
+
+isResourceExhaustedError :: IOException -> Bool
+isResourceExhaustedError =
+    isInfixOf "resource exhausted" . show
+
+isResourceVanishedError :: IOException -> Bool
+isResourceVanishedError =
+    isInfixOf "resource vanished" . show
+
+-- NOTE: MacOS
+isInvalidArgumentOnSocket :: IOException -> Bool
+isInvalidArgumentOnSocket =
+    isInfixOf "invalid argument (Socket operation on non-socket)" . show
 
 --
 -- Tracer

@@ -12,6 +12,8 @@
 
 - [📌 #98](https://github.com/CardanoSolutions/kupo/issues/98) Logs are now shown in a human-friendly way when `stdout` is an ANSI-capable terminal. When sent to a file or to a non-terminal, the behaviour is unchanged (i.e. structured JSON).
 
+- Kupo will no longer crash when loosing connection with the underlying cardano-node or Ogmios server. Instead, it'll recover from the issue and try to reconnect automatically.
+
 #### Removed
 
 - The `/patterns` family of endpoints no longer return a `X-Most-Recent-Checkpoint` for it doesn't make much sense for these endpoints. Indeed, they may change regardless of what is processed by the indexer.
