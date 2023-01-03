@@ -114,6 +114,7 @@ import Kupo.Data.Cardano
     , Script
     , ScriptHash
     , SlotNo (..)
+    , slotNoToText
     )
 import Kupo.Data.Configuration
     ( DeferIndexesInstallation (..)
@@ -124,11 +125,14 @@ import Kupo.Data.Database
     , patternToSql
     , statusFlagToSql
     )
+import Kupo.Data.Http.SlotRange
+    ( Range
+    )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag
     )
 import Kupo.Data.Pattern
-    ( Pattern
+    ( Pattern (..)
     , Result
     , patternToText
     )
@@ -173,6 +177,7 @@ data Database (m :: Type -> Type) = Database
 
     , foldInputs
         :: Pattern
+        -> Range SlotNo
         -> StatusFlag
         -> SortDirection
         -> (Result -> m ())
@@ -464,13 +469,13 @@ mkDatabase tr mode longestRollback bracketConnection = Database
         traceWith tr (ConnectionExitQuery "pruneInputs")
         changes conn
 
-    , foldInputs = \pattern_ statusFlag sortDirection yield -> ReaderT $ \conn -> do
+    , foldInputs = \pattern_ slotRange statusFlag sortDirection yield -> ReaderT $ \conn -> do
         traceWith tr (ConnectionBeginQuery "foldInputs")
         -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
         --
         -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
         let (datum, refScript) = (Nothing, Nothing)
-        Sqlite.fold_ conn (foldInputsQry pattern_ statusFlag sortDirection) () $ \() -> \case
+        Sqlite.fold_ conn (foldInputsQry pattern_ slotRange statusFlag sortDirection) () $ \() -> \case
             [  SQLBlob extendedOutputReference
              , SQLText address
              , SQLBlob value
@@ -630,11 +635,25 @@ insertRow conn r =
 
 deleteInputsQry :: Pattern -> Query
 deleteInputsQry pattern_ =
-    Query $ "DELETE FROM inputs " <> patternToSql pattern_
+    Query $ unwords
+        [ "DELETE FROM inputs"
+        , additionalJoin
+        , "WHERE"
+        , whereClause
+        ]
+  where
+    (whereClause, fromMaybe "" -> additionalJoin) = patternToSql pattern_
 
 markInputsQry :: Pattern -> Query
 markInputsQry pattern_ =
-    Query $ "UPDATE inputs SET spent_at = ? " <> patternToSql pattern_
+    Query $ unwords
+        [ "UPDATE inputs SET spent_at = ?"
+        , additionalJoin
+        , "WHERE"
+        , whereClause
+        ]
+  where
+      (whereClause, fromMaybe "" -> additionalJoin) = patternToSql pattern_
 
 pruneInputsQry :: Query
 pruneInputsQry =
@@ -644,26 +663,55 @@ pruneInputsQry =
     \        (SELECT MAX(slot_no) FROM checkpoints) - ? \
     \    )"
 
-foldInputsQry :: Pattern -> StatusFlag -> SortDirection -> Query
-foldInputsQry pattern_ statusFlag sortDirection = Query $
+foldInputsQry
+    :: Pattern
+    -> Range SlotNo
+    -> StatusFlag
+    -> SortDirection
+    -> Query
+foldInputsQry pattern_ slotRange statusFlag sortDirection = Query $
     "SELECT \
       \ext_output_reference, address, value, datum_info, script_hash ,\
       \created_at, createdAt.header_hash, \
       \spent_at, spentAt.header_hash \
     \FROM inputs \
-    \JOIN \
-      \checkpoints AS createdAt ON createdAt.slot_no = created_at \
-    \LEFT OUTER JOIN \
-      \checkpoints AS spentAt ON spentAt.slot_no = spent_at "
-    <> patternToSql pattern_ <> " " <> statusFlagToSql statusFlag <> " \
-    \ORDER BY \
+    \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
+    \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at "
+    <> additionalJoin
+    <> " WHERE "
+    <> T.intercalate " AND " (
+        [ patternWhereClause
+        , statusFlagToSql statusFlag
+        , slotRangeToSql slotRange
+        ] & filter (not . T.null)
+       )
+    <>
+    " ORDER BY \
       \created_at " <> ordering <> ", \
       \transaction_index " <> ordering <> ", \
       \output_index " <> ordering
   where
+    (patternWhereClause, fromMaybe "" -> additionalJoin) =
+        patternToSql pattern_
+
     ordering = case sortDirection of
         Asc -> "ASC"
         Desc -> "DESC"
+
+    slotRangeToSql = \case
+        (Nothing, Nothing) ->
+            ""
+        (Just lower, Nothing) ->
+            "+inputs.created_at >= " <> slotNoToText lower
+        (Nothing, Just upper) ->
+            "+inputs.created_at <= " <> slotNoToText upper
+        (Just lower, Just upper) ->
+            unwords
+            ["+inputs.created_at BETWEEN"
+            , slotNoToText lower
+            , "AND"
+            , slotNoToText upper
+            ]
 
 listCheckpointsQry :: Query
 listCheckpointsQry =

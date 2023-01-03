@@ -207,11 +207,15 @@ spec = parallel $ do
 
     context "patternToSql" $ around withFixtureDatabase $ do
         forM_ patterns $ \(_, p, ms) -> do
-            let whereClause = patternToSql p
+            let (whereClause, fromMaybe "" -> additionalJoin) = patternToSql p
             let results = sort $ (\(_, out) -> getAddress out) <$> ms
             specify (toString whereClause) $ \conn -> do
-                rows <- query_ conn $ "SELECT address, LENGTH(address) as len \
-                                      \FROM inputs " <> Query whereClause
+                rows <- query_ conn $ Query $ unwords
+                    [ "SELECT address, LENGTH(address) as len FROM inputs"
+                    , additionalJoin
+                    , "WHERE"
+                    , whereClause
+                    ]
                 sort (rowToAddress <$> rows) `shouldBe` results
 
     context "checkpoints" $ do
@@ -299,11 +303,11 @@ spec = parallel $ do
                             insertCheckpoints (mapMaybe spentAt results)
 
                         qAsc <- newTBQueueIO (fromIntegral $ length results)
-                        runTransaction $ foldInputs matchAll NoStatusFlag Asc
+                        runTransaction $ foldInputs matchAll (Nothing, Nothing) NoStatusFlag Asc
                             (atomically . writeTBQueue qAsc)
 
                         qDesc <- newTBQueueIO (fromIntegral $ length results)
-                        runTransaction $ foldInputs matchAll NoStatusFlag Desc
+                        runTransaction $ foldInputs matchAll (Nothing, Nothing) NoStatusFlag Desc
                             (atomically . writeTBQueue qDesc)
 
                         atomically $ (,) <$> flushTBQueue qAsc <*> flushTBQueue qDesc
@@ -460,84 +464,308 @@ spec = parallel $ do
 
             context "foldInputs / MatchExact" $ do
                 specifyQuery "NoStatusFlag" installIndexes
-                    (foldInputsQry <$> fmap MatchExact genAddress <*> pure NoStatusFlag <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure (Nothing, Nothing)
+                        <*> pure NoStatusFlag
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
+                    )
+
+                specifyQuery "CreatedAtAfter" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure (Just 14, Nothing)
+                        <*> pure NoStatusFlag
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
+                    )
+
+                specifyQuery "SlotRange" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure (Just 14, Just 42)
+                        <*> pure NoStatusFlag
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
                     )
 
                 specifyQuery "OnlyUnspent" installIndexes
-                    (foldInputsQry <$> fmap MatchExact genAddress <*> pure OnlyUnspent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=? AND spent_at=?)" : suffix )
+                    )
+
+                specifyQuery "CreatedAtBefore" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure (Nothing, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address=? AND spent_at=?)" : suffix )
                     )
 
                 specifyQuery "OnlySpent" installIndexes
-                    (foldInputsQry <$> fmap MatchExact genAddress <*> pure OnlySpent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlySpent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address=? AND spent_at>?)" : suffix )
                     )
 
             context "foldInputs / MatchPayment" $ do
                 specifyQuery "NoStatusFlag" installIndexes
-                    (foldInputsQry <$> fmap MatchPayment (genBytes 28) <*> pure NoStatusFlag <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchPayment (genBytes 28)
+                        <*> pure (Nothing, Nothing)
+                        <*> pure NoStatusFlag
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)" : suffix )
                     )
 
+                specifyQuery "CreatedAtBefore" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchPayment (genBytes 28)
+                        <*> pure (Nothing, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at=?)" : suffix )
+                    )
+
+                specifyQuery "SlotRange" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchPayment (genBytes 28)
+                        <*> pure (Just 14, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at=?)" : suffix )
+                    )
+
                 specifyQuery "OnlyUnspent" installIndexes
-                    (foldInputsQry <$> fmap MatchPayment (genBytes 28) <*> pure OnlyUnspent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchPayment (genBytes 28)
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at=?)" : suffix )
+                    )
+
+                specifyQuery "CreatedAtAfter" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchPayment (genBytes 28)
+                        <*> pure (Just 14, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at=?)" : suffix )
                     )
 
                 specifyQuery "OnlySpent" installIndexes
-                    (foldInputsQry <$> fmap MatchPayment (genBytes 28) <*> pure OnlySpent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchPayment (genBytes 28)
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlySpent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at>?)" : suffix )
                     )
 
             context "foldInputs / MatchDelegation" $ do
                 specifyQuery "NoStatusFlag" installIndexes
-                    (foldInputsQry <$> fmap MatchDelegation (genBytes 28) <*> pure NoStatusFlag <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchDelegation (genBytes 28)
+                        <*> pure (Nothing, Nothing)
+                        <*> pure NoStatusFlag
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)" : suffix )
+                    )
+
+                specifyQuery "CreatedAtAfter" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchDelegation (genBytes 28)
+                        <*> pure (Just 14, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)" : suffix )
+                    )
+
+                specifyQuery "SlotRange" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchDelegation (genBytes 28)
+                        <*> pure (Just 14, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)" : suffix )
                     )
 
                 specifyQuery "OnlyUnspent" installIndexes
-                    (foldInputsQry <$> fmap MatchDelegation (genBytes 28) <*> pure OnlyUnspent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchDelegation (genBytes 28)
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)" : suffix )
+                    )
+
+                specifyQuery "CreatedAtBefore" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchDelegation (genBytes 28)
+                        <*> pure (Nothing, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)" : suffix )
                     )
 
                 specifyQuery "OnlySpent" installIndexes
-                    (foldInputsQry <$> fmap MatchDelegation (genBytes 28) <*> pure OnlySpent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchDelegation (genBytes 28)
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlySpent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)" : suffix )
                     )
-
 
             context "foldInputs / MatchTransactionId" $ do
                 specifyQuery "NoStatusFlag" installIndexes
-                    (foldInputsQry <$> fmap MatchTransactionId genTransactionId <*> pure NoStatusFlag <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchTransactionId genTransactionId
+                        <*> pure (Nothing, Nothing)
+                        <*> pure NoStatusFlag
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference>? AND output_reference<?)" : suffix )
+                    )
+
+                specifyQuery "CreatedAtBefore" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchTransactionId genTransactionId
+                        <*> pure (Nothing, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference>? AND output_reference<?)" : suffix )
+                    )
+
+                specifyQuery "SlotRange" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchTransactionId genTransactionId
+                        <*> pure (Just 14, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference>? AND output_reference<?)" : suffix )
                     )
 
                 specifyQuery "OnlyUnspent" installIndexes
-                    (foldInputsQry <$> fmap MatchTransactionId genTransactionId <*> pure OnlyUnspent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchTransactionId genTransactionId
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference>? AND output_reference<?)" : suffix )
+                    )
+
+                specifyQuery "CreatedAtAfter" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchTransactionId genTransactionId
+                        <*> pure (Just 14, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference>? AND output_reference<?)" : suffix )
                     )
 
                 specifyQuery "OnlySpent" installIndexes
-                    (foldInputsQry <$> fmap MatchTransactionId genTransactionId <*> pure OnlySpent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchTransactionId genTransactionId
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlySpent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference>? AND output_reference<?)" : suffix )
                     )
 
             context "foldInputs / MatchOutputReference" $ do
                 specifyQuery "NoStatusFlag" installIndexes
-                    (foldInputsQry <$> fmap MatchOutputReference genOutputReference <*> pure NoStatusFlag <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchOutputReference genOutputReference
+                        <*> pure (Nothing, Nothing)
+                        <*> pure NoStatusFlag
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        ]
+                    )
+
+                specifyQuery "CreatedAtAfter" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchOutputReference genOutputReference
+                        <*> pure (Just 14, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        ]
+                    )
+
+                specifyQuery "SlotRange" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchOutputReference genOutputReference
+                        <*> pure (Just 14, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
                         , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
@@ -546,20 +774,75 @@ spec = parallel $ do
                     )
 
                 specifyQuery "OnlyUnspent" installIndexes
-                    (foldInputsQry <$> fmap MatchOutputReference genOutputReference <*> pure OnlyUnspent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchOutputReference genOutputReference
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)" : suffix )
                     )
 
+                specifyQuery "CreatedAtBefore" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchOutputReference genOutputReference
+                        <*> pure (Nothing, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        ]
+                    )
+
                 specifyQuery "OnlySpent" installIndexes
-                    (foldInputsQry <$> fmap MatchOutputReference genOutputReference <*> pure OnlySpent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchOutputReference genOutputReference
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlySpent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)" : suffix )
                     )
 
             context "foldInputs / MatchPolicyId - MatchAssetId" $ do
                 specifyQuery "NoStatusFlag" installIndexes
-                    (foldInputsQry <$> fmap MatchPolicyId genPolicyId <*> pure NoStatusFlag <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchPolicyId genPolicyId
+                        <*> pure (Nothing, Nothing)
+                        <*> pure NoStatusFlag
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        [ "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference>?)"
+                        , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        ] ++ suffix
+                    )
+
+                specifyQuery "CreatedAtBefore" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchPolicyId genPolicyId
+                        <*> pure (Nothing, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        [ "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference>?)"
+                        , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        ] ++ suffix
+                    )
+
+                specifyQuery "SlotRange" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchPolicyId genPolicyId
+                        <*> pure (Just 14, Just 42)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         [ "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference>?)"
                         , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
@@ -567,7 +850,25 @@ spec = parallel $ do
                     )
 
                 specifyQuery "OnlyUnspent" installIndexes
-                    (foldInputsQry <$> fmap MatchPolicyId genPolicyId <*> pure OnlyUnspent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchPolicyId genPolicyId
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        [ "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference>?)"
+                        , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        ] ++ suffix
+                    )
+
+                specifyQuery "CreatedAtAfter" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchPolicyId genPolicyId
+                        <*> pure (Just 14, Nothing)
+                        <*> pure OnlyUnspent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         [ "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference>?)"
                         , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
@@ -575,7 +876,12 @@ spec = parallel $ do
                     )
 
                 specifyQuery "OnlySpent" installIndexes
-                    (foldInputsQry <$> fmap MatchPolicyId genPolicyId <*> pure OnlySpent <*> pure Asc)
+                    (foldInputsQry
+                        <$> fmap MatchPolicyId genPolicyId
+                        <*> pure (Nothing, Nothing)
+                        <*> pure OnlySpent
+                        <*> pure Asc
+                    )
                     (`shouldBe`
                         [ "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference>?)"
                         , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
@@ -626,7 +932,7 @@ shortLivedWorker fp mode lock = do
                     pattern_ <- genPattern
                     status <- elements [NoStatusFlag, OnlySpent, OnlyUnspent]
                     sortDir <- elements [Asc, Desc]
-                    pure $ runTransaction $ foldInputs pattern_ status sortDir (\_ -> pure ())
+                    pure $ runTransaction $ foldInputs pattern_ (Nothing, Nothing) status sortDir (\_ -> pure ())
                   )
                 ]
                 ++

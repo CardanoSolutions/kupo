@@ -523,7 +523,7 @@ databaseStub = Database
         return ()
     , insertInputs =
         \_ -> return ()
-    , foldInputs = \_ _ _ callback -> lift $ do
+    , foldInputs = \_ _ _ _ callback -> lift $ do
         rows <- generate (listOf1 genResult)
         mapM_ callback rows
     , deleteInputs =

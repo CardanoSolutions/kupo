@@ -55,7 +55,16 @@ invalidStatusFlag =
         { hint = "Invalid filter query! Matches can be filtered by status using \
                  \HTTP query flags. Provide either '?spent' or '?unspent' to \
                  \filter accordingly. Anything else is an error. In case of \
-                 \doubts, check the documentation at: <https://cardanosolutions.github.io/kupo>!"
+                 \doubts, check the documentation at: <https://cardanosolutions.github.io/kupo#operation/getAllMatches>!"
+        }
+
+invalidSlotRange :: Response
+invalidSlotRange =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Unprocessable slot range! Slot ranges can be specified in the form of \
+                 \lower and upper bound, in absolute slots. Either bound is optional and \
+                 \you can only provide each bound once. Anything else is an error. In case \
+                 \of doubts, check the documentation at: <https://cardanosolutions.github.io/kupo#operation/getAllMatches>!"
         }
 
 invalidMatchFilter :: Response

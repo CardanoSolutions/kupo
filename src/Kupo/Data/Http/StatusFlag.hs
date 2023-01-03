@@ -5,15 +5,11 @@
 module Kupo.Data.Http.StatusFlag
     ( StatusFlag (..)
     , isNoStatusFlag
-    , hideTransientGhostInputs
     , statusFlagFromQueryParams
     ) where
 
 import Kupo.Prelude
 
-import Kupo.Data.Configuration
-    ( InputManagement (..)
-    )
 import qualified Network.HTTP.Types.URI as Http
 
 data StatusFlag
@@ -27,23 +23,6 @@ isNoStatusFlag = \case
     NoStatusFlag -> True
     OnlyUnspent -> False
     OnlySpent -> False
-
--- | Because the chain is only eventually immutable, kupo does not remove recent
--- data right away. Thus, it is possible that, even though the configuration
--- asked to prune all spent inputs, some remains present in the database and
--- marked as 'spent'. Yet, this is an implementation detail and we therefore
--- gives clients the illusion that there's no 'spent' inputs in the database if
--- they're running with the 'RemoveSpentInputs' option enabled.
-hideTransientGhostInputs
-    :: InputManagement
-    -> StatusFlag
-    -> StatusFlag
-hideTransientGhostInputs inputManagement statusFlag =
-    case inputManagement of
-        MarkSpentInputs ->
-           statusFlag
-        RemoveSpentInputs ->
-            OnlyUnspent
 
 statusFlagFromQueryParams
     :: Http.Query

@@ -104,6 +104,9 @@ import Kupo.Data.Http.Response
     , responseJsonEncoding
     , responseStreamJson
     )
+import Kupo.Data.Http.SlotRange
+    ( slotRangeFromQueryParams
+    )
 import Kupo.Data.Http.Status
     ( Status (..)
     , mkStatus
@@ -492,6 +495,9 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
     pattern_ <- (patternQuery >>= patternFromText)
         `orAbort` Errors.invalidPattern
 
+    slotRange <- slotRangeFromQueryParams queryParams
+        `orAbort` Errors.invalidSlotRange
+
     statusFlag <- statusFlagFromQueryParams queryParams
         `orAbort` Errors.invalidStatusFlag
 
@@ -502,7 +508,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
         `orAbort` Errors.invalidSortDirection
 
     pure $ responseStreamJson headers resultToJson $ \yield done -> do
-        runTransaction $ foldInputs pattern_ statusFlag sortDirection (yieldIf yield)
+        runTransaction $ foldInputs pattern_ slotRange statusFlag sortDirection (yieldIf yield)
         done
   where
     -- NOTE: kupo does support two different ways for fetching results, via query parameters or via
