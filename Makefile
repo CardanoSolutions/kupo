@@ -5,6 +5,9 @@ ARCH := $(shell uname -m)
 VERSION := $(shell cat package.yaml| grep "version:" | sed "s/.*\([0-9].[0-9].[0-9]\)\(-.*\)*/\1\2/")
 STYLISH_HASKELL_VERSION := 0.13.0.0
 
+# replace with local setup
+CONFIG := /usr/local/share/cardano/network/preview
+
 LD_LIBRARY_PATH := $(shell echo $$LD_LIBRARY_PATH | sed "s/:/ /g")
 LIBSODIUM := $(shell find $(LD_LIBRARY_PATH) -type file -name "*libsodium.*.dylib" | uniq)
 LIBSECP256K1 := $(shell find $(LD_LIBRARY_PATH) -type file -name "*libsecp256k1.*.dylib" | uniq)
@@ -114,6 +117,12 @@ man: $(OUT)/share/man/man1/kupo.1 # Build man page
 
 doc: # Serve the rendered documentation on \033[0;33m<http://localhost:8000>\033[00m
 	@cd docs && python -m SimpleHTTPServer
+
+dev: # Starts Kupo against the preview network, with the provided options
+	cabal run kupo:exe:kupo -- \
+		--node-config $(CONFIG)/cardano-node/config.json \
+		--node-socket /tmp/node.socket \
+		$(filter-out $@,$(MAKECMDGOALS))
 
 clean: # Remove build artifacts
 	(rm -r $(OUT) 2>/dev/null && echo "Build artifacts removed.") || echo "Nothing to remove."
