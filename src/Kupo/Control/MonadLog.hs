@@ -29,10 +29,12 @@ module Kupo.Control.MonadLog
 import Kupo.Prelude
 
 import Control.Concurrent
-    ( myThreadId
+    ( ThreadId
+    , myThreadId
     )
 import Control.Monad.Class.MonadTime
-    ( getCurrentTime
+    ( UTCTime
+    , getCurrentTime
     )
 import Control.Tracer
     ( Tracer (..)
@@ -41,8 +43,7 @@ import Control.Tracer
     , traceWith
     )
 import Data.Aeson.Encoding
-    ( Encoding
-    , encodingToLazyByteString
+    ( fromEncoding
     , pair
     , pairs
     )
@@ -61,8 +62,15 @@ import Data.Severity
     ( HasSeverityAnnotation (..)
     , Severity (..)
     )
+import Data.Time
+    ( defaultTimeLocale
+    , formatTime
+    , getCurrentTimeZone
+    , utcToZonedTime
+    )
 import Kupo.Control.MonadSTM
-    ( newTMVarIO
+    ( TMVar
+    , newTMVarIO
     , withTMVar
     )
 import System.IO
@@ -72,8 +80,13 @@ import System.IO
     , utf8
     )
 
+import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Key as Json.Key
-import qualified Data.ByteString.Lazy.Char8 as BL8
+import qualified Data.ByteString.Builder as B
+import qualified Data.Text as T
+import qualified Data.Text.Internal.Builder as T
+import qualified Data.Text.Lazy.IO as T
+import qualified Text.Builder.ANSI as Ansi
 
 class Monad m => MonadLog (m :: Type -> Type) where
     logWith :: Logger msg -> msg -> m ()
@@ -87,6 +100,9 @@ instance MonadLog m => MonadLog (ReaderT env m) where
     logWith tr = lift . logWith tr
 
 type AppVersion = Text
+
+type Writer =
+    Handle -> AppVersion -> ThreadId -> UTCTime -> SomeMsg -> IO ()
 
 -- | Acquire and configure multiple tracers which outputs structured JSON on the
 -- standard output. The tracer is concurrent-safe but none buffered, while it is
@@ -109,30 +125,103 @@ withTracers h version tracers action = do
     hSetBuffering h LineBuffering
     hSetEncoding h utf8
     lock <- newTMVarIO ()
-    action (configureTracers tracers (tracer lock))
+    mkEnvelop <- hSupportsANSI h <&> \case
+        True -> mkAnsiEnvelop
+        False -> mkJsonEnvelop
+    action (configureTracers tracers (tracer mkEnvelop lock))
   where
-    tracer lock = Tracer $ \(SomeMsg minSeverity tracerName msg) -> do
+    tracer
+        :: Writer
+        -> TMVar IO ()
+        -> Tracer IO SomeMsg
+    tracer say lock = Tracer $ \someMsg@(SomeMsg minSeverity _ msg) -> do
         let severity = getSeverityAnnotation msg
         when (severity >= minSeverity) $ liftIO $ withTMVar lock $ \() -> do
-            mkEnvelop msg severity tracerName >>=
-                liftIO . BL8.hPutStrLn h . encodingToLazyByteString
+            threadId <- myThreadId
+            timestamp <- getCurrentTime
+            say h version threadId timestamp someMsg
 
-    mkEnvelop
-        :: forall m msg.
-            ( ToJSON msg
-            , MonadIO m
+-- | Some structured JSON logs when redirecting to files
+mkJsonEnvelop :: Writer
+mkJsonEnvelop h version extThreadId timestamp (SomeMsg _ tracerName msg) =
+    B.hPutBuilder h $ (<> B.charUtf8 '\n') $ fromEncoding $ pairs $ mempty
+        <> pair "severity"  (toEncoding severity)
+        <> pair "timestamp" (toEncoding timestamp)
+        <> pair "thread"    (toEncoding threadId)
+        <> pair "message"   (pairs $ pair context (toEncoding msg))
+        <> pair "version"   (toEncoding version)
+  where
+    context = Json.Key.fromString (dropWhile isLower tracerName)
+    threadId = T.drop 9 (show extThreadId)
+    severity = getSeverityAnnotation msg
+
+-- | Pretty colored logs to show in the terminal
+mkAnsiEnvelop :: Writer
+mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
+    timestamp <- utcToZonedTime <$> getCurrentTimeZone <*> pure utcTimestamp
+    T.hPutStrLn h $ T.toLazyText $ mconcat
+        [ mkTime timestamp
+        , severity
+        , context
+        , details
+        ]
+  where
+    mkTime timestamp =
+        mconcat
+        [ Ansi.whiteBg $ T.fromString (formatTime defaultTimeLocale "%X%3Q" timestamp) <> " "
+        , Ansi.white "\57520"
+        ]
+
+    context =
+        let name = T.fromString $ dropWhile isLower tracerName
+            id = T.fromText $ T.drop 9 $ show threadId
+         in accent $ " " <> id <> " ❭ " <> (Ansi.bold (name <> accent "/" <> subject <> " "))
+
+    (subject, details) =
+        let
+            str = msg
+                & toEncoding
+                & Json.encodingToLazyByteString
+                & decodeUtf8
+            details_ =
+                str
+                & T.dropWhile (/= ',')
+                & T.drop 1
+                & ("{" <>)
+                & T.fromText
+            subject_ = str
+                & T.takeWhile (/= ',')
+                & T.dropWhile (/= ':')
+                & T.drop 3
+                & T.dropWhile isLower
+                & T.dropEnd 1
+                & T.fromText
+         in
+            (Ansi.bold $ accent subject_, accent details_)
+
+    (severity, accent) = case getSeverityAnnotation msg of
+        Debug ->
+            ( Ansi.whiteBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " + "))
+                <> Ansi.white "\57520"
+            , Ansi.white
             )
-        => msg
-        -> Severity
-        -> String
-        -> m Encoding
-    mkEnvelop msg severity tracerName = do
-        let context = Json.Key.fromString (dropWhile isLower tracerName)
-        timestamp <- liftIO getCurrentTime
-        threadId <- drop 9 . show <$> liftIO myThreadId
-        pure $ pairs $ mempty
-            <> pair "severity"  (toEncoding severity)
-            <> pair "timestamp" (toEncoding timestamp)
-            <> pair "thread"    (toEncoding threadId)
-            <> pair "message"   (pairs $ pair context (toEncoding msg))
-            <> pair "version"   (toEncoding version)
+        Info ->
+            ( Ansi.blueBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " ℹ "))
+                <> Ansi.blue "\57520"
+            , Ansi.blue
+            )
+        Notice ->
+            ( Ansi.magentaBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " √ "))
+                <> Ansi.magenta "\57520"
+            , Ansi.magenta
+            )
+        Warning ->
+            ( Ansi.yellowBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " ! "))
+                <> Ansi.yellow "\57520"
+            , Ansi.yellow
+            )
+        Error ->
+            ( Ansi.redBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " ✖ "))
+                <> Ansi.red "\57520"
+            , Ansi.red
+            )

@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.6.
+-- This file has been generated from package.yaml by hpack version 0.35.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -210,6 +210,7 @@ library
     , strict-containers
     , template-haskell
     , text
+    , text-ansi
     , time
     , transformers
     , typed-protocols
@@ -219,9 +220,9 @@ library
     , websockets
     , websockets-json
     , yaml
+  default-language: Haskell2010
   if flag(production)
     ghc-options: -Wunused-packages -Werror -O2
-  default-language: Haskell2010
 
 executable kupo
   main-is: Main.hs
@@ -270,9 +271,9 @@ executable kupo
   build-depends:
       base >=4.7 && <5
     , kupo
+  default-language: Haskell2010
   if flag(production)
     ghc-options: -O2 -Wunused-packages -Werror "-with-rtsopts=-N -A16m -qb -qg"
-  default-language: Haskell2010
 
 test-suite unit
   type: exitcode-stdio-1.0
