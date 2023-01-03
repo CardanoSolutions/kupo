@@ -41,13 +41,13 @@ allow-newer:
 
 constraints:
   -- Haskell packages
-  , HSOpenSSL >= 0.11.7.2
   , algebraic-graphs < 0.7
   , base-deriving-via == 0.1.0.0
   , bimap >= 0.4.0
   , direct-sqlite >= 2.3.27
   , graphviz >= 2999.20.1.0
   , hedgehog >= 1.1
+  , HSOpenSSL >= 0.11.7.2
   , libsystemd-journal >= 1.4.4
   , measures == 0.1.0.0
   , network >= 3.1.1.0
@@ -55,12 +55,13 @@ constraints:
   , prettyprinter-configurable == 0.1.0.0
   , protolude < 0.3.1
   , relude == 0.7.0.0
-  , resource-pool >= 0.3.1.0
+  , resource-pool == 0.3.1.0
   , strict-containers == 0.1.0.0
   , systemd >= 2.3.0
   , word-array == 0.1.0.0
 
   -- Cardano packages
+  , cardano-api == 1.35.4
   , cardano-binary  == 1.5.0
   , cardano-binary-test == 1.3.0
   , cardano-crypto-class  == 2.0.0.0.1
@@ -76,35 +77,6 @@ constraints:
 
 source-repository-package
   type: git
-  location: https://github.com/input-output-hk/cardano-node
-  tag: ebc7be471b30e5931b35f9bbc236d21c375b91bb
-  --sha256: 1j01m2cp2vdcl26zx9xmipr551v3b2rz9kfn9ik8byfwj1z7652r
-  subdir:
-    cardano-api
-
-source-repository-package
-  type: git
-  location: https://github.com/scrive/pool
-  tag: 71867699c5d19fb31e897a972607275b05338d01
-  --sha256: 0qqmzsxjjx261sjka91y3hjiigpv4lbwk9vz1p0i7cj813na5bnp
-
-source-repository-package
-  type: git
   location: https://github.com/IreneKnapp/direct-sqlite
   tag: ab62e1e0e85ca9b92a55265744821ccfb75b0633
   --sha256: 1r8w5dybyg2d274xlzjdy1p0v4zarhvsi20j9c7370bmp588y6n6
-
-source-repository-package
-  type: git
-  location: https://github.com/vshabanov/ekg-json
-  tag: 00ebe7211c981686e65730b7144fbf5350462608
-  --sha256: 1zvjm3pb38w0ijig5wk5mdkzcszpmlp5d4zxvks2jk1rkypi8gsm
-
-source-repository-package
-  type: git
-  location: https://github.com/CardanoSolutions/ogmios
-  tag: 237b4ea9bc0312405af16afccda2277f9ae3f819
-  --sha256: 0jp4phi01y7qvjd4fc9pf3wkbmsg0n49065283misrf9sr28d8nv
-  subdir:
-    server/modules/contra-tracers
-    server/modules/fast-bech32
