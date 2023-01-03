@@ -26,12 +26,13 @@ module Kupo.Prelude
     , at
 
       -- * Extras
+    , foldrWithIndex
     , next
+    , nubOn
     , prev
     , safeToEnum
-    , foldrWithIndex
 
-      -- Encoding
+      -- * Encoding / Decoding
     , encodeBase16
     , decodeBase16
     , unsafeDecodeBase16
@@ -66,12 +67,10 @@ module Kupo.Prelude
     , ShelleyEra
 
       -- * System
-    , hijackSigTerm
     , ConnectionStatusToggle (..)
     , noConnectionStatusToggle
-
-      -- * Utils
-    , nubOn
+    , hijackSigTerm
+    , hSupportsANSI
     ) where
 
 import Cardano.Binary
@@ -190,6 +189,12 @@ import Relude.Extra
     , prev
     , safeToEnum
     )
+import System.Environment
+    ( lookupEnv
+    )
+import System.IO
+    ( hIsTerminalDevice
+    )
 import System.Posix.Signals
     ( Handler (..)
     , installHandler
@@ -208,6 +213,102 @@ import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base58 as Base58
 import qualified Data.Map as Map
+
+--
+-- JSON
+--
+
+-- | Generic JSON encoding, with pre-defined default options.
+defaultGenericToEncoding :: (Generic a, GToJSON' Encoding Zero (Rep a)) => a -> Json.Encoding
+defaultGenericToEncoding =
+    genericToEncoding Json.defaultOptions
+
+eitherDecodeJson
+    :: (Json.Value -> Json.Parser a)
+    -> LByteString
+    -> Either String a
+eitherDecodeJson decoder =
+    left snd . Json.eitherDecodeWith Json.jsonEOF (Json.iparse decoder)
+
+encodeMap :: (k -> Text) -> (v -> Json.Encoding) -> Map k v -> Json.Encoding
+encodeMap encodeKey encodeValue =
+    encodeObject . Map.foldrWithKey (\k v -> (:) (encodeKey k, encodeValue v)) []
+
+encodeObject :: [(Text, Json.Encoding)] -> Json.Encoding
+encodeObject =
+    Json.pairs . foldr (\(Json.fromText -> k, v) -> (<>) (Json.pair k v)) mempty
+
+encodeBytes :: ByteString -> Json.Encoding
+encodeBytes =
+    Json.text . encodeBase16
+
+--
+-- Extras
+--
+
+-- | Remove duplicates from a list based on information extracted from the
+-- elements.
+nubOn :: Eq b => (a -> b) -> [a] -> [a]
+nubOn b = nubBy (on (==) b)
+
+-- | Like 'foldr' but provides access to the index of each element.
+foldrWithIndex
+        :: (Integral ix, Foldable f)
+        => (ix -> a -> result -> result)
+        -> result
+        -> f a
+        -> result
+foldrWithIndex outer result xs =
+    foldr (\x inner !i -> outer i x (inner (i+1))) (const result) xs 0
+{-# SPECIALIZE foldrWithIndex :: (Word16 -> a -> result -> result) -> result -> [a] -> result #-}
+{-# SPECIALIZE foldrWithIndex :: (Word16 -> a -> result -> result) -> result -> StrictSeq a -> result #-}
+
+--
+-- Encoding / Decoding
+--
+
+-- | An unsafe version of 'decodeBase16'. Use with caution.
+unsafeDecodeBase16 :: HasCallStack => Text -> ByteString
+unsafeDecodeBase16 =
+    either error identity . decodeBase16 . encodeUtf8
+
+-- | Decode a byte string from 'Base58', re-defining here to align interfaces
+-- with base16 & base64.
+decodeBase58 :: ByteString -> Either Text ByteString
+decodeBase58 =
+    maybe (Left msg) Right . Base58.decodeBase58 Base58.bitcoinAlphabet
+  where
+    msg = "failed to decode Base58-encoded string."
+
+-- | Encode some byte string to 'Text' as Base58. See note on 'decodeBase58'.
+encodeBase58 :: ByteString -> Text
+encodeBase58 =
+    decodeUtf8 . Base58.encodeBase58 Base58.bitcoinAlphabet
+
+--
+-- Crypto
+--
+
+unsafeHashFromBytes :: forall alg a. (HasCallStack, HashAlgorithm alg) => ByteString -> Hash alg a
+unsafeHashFromBytes bytes
+    | BS.length bytes /= digestSize @alg =
+        error $ "failed to create " <> show (digestSize @alg) <> "-byte hash digest\
+              \ for from bytestring: " <> encodeBase16 bytes
+    | otherwise =
+        UnsafeHash (toShort bytes)
+
+digestSize :: forall alg. HashAlgorithm alg => Int
+digestSize =
+    fromIntegral (sizeHash (Proxy @alg))
+{-# INLINABLE digestSize #-}
+
+hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding
+hashToJson (UnsafeHash h) =
+    encodeBytes (fromShort h)
+
+--
+-- System
+--
 
 data ConnectionStatusToggle m = ConnectionStatusToggle
     { toggleConnected :: !(m ())
@@ -233,81 +334,8 @@ hijackSigTerm =
   where
     handler = CatchOnce (raiseSignal keyboardSignal)
 
--- | An unsafe version of 'decodeBase16'. Use with caution.
-unsafeDecodeBase16 :: HasCallStack => Text -> ByteString
-unsafeDecodeBase16 =
-    either error identity . decodeBase16 . encodeUtf8
-
--- | Decode a byte string from 'Base58', re-defining here to align interfaces
--- with base16 & base64.
-decodeBase58 :: ByteString -> Either Text ByteString
-decodeBase58 =
-    maybe (Left msg) Right . Base58.decodeBase58 Base58.bitcoinAlphabet
+-- | Check whether a target filehandle is an ANSI-capable terminal
+hSupportsANSI :: Handle -> IO Bool
+hSupportsANSI h = (&&) <$> hIsTerminalDevice h <*> isNotDumb
   where
-    msg = "failed to decode Base58-encoded string."
-
--- | Encode some byte string to 'Text' as Base58. See note on 'decodeBase58'.
-encodeBase58 :: ByteString -> Text
-encodeBase58 =
-    decodeUtf8 . Base58.encodeBase58 Base58.bitcoinAlphabet
-
--- | Generic JSON encoding, with pre-defined default options.
-defaultGenericToEncoding :: (Generic a, GToJSON' Encoding Zero (Rep a)) => a -> Json.Encoding
-defaultGenericToEncoding =
-    genericToEncoding Json.defaultOptions
-
--- | Remove duplicates from a list based on information extracted from the
--- elements.
-nubOn :: Eq b => (a -> b) -> [a] -> [a]
-nubOn b = nubBy (on (==) b)
-
--- | Like 'foldr' but provides access to the index of each element.
-foldrWithIndex
-        :: (Integral ix, Foldable f)
-        => (ix -> a -> result -> result)
-        -> result
-        -> f a
-        -> result
-foldrWithIndex outer result xs =
-    foldr (\x inner !i -> outer i x (inner (i+1))) (const result) xs 0
-{-# SPECIALIZE foldrWithIndex :: (Word16 -> a -> result -> result) -> result -> [a] -> result #-}
-{-# SPECIALIZE foldrWithIndex :: (Word16 -> a -> result -> result) -> result -> StrictSeq a -> result #-}
-
-eitherDecodeJson
-    :: (Json.Value -> Json.Parser a)
-    -> LByteString
-    -> Either String a
-eitherDecodeJson decoder =
-    left snd . Json.eitherDecodeWith Json.jsonEOF (Json.iparse decoder)
-
-encodeMap :: (k -> Text) -> (v -> Json.Encoding) -> Map k v -> Json.Encoding
-encodeMap encodeKey encodeValue =
-    encodeObject . Map.foldrWithKey (\k v -> (:) (encodeKey k, encodeValue v)) []
-
-encodeObject :: [(Text, Json.Encoding)] -> Json.Encoding
-encodeObject =
-    Json.pairs . foldr (\(Json.fromText -> k, v) -> (<>) (Json.pair k v)) mempty
-
--- | Encode a ByteString to JSON as a base16 text
-encodeBytes :: ByteString -> Json.Encoding
-encodeBytes =
-    Json.text . encodeBase16
-
--- * Crypto
-
-unsafeHashFromBytes :: forall alg a. (HasCallStack, HashAlgorithm alg) => ByteString -> Hash alg a
-unsafeHashFromBytes bytes
-    | BS.length bytes /= digestSize @alg =
-        error $ "failed to create " <> show (digestSize @alg) <> "-byte hash digest\
-              \ for from bytestring: " <> encodeBase16 bytes
-    | otherwise =
-        UnsafeHash (toShort bytes)
-
-digestSize :: forall alg. HashAlgorithm alg => Int
-digestSize =
-    fromIntegral (sizeHash (Proxy @alg))
-{-# INLINABLE digestSize #-}
-
-hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding
-hashToJson (UnsafeHash h) =
-    encodeBytes (fromShort h)
+    isNotDumb = (/= Just "dumb") <$> lookupEnv "TERM"

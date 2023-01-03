@@ -10,6 +10,8 @@
 
 - [📌 #95](https://github.com/CardanoSolutions/kupo/issues/95) The behavior associated with `rollback_to` (when dynamically inserting new patterns) has been slightly altered. Before, it used to fail when providing only a slot number not associated with any on-chain point. Now, Kupo will rollback to the closest ancestor of the given slot number. When there's an existing point, or when a header-hash is provided alonside the slot number; the behavior remains unchanged.
 
+- [📌 #98](https://github.com/CardanoSolutions/kupo/issues/98) Logs are now shown in a human-friendly way when `stdout` is an ANSI-capable terminal. When sent to a file or to a non-terminal, the behaviour is unchanged (i.e. structured JSON).
+
 #### Removed
 
 - The `/patterns` family of endpoints no longer return a `X-Most-Recent-Checkpoint` for it doesn't make much sense for these endpoints. Indeed, they may change regardless of what is processed by the indexer.

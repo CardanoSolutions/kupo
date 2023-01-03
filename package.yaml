@@ -89,6 +89,7 @@ library:
     - sqlite-simple
     - template-haskell
     - text
+    - text-ansi
     - time
     - transformers
     - typed-protocols
