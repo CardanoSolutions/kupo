@@ -211,7 +211,7 @@ mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
             , Ansi.blue
             )
         Notice ->
-            ( Ansi.magentaBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " √ "))
+            ( Ansi.magentaBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " ★ "))
                 <> Ansi.magenta "\57520"
             , Ansi.magenta
             )
