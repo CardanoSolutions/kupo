@@ -55,6 +55,10 @@ import Kupo.Data.ChainSync
     ( HandshakeException (..)
     , IntersectionNotFoundException (..)
     )
+import Network.Mux
+    ( MuxError (..)
+    , MuxErrorType (..)
+    )
 import Network.WebSockets
     ( ConnectionException (..)
     )
@@ -80,6 +84,7 @@ withChainSyncExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
     handleExceptions
         = handle onHandshakeException
         . handle (onRetryableException 5 isRetryableIOException)
+        . handle (onRetryableException 5 isRetryableMuxError)
         . handle (onRetryableException 5 isRetryableConnectionException)
         . handle (onRetryableException 0 isRetryableIntersectionNotFoundException)
         . (`onException` toggleDisconnected)
@@ -99,6 +104,15 @@ withChainSyncExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
         | isResourceExhaustedError e = True
         | isInvalidArgumentOnSocket e = True
         | otherwise = False
+
+    isRetryableMuxError :: MuxError -> Bool
+    isRetryableMuxError MuxError{errorType} =
+        case errorType of
+            MuxBearerClosed -> True
+            MuxSDUReadTimeout -> True
+            MuxSDUWriteTimeout -> True
+            MuxIOException e -> isRetryableIOException e
+            _notRetryable -> False
 
     isRetryableConnectionException :: ConnectionException -> Bool
     isRetryableConnectionException = \case
