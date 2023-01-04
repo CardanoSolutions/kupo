@@ -12,6 +12,7 @@ node_modules
 
 ## Cabal
 dist-newstyle
+.dist-production
 
 ## Dist
 /dist
