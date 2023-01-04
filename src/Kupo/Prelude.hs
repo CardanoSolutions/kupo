@@ -11,6 +11,7 @@ module Kupo.Prelude
       -- * JSON
     , FromJSON (..)
     , ToJSON (..)
+    , encodingToValue
     , eitherDecodeJson
     , defaultGenericToEncoding
     , encodeBytes
@@ -222,6 +223,12 @@ import qualified Data.Map as Map
 defaultGenericToEncoding :: (Generic a, GToJSON' Encoding Zero (Rep a)) => a -> Json.Encoding
 defaultGenericToEncoding =
     genericToEncoding Json.defaultOptions
+
+encodingToValue :: Json.Encoding -> Json.Value
+encodingToValue =
+    maybe (error "encodingToValue: failed?") identity
+    . Json.decode
+    . Json.encodingToLazyByteString
 
 eitherDecodeJson
     :: (Json.Value -> Json.Parser a)

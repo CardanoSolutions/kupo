@@ -8,6 +8,9 @@ module Test.Kupo.Data.Http.SlotRangeSpec
 
 import Kupo.Prelude
 
+import Kupo.Data.Cardano
+    ( pointFromText
+    )
 import Kupo.Data.Http.SlotRange
     ( slotRangeFromQueryParams
     )
@@ -35,22 +38,22 @@ spec = parallel $ do
                   , Just (Nothing, Nothing)
                   )
                 , ( [ "created_after" .= "14" ]
-                  , Just (Just 14, Nothing)
+                  , Just (Just (Left 14), Nothing)
                   )
                 , ( [ "created_before" .= "42" ]
-                  , Just (Nothing, Just 42)
+                  , Just (Nothing, Just (Left 42))
                   )
                 , ( [ "created_after" .= "14", "created_before" .= "42" ]
-                  , Just (Just 14, Just 42)
+                  , Just (Just (Left 14), Just (Left 42))
                   )
                 , ( [ "created_before" .= "42", "created_after" .= "14" ]
-                  , Just (Just 14, Just 42)
+                  , Just (Just (Left 14), Just (Left 42))
                   )
                 , ( [ "created_before" .= "42", "foo" .= "bar" ]
-                  , Just (Nothing, Just 42)
+                  , Just (Nothing, Just (Left 42))
                   )
                 , ( [ "foo" .= "bar", "created_after" .= "14" ]
-                  , Just (Just 14, Nothing)
+                  , Just (Just (Left 14), Nothing)
                   )
                 , ( [ "created_after" .= "14", "created_after" .= "42" ]
                   , Nothing
@@ -60,5 +63,14 @@ spec = parallel $ do
                   )
                 , ( [ "created_before" .= "-57" ]
                   , Nothing
+                  )
+                , ( [ "created_after" .=
+                        "14.0000000000000000000000000000000000000000000000000000000000000000"
+                    ]
+                  , Just
+                      ( Right <$> pointFromText
+                          "14.0000000000000000000000000000000000000000000000000000000000000000"
+                      , Nothing
+                      )
                   )
                 ]

@@ -27,6 +27,7 @@ import Kupo.Data.Cardano
     , outputReferenceToText
     , pattern GenesisPoint
     , pointFromText
+    , pointToText
     , policyIdFromText
     , policyIdToText
     , scriptFromBytes
@@ -54,6 +55,7 @@ import Test.Kupo.Data.Generators
     ( genAssetName
     , genDatumHash
     , genMetadata
+    , genNonGenesisPoint
     , genOutputReference
     , genPolicyId
     , genScript
@@ -78,17 +80,14 @@ import qualified Data.ByteString.Lazy.Char8 as BL8
 
 spec :: Spec
 spec = parallel $ do
-    context "pointFromText" $ do
+    context "Point" $ do
         specify "origin" $ do
             pointFromText "origin" `shouldBe` Just GenesisPoint
+            pointToText GenesisPoint `shouldBe` "origin"
 
         prop "{slotNo}.{blockHeaderHash}" $
-            forAll genSlotNo $ \s ->
-                forAll (genBytes 32) $ \bytes ->
-                    let txt = slotNoToText s <> "." <> encodeBase16 bytes
-                     in case pointFromText txt of
-                            Just{}  -> property True
-                            Nothing -> property False
+            forAll genNonGenesisPoint $ \pt ->
+                pointFromText (pointToText pt) == Just pt
 
     context "SlotNo" $ do
         prop "∀(s :: SlotNo). slotNoFromText (slotNoToText s) === Just{}" $
