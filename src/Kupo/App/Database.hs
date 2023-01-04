@@ -126,7 +126,8 @@ import Kupo.Data.Database
     , statusFlagToSql
     )
 import Kupo.Data.Http.SlotRange
-    ( Range
+    ( Range (..)
+    , RangeField (..)
     )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag
@@ -699,19 +700,34 @@ foldInputsQry pattern_ slotRange statusFlag sortDirection = Query $
         Desc -> "DESC"
 
     slotRangeToSql = \case
-        (Nothing, Nothing) ->
+        Whole ->
             ""
-        (Just lower, Nothing) ->
-            "+inputs.created_at >= " <> slotNoToText lower
-        (Nothing, Just upper) ->
-            "+inputs.created_at <= " <> slotNoToText upper
-        (Just lower, Just upper) ->
+        After field lowerBound ->
+            "+inputs." <> fieldToSql field <> " >= " <> slotNoToText lowerBound
+        Before field upperBound ->
+            "+inputs." <> fieldToSql field <> " <= " <> slotNoToText upperBound
+        Between (lowerField, lowerBound) (upperField, upperBound) | lowerField == upperField ->
             unwords
-            ["+inputs.created_at BETWEEN"
-            , slotNoToText lower
+            ["+inputs."<> fieldToSql lowerField
+            , "BETWEEN"
+            , slotNoToText lowerBound
             , "AND"
-            , slotNoToText upper
+            , slotNoToText upperBound
             ]
+        Between (lowerField, lowerBound) (upperField, upperBound) ->
+            unwords
+            ["+inputs."<> fieldToSql lowerField
+            , ">="
+            , slotNoToText lowerBound
+            , "AND"
+            ,"+inputs."<> fieldToSql upperField
+            , "<="
+            , slotNoToText upperBound
+            ]
+
+    fieldToSql = \case
+        CreatedAt -> "created_at"
+        SpentAt -> "spent_at"
 
 listCheckpointsQry :: Query
 listCheckpointsQry =

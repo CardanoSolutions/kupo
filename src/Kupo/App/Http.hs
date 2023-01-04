@@ -531,7 +531,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
                     _pointNotFound ->
                         throwIO ErrPointNotFound{requested}
         runTransaction $ do
-            slotRange <- intoSlotRange pointRange assertPointExists assertPointExists
+            slotRange <- intoSlotRange assertPointExists assertPointExists pointRange
             foldInputs pattern_ slotRange statusFlag sortDirection (yieldIf yield)
         done
   where

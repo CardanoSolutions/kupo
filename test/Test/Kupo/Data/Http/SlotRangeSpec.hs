@@ -12,7 +12,9 @@ import Kupo.Data.Cardano
     ( pointFromText
     )
 import Kupo.Data.Http.SlotRange
-    ( slotRangeFromQueryParams
+    ( Range (..)
+    , RangeField (..)
+    , slotRangeFromQueryParams
     )
 import Test.Hspec
     ( Spec
@@ -35,25 +37,64 @@ spec = parallel $ do
           where
             matrix =
                 [ ( []
-                  , Just (Nothing, Nothing)
+                  , Just Whole
+                  )
+                , ( [ "foo" .= "bar" ]
+                  , Just Whole
                   )
                 , ( [ "created_after" .= "14" ]
-                  , Just (Just (Left 14), Nothing)
+                  , Just (After CreatedAt (Left 14))
                   )
                 , ( [ "created_before" .= "42" ]
-                  , Just (Nothing, Just (Left 42))
+                  , Just (Before CreatedAt (Left 42))
                   )
                 , ( [ "created_after" .= "14", "created_before" .= "42" ]
-                  , Just (Just (Left 14), Just (Left 42))
+                  , Just (Between (CreatedAt, Left 14) (CreatedAt, Left 42))
                   )
                 , ( [ "created_before" .= "42", "created_after" .= "14" ]
-                  , Just (Just (Left 14), Just (Left 42))
+                  , Just (Between (CreatedAt, Left 14) (CreatedAt, Left 42))
                   )
                 , ( [ "created_before" .= "42", "foo" .= "bar" ]
-                  , Just (Nothing, Just (Left 42))
+                  , Just (Before CreatedAt (Left 42))
                   )
                 , ( [ "foo" .= "bar", "created_after" .= "14" ]
-                  , Just (Just (Left 14), Nothing)
+                  , Just (After CreatedAt (Left 14))
+                  )
+                , ( [ "created_after" .=
+                        "14.0000000000000000000000000000000000000000000000000000000000000000"
+                    ]
+                  ,  (After CreatedAt . Right) <$> pointFromText
+                        "14.0000000000000000000000000000000000000000000000000000000000000000"
+                  )
+                , ( [ "spent_after" .= "14" ]
+                  , Just (After SpentAt (Left 14))
+                  )
+                , ( [ "spent_before" .= "42" ]
+                  , Just (Before SpentAt (Left 42))
+                  )
+                , ( [ "spent_after" .= "14", "spent_before" .= "42" ]
+                  , Just (Between (SpentAt, Left 14) (SpentAt, Left 42))
+                  )
+                , ( [ "spent_before" .= "42", "spent_after" .= "14" ]
+                  , Just (Between (SpentAt, Left 14) (SpentAt, Left 42))
+                  )
+                , ( [ "spent_before" .= "42", "foo" .= "bar" ]
+                  , Just (Before SpentAt (Left 42))
+                  )
+                , ( [ "foo" .= "bar", "spent_after" .= "14" ]
+                  , Just (After SpentAt (Left 14))
+                  )
+                , ( [ "spent_after" .=
+                        "14.0000000000000000000000000000000000000000000000000000000000000000"
+                    ]
+                  ,  (After SpentAt . Right) <$> pointFromText
+                        "14.0000000000000000000000000000000000000000000000000000000000000000"
+                  )
+                , ( [ "created_after" .= "14", "spent_before" .= "42" ]
+                  , Just (Between (CreatedAt, Left 14) (SpentAt, Left 42))
+                  )
+                , ( [ "spent_after" .= "14", "created_before" .= "42" ]
+                  , Just (Between (SpentAt, Left 14) (CreatedAt, Left 42))
                   )
                 , ( [ "created_after" .= "14", "created_after" .= "42" ]
                   , Nothing
@@ -64,13 +105,19 @@ spec = parallel $ do
                 , ( [ "created_before" .= "-57" ]
                   , Nothing
                   )
-                , ( [ "created_after" .=
-                        "14.0000000000000000000000000000000000000000000000000000000000000000"
-                    ]
-                  , Just
-                      ( Right <$> pointFromText
-                          "14.0000000000000000000000000000000000000000000000000000000000000000"
-                      , Nothing
-                      )
+                , ( [ "spent_after" .= "14", "spent_after" .= "42" ]
+                  , Nothing
+                  )
+                , ( [ "spent_after" .= "foo" ]
+                  , Nothing
+                  )
+                , ( [ "spent_before" .= "-57" ]
+                  , Nothing
+                  )
+                , ( [ "created_after" .= "14", "spent_after" .= "42" ]
+                  , Nothing
+                  )
+                , ( [ "created_before" .= "14", "spent_before" .= "42" ]
+                  , Nothing
                   )
                 ]
