@@ -1277,6 +1277,102 @@ components:
         Filters results to only those containing assets of a specific asset id. This parameter can't
         be used alone and must be provided alongside a `policy_id`.
 
+    created-after:
+      name: created_after
+      in: query
+      required: false
+      allowEmptyValue: false
+      description: |
+        Fetch only results created after (inclusive) some point.
+
+        > <sup><strong>NOTE</strong></sup> <br/>
+        >
+        > This can be combined with an upper bound (e.g. `{created, spent}_before`)
+        > but cannot be combined with another lower bound.
+      schema:
+        oneOf:
+          - title: By Slot
+            type: integer
+            minimum: 1
+            description: |
+              Only fetch results that were created at and after the given slot.
+          - title: By Point
+            type: string
+            pattern: "[0-9]+.[0-9a-f]{64}"
+            description: |
+              Only fetch results that were created at and after the given
+              point. This fails if the provided point doesn't exist. It is
+              handy to fetch a collection of results by pages while ensuring
+              that the collection isn't being altered to due alternative chain
+              forks being adopted. The last known fetch point can be used as
+              starting point for the next range.
+
+              Points are defined in the usual format (same as the command-line):
+
+              ```
+                        ┏━━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━━┓
+              POINT = ╾─┫ SLOT-NUMBER ┣─┤ . ├─┫ HEADER-HASH ┣─╼
+                        ┗━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━┛
+                              ┏━━━━━━━━━━━┓
+              HEADER-HASH = ╾─┫ 64 HEXDIG ┣───────────────────╼
+                              ┗━━━━━━━━━━━┛
+                              ┏━━━━━━━━━━┓
+              SLOT-NUMBER = ╾─┫ 1* DIGIT ┣────────────────────╼
+                              ┗━━━━━━━━━━┛
+              ```
+
+              For example:
+
+              `5999990.dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e`
+
+    created-before:
+      name: created_before
+      in: query
+      required: false
+      allowEmptyValue: false
+      description: |
+        Fetch only results created before (inclusive) some point.
+
+        > <sup><strong>NOTE</strong></sup> <br/>
+        >
+        > This can be combined with a lower bound (e.g. `{created, spent}_after`)
+        > but cannot be combined with another upper bound.
+      schema:
+        oneOf:
+          - title: By Slot
+            type: integer
+            minimum: 1
+            description: |
+              Only fetch results that were created at and before the given slot.
+          - title: By Point
+            type: string
+            pattern: "[0-9]+.[0-9a-f]{64}"
+            description: |
+              Only fetch results that were created at and before the given
+              point. This fails if the provided point doesn't exist. It is
+              handy to fetch a collection of results by pages while ensuring
+              that the collection isn't being altered to due alternative chain
+              forks being adopted. The last known fetch point can be used as
+              starting point for the next range.
+
+              Points are defined in the usual format (same as the command-line):
+
+              ```
+                        ┏━━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━━┓
+              POINT = ╾─┫ SLOT-NUMBER ┣─┤ . ├─┫ HEADER-HASH ┣─╼
+                        ┗━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━┛
+                              ┏━━━━━━━━━━━┓
+              HEADER-HASH = ╾─┫ 64 HEXDIG ┣───────────────────╼
+                              ┗━━━━━━━━━━━┛
+                              ┏━━━━━━━━━━┓
+              SLOT-NUMBER = ╾─┫ 1* DIGIT ┣────────────────────╼
+                              ┗━━━━━━━━━━┛
+              ```
+
+              For example:
+
+              `5999990.dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e`
+
     datum-hash:
       name: datum_hash
       in: path
@@ -1380,6 +1476,102 @@ components:
       description: |
         A query flag (i.e. `?spent`) to filter matches by status, to get only 'spent' matches.  Note that, when running kupo with `--prune-utxo`, this will always return an empty list of results.
 
+    spent-after:
+      name: spent_after
+      in: query
+      required: false
+      allowEmptyValue: false
+      description: |
+        Fetch only results spent after (inclusive) some point.
+
+        > <sup><strong>NOTE</strong></sup> <br/>
+        >
+        > This can be combined with an upper bound (e.g. `{created, spent}_before`)
+        > but cannot be combined with another lower bound.
+      schema:
+        oneOf:
+          - title: By Slot
+            type: integer
+            minimum: 1
+            description: |
+              Only fetch results that were spent at and after the given slot.
+          - title: By Point
+            type: string
+            pattern: "[0-9]+.[0-9a-f]{64}"
+            description: |
+              Only fetch results that were spent at and after the given
+              point. This fails if the provided point doesn't exist. It is
+              handy to fetch a collection of results by pages while ensuring
+              that the collection isn't being altered to due alternative chain
+              forks being adopted. The last known fetch point can be used as
+              starting point for the next range.
+
+              Points are defined in the usual format (same as the command-line):
+
+              ```
+                        ┏━━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━━┓
+              POINT = ╾─┫ SLOT-NUMBER ┣─┤ . ├─┫ HEADER-HASH ┣─╼
+                        ┗━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━┛
+                              ┏━━━━━━━━━━━┓
+              HEADER-HASH = ╾─┫ 64 HEXDIG ┣───────────────────╼
+                              ┗━━━━━━━━━━━┛
+                              ┏━━━━━━━━━━┓
+              SLOT-NUMBER = ╾─┫ 1* DIGIT ┣────────────────────╼
+                              ┗━━━━━━━━━━┛
+              ```
+
+              For example:
+
+              `5999990.dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e`
+
+    spent-before:
+      name: spent_before
+      in: query
+      required: false
+      allowEmptyValue: false
+      description: |
+        Fetch only results spent before (inclusive) some point.
+
+        > <sup><strong>NOTE</strong></sup> <br/>
+        >
+        > This can be combined with a lower bound (e.g. `{created, spent}_after`)
+        > but cannot be combined with another upper bound.
+      schema:
+        oneOf:
+          - title: By Slot
+            type: integer
+            minimum: 1
+            description: |
+              Only fetch results that were spent at and before the given slot.
+          - title: By Point
+            type: string
+            pattern: "[0-9]+.[0-9a-f]{64}"
+            description: |
+              Only fetch results that were spent at and before the given
+              point. This fails if the provided point doesn't exist. It is
+              handy to fetch a collection of results by pages while ensuring
+              that the collection isn't being altered to due alternative chain
+              forks being adopted. The last known fetch point can be used as
+              starting point for the next range.
+
+              Points are defined in the usual format (same as the command-line):
+
+              ```
+                        ┏━━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━━┓
+              POINT = ╾─┫ SLOT-NUMBER ┣─┤ . ├─┫ HEADER-HASH ┣─╼
+                        ┗━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━┛
+                              ┏━━━━━━━━━━━┓
+              HEADER-HASH = ╾─┫ 64 HEXDIG ┣───────────────────╼
+                              ┗━━━━━━━━━━━┛
+                              ┏━━━━━━━━━━┓
+              SLOT-NUMBER = ╾─┫ 1* DIGIT ┣────────────────────╼
+                              ┗━━━━━━━━━━┛
+              ```
+
+              For example:
+
+              `5999990.dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e`
+
     strict:
       name: strict
       in: query
@@ -1454,6 +1646,10 @@ paths:
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
         - $ref: "#/components/parameters/order"
+        - $ref: "#/components/parameters/created-after"
+        - $ref: "#/components/parameters/spent-after"
+        - $ref: "#/components/parameters/created-before"
+        - $ref: "#/components/parameters/spent-before"
         - $ref: "#/components/parameters/policy-id"
         - $ref: "#/components/parameters/asset-name"
         - $ref: "#/components/parameters/transaction-id"
@@ -1484,6 +1680,10 @@ paths:
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
         - $ref: "#/components/parameters/order"
+        - $ref: "#/components/parameters/created-after"
+        - $ref: "#/components/parameters/spent-after"
+        - $ref: "#/components/parameters/created-before"
+        - $ref: "#/components/parameters/spent-before"
         - $ref: "#/components/parameters/policy-id"
         - $ref: "#/components/parameters/asset-name"
         - $ref: "#/components/parameters/transaction-id"
