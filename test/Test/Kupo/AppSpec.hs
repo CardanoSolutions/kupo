@@ -129,6 +129,10 @@ import Kupo.Data.Pattern
     , Pattern (..)
     , Result (..)
     )
+import Network.HTTP.Client
+    ( defaultManagerSettings
+    , newManager
+    )
 import System.Environment
     ( lookupEnv
     )
@@ -141,7 +145,7 @@ import Test.Hspec.QuickCheck
     )
 import Test.Kupo.App.Http.Client
     ( HttpClient (..)
-    , newHttpClient
+    , newHttpClientWith
     )
 import Test.Kupo.Data.Generators
     ( genBinaryData
@@ -159,6 +163,7 @@ import Test.Kupo.Data.Generators
     )
 import Test.QuickCheck
     ( Gen
+    , arbitrary
     , choose
     , counterexample
     , elements
@@ -166,6 +171,7 @@ import Test.QuickCheck
     , frequency
     , label
     , oneof
+    , sized
     )
 import Test.QuickCheck.Monadic
     ( assert
@@ -210,74 +216,82 @@ varStateMachineIterations = "KUPO_STATE_MACHINE_ITERATIONS"
 
 spec :: Spec
 spec = do
-    httpClient <- runIO (newHttpClient (serverHost, serverPort))
+    manager <- runIO (newManager defaultManagerSettings)
+
     chan <- runIO newTChanIO
 
     maxSuccess <- maybe 30 Prelude.read
         <$> runIO (lookupEnv varStateMachineIterations)
 
     prop "State-Machine" $ withMaxSuccess maxSuccess $
-        forAll genInputManagement $ \inputManagement -> do
-            let stateMachine = StateMachine
-                    initModel
-                    transition
-                    (precondition longestRollback)
-                    postcondition
-                    Nothing
-                    (generator inputManagement)
-                    shrinker
-                    (semantics garbageCollectionInterval httpClient chan)
-                    mock
-                    (cleanup chan)
-            forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
-                let config = Configuration
-                        { chainProducer = error "chainProducer: unused."
-                        , workDir = InMemory
-                        , serverHost
-                        , serverPort
-                        , since = Just GenesisPoint
-                        , patterns = fromList [MatchAny IncludingBootstrap]
-                        , inputManagement
-                        , longestRollback
-                        , garbageCollectionInterval
-                        , maxConcurrency
-                        , deferIndexes
-                        }
-                env <- run (newEnvironment config)
-                producer <- run (newMockProducer <$> atomically (dupTChan chan))
-                fetchBlock <- run (newMockFetchBlock <$> atomically (dupTChan chan))
-                let kupo = kupoWith tracers producer fetchBlock `runWith` env
-                asyncId <- run (async kupo)
-                run $ link asyncId
-                (_hist, model, res) <- runCommands stateMachine cmds
-                run $ cancel asyncId
+      forAll genInputManagement $ \inputManagement -> do
+        forAll genServerPort $ \serverPort -> do
+           let stateMachine = StateMachine
+                initModel
+                transition
+                (precondition longestRollback)
+                postcondition
+                Nothing
+                (generator inputManagement)
+                shrinker
+                (semantics
+                    garbageCollectionInterval
+                    (newHttpClientWith manager (serverHost, serverPort) (\_ -> pure ()))
+                    chan
+                )
+                mock
+                (cleanup chan)
+           forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
+              let config = Configuration
+                   { chainProducer = error "chainProducer: unused."
+                   , workDir = InMemory
+                   , serverHost
+                   , serverPort
+                   , since = Just GenesisPoint
+                   , patterns = fromList [MatchAny IncludingBootstrap]
+                   , inputManagement
+                   , longestRollback
+                   , garbageCollectionInterval
+                   , maxConcurrency
+                   , deferIndexes
+                   }
+              env <- run (newEnvironment config)
+              producer <- run (newMockProducer <$> atomically (dupTChan chan))
+              fetchBlock <- run (newMockFetchBlock <$> atomically (dupTChan chan))
+              let kupo = kupoWith tracers producer fetchBlock `runWith` env
+              asyncId <- run (async kupo)
+              run $ link asyncId
+              (_hist, model, res) <- runCommands stateMachine cmds
+              run $ cancel asyncId
 
-                -- TODO: Check coverage using the history and label some interesting
-                -- test scenarios that are relevant to cover.
+              -- TODO: Check coverage using the history and label some interesting
+              -- test scenarios that are relevant to cover.
 
-                monitor (label (show inputManagement))
-                monitor (checkCommandNames cmds)
-                monitor $ counterexample $ toString $ unlines
-                    [ T.intercalate "\n -"
-                        ("== Commands =="
-                        : (show . getCommand <$> unCommands cmds)
-                        )
-                    , ""
-                    , "== Model =="
-                    , show model
-                    , ""
-                    , "== Assertion =="
-                    , show res
-                    ]
-                assert (res == Ok)
+              monitor (label (show inputManagement))
+              monitor (checkCommandNames cmds)
+              monitor $ counterexample $ toString $ unlines
+                [ T.intercalate "\n -"
+                   ("== Commands =="
+                   : (show . getCommand <$> unCommands cmds)
+                   )
+                , ""
+                , "== Model =="
+                , show model
+                , ""
+                , "== Assertion =="
+                , show res
+                ]
+              assert (res == Ok)
   where
     serverHost = "127.0.0.1"
-    serverPort = 1442
     longestRollback = 10
     garbageCollectionInterval = 0.4
     maxConcurrency = 50
     deferIndexes = InstallIndexesIfNotExist
     tracers = configureTracers (defaultTracers Nothing) nullTracer
+    genServerPort = sized $ \n -> do
+        i <- arbitrary
+        pure (1024 + n + i)
 
 --------------------------------------------------------------------------------
 ---- Events / Respone

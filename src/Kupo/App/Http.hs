@@ -24,6 +24,7 @@ import Data.Aeson
     )
 import Kupo.App.Database
     ( ConnectionType (..)
+    , DBTransaction
     , Database (..)
     )
 import Kupo.App.Http.HealthCheck
@@ -40,6 +41,9 @@ import Kupo.Control.MonadLog
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
+    )
+import Kupo.Control.MonadThrow
+    ( throwIO
     )
 import Kupo.Data.Cardano
     ( DatumHash
@@ -103,6 +107,10 @@ import Kupo.Data.Http.Response
     ( responseJson
     , responseJsonEncoding
     , responseStreamJson
+    )
+import Kupo.Data.Http.SlotRange
+    ( intoSlotRange
+    , slotRangeFromQueryParams
     )
 import Kupo.Data.Http.Status
     ( Status (..)
@@ -186,10 +194,16 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
         & Warp.setBeforeMainLoop (logWith tr HttpServerListening{host,port})
 
     withDatabaseWrapped send connectionType action = do
-        (withDatabase connectionType action `catch` onServerError) >>= \case
+        handle onServerError (handle onAssertPointException (withDatabase connectionType action)) >>= \case
             Nothing -> onServiceUnavailable
             Just r  -> return r
       where
+        onAssertPointException = \case
+            ErrPointNotFound{} ->
+                Just <$> send Errors.nonExistingPoint
+            ErrPointMismatch{requested, found} ->
+                Just <$> send (Errors.pointMismatch requested found)
+
         onServerError (hint :: SomeException) = do
             logWith tr $ HttpUnexpectedError (toText $ displayException hint)
             Just <$> send Errors.serverError
@@ -492,6 +506,9 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
     pattern_ <- (patternQuery >>= patternFromText)
         `orAbort` Errors.invalidPattern
 
+    pointRange <- slotRangeFromQueryParams queryParams
+        `orAbort` Errors.invalidSlotRange
+
     statusFlag <- statusFlagFromQueryParams queryParams
         `orAbort` Errors.invalidStatusFlag
 
@@ -502,7 +519,20 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
         `orAbort` Errors.invalidSortDirection
 
     pure $ responseStreamJson headers resultToJson $ \yield done -> do
-        runTransaction $ foldInputs pattern_ statusFlag sortDirection (yieldIf yield)
+        let assertPointExists :: Point -> DBTransaction IO ()
+            assertPointExists requested = do
+                let nextSlot = next (getPointSlotNo requested)
+                points <- listAncestorsDesc nextSlot 1
+                case points of
+                    [found] | found == requested ->
+                        pure ()
+                    [found] ->
+                        throwIO ErrPointMismatch{requested, found}
+                    _pointNotFound ->
+                        throwIO ErrPointNotFound{requested}
+        runTransaction $ do
+            slotRange <- intoSlotRange assertPointExists assertPointExists pointRange
+            foldInputs pattern_ slotRange statusFlag sortDirection (yieldIf yield)
         done
   where
     -- NOTE: kupo does support two different ways for fetching results, via query parameters or via
@@ -777,6 +807,18 @@ handlePutPatterns headers readHealth forceRollback patternsVar mPointOrSlot quer
                 atomically (putTMVar response Errors.failedToRollback)
             }
         atomically (takeTMVar response)
+
+--
+-- AssertPointException
+--
+
+-- | Thrown by some handlers when performing extra sanity checks on provided points.
+data AssertPointException
+    = ErrPointNotFound { requested :: !Point }
+    | ErrPointMismatch { requested :: !Point, found :: !Point }
+    deriving (Generic, Show)
+
+instance Exception AssertPointException
 
 --
 -- Helpers

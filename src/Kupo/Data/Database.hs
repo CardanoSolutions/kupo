@@ -646,33 +646,51 @@ addressFromRow =
 
 patternToSql
     :: App.Pattern
-    -> Text
+    -> (Text, Maybe Text)
 patternToSql = \case
     App.MatchAny App.IncludingBootstrap ->
-        "WHERE address LIKE '%'"
+        ( "address LIKE '%'"
+        , Nothing
+        )
     App.MatchAny App.OnlyShelley ->
-        "WHERE address NOT LIKE '00%'"
+        ( "address NOT LIKE '00%'"
+        , Nothing
+        )
     App.MatchExact addr ->
-        "WHERE address = '" <> addressToRow addr <> "'"
+        ( "address = '" <> addressToRow addr <> "'"
+        , Nothing
+        )
     App.MatchPayment payment ->
-        "WHERE payment_credential = '" <> x payment <> "'"
+        ( "payment_credential = '" <> x payment <> "'"
+        , Nothing
+        )
     App.MatchDelegation delegation ->
-        "WHERE address LIKE '01" <> x delegation <> "%'"
+        ( "address LIKE '01" <> x delegation <> "%'"
+        , Nothing
+        )
     App.MatchPaymentAndDelegation payment delegation ->
-        "WHERE address LIKE '01" <> x delegation <> "%' AND payment_credential = '" <> x payment <> "'"
+        ( "address LIKE '01" <> x delegation <> "%' AND payment_credential = '" <> x payment <> "'"
+        , Nothing
+        )
     App.MatchOutputReference ref ->
-        "WHERE output_reference = x'" <> x (outputReferenceToRow ref) <> "'"
+        ( "output_reference = x'" <> x (outputReferenceToRow ref) <> "'"
+        , Nothing
+        )
     App.MatchTransactionId txId ->
         let
             lowerBound = outputReferenceToRow (mkOutputReference txId minBound)
             upperBound = outputReferenceToRow (mkOutputReference txId maxBound)
         in
-            "WHERE (output_reference >= x'" <> x lowerBound <> "'\
-            \   AND output_reference <= x'" <> x upperBound <> "')"
+        ( "output_reference BETWEEN "
+            <> "x'" <> x lowerBound <> "'"
+            <> " AND "
+            <> "x'" <> x upperBound <> "'"
+        , Nothing
+        )
     App.MatchPolicyId pid ->
-        "JOIN policies \
-        \ON inputs.output_reference = policies.output_reference \
-        \WHERE policies.output_reference >= 0 AND policy_id = x'" <> x (App.policyIdToBytes pid) <> "'"
+        ( "policies.output_reference >= 0 AND policy_id = x'" <> x (App.policyIdToBytes pid) <> "'"
+        , Just "JOIN policies ON inputs.output_reference = policies.output_reference"
+        )
     App.MatchAssetId (pid, _) ->
         patternToSql (App.MatchPolicyId pid)
   where
@@ -683,9 +701,9 @@ statusFlagToSql  = \case
     NoStatusFlag ->
         ""
     OnlyUnspent ->
-        "AND spent_at IS NULL"
+        "spent_at IS NULL"
     OnlySpent ->
-        "AND spent_at IS NOT NULL"
+        "spent_at IS NOT NULL"
 
 data SortDirection = Asc | Desc
     deriving (Generic)

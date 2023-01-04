@@ -4,6 +4,33 @@
 
 - Support for [ETag/If-None-Match](https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching#etagif-none-match) standard HTTP caching. `ETag` in kupo matches the most recent block header hash. This allows clients to perform efficient polling and caching on their end. This also comes as an additional protection for rollbacks as one can control the `ETag` between two requests and assess whether a rollback happened.
 
+- [📌 #96](https://github.com/CardanoSolutions/kupo/issues/96) Matches can now be fetched in a paginated fashion, using slot ranges. Ranges can be made on either `created_at` or `spent_at` fields, and are inclusive. Besides, clients have two ways to define ranges:
+
+  - by absolute slot number;
+  - by point (slot number + block header hash).
+
+  The latter performs an extra check and will fail should the provided point not exist. This is handy to fetch collections over multiple pages while ensuring that the underlying data doesn't change due to a new fork of the chain being adopted behind the scene. Here are some examples of queries with (valid) ranges:
+
+  ```
+  /matches?created_after=1234
+  ```
+
+  ```
+  /matches?created_after=1234&created_before=5678
+  ```
+
+  ```
+  /matches?spent&spent_before=1234
+  ```
+
+  ```
+  /matches?spent&created_after=1234.4675360c80235b60b127222702b6e9b2b5c20dee7115acfc46eb6f3e9fd97ff0&spent_before=5678
+  ```
+
+  See:
+    - `GET /matches` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getAllMatches)
+    - `GET /matches/{pattern}` → [📖 API Reference](https://cardanosolutions.github.io/kupo/#operation/getMatches)
+
 #### Changed
 
 - [📌 #94](https://github.com/CardanoSolutions/kupo/issues/94) Improved user-experience on start-up when providing invalid or missing working directory. Kupo will now recursively create the working directory if it's missing and otherwise provide a more informative error if it can't (e.g. because the directory already exists and is a file or because of a lack of permissions).

@@ -19,11 +19,13 @@ import Kupo.Data.Cardano.Block
 import Kupo.Data.Cardano.HeaderHash
     ( headerHashFromText
     , headerHashToJson
+    , headerHashToText
     )
 import Kupo.Data.Cardano.SlotNo
     ( SlotNo (..)
     , slotNoFromText
     , slotNoToJson
+    , slotNoToText
     )
 import Ouroboros.Network.Block
     ( HeaderHash
@@ -62,6 +64,17 @@ pointFromText txt =
         <*> headerHashFromText (T.drop 1 headerHash)
       where
         (slotNo, headerHash) = T.breakOn "." (T.strip txt)
+
+pointToText :: Point -> Text
+pointToText = \case
+    GenesisPoint ->
+        "origin"
+    BlockPoint sl h ->
+        mconcat
+            [ slotNoToText sl
+            , "."
+            , headerHashToText h
+            ]
 
 getPointSlotNo :: Point -> SlotNo
 getPointSlotNo pt =

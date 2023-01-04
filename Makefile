@@ -50,7 +50,7 @@ $(OUT)/share/kupo/LICENSE:
 $(OUT)/bin/kupo:
 	@mkdir -p $(@D)
 ifeq ($(OS),Darwin)
-	cabal install kupo:exe:kupo --flags +production --installdir=$(@D) --install-method=copy
+	cabal install --builddir=.dist-production kupo:exe:kupo --flags +production --installdir=$(@D) --install-method=copy
 	@echo "Build successful."
 	@echo ""
 	@echo "    ╔═══ NOTE ═════════════════════════════════════════════════════════════╗"

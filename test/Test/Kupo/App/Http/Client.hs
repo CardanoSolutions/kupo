@@ -27,9 +27,6 @@ import Kupo.Control.MonadCatch
 import Kupo.Control.MonadDelay
     ( MonadDelay (..)
     )
-import Kupo.Control.MonadSTM
-    ( MonadSTM (..)
-    )
 import Kupo.Data.Cardano
     ( Address
     , BinaryData
@@ -136,11 +133,10 @@ data HttpClient (m :: Type -> Type) = HttpClient
 newHttpClient :: (String, Int) -> IO (HttpClient IO)
 newHttpClient config = do
     manager <- newManager defaultManagerSettings
-    logs <- newTVarIO []
-    pure (newHttpClientWith manager config logs)
+    pure $ newHttpClientWith manager config (\_ -> pure ())
 
-newHttpClientWith :: Manager -> (String, Int) -> TVar IO [Text] -> HttpClient IO
-newHttpClientWith manager (serverHost, serverPort) logs =
+newHttpClientWith :: Manager -> (String, Int) -> (Text -> IO ()) -> HttpClient IO
+newHttpClientWith manager (serverHost, serverPort) log =
     HttpClient
         { waitUntilM =
             \a0 -> waitForServer >> _waitUntilM a0
@@ -168,9 +164,6 @@ newHttpClientWith manager (serverHost, serverPort) logs =
             waitForServer >> _listPatterns
         }
   where
-    log :: Text -> IO ()
-    log = atomically . modifyTVar' logs . (:)
-
     baseUrl :: String
     baseUrl = "http://" <> serverHost <> ":" <> show serverPort
 
