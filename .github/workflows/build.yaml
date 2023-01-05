@@ -13,12 +13,12 @@ jobs:
     steps:
 
     - name: 📥 Checkout repository
-      uses: actions/checkout@v2.3.3
+      uses: actions/checkout@v3
       with:
         submodules: true
 
     - name: ❄️  Install Nix
-      uses: cachix/install-nix-action@v13
+      uses: cachix/install-nix-action@v18
       with:
         nix_path: nixpkgs=channel:nixos-unstable
         extra_nix_config: |
@@ -37,7 +37,7 @@ jobs:
         GIT_SHA: ${{ github.sha }}
 
     - name: 📎 Upload Artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: kupo-${{ github.sha }}-${{ runner.arch }}-${{ runner.os }}
         path: |
