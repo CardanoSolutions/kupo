@@ -70,6 +70,7 @@ CREATE TABLE `patterns` (
 
 <p align="right"><code>v2.2.0</code></p>
 <hr/>
+
 ### Migration to `version=9`
 
 - Rename column `datum_hash` to `datum_info`
