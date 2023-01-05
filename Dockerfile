@@ -6,7 +6,7 @@
 # --------------------------------- SETUP ------------------------------------ #
 #                                                                              #
 
-FROM --platform=${TARGETPLATFORM:-linux/amd64} nixos/nix:2.3.11 as build
+FROM --platform=${TARGETPLATFORM:-linux/amd64} nixos/nix:2.12.0 as build
 
 RUN echo "substituters = https://cache.nixos.org https://cache.iog.io" >> /etc/nix/nix.conf &&\
     echo "trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=" >> /etc/nix/nix.conf
