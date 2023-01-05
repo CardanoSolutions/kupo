@@ -26,7 +26,7 @@ jobs:
           substituters = https://cache.iog.io https://cache.nixos.org
 
     - name: 💾 Cache Build
-      uses: cachix/cachix-action@v10
+      uses: cachix/cachix-action@v12
       with:
         name: kupo
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
