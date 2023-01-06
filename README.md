@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/kupo.png" width="320" />
+  <img src="./docs/kupo.png" width="240" /> <img src=".github/preview.gif" width="480" />
 </p>
 
 ---
@@ -20,12 +20,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/architecture-diagram-dark.png 300w" sizes="300px">
-    <source media="(prefers-color-scheme: dark and min-width: 480px)" srcset="./docs/architecture-diagram-dark.png 450w" sizes="450px">
-    <source media="(prefers-color-scheme: dark and min-width: 780px)" srcset="./docs/architecture-diagram-dark.png 600w" sizes="600px">
-    <source media="(min-width: 480px)" srcset="./docs/architecture-diagram-light.png 450w" sizes="450px">
-    <source media="(min-width: 780px)" srcset="./docs/architecture-diagram-light.png 600w" sizes="600px">
-    <img alt="Kupo: components diagram" src="./docs/architecture-diagram-light.png" width="675">
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/architecture-diagram-dark.png">
+    <img alt="kupo: components diagram" src="./docs/architecture-diagram-light.png" width="550">
   </picture>
 </p>
 
