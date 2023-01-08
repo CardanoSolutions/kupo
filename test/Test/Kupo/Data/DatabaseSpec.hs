@@ -425,7 +425,9 @@ spec = parallel $ do
                 (pure pruneInputsQry)
                 (\conn -> installIndex nullTracer conn "inputsBySpentAt" "inputs(spent_at)")
                 (`shouldBe`
-                    [ "SEARCH inputs USING COVERING INDEX inputsBySpentAt (spent_at<?)"
+                    [ "SEARCH inputs USING COVERING INDEX sqlite_autoindex_inputs_1 (ext_output_reference=?)"
+                    , "LIST SUBQUERY 2"
+                    , "SEARCH inputs USING INDEX inputsBySpentAt (spent_at<?)"
                     , "SCALAR SUBQUERY 1"
                     , "SEARCH checkpoints"
                     , "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference=?)"

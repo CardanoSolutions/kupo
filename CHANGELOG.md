@@ -16,6 +16,11 @@ N/A
   >
   > There's no patch for mainnet because, to this date, there hasn't been any phase-2 failure on mainnet making use of collateral returns.
 
+- Make internal db garbage-collection more incremental. This has two main benefits:
+
+  1. It allows the consumer to preempt the database connection for writing blocks while a GC is happening. This is crucial to not start lagging behind because of a long-running (several minutes) garbage collection.
+  2. It breaks the inputs pruning over multiple smaller transaction, which are much faster to process than a single (sometimes excessively large) transaction by SQLite under the hood; considerably reducing the garbage-collection delays.
+
 #### Removed
 
 N/A

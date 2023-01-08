@@ -18,6 +18,7 @@ module Kupo.Data.Configuration
     , LongestRollback (..)
     , DeferIndexesInstallation (..)
     , mailboxCapacity
+    , pruneInputsMaxIncrement
 
     -- * NetworkParameters
     , NetworkParameters (..)
@@ -168,6 +169,10 @@ data DeferIndexesInstallation
 mailboxCapacity :: Natural
 mailboxCapacity = 200
 {-# INLINABLE mailboxCapacity #-}
+
+-- Maximum number of inputs pruned at a time. See note on 'pruneInputsQry'
+pruneInputsMaxIncrement :: Int
+pruneInputsMaxIncrement = 50000
 
 data NetworkParameters = NetworkParameters
     { networkMagic :: !NetworkMagic

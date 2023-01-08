@@ -119,6 +119,7 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( DeferIndexesInstallation (..)
     , LongestRollback (..)
+    , pruneInputsMaxIncrement
     )
 import Kupo.Data.Database
     ( SortDirection (..)
@@ -656,13 +657,22 @@ markInputsQry pattern_ =
   where
       (whereClause, fromMaybe "" -> additionalJoin) = patternToSql pattern_
 
+-- NOTE: This query only prune down a certain number of inputs at a time to keep his time bounded. The
+-- query in itself is quite expensive, and on large indexes, may takes several minutes.
+--
+-- This happens only during garbage collection and prevents the consumer thread from pushing any new
+-- block to the database in the meantime. By making the query more incremental, we can allow the
+-- consumer thread to preempt the connection in between increments. While the overall garbage
+-- collection may be slower, it should not disrupt the application that much (especially because
+-- read-only connections can still go through while the GC is happening).
 pruneInputsQry :: Query
 pruneInputsQry =
     "DELETE FROM inputs \
-    \WHERE \
-    \    spent_at < ( \
-    \        (SELECT MAX(slot_no) FROM checkpoints) - ? \
-    \    )"
+    \WHERE ext_output_reference IN ( \
+    \  SELECT ext_output_reference FROM inputs \
+    \    WHERE spent_at < ((SELECT MAX(slot_no) FROM checkpoints) - ?) \
+    \    LIMIT " <> show pruneInputsMaxIncrement <> "\
+    \)"
 
 foldInputsQry
     :: Pattern
@@ -1099,11 +1109,15 @@ instance ToJSON TraceConnection where
 
 instance HasSeverityAnnotation TraceConnection where
     getSeverityAnnotation = \case
-        ConnectionCreateShortLived{}     -> Debug
-        ConnectionDestroyShortLived{}    -> Debug
-        ConnectionLocked{}               -> Debug
-        ConnectionBusy{}                 -> Debug
-        ConnectionBeginQuery{}           -> Debug
-        ConnectionExitQuery{}            -> Debug
-        ConnectionCreateTemporaryIndex{} -> Debug
-        ConnectionRemoveTemporaryIndex{} -> Debug
+        ConnectionCreateShortLived{}          -> Debug
+        ConnectionDestroyShortLived{}         -> Debug
+        ConnectionLocked{}                    -> Debug
+        ConnectionBusy{}                      -> Debug
+        ConnectionBeginQuery{beginQuery}
+            | beginQuery == "PRAGMA optimize" -> Notice
+        ConnectionBeginQuery{}                -> Debug
+        ConnectionExitQuery{exitQuery}
+            | exitQuery == "PRAGMA optimize"  -> Notice
+        ConnectionExitQuery{}                 -> Debug
+        ConnectionCreateTemporaryIndex{}      -> Debug
+        ConnectionRemoveTemporaryIndex{}      -> Debug

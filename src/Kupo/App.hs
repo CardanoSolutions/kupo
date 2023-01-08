@@ -87,6 +87,7 @@ import Kupo.Data.Configuration
     , LongestRollback (..)
     , NetworkParameters (..)
     , mailboxCapacity
+    , pruneInputsMaxIncrement
     )
 import Kupo.Data.Database
     ( binaryDataToRow
@@ -343,7 +344,6 @@ gardener
         ( MonadSTM m
         , MonadLog m
         , MonadDelay m
-        , Monad (DBTransaction m)
         )
     => Tracer IO TraceGardener
     -> Configuration
@@ -351,34 +351,36 @@ gardener
     -> (forall a. (Database m -> m a) -> m a)
     -> m Void
 gardener tr config patterns withDatabase = forever $ do
-    threadDelay garbageCollectionInterval
-    logWith tr GardenerBeginGarbageCollection
+    threadDelay (garbageCollectionInterval config)
     xs <- readTVarIO patterns
-    withDatabase $ \Database{..} -> do
-        (prunedInputs, prunedBinaryData) <-
-            runTransaction $ do
-                let
-                    pruneInputsWhenApplicable =
-                        case inputManagement of
-                            RemoveSpentInputs -> pruneInputs
-                            MarkSpentInputs -> pure 0
-                    pruneBinaryDataWhenApplicable = do
-                        case (inputManagement, MatchAny OnlyShelley `included` xs) of
-                            (MarkSpentInputs, s) | not (Set.null s) -> pure 0
-                            _needPruning -> pruneBinaryData
-                 in
-                    (,) <$> pruneInputsWhenApplicable
-                        <*> pruneBinaryDataWhenApplicable
-        runTransaction optimize
-        logWith tr $ GardenerExitGarbageCollection
-            { prunedInputs
-            , prunedBinaryData
-            }
+
+    case inputManagement config of
+        RemoveSpentInputs -> do
+            logWith tr GardenerBeginGarbageCollection { pruning = "inputs" }
+            totalPrunedRows <- pruneIncrementally
+            logWith tr $ GardenerExitGarbageCollection { totalPrunedRows }
+        MarkSpentInputs ->
+            return ()
+
+    case (inputManagement config, MatchAny OnlyShelley `included` xs) of
+        (MarkSpentInputs, s) | not (Set.null s) ->
+            return ()
+        _needPruning -> do
+            logWith tr GardenerBeginGarbageCollection { pruning = "binary_data" }
+            totalPrunedRows <- withDatabase $ \Database{..} -> runTransaction pruneInputs
+            logWith tr $ GardenerExitGarbageCollection { totalPrunedRows }
+
+    withDatabase $ \Database{..} -> runTransaction optimize
   where
-    Configuration
-        { garbageCollectionInterval
-        , inputManagement
-        } = config
+      pruneIncrementally = do
+        prunedRows <- withDatabase $ \Database{..} -> runTransaction pruneInputs
+        prunedRows' <-
+            if prunedRows < pruneInputsMaxIncrement
+            then return 0
+            else do
+                logWith tr GardenerPrunedIncrement { prunedRows }
+                pruneIncrementally
+        return (prunedRows + prunedRows')
 
 --
 -- Tracer
@@ -415,9 +417,13 @@ instance HasSeverityAnnotation TraceConsumer where
 
 data TraceGardener where
     GardenerBeginGarbageCollection
-        :: TraceGardener
+        :: { pruning :: Text }
+        -> TraceGardener
+    GardenerPrunedIncrement
+        :: { prunedRows :: Int }
+        -> TraceGardener
     GardenerExitGarbageCollection
-        :: { prunedInputs :: Int, prunedBinaryData :: Int }
+        :: { totalPrunedRows :: Int }
         -> TraceGardener
     deriving stock (Generic, Show)
 
@@ -427,5 +433,6 @@ instance ToJSON TraceGardener where
 
 instance HasSeverityAnnotation TraceGardener where
     getSeverityAnnotation = \case
-        GardenerBeginGarbageCollection{} -> Info
-        GardenerExitGarbageCollection{}  -> Info
+        GardenerBeginGarbageCollection{} -> Notice
+        GardenerPrunedIncrement{} -> Debug
+        GardenerExitGarbageCollection{}  -> Notice
