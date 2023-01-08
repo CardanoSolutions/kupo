@@ -885,18 +885,9 @@ installIndexes
     -> IO ()
 installIndexes tr conn = \case
     SkipNonEssentialIndexes -> do
-        indexDoesExist conn "inputsByAddress" >>= \case
-            True  -> do
-                traceWith tr $ DatabaseDeferIndexes
-                    "Asked to defer creation of database indexes but they already exist: did you \
-                    \already start the indexer once and forgot to defer creation of indexes? \
-                    \Consider creating the database anew and deferring indexes from the start if this \
-                    \is indeed the intention."
-            False -> do
-                traceWith tr $ DatabaseDeferIndexes
-                    "Creation of lookup indexes has been deferred: synchronization will be faster \
-                    \but many queries will also be a lot longer. Consider installing indexes once \
-                    \synchronization is done to speed up queries."
+        dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByAddress" False
+        dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByPaymentCredential" False
+        dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByCreatedAt" False
     InstallIndexesIfNotExist -> do
         installIndex tr conn
             "inputsByAddress"
@@ -937,12 +928,7 @@ withTemporaryIndex tr conn name definition action = do
         , definition
         ]
     a <- action
-    unless exists $ do
-        traceWith tr (ConnectionRemoveTemporaryIndex name)
-        execute_ conn $ Query $ unwords
-            [ "DROP INDEX"
-            , name
-            ]
+    unless exists (dropIndexIfExists tr conn name True)
     return a
 
 -- | Check whether an index exists in the database. Handy to customize the behavior (e.g. logging)
@@ -953,6 +939,16 @@ indexDoesExist conn name =
     query_ @[SQLData] conn (Query $ "PRAGMA index_info('" <> name <> "')") <&> \case
         [] -> False
         _doesExist -> True
+
+dropIndexIfExists :: Tracer IO TraceConnection -> Connection -> Text -> Bool -> IO ()
+dropIndexIfExists tr conn indexName wasTemporary = do
+    whenM (indexDoesExist conn indexName) $ traceWith tr $ if wasTemporary
+        then ConnectionRemoveTemporaryIndex{indexName}
+        else ConnectionRemoveIndex{indexName}
+    execute_ conn $ Query $ unwords
+        [ "DROP INDEX IF EXISTS"
+        , indexName
+        ]
 
 --
 -- Migrations
@@ -1099,7 +1095,10 @@ data TraceConnection where
         :: { newTemporaryIndex :: Text }
         -> TraceConnection
     ConnectionRemoveTemporaryIndex
-        :: { dropTemporaryIndex :: Text }
+        :: { indexName :: Text }
+        -> TraceConnection
+    ConnectionRemoveIndex
+        :: { indexName :: Text }
         -> TraceConnection
     deriving stock (Generic, Show)
 
@@ -1121,3 +1120,4 @@ instance HasSeverityAnnotation TraceConnection where
         ConnectionExitQuery{}                 -> Debug
         ConnectionCreateTemporaryIndex{}      -> Debug
         ConnectionRemoveTemporaryIndex{}      -> Debug
+        ConnectionRemoveIndex{}               -> Warning

@@ -21,6 +21,10 @@ N/A
   1. It allows the consumer to preempt the database connection for writing blocks while a GC is happening. This is crucial to not start lagging behind because of a long-running (several minutes) garbage collection.
   2. It breaks the inputs pruning over multiple smaller transaction, which are much faster to process than a single (sometimes excessively large) transaction by SQLite under the hood; considerably reducing the garbage-collection delays.
 
+- Passing `--defer-db-indexes` now also removes query indexes if present.
+
+  Prior to this commit, passing --defer-db-indexes on a database with already present indexes would only raise a warning and there was no practical way to remove indexes from the database (other than doing it manually). Now, `--defer-db-indexes` will systematically make sure that indexes are dropped when set. Thus, this flag effectively controls the existence (or more specifically, the absence) of query indexes in the database. Starting kupo without this flag still creates the indexes should they not exist.
+
 #### Removed
 
 N/A
