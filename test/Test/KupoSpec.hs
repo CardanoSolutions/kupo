@@ -547,7 +547,7 @@ spec = skippableContext "End-to-end" $ do
         timeoutOrThrow 5 dumpLogs $ race_
             (kupo tr `runWith` env)
             (do
-                let predicate = (== (mkOutputReference somePhase2FailedTransactionIdWithReturn 0)) . fst . outputReference
+                let predicate = (== (mkOutputReference somePhase2FailedTransactionIdWithReturn 1)) . fst . outputReference
                 waitUntilM $ do
                     results <- getAllMatches NoStatusFlag
                     return (any predicate results)

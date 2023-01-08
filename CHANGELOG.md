@@ -1,4 +1,26 @@
-### [2.3.0] - UNRELEASED
+### [2.3.1] - UNRELEASED
+
+#### Added
+
+N/A
+
+#### Changed
+
+- [📌 #101](https://github.com/CardanoSolutions/kupo/issues/101) Starting from the Babbage era, transactions that fail phase-2 validations (i.e. script execution) can use a _collateral return_ output where to send change from a lost collateral. This makes collateral management easier for client applications and result in a special kind of UTxO in the ledger. Kupo has been wrongly attributing an index of `0` to those outputs, whereas the ledger indicates the following:
+
+  > Note that the new $collOuts$ function generates a single output with an index $|txOuts_{txb}|$.
+
+  This is now fixed. Database patches are provided for preview, preprod with the release notes of `v2.3.1` to update already indexed collateral returns if any.
+
+  > **Note**
+  >
+  > There's no patch for mainnet because, to this date, there hasn't been any phase-2 failure on mainnet making use of collateral returns.
+
+#### Removed
+
+N/A
+
+### [2.3.0] - 2022-01-05
 
 #### Added
 

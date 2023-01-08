@@ -270,9 +270,14 @@ instance IsBlock Block where
                     Ledger.Alonzo.IsValid True ->
                         traverseAndTransform identity txId 0 outs
                     Ledger.Alonzo.IsValid False ->
+                        -- From Babbage's formal specification:
+                        --
+                        --   Note that the new collOuts function generates a single output
+                        --   with an index |txouts{txb}|.
+                        let start = fromIntegral (length outs) in
                         case Ledger.Babbage.collateralReturn' body of
                             SNothing -> []
-                            SJust r  -> traverseAndTransform identity txId 0 (r :<| mempty)
+                            SJust r  -> traverseAndTransform identity txId start (r :<| mempty)
       where
         traverseAndTransformByron
             :: forall output. ()

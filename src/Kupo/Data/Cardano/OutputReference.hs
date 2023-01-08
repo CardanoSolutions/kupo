@@ -59,10 +59,11 @@ mkOutputReference i =
 {-# INLINABLE mkOutputReference #-}
 
 withReferences
-    :: TransactionId
+    :: OutputIndex
+    -> TransactionId
     -> [Output]
     -> [(OutputReference, Output)]
-withReferences txId = loop 0
+withReferences startIndex txId = loop startIndex
   where
     loop ix = \case
         [] -> []

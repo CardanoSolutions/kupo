@@ -729,7 +729,7 @@ genPartialTransaction = do
     nInputs <- lift $ choose (1, min (Set.size utxos) maxNumberOfInputs)
     inputs <- replicateM nInputs (lift $ elements $ Set.toList utxos)
     nOutputs <- lift $ choose (1, maxNumberOfOutputs)
-    outputs <- withReferences id <$> replicateM nOutputs (lift genOutput)
+    outputs <- withReferences 0 id <$> replicateM nOutputs (lift genOutput)
     put ((utxos `Set.difference` Set.fromList inputs) <> Set.fromList (fmap fst outputs))
     nDatums <- lift $ oneof [pure 0, choose (1, nInputs)]
     datums <-

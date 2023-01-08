@@ -419,11 +419,12 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     case inputSource of
         Just ("collaterals" :: Text) -> do
             inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "collaterals"))
-            outs <- traverse decodeOutput =<< (o .: "body" >>= (.:? "collateralReturn"))
+            outs :: [Json.Value] <- (o .: "body" >>= (.: "outputs"))
+            colReturn <- traverse decodeOutput =<< (o .: "body" >>= (.:? "collateralReturn"))
             pure PartialTransaction
                 { id
                 , inputs
-                , outputs = withReferences id (maybeToList outs)
+                , outputs = withReferences (fromIntegral $ length outs) id (maybeToList colReturn)
                 , datums
                 , scripts
                 , metadata
@@ -434,7 +435,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
             pure PartialTransaction
                 { id
                 , inputs
-                , outputs = withReferences id outs
+                , outputs = withReferences 0 id outs
                 , datums
                 , scripts
                 , metadata
