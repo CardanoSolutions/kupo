@@ -675,7 +675,7 @@ patternToSql = \case
         , Nothing
         )
     App.MatchOutputReference ref ->
-        ( "output_reference = x'" <> x (outputReferenceToRow ref) <> "'"
+        ( "inputs.output_reference = x'" <> x (outputReferenceToRow ref) <> "'"
         , Nothing
         )
     App.MatchTransactionId txId ->
@@ -683,7 +683,7 @@ patternToSql = \case
             lowerBound = outputReferenceToRow (mkOutputReference txId minBound)
             upperBound = outputReferenceToRow (mkOutputReference txId maxBound)
         in
-        ( "output_reference BETWEEN "
+        ( "inputs.output_reference BETWEEN "
             <> "x'" <> x lowerBound <> "'"
             <> " AND "
             <> "x'" <> x upperBound <> "'"

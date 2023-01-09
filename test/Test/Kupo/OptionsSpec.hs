@@ -283,6 +283,26 @@ spec = parallel $ do
             ]
           , shouldFail
           )
+        , ( [ "copy", "--from", "foo", "--into", "bar" ]
+          , flip shouldBe $ Right $ Copy "foo" "bar" $ fromList []
+          )
+        , ( [ "copy", "--from", "foo", "--into", "bar", "--match", "*" ]
+          , flip shouldBe $ Right $ Copy "foo" "bar" $ fromList
+                [ MatchAny IncludingBootstrap
+                ]
+          )
+        , ( [ "copy", "--from", "foo", "--into", "bar", "--match", "*", "--match", "*/*" ]
+          , flip shouldBe $ Right $ Copy "foo" "bar" $ fromList
+                [ MatchAny IncludingBootstrap
+                , MatchAny OnlyShelley
+                ]
+          )
+        , ( [ "copy", "--into", "bar" ]
+          , shouldFail
+          )
+        , ( [ "copy", "--from", "foo" ]
+          , shouldFail
+          )
         , ( [ "version" ], flip shouldBe $ Right Version )
         , ( [ "-v" ], flip shouldBe $ Right Version )
         , ( [ "--version" ], flip shouldBe $ Right Version )

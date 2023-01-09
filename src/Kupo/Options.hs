@@ -20,6 +20,7 @@ module Kupo.Options
 
       -- * Tracers
     , Tracers (..)
+    , TracersCopy (..)
     ) where
 
 import Kupo.Prelude hiding
@@ -46,6 +47,7 @@ import Kupo.App.Http
     )
 import Kupo.Control.MonadLog
     ( Severity (..)
+    , TraceProgress
     , Tracer
     , TracerDefinition (..)
     , TracerHKD
@@ -92,6 +94,7 @@ import qualified Data.Text.Read as T
 
 data Command
     = Run !Configuration !(Tracers IO MinSeverities)
+    | Copy !FilePath !FilePath !(Set Pattern)
     | HealthCheck !String !Int
     | Version
     deriving (Eq, Show)
@@ -116,6 +119,8 @@ parserInfo = info (helper <*> parser) $ mempty
         versionOptionOrCommand
         <|>
         healthCheckCommand
+        <|>
+        copyCommand
         <|>
         ( Run
             <$> ( Configuration
@@ -320,6 +325,15 @@ tracersOption = fmap defaultTracers $ option severity $ mempty
             , [ "- Off" ]
             ]
 
+-- | --{from,into}=FILEPATH
+copyFilePathOption :: String -> Parser FilePath
+copyFilePathOption optName =
+    option str $ mempty
+        <> long optName
+        <> metavar "DIR"
+        <> help ("Working directory to copy " <> optName <> ".")
+        <> completer (bashCompleter "dir")
+
 -- | [--version|-v] | version
 versionOptionOrCommand :: Parser Command
 versionOptionOrCommand =
@@ -356,6 +370,20 @@ healthCheckCommand =
     parser = HealthCheck <$> serverHostOption <*> serverPortOption
     helpText = "Performs a health check against a running daemon."
 
+-- | copy --from [FILEPATH] --into [FILEPATH] [--match PATTERN...]
+copyCommand :: Parser Command
+copyCommand =
+    subparser $ command "copy" $ info (helper <*> parser) $ mempty
+        <> progDesc "Copy from a source database into another, while applying the provided pattern filters."
+        <> header ("This is useful to rapidly bootstrap new database from existing ones. Note that \
+                   \it implies that the source database pattern configuration is a superset of the \
+                   \target; results may otherwise be missing.")
+  where
+    parser = Copy
+        <$> copyFilePathOption "from"
+        <*> copyFilePathOption "into"
+        <*> fmap fromList (many patternOption)
+
 --
 -- Tracers
 --
@@ -375,6 +403,16 @@ data Tracers m (kind :: TracerDefinition) = Tracers
 
 deriving instance Show (Tracers m MinSeverities)
 deriving instance Eq (Tracers m MinSeverities)
+
+data TracersCopy m (kind :: TracerDefinition) = TracersCopy
+    { tracerCopy
+        :: !(TracerHKD kind (Tracer m TraceDatabase))
+    , tracerProgress
+        :: !(TracerHKD kind (Tracer m TraceProgress))
+    } deriving (Generic)
+
+deriving instance Show (TracersCopy m MinSeverities)
+deriving instance Eq (TracersCopy m MinSeverities)
 
 --
 -- Helper

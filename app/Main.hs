@@ -13,6 +13,9 @@ main = parseOptions >>= \case
         withTracers stdout version tracers $ \tr -> do
             env <- newEnvironment cfg
             kupo tr `runWith` env
+    Copy from into patterns -> do
+        withTracers stdout version (defaultTracers @TracersCopy (Just Info)) $ \tr -> do
+            copyDatabase (tracerCopy tr, tracerProgress tr) from into patterns
     HealthCheck host port -> do
         healthCheck host port
     Version -> do

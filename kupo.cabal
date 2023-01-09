@@ -207,6 +207,7 @@ library
     , resource-pool
     , safe
     , safe-exceptions
+    , scientific
     , sqlite-simple
     , strict-containers
     , template-haskell

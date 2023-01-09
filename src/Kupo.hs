@@ -12,6 +12,7 @@ module Kupo
       runWith
     , version
     , healthCheck
+    , copyDatabase
 
     -- * Kupo
     , Kupo (..)
@@ -27,7 +28,11 @@ module Kupo
     , parseOptions
 
     -- * Tracers
+    , Tracers(..)
+    , TracersCopy(..)
+    , Severity(..)
     , withTracers
+    , defaultTracers
     ) where
 
 import Kupo.Prelude
@@ -57,6 +62,7 @@ import Kupo.App.Configuration
 import Kupo.App.Database
     ( ConnectionType (..)
     , Database (..)
+    , copyDatabase
     , createShortLivedConnection
     , newDatabaseFile
     , newLock
@@ -79,7 +85,9 @@ import Kupo.Control.MonadAsync
     ( concurrently4
     )
 import Kupo.Control.MonadLog
-    ( TracerDefinition (..)
+    ( Severity (..)
+    , TracerDefinition (..)
+    , defaultTracers
     , withTracers
     )
 import Kupo.Control.MonadSTM
@@ -109,6 +117,7 @@ import Kupo.Data.Health
 import Kupo.Options
     ( Command (..)
     , Tracers (..)
+    , TracersCopy (..)
     , parseOptions
     )
 import Kupo.Version
@@ -222,6 +231,7 @@ kupoWith tr withProducer withFetchBlock =
                         (\case
                             ReadOnly  -> tryWithResource readOnlyPool
                             ReadWrite -> tryWithResource readWritePool
+                            WriteOnly -> const (fail "impossible: tried to acquire WriteOnly database?")
                         )
                         forceRollback
                         fetchBlock

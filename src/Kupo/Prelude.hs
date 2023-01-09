@@ -72,6 +72,8 @@ module Kupo.Prelude
     , noConnectionStatusToggle
     , hijackSigTerm
     , hSupportsANSI
+    , hSetCursorColumn
+    , hClearLine
     ) where
 
 import Cardano.Binary
@@ -195,6 +197,7 @@ import System.Environment
     )
 import System.IO
     ( hIsTerminalDevice
+    , hPutStr
     )
 import System.Posix.Signals
     ( Handler (..)
@@ -346,3 +349,14 @@ hSupportsANSI :: Handle -> IO Bool
 hSupportsANSI h = (&&) <$> hIsTerminalDevice h <*> isNotDumb
   where
     isNotDumb = (/= Just "dumb") <$> lookupEnv "TERM"
+
+-- | Set the cursor to the given (0-based) column. Useful to override the terminal output.
+hSetCursorColumn :: Handle -> Int -> IO ()
+hSetCursorColumn h col = hPutStr h (csi [col + 1] "G")
+
+-- | Clear the current line on screen.
+hClearLine :: Handle -> IO ()
+hClearLine h = hPutStr h (csi [2] "K")
+
+csi :: [Int] -> [Char] -> [Char]
+csi args code = "\ESC[" ++ intercalate ";" (map show args) ++ code
