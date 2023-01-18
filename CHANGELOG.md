@@ -1,3 +1,22 @@
+### [2.3.2] - 2022-01-18
+
+#### Added
+
+N/A
+
+#### Changed
+
+- Bumped version of the embedded SQLite stack to v3.40.1 and changed the main writer process journaling mode to `TRUNCATE`. These two changes come as a mitigation of an SQLite bug that resulted in sometimes throwing:
+
+  > Error while attempting to perform step: cannot rollback - no transaction is active.
+
+  The root cause for this error is hard to identify and may be due to a full disk space; It's been also linked to the write-ahead logging journal mode; which Kupo benefits only a little and only during syncing.
+
+#### Removed
+
+N/A
+
+
 ### [2.3.1] - 2022-01-09
 
 #### Added
