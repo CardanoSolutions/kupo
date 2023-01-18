@@ -335,8 +335,6 @@ createShortLivedConnection
 createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
     traceWith tr $ DatabaseConnection ConnectionCreateShortLived{mode}
     conn <- Sqlite.open $ mkConnectionString file mode
-    execute_ conn "PRAGMA page_size = 16184"
-    execute_ conn "PRAGMA cache_size = -50000"
     return $ mkDatabase (contramap DatabaseConnection tr) mode k (bracketConnection conn)
   where
     bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
@@ -375,8 +373,8 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
         databaseVersion conn >>= runMigrations tr conn
         installIndexes tr conn deferIndexes
         execute_ conn "PRAGMA synchronous = NORMAL"
-        execute_ conn "PRAGMA journal_mode = WAL"
         execute_ conn "PRAGMA page_size = 16184"
+        execute_ conn "PRAGMA journal_mode = TRUNCATE"
         execute_ conn "PRAGMA foreign_keys = ON"
         action (mkDatabase (contramap DatabaseConnection tr) ReadWrite k (bracketConnection conn))
   where

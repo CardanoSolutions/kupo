@@ -34,6 +34,9 @@ package cryptonite
 package cardano-crypto-praos
   flags: -external-libsodium-vrf
 
+package direct-sqlite
+  flags: +nomutex
+
 allow-newer:
   *:aeson,
   monoidal-containers:aeson,
@@ -77,9 +80,9 @@ constraints:
 
 source-repository-package
   type: git
-  location: https://github.com/IreneKnapp/direct-sqlite
-  tag: ab62e1e0e85ca9b92a55265744821ccfb75b0633
-  --sha256: 1r8w5dybyg2d274xlzjdy1p0v4zarhvsi20j9c7370bmp588y6n6
+  location: https://github.com/CardanoSolutions/direct-sqlite
+  tag: d16a510d876f2ba654a759ffb512aa361b020247
+  --sha256: 0y5l9kh98zw6rfhsqj829lqw11g3ji37dv6qd06kfqq080s2bz13
 
 source-repository-package
   type: git
