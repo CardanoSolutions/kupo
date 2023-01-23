@@ -377,7 +377,7 @@ spec = parallel $ do
                     [ "SEARCH binary_data USING INDEX sqlite_autoindex_binary_data_1 (binary_data_hash=?)"
                     , "LIST SUBQUERY 1"
                     , "SCAN binary_data USING COVERING INDEX sqlite_autoindex_binary_data_1"
-                    , "SEARCH inputs USING AUTOMATIC COVERING INDEX (datum_hash=?)"
+                    , "SEARCH inputs USING AUTOMATIC COVERING INDEX (datum_hash=?) LEFT-JOIN"
                     , "USE TEMP B-TREE FOR ORDER BY"
                     ]
                 )
@@ -464,7 +464,7 @@ spec = parallel $ do
 
             let suffix =
                     [ "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
-                    , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                    , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
                     , "USE TEMP B-TREE FOR ORDER BY"
                     ]
 
@@ -857,7 +857,7 @@ spec = parallel $ do
                     (`shouldBe`
                         [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
                         , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
-                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
                         ]
                     )
 
@@ -871,7 +871,7 @@ spec = parallel $ do
                     (`shouldBe`
                         [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
                         , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
-                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
                         ]
                     )
 
@@ -885,7 +885,7 @@ spec = parallel $ do
                     (`shouldBe`
                         [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
                         , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
-                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
                         ]
                     )
 
@@ -899,7 +899,7 @@ spec = parallel $ do
                     (`shouldBe`
                         [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
                         , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
-                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
                         ]
                     )
 
@@ -913,7 +913,7 @@ spec = parallel $ do
                     (`shouldBe`
                         [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
                         , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
-                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
                         ]
                     )
 
@@ -927,7 +927,7 @@ spec = parallel $ do
                     (`shouldBe`
                         [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
                         , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
-                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
                         ]
                     )
 
