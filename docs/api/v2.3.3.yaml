@@ -5,7 +5,7 @@ servers:
 
 info:
   title: Kupo
-  version: v2.3.2
+  version: v2.3.3
   license:
     name: MPL-2.0
     url: https://raw.githubusercontent.com/cardanosolutions/kupo/master/LICENSE

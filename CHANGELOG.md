@@ -1,3 +1,17 @@
+### [2.3.3] - 2022-01-23
+
+#### Added
+
+N/A
+
+#### Changed
+
+- Fixed a bug where Kupo would prune inputs at regular interval even if `--prune-utxo` isn't set. This only occurs when matching patterns are neither `*` nor `*/*`. Related, Kupo would also never prune binary data as it should; even with `--prune-utxo` enabled.
+
+#### Removed
+
+N/A
+
 ### [2.3.2] - 2022-01-18
 
 #### Added
