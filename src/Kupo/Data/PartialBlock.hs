@@ -23,6 +23,7 @@ import Kupo.Data.Cardano
     , Script
     , ScriptHash
     , TransactionId
+    , emptyMetadata
     )
 
 import qualified Data.Set as Set
@@ -60,8 +61,9 @@ instance IsBlock PartialBlock where
     foldBlock fn result =
         foldrWithIndex fn result . blockBody
 
-    mapMaybeOutputs fn  =
-        mapMaybe (uncurry fn) . outputs
+    mapMaybeOutputs fn tx =
+        let meta = maybe emptyMetadata snd (metadata tx)
+         in mapMaybe (\outs -> uncurry fn outs meta) (outputs tx)
 
     witnessedDatums =
         datums

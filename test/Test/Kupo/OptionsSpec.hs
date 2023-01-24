@@ -213,6 +213,11 @@ spec = parallel $ do
                     fromList [ MatchAssetId (policyId, assetName) ]
             }
           )
+        , ( defaultArgs ++ [ "--match", "{1234}" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { patterns = fromList [ MatchMetadataTag 1234 ]
+            }
+          )
         , ( defaultArgs ++ [ "--match", "NOT-A-PATTERN" ]
           , shouldFail
           )

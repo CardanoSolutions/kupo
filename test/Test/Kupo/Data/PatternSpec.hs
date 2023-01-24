@@ -12,6 +12,7 @@ import Kupo.Data.Cardano
     ( ComparableOutput
     , ExtendedOutputReference
     , Output
+    , emptyMetadata
     , toComparableOutput
     )
 import Kupo.Data.Pattern
@@ -101,7 +102,7 @@ matchAll
 matchAll p xs =
     [ (outRef, toComparableOutput out)
     | (outRef, out) <- xs
-    , isJust (matching (fst outRef) out p)
+    , isJust (matching (fst outRef) out emptyMetadata p)
     ]
 
 genPattern :: Gen Pattern

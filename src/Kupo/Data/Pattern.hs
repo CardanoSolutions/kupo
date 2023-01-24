@@ -43,6 +43,7 @@ import Kupo.Data.Cardano
     , DatumHash
     , ExtendedOutputReference
     , IsBlock (..)
+    , Metadata
     , Output
     , OutputReference
     , Point
@@ -71,6 +72,7 @@ import Kupo.Data.Cardano
     , getTransactionId
     , getValue
     , hasAssetId
+    , hasMetadataTag
     , hasPolicyId
     , hashDatum
     , hashScriptReference
@@ -99,17 +101,31 @@ import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Data.Text.Read as T
 
 data Pattern
     = MatchAny !MatchBootstrap
+        -- ^ Wildcard patterns, but allow filtering out outputs associated to a bootstrap addresses.
     | MatchExact !Address
+        -- ^ Match only outputs whose address is a given one, including its network discriminant.
     | MatchPayment !ByteString
+        -- ^ Match only outputs whose address has a specific payment part.
     | MatchDelegation !ByteString
+        -- ^ Match only outputs whose address has a specific delegation part.
     | MatchPaymentAndDelegation !ByteString !ByteString
+        -- ^ Match only outputs whose address has the specific payment and delegation part (in this
+        -- order). This is roughly equivalent to 'MatchExact' but only works for type XX, YY, ZZ
+        -- addresses and ignore the network discriminant.
     | MatchTransactionId !TransactionId
+        -- ^ Match only outputs parts of a given transaction, referenced by its id.
     | MatchOutputReference !OutputReference
+        -- ^ Match only a specific output of a transaction, referenced by its full output reference.
     | MatchPolicyId !PolicyId
+        -- ^ Match only outputs that carry any positive number of tokens of a given policy.
     | MatchAssetId !AssetId
+        -- ^ Match only outputs that carry any positive number of tokens of a given asset.
+    | MatchMetadataTag !Word64
+        -- ^ Match only outputs of transactions that have a specific metadata tag.
     deriving (Generic, Eq, Ord, Show)
 
 -- | Checks whether a given pattern overlaps with a list of other patterns. The
@@ -145,6 +161,8 @@ overlaps p =
         (MatchPolicyId a, MatchAssetId (a', _b')) ->
             a == a'
         (MatchAssetId a, MatchAssetId a') ->
+            a == a'
+        (MatchMetadataTag a, MatchMetadataTag a') ->
             a == a'
         _nonOverlappingPatterns ->
             False
@@ -183,6 +201,8 @@ includes x y = case (x, y) of
         a == a'
     (MatchPolicyId a, MatchAssetId (a', _b')) ->
         a == a'
+    (MatchMetadataTag a, MatchMetadataTag a') ->
+        a == a'
     _nonIncludedPatterns ->
         False
 
@@ -217,6 +237,8 @@ patternToText = \case
         policyIdToText policyId <> "." <> wildcard
     MatchAssetId (policyId, name) ->
         policyIdToText policyId <> "." <> assetNameToText name
+    MatchMetadataTag tag ->
+        "{" <> show tag <> "}"
 
 patternFromText :: Text -> Maybe Pattern
 patternFromText txt = asum
@@ -225,6 +247,7 @@ patternFromText txt = asum
     , readerPaymentOrDelegation
     , readerOutputReference
     , readerAssetId
+    , readerMetadataTag
     ]
   where
     readerAny = MatchAny IncludingBootstrap
@@ -326,6 +349,15 @@ patternFromText txt = asum
             _unexpectedSplit ->
                 Nothing
 
+    readerMetadataTag = do
+        case concatMap (T.splitOn "{") (T.splitOn "}" txt) of
+            ["", str, ""] -> do
+                (tag, remTag) <- either (const Nothing) Just (T.decimal str)
+                guard (T.null remTag)
+                pure (MatchMetadataTag tag)
+            _ ->
+                Nothing
+
     readerBase16 str action = do
         bytes <- either (const Nothing) Just . decodeBase16 . encodeUtf8 $ str
         action bytes
@@ -339,8 +371,8 @@ patternFromText txt = asum
         bytes <- Bech32.dataPartToBytes dataPart
         action bytes hrp
 
-matching :: (Alternative f) => OutputReference -> Output -> Pattern -> f ()
-matching outRef out = \case
+matching :: (Alternative f) => OutputReference -> Output -> Metadata -> Pattern -> f ()
+matching outRef out metadata = \case
     MatchTransactionId txId ->
         guard (txId == getTransactionId outRef)
     MatchOutputReference outRef' ->
@@ -349,6 +381,8 @@ matching outRef out = \case
         guard (hasPolicyId (getValue out) policyId)
     MatchAssetId assetId ->
         guard (hasAssetId (getValue out) assetId)
+    MatchMetadataTag tag ->
+        guard (hasMetadataTag tag metadata)
     other ->
         guard (matchingAddress other (getAddress out))
 
@@ -537,15 +571,17 @@ matchBlock Codecs{..} patterns blk =
                 )
                 (produced, policies)
                 patterns
+
     match
         :: Point
         -> TransactionIndex
         -> Pattern
         -> OutputReference
         -> Output
+        -> Metadata
         -> Maybe (result, Set policy)
-    match pt ix m outRef output = do
-        matching outRef output m $>
+    match pt ix m outRef output metadata = do
+        matching outRef output metadata m $>
             ( toResult Result
                 { outputReference = (outRef, ix)
                 , address = getAddress output
