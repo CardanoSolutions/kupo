@@ -31,6 +31,7 @@ import Kupo.App.Database
     , createShortLivedConnection
     , deleteInputsQry
     , foldInputsQry
+    , foldPoliciesQry
     , getBinaryDataQry
     , getScriptQry
     , installIndex
@@ -1059,6 +1060,67 @@ spec = parallel $ do
                         ] ++ suffix
                     )
 
+            context "foldPolicies" $ do
+                specifyQuery "MatchAddress" installIndexes
+                    (foldPoliciesQry
+                        <$> fmap MatchExact genAddress
+                    )
+                    (`shouldBe`
+                        [ "SEARCH inputs USING INDEX inputsByAddress (address=?)"
+                        , "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference=?)"
+                        ]
+                    )
+
+                specifyQuery "MatchPayment" installIndexes
+                    (foldPoliciesQry
+                        <$> fmap MatchPayment (genBytes 28)
+                    )
+                    (`shouldBe`
+                        [ "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)"
+                        , "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference=?)"
+                        ]
+                    )
+
+                specifyQuery "MatchDelegation" installIndexes
+                    (foldPoliciesQry
+                        <$> fmap MatchDelegation (genBytes 28)
+                    )
+                    (`shouldBe`
+                        [ "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)"
+                        , "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference=?)"
+                        ]
+                    )
+
+                specifyQuery "MatchTransactionId" installIndexes
+                    (foldPoliciesQry
+                        <$> fmap MatchTransactionId genTransactionId
+                    )
+                    (`shouldBe`
+                        [ "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference>? AND output_reference<?)"
+                        , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        ]
+                    )
+
+                specifyQuery "MatchOutputReference" installIndexes
+                    (foldPoliciesQry
+                        <$> fmap MatchOutputReference genOutputReference
+                    )
+                    (`shouldBe`
+                        [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        , "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference=?)"
+                        ]
+                    )
+
+                specifyQuery "MatchPolicyId" installIndexes
+                    (foldPoliciesQry
+                        <$> fmap MatchPolicyId genPolicyId
+                    )
+                    (`shouldBe`
+                        [ "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference>?)"
+                        , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        ]
+                    )
+
 --
 -- Workers
 --
@@ -1108,6 +1170,7 @@ shortLivedWorker fp mode lock = do
                 ]
                 ++
                 case mode of
+                    WriteOnly -> []
                     ReadOnly -> []
                     ReadWrite ->
                         [ (1, do

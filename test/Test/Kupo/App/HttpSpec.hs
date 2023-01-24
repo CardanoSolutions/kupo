@@ -56,6 +56,9 @@ import Kupo.Data.Cardano
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
     )
+import Kupo.Data.Database
+    ( policyToRow
+    )
 import Kupo.Data.Health
     ( ConnectionStatus (..)
     , Health (..)
@@ -98,7 +101,9 @@ import Test.Kupo.Data.Generators
     , genHeaderHash
     , genMetadata
     , genNonGenesisPoint
+    , genOutputReference
     , genPattern
+    , genPolicyId
     , genResult
     , genScript
     , genTransactionId
@@ -521,6 +526,8 @@ databaseStub = Database
         return ()
     , close =
         return ()
+    , countInputs =
+        \_ -> lift (generate arbitrary)
     , insertInputs =
         \_ -> return ()
     , foldInputs = \_ _ _ _ callback -> lift $ do
@@ -532,8 +539,13 @@ databaseStub = Database
         \_ _ -> lift (generate arbitrary)
     , pruneInputs =
         liftIO (generate arbitrary)
+    , countPolicies =
+        \_ -> lift (generate arbitrary)
     , insertPolicies =
         \_ -> return ()
+    , foldPolicies = \_ callback -> lift $ do
+        rows <- generate (listOf1 $ policyToRow <$> genOutputReference <*> genPolicyId)
+        mapM_ callback rows
     , insertCheckpoints =
         \_ -> return ()
     , listCheckpointsDesc = lift $ do

@@ -6,6 +6,21 @@
 
   → [📖 API Reference](https://cardanosolutions.github.io/kupo/#section/Patterns/Metadata-tag)
 
+- Provide a new command `copy` to conveniently clone an existing database into a smaller subset. This is particularly useful to quickly fork new instances of a parent index without having to resynchronize the entire chain. The main use case being a scenario where one maintains a global index (i.e. matching `*`) and needs to create on-demand indexes using more restrictive patterns. The `copy` commands accepts one or many patterns and copies (even large) indexes in a matter of seconds.
+
+  ```
+  Usage: kupo copy --from DIR --into DIR [--match PATTERN]
+
+    Copy from a source database into another, while applying the provided pattern
+    filters.
+
+  Available options:
+    -h,--help                Show this help text
+    --from DIR               Working directory to copy from.
+    --into DIR               Working directory to copy into.
+    --match PATTERN          A pattern to match on. Can be provided multiple times (as a logical disjunction, i.e. 'or')
+  ```
+
 #### Changed
 
 - The server now implements some basic retry mechanism for some transient errors that can occur under heavy load (e.g. failing to open a database connection). This is mostly transparent for clients but should result in less `503` errors by providing a first retryable layer directly in the server.

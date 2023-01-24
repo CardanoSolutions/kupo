@@ -16,9 +16,14 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
     [--gc-interval *SECONDS*]\
     [<u>log-level</u>]
 
-**kupo** ((-v|--version) | **version**)
-
 **kupo** **health-check**
+
+**kupo** **copy**
+  --from DIRECTORY\
+  --into DIRECTORY\
+  --match PATTERN
+
+**kupo** ((-v|--version) | **version**)
 
 # DESCRIPTION
 **Kupo** is fast, lightweight and configurable chain-index for the **Cardano** blockchain. **Kupo** synchronizes data from the blockchain according to <u>patterns</u> matching *addresses* present in transaction outputs and builds a lookup table from matches to their associated *output references*, *values*, *datums* and *scripts*. All indexed data is made available via a local HTTP web-server.

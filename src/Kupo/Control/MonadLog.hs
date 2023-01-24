@@ -19,11 +19,14 @@ module Kupo.Control.MonadLog
     , traceWith
 
       -- * Tracers
-    , TracerDefinition(..)
+    , TracerDefinition (..)
     , TracerHKD
     , defaultTracers
     , configureTracers
     , withTracers
+
+      -- * Progress
+    , TraceProgress (..)
     ) where
 
 import Kupo.Prelude
@@ -75,6 +78,7 @@ import Kupo.Control.MonadSTM
     )
 import System.IO
     ( BufferMode (..)
+    , hFlush
     , hSetBuffering
     , hSetEncoding
     , utf8
@@ -159,12 +163,23 @@ mkJsonEnvelop h version extThreadId timestamp (SomeMsg _ tracerName msg) =
 mkAnsiEnvelop :: Writer
 mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
     timestamp <- utcToZonedTime <$> getCurrentTimeZone <*> pure utcTimestamp
-    T.hPutStrLn h $ T.toLazyText $ mconcat
-        [ mkTime timestamp
-        , severity
-        , context
-        , details
-        ]
+    if "tracerProgress" == tracerName && subject /= "Done" then do
+        T.hPutStr h $ T.toLazyText $ mconcat
+            [ mkTime timestamp
+            , severity
+            , context
+            , accent details
+            ]
+        hFlush h
+        hSetCursorColumn h 0
+        hClearLine h
+    else
+        T.hPutStrLn h $ T.toLazyText $ mconcat
+            [ mkTime timestamp
+            , severity
+            , context
+            , accent details
+            ]
   where
     mkTime timestamp =
         mconcat
@@ -175,7 +190,7 @@ mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
     context =
         let name = T.fromString $ dropWhile isLower tracerName
             id = T.fromText $ T.drop 9 $ show threadId
-         in accent $ " " <> id <> " ❭ " <> (Ansi.bold (name <> accent "/" <> subject <> " "))
+         in accent $ " " <> id <> " ❭ " <> (Ansi.bold (name <> accent "/" <> Ansi.bold (accent subject) <> " "))
 
     (subject, details) =
         let
@@ -187,17 +202,18 @@ mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
                 str
                 & T.dropWhile (/= ',')
                 & T.drop 1
-                & ("{" <>)
+                & (\txt -> if T.null txt then "" else "{" <> txt)
                 & T.fromText
             subject_ = str
                 & T.takeWhile (/= ',')
+                & (\txt -> if str == txt then T.dropEnd 1 txt else txt)
                 & T.dropWhile (/= ':')
                 & T.drop 3
                 & T.dropWhile isLower
                 & T.dropEnd 1
                 & T.fromText
          in
-            (Ansi.bold $ accent subject_, accent details_)
+            (subject_, details_)
 
     (severity, accent) = case getSeverityAnnotation msg of
         Debug ->
@@ -225,3 +241,24 @@ mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
                 <> Ansi.red "\57520"
             , Ansi.red
             )
+
+--
+-- Progress
+--
+
+data TraceProgress where
+    ProgressStep
+        :: { progress :: Text }
+        -> TraceProgress
+    ProgressDone
+        :: TraceProgress
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceProgress where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance HasSeverityAnnotation TraceProgress where
+    getSeverityAnnotation = \case
+        ProgressStep{} -> Info
+        ProgressDone{} -> Info
