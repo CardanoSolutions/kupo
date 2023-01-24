@@ -146,6 +146,7 @@ import Test.Kupo.Data.Generators
     , genPattern
     , genPointsBetween
     , genPolicyId
+    , genQueryablePattern
     , genResult
     , genResultWith
     , genScriptReference
@@ -1099,7 +1100,7 @@ shortLivedWorker fp mode lock = do
                     pure $ void $ runTransaction listCheckpointsDesc
                   )
                 , (2, do
-                    pattern_ <- genPattern
+                    pattern_ <- genQueryablePattern
                     status <- elements [NoStatusFlag, OnlySpent, OnlyUnspent]
                     sortDir <- elements [Asc, Desc]
                     pure $ runTransaction $ foldInputs pattern_ Whole status sortDir (\_ -> pure ())
@@ -1110,7 +1111,7 @@ shortLivedWorker fp mode lock = do
                     ReadOnly -> []
                     ReadWrite ->
                         [ (1, do
-                            pattern_ <- genPattern
+                            pattern_ <- genQueryablePattern
                             pure $ void $ runTransaction $ deleteInputs (Set.singleton pattern_)
                           )
                         , (1, do

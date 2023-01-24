@@ -134,7 +134,7 @@ class HasTransactionId (BlockBody block) StandardCrypto => IsBlock (block :: Typ
         -> Set Input
 
     mapMaybeOutputs
-        :: (OutputReference -> Output -> Maybe result)
+        :: (OutputReference -> Output -> Metadata -> Maybe result)
         -> BlockBody block
         -> [result]
 
@@ -219,7 +219,7 @@ instance IsBlock Block where
 
     mapMaybeOutputs
         :: forall result. ()
-        => (OutputReference -> Output -> Maybe result)
+        => (OutputReference -> Output -> Metadata -> Maybe result)
         -> Transaction
         -> [result]
     mapMaybeOutputs fn = \case
@@ -233,31 +233,35 @@ instance IsBlock Block where
                 body = Ledger.Shelley.body tx
                 txId = Ledger.txid @(ShelleyEra StandardCrypto) body
                 outs = Ledger.Shelley._outputs body
+                meta = getField @"auxiliaryData" tx & strictMaybe emptyMetadata fromShelleyMetadata
              in
-                traverseAndTransform (fromShelleyOutput inject) txId 0 outs
+                traverseAndTransform (fromShelleyOutput inject) txId meta 0 outs
         TransactionAllegra tx ->
             let
                 body = Ledger.Shelley.body tx
                 txId = Ledger.txid @(AllegraEra StandardCrypto) body
                 outs = Ledger.MaryAllegra.outputs' body
+                meta = getField @"auxiliaryData" tx & strictMaybe emptyMetadata fromAllegraMetadata
              in
-                traverseAndTransform (fromShelleyOutput inject) txId 0 outs
+                traverseAndTransform (fromShelleyOutput inject) txId meta 0 outs
         TransactionMary tx ->
             let
                 body = Ledger.Shelley.body tx
                 txId = Ledger.txid @(MaryEra StandardCrypto) body
                 outs = Ledger.MaryAllegra.outputs' body
+                meta = getField @"auxiliaryData" tx & strictMaybe emptyMetadata fromMaryMetadata
              in
-                traverseAndTransform (fromShelleyOutput identity) txId 0 outs
+                traverseAndTransform (fromShelleyOutput identity) txId meta 0 outs
         TransactionAlonzo tx ->
             let
                 body = Ledger.Alonzo.body tx
                 txId = Ledger.txid @(AlonzoEra StandardCrypto) body
                 outs = Ledger.Alonzo.outputs' body
+                meta = getField @"auxiliaryData" tx & strictMaybe emptyMetadata fromAlonzoMetadata
              in
                 case Ledger.Alonzo.isValid tx of
                     Ledger.Alonzo.IsValid True ->
-                        traverseAndTransform fromAlonzoOutput txId 0 outs
+                        traverseAndTransform fromAlonzoOutput txId meta 0 outs
                     Ledger.Alonzo.IsValid False ->
                         []
         TransactionBabbage tx ->
@@ -265,10 +269,11 @@ instance IsBlock Block where
                 body = Ledger.Alonzo.body tx
                 txId = Ledger.txid @(BabbageEra StandardCrypto) body
                 outs = Ledger.Babbage.outputs' body
+                meta = getField @"auxiliaryData" tx & strictMaybe emptyMetadata fromBabbageMetadata
              in
                 case Ledger.Alonzo.isValid tx of
                     Ledger.Alonzo.IsValid True ->
-                        traverseAndTransform identity txId 0 outs
+                        traverseAndTransform identity txId meta 0 outs
                     Ledger.Alonzo.IsValid False ->
                         -- From Babbage's formal specification:
                         --
@@ -276,8 +281,10 @@ instance IsBlock Block where
                         --   with an index |txouts{txb}|.
                         let start = fromIntegral (length outs) in
                         case Ledger.Babbage.collateralReturn' body of
-                            SNothing -> []
-                            SJust r  -> traverseAndTransform identity txId start (r :<| mempty)
+                            SNothing ->
+                                []
+                            SJust r  ->
+                                traverseAndTransform identity txId meta start (r :<| mempty)
       where
         traverseAndTransformByron
             :: forall output. ()
@@ -293,7 +300,7 @@ instance IsBlock Block where
                     outputRef = mkOutputReference txId ix
                     results   = traverseAndTransformByron transform txId (next ix) rest
                  in
-                    case fn outputRef (transform out) of
+                    case fn outputRef (transform out) emptyMetadata of
                         Nothing ->
                             results
                         Just result ->
@@ -303,17 +310,18 @@ instance IsBlock Block where
             :: forall output. ()
             => (output -> Output)
             -> TransactionId
+            -> Metadata
             -> OutputIndex
             -> StrictSeq output
             -> [result]
-        traverseAndTransform transform txId ix = \case
+        traverseAndTransform transform txId meta ix = \case
             Empty -> []
             output :<| rest ->
                 let
                     outputRef = mkOutputReference txId ix
-                    results   = traverseAndTransform transform txId (next ix) rest
+                    results   = traverseAndTransform transform txId meta (next ix) rest
                  in
-                    case fn outputRef (transform output) of
+                    case fn outputRef (transform output) meta of
                         Nothing ->
                             results
                         Just result ->

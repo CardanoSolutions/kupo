@@ -279,8 +279,11 @@ info:
          ├─┫ POLICY_ID ┣────┤ . ├─┫ ASSET_NAME ┣─────┤
          │ ┗━━━━━━━━━━━┛    ╰───╯ ┗━━━━━━━━━━━━┛     │
          │ ┏━━━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━━━━━┓ │
-         └─┫ OUTPUT_INDEX ┣─┤ @ ├─┫ TRANSACTION_ID ┣─┘
-           ┗━━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━━━━┛
+         ├─┫ OUTPUT_INDEX ┣─┤ @ ├─┫ TRANSACTION_ID ┣─┤
+         │ ┗━━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━━━━┛ │
+         │ ┏━━━━━━━━━━━━━━┓                          │
+         └─┫ METADATA_TAG ┣──────────────────────────┘
+           ┗━━━━━━━━━━━━━━┛
     ```
 
     ## Address
@@ -381,12 +384,26 @@ info:
     HEXDIG = %x30–39 / %x41-%46
     ```
 
+    ## Metadata tag
+
+    > <sup><strong>WARNING</strong></sup> <br/>
+    >
+    > This pattern can only be used for indexing, not for querying.
+
+    ```
+    METADATA_TAG =
+
+          ╭───╮  ┏━━━━━━━━━━━━━━┓  ╭───╮
+        ╾─┤ { ├──┫ METADATA TAG ┣──┤ } ├─╼
+          ╰───╯  ┗━━━━━━━━━━━━━━┛  ╰───╯
+    ```
+
     ### Examples
 
-    | Pattern                                                              | Description                                              |
-    | ---                                                                  | ---                                                      |
-    | `*@dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e` | Outputs from a specific transaction                      |
-    | `3@dca1e44765b9f80c8b18105e17de90d4a07e4d5a83de533e53fee32e0502d17e` | The 4th output (0-based indexing) of a given transaction |
+    | Pattern | Description                                                |
+    | ---     | ---                                                        |
+    | `{25}`  | Outputs of any transaction that has metadata with label 25 |
+    | `{42}`  | Outputs of any transaction that has metadata with label 42 |
 
     # Accessing results
 

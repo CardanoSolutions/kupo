@@ -644,8 +644,10 @@ addressFromRow =
 -- Filters
 --
 
+-- Invariant: cannot be called with 'MatchMetadataTag'; this pattern is only for indexing.
 patternToSql
-    :: App.Pattern
+    :: HasCallStack
+    => App.Pattern
     -> (Text, Maybe Text)
 patternToSql = \case
     App.MatchAny App.IncludingBootstrap ->
@@ -693,6 +695,8 @@ patternToSql = \case
         )
     App.MatchAssetId (pid, _) ->
         patternToSql (App.MatchPolicyId pid)
+    App.MatchMetadataTag{} ->
+        error "patternToSql: called for 'MatchMetadataTag'"
   where
     x = encodeBase16
 

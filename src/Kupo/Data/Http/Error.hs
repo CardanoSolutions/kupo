@@ -56,6 +56,18 @@ invalidPattern =
         , details = Nothing
         }
 
+invalidQueryPattern :: Response
+invalidQueryPattern =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Invalid query pattern! It isn't possible to query results via this pattern. \
+                 \This is an index-only pattern. You may want to fetch all results in a paginated \
+                 \fashion instead; or use another pattern for filtering. If you do strongly believe \
+                 \that it should be possible to query results using this pattern, please open a \
+                 \Github discussion: <https://github.com/CardanoSolutions/kupo/discussions/new?category=ideas> \
+                 \or contribute to an existing one regarding this matter."
+        , details = Nothing
+        }
+
 invalidPatterns :: [Text] -> Response
 invalidPatterns validPatterns =
     responseJson status400 Default.headers $ HttpError

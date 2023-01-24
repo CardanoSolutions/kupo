@@ -249,9 +249,17 @@ genPattern = oneof
     , MatchPaymentAndDelegation <$> genBytes sz <*> genBytes sz
     , MatchTransactionId <$> genTransactionId
     , MatchOutputReference <$> genOutputReference
+    , MatchMetadataTag <$> arbitrary
     ]
   where
     sz = digestSize @Blake2b_224
+
+genQueryablePattern :: Gen Pattern
+genQueryablePattern =
+    genPattern `suchThat` (\case
+        MatchMetadataTag{} -> False
+        _ -> True
+    )
 
 genResult :: Gen Result
 genResult =

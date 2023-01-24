@@ -1,3 +1,19 @@
+### [2.4.0] - UNRELEASED
+
+#### Added
+
+- [📌 #108](https://github.com/CardanoSolutions/kupo/issues/108) Introduce a new indexing pattern by transaction metadata tag. This pattern will only index outputs of a transaction that (a) has metadata, (b) has one metadatum labelled with the provided tag. This pattern is however (at least for now) only usable for indexing, not querying.
+
+  → [📖 API Reference](https://cardanosolutions.github.io/kupo/#section/Patterns/Metadata-tag)
+
+#### Changed
+
+N/A
+
+#### Removed
+
+N/A
+
 ### [2.3.3] - 2022-01-23
 
 #### Added
