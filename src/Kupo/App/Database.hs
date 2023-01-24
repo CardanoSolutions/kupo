@@ -334,7 +334,8 @@ createShortLivedConnection
     -> IO (Database IO)
 createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
     traceWith tr $ DatabaseConnection ConnectionCreateShortLived{mode}
-    conn <- Sqlite.open $ mkConnectionString file mode
+    let open = Sqlite.open (mkConnectionString file mode)
+    conn <- handle (onOpenException open 0) open
     return $ mkDatabase (contramap DatabaseConnection tr) mode k (bracketConnection conn)
   where
     bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
@@ -353,6 +354,19 @@ createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
                     )
                     (atomically (modifyTVar' shortLived prev))
                     (between conn)
+
+    onOpenException :: IO Sqlite.Connection -> Int -> SQLError -> IO Sqlite.Connection
+    onOpenException io n e
+        | n > 2 =
+            throwIO e
+        | otherwise =
+            case sqlError e of
+                ErrorCan'tOpen ->
+                    threadDelay 0.05 >> handle (onOpenException io (next n)) io
+                ErrorLocked ->
+                    threadDelay 0.05 >> handle (onOpenException io (next n)) io
+                _ ->
+                    throwIO e
 
 -- | A resource acquisition bracket for a single long-lived connection. The system is assumed to use
 -- with only once, at the application start-up and provide this connection to a privileged one which

@@ -8,7 +8,7 @@
 
 #### Changed
 
-N/A
+- The server now implements some basic retry mechanism for some transient errors that can occur under heavy load (e.g. failing to open a database connection). This is mostly transparent for clients but should result in less `503` errors by providing a first retryable layer directly in the server.
 
 #### Removed
 
