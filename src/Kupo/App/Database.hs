@@ -69,7 +69,8 @@ import Control.Monad.Class.MonadSTM
     ( MonadSTM (..)
     )
 import Control.Monad.Class.MonadThrow
-    ( bracket_
+    ( bracket
+    , bracket_
     , catch
     )
 import Control.Monad.Class.MonadTimer
@@ -421,6 +422,20 @@ createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
                 _ ->
                     throwIO e
 
+withShortLivedConnection
+    :: Tracer IO TraceDatabase
+    -> ConnectionType
+    -> DBLock IO
+    -> LongestRollback
+    -> DatabaseFile
+    -> (Database IO -> IO a)
+    -> IO a
+withShortLivedConnection tr mode lock k file action = do
+    bracket
+        (createShortLivedConnection tr mode lock k file)
+        (\Database{close} -> close)
+        action
+
 -- | A resource acquisition bracket for a single long-lived connection. The system is assumed to use
 -- with only once, at the application start-up and provide this connection to a privileged one which
 -- takes priority over any other connections.
@@ -512,7 +527,7 @@ copyDatabase (tr, progress) fromDir intoDir patterns = do
         traceWith tr DatabaseCloneSourceDatabase
         copyFile fromFile intoFile
         lock <- newLock
-        withLongLivedConnection tr lock longestRollback (OnDisk fromFile) InstallIndexesIfNotExist $ \from -> do
+        withShortLivedConnection tr ReadOnly lock longestRollback (OnDisk fromFile) $ \from -> do
             withWriteOnlyConnection (OnDisk intoFile) $ \conn into -> do
                 execute_ conn "PRAGMA foreign_keys = OFF"
                 mapM_ (cleanup conn) ["inputs", "policies", "patterns"]
