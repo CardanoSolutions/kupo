@@ -1,3 +1,17 @@
+### [2.3.4] - 2022-01-26
+
+#### Added
+
+N/A
+
+#### Changed
+
+- Fixed a restart issue where Kupo will continue synchronize back from the checkpoint known at startup instead of the latest known checkpoint after loosing (and recovering) connection from its block provider (cardano-node or ogmios).
+
+#### Removed
+
+N/A
+
 ### [2.3.3] - 2022-01-23
 
 #### Added

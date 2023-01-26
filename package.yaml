@@ -1,7 +1,7 @@
 _config: !include ".hpack.config.yaml"
 
 name:                kupo
-version:             2.3.3
+version:             2.3.4
 stability:           stable
 github:              "cardanosolutions/kupo"
 license:             MPL-2.0
@@ -132,6 +132,7 @@ tests:
     - text
     - wai
     - wai-extra
+    - websockets
     - yaml
     build-tools:
     - hspec-discover
