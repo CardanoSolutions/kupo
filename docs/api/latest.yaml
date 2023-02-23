@@ -1258,6 +1258,7 @@ components:
         - connection_status
         - most_recent_checkpoint
         - most_recent_node_tip
+        - version
       properties:
         connection_status:
           type: string
@@ -1277,6 +1278,9 @@ components:
               description: Absolute slot number of the current tip of the node.
             - type: "null"
               description: Absolute slot number of the current tip of the node.
+        version:
+          type: string
+          description: Current software version.
 
   parameters:
     asset-name:
@@ -2074,7 +2078,8 @@ paths:
                 description: |
                   A key-value export compatible with Prometheus.
 
-                  `connected` and `disconnected` are encoded as `1.0` and `0.0` respectively.
+                  - `connected` and `disconnected` are encoded as `1.0` and `0.0` respectively.
+                  - `version` is not present in the Prometheus metrics.
               examples:
                 response:
                   value: |

@@ -27,6 +27,9 @@ import Kupo.Data.Cardano
 import Data.ByteString.Builder
     ( Builder
     )
+import Kupo.Version
+    ( version
+    )
 import System.Metrics.Prometheus.Encode.Text
     ( encodeMetrics
     )
@@ -72,6 +75,9 @@ instance ToJSON Health where
         , Json.pair
             "most_recent_node_tip"
             (maybe Json.null_ slotNoToJson mostRecentNodeTip)
+        , Json.pair
+            "version"
+            (toEncoding version)
         ]
 
 emptyHealth :: Health
