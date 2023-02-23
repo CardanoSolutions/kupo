@@ -11,7 +11,8 @@ module Kupo.Version
 import Kupo.Prelude
 
 import Data.Version
-    ( showVersion
+    ( makeVersion
+    , showVersion
     )
 import Kupo.Version.TH
     ( gitRevisionTH
@@ -20,5 +21,8 @@ import Kupo.Version.TH
 import qualified Paths_kupo as Pkg
 
 version :: Text
-version =
-    toText ("v" <> showVersion Pkg.version <> $(gitRevisionTH))
+version
+    | Pkg.version == makeVersion [0] =
+        "nightly" <> $(gitRevisionTH)
+    | otherwise =
+        toText ("v" <> showVersion Pkg.version <> $(gitRevisionTH))

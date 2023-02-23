@@ -2,7 +2,7 @@ OUT := dist
 
 OS := $(shell uname -s)
 ARCH := $(shell uname -m)
-VERSION := $(shell cat package.yaml| grep "version:" | sed "s/.*\([0-9].[0-9].[0-9]\)\(-.*\)*/\1\2/")
+VERSION := $(shell cat package.yaml| grep "version:" | sed "s/.*\([0-9]\)\(.[0-9].[0-9]\)*\(-.*\)*/\1\2\3/")
 STYLISH_HASKELL_VERSION := 0.13.0.0
 
 # replace with local setup
