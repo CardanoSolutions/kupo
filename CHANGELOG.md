@@ -1,4 +1,4 @@
-### [2.4.0] - UNRELEASED
+### [2.4.0] - 2022-02-23
 
 #### Added
 
@@ -21,9 +21,29 @@
     --match PATTERN          A pattern to match on. Can be provided multiple times (as a logical disjunction, i.e. 'or')
   ```
 
+- The `GET /health` endpoint now returns the version as part of the response.
+
 #### Changed
 
 - The server now implements some basic retry mechanism for some transient errors that can occur under heavy load (e.g. failing to open a database connection). This is mostly transparent for clients but should result in less `503` errors by providing a first retryable layer directly in the server.
+
+- Add missing (optional) index on `policies` table to speed up queries by policy id and asset id.
+
+- Executables from `master` will now return `nightly` as a version number, with a git commit hash. This is done in hope to reduce confusion when figuring out what version is a particular binary built against.
+
+#### Removed
+
+N/A
+
+### [2.3.4] - 2022-01-26
+
+#### Added
+
+N/A
+
+#### Changed
+
+- Fixed a restart issue where Kupo will continue synchronize back from the checkpoint known at startup instead of the latest known checkpoint after loosing (and recovering) connection from its block provider (cardano-node or ogmios).
 
 #### Removed
 
