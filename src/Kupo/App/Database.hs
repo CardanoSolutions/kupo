@@ -1164,6 +1164,7 @@ installIndexes tr conn = \case
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByAddress" False
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByPaymentCredential" False
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByCreatedAt" False
+        dropIndexIfExists (contramap DatabaseConnection tr) conn "policiesByPolicyId" False
     InstallIndexesIfNotExist -> do
         installIndex tr conn
             "inputsByAddress"
@@ -1174,6 +1175,9 @@ installIndexes tr conn = \case
         installIndex tr conn
             "inputsByCreatedAt"
             "inputs(created_at)"
+        installIndex tr conn
+            "policiesByPolicyId"
+            "policies(policy_id)"
 
 -- Create the given index with some extra logging around it.
 installIndex :: Tracer IO TraceDatabase -> Connection -> Text -> Text -> IO ()
