@@ -27,21 +27,30 @@
           ];
         };
         compiler = "ghc8107";
+
+        haskell-language-server = pkgs.haskell.packages.${compiler}.haskell-language-server.overrideAttrs (attrs:
+          { doCheck = false; }
+        );
       in
       rec {
         devShells.default = pkgs.mkShell {
           name = "kupo-dev-shell";
 
           buildInputs = [
+            # libraries
             pkgs.glibcLocales
             pkgs.libsodium-vrf # from iohk-nix overlay
             pkgs.lzma
             pkgs.secp256k1
             pkgs.zlib
+            # build tools
             pkgs.git
             pkgs.pkgconfig
             pkgs.haskell.compiler.${compiler}
             pkgs.cabal-install
+            # development tools
+            pkgs.stylish-haskell
+            haskell-language-server
           ];
         };
       });
