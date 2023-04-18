@@ -57,9 +57,11 @@
 
   nixConfig = {
     extra-substituters = [
+      "https://kupo.cachix.org"
       "https://cache.iog.io"
     ];
     extra-trusted-public-keys = [
+      "kupo.cachix.org-1:RzYQ8KVjRJdPNt/Bhq/UqdyGYWFM8ShjEMNG8wzHBQ4="
       "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
     ];
   };
