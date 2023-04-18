@@ -78,6 +78,9 @@ constraints:
   , plutus-tx == 1.0.0.0
   , plutus-tx-plugin == 1.0.0.0
 
+  -- XXX: for ouroboros-consensus, try a more recent CHaP index which has a revision for this
+  , unix-bytestring < 0.4
+
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/direct-sqlite
