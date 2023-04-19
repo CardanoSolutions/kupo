@@ -215,7 +215,7 @@ spec = skippableContext "End-to-end" $ do
             , since = Just GenesisPoint
             , patterns = fromList [MatchAny OnlyShelley]
             }
-        runSpec env 30 $ do
+        runSpec env 5 $ do
             waitSlot (> 1)
             matches <- getAllMatches NoStatusFlag
             matches `shouldSatisfy` not . null
