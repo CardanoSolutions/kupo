@@ -1116,7 +1116,7 @@ spec = parallel $ do
                         <$> fmap MatchPolicyId genPolicyId
                     )
                     (`shouldBe`
-                        [ "SEARCH policies USING INDEX policiesByPolicyId (policy_id=?) sqlite_autoindex_policies_1 (output_reference>?)"
+                        [ "SEARCH policies USING INDEX policiesByPolicyId (policy_id=?)"
                         , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
                         ]
                     )
