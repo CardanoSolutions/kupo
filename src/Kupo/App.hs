@@ -100,6 +100,9 @@ import Kupo.Data.Database
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
     )
+import Kupo.Data.PartialBlock
+    ( PartialBlock
+    )
 import Kupo.Data.Pattern
     ( Codecs (..)
     , Match (..)
@@ -234,6 +237,8 @@ withFetchBlockClient chainProducer callback = do
     case chainProducer of
         Ogmios{ogmiosHost, ogmiosPort} ->
             Ogmios.withFetchBlockClient ogmiosHost ogmiosPort callback
+        Hydra{} ->
+            callback @PartialBlock (\_point respond -> respond Nothing)
         CardanoNode{nodeSocket, nodeConfig} -> do
             NetworkParameters
                 { networkMagic
