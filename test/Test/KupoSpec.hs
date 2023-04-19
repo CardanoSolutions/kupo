@@ -574,11 +574,11 @@ skippableContext prefix skippableSpec = do
 
     let hydra = prefix <> " (hydra)"
     runIO ((,) <$> lookupEnv varHydraHost <*> lookupEnv varHydraPort) >>= \case
-        (Just _hydraHost, Just _hydraPort) -> do
+        (Just hydraHost, Just (Prelude.read -> hydraPort)) -> do
             manager <- runIO $ newManager $
                 defaultManagerSettings { managerResponseTimeout = responseTimeoutNone }
             let defaultCfg = Configuration
-                    { chainProducer = Hydra
+                    { chainProducer = Hydra {hydraHost, hydraPort}
                     , workDir = InMemory
                     , serverHost = "127.0.0.1"
                     , serverPort = 0

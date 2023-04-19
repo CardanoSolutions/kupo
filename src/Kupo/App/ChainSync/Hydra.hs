@@ -34,6 +34,10 @@ import Kupo.Data.Ogmios
     ( PartialBlock
     )
 
+import Kupo.Data.Hydra
+    ( HydraMessage (..)
+    , decodeHydraMessage
+    )
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
 
@@ -49,7 +53,11 @@ runChainSyncClient
     -> WS.Connection
     -> m IntersectionNotFoundException
 runChainSyncClient mailbox beforeMainLoop pts ws = do
-    undefined
+    beforeMainLoop
+    forever $ do
+        WS.receiveJson ws decodeHydraMessage >>= \case
+            SnapshotConfirmed{} -> pure ()
+            SomethingElse -> pure ()
 
 connect
     :: ConnectionStatusToggle IO

@@ -47,6 +47,7 @@ library
       Kupo
       Kupo.App
       Kupo.App.ChainSync
+      Kupo.App.ChainSync.Hydra
       Kupo.App.ChainSync.Node
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
@@ -107,6 +108,7 @@ library
       Kupo.Data.Http.SlotRange
       Kupo.Data.Http.Status
       Kupo.Data.Http.StatusFlag
+      Kupo.Data.Hydra
       Kupo.Data.Ogmios
       Kupo.Data.PartialBlock
       Kupo.Data.Pattern
