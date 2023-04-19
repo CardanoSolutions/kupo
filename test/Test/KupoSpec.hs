@@ -210,7 +210,7 @@ spec :: Spec
 spec = skippableContext "End-to-end" $ do
 
     endToEnd "can connect" $ \(configure, runSpec, HttpClient{..}) -> do
-        (cfg, env) <- configure $ \defaultCfg -> defaultCfg
+        (_cfg, env) <- configure $ \defaultCfg -> defaultCfg
             { workDir = InMemory
             , since = Just GenesisPoint
             , patterns = fromList [MatchAny OnlyShelley]
@@ -296,6 +296,11 @@ spec = skippableContext "End-to-end" $ do
                         Ogmios
                             { ogmiosHost = "/dev/null"
                             , ogmiosPort
+                            }
+                    Hydra{hydraPort} ->
+                        Hydra
+                            { hydraHost = "/dev/null"
+                            , hydraPort
                             }
             }
         runSpec env 5 $ do

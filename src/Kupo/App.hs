@@ -111,6 +111,7 @@ import Kupo.Data.Pattern
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Kupo.App.ChainSync.Hydra as Hydra
 import qualified Kupo.App.ChainSync.Node as Node
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 import qualified Kupo.App.FetchBlock.Node as Node
@@ -165,6 +166,30 @@ newProducer tr chainProducer callback = do
                             restart
 
                 runOgmios checkpoints (return ()) throwIO restart
+
+        Hydra{hydraHost, hydraPort} -> do
+            logWith tr ConfigurationHydra{hydraHost, hydraPort}
+            mailbox <- atomically (newMailbox mailboxCapacity)
+            callback forcedRollbackCallback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
+                let runHydra pts beforeMainLoop onIntersectionNotFound continuation = do
+                        res <- race
+                            (Hydra.connect statusToggle hydraHost hydraPort $
+                                Hydra.runChainSyncClient mailbox beforeMainLoop pts
+                            )
+                            (atomically (takeTMVar forcedRollbackVar))
+                        case res of
+                            Left notFound ->
+                                onIntersectionNotFound notFound
+                            Right (point, handler) ->
+                                continuation point handler
+
+                let restart point handler =
+                        runHydra [point]
+                            (onSuccess handler)
+                            (\e -> onFailure handler >> throwIO e)
+                            restart
+
+                runHydra checkpoints (return ()) throwIO restart
 
         CardanoNode{nodeSocket, nodeConfig} -> do
             logWith tr ConfigurationCardanoNode{nodeSocket,nodeConfig}
