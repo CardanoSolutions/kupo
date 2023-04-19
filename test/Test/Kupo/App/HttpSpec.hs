@@ -148,15 +148,7 @@ spec = do
     specification <- runIO $ do
         Yaml.decodeFileThrow @IO @OpenApi "./docs/api/latest.yaml"
 
-    specificationV1_0_1 <- runIO $ do
-        Yaml.decodeFileThrow @IO @OpenApi "./docs/api/v1.0.1.yaml"
-
     parallel $ do
-        session specificationV1_0_1 get "/v1/health" $ \_ _ -> do
-            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/v1/health"
-            res & Wai.assertStatus (Http.statusCode Http.status200)
-            pure (Json.Null, [])
-
         session specification get "/health" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/health"
