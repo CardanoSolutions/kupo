@@ -25,7 +25,6 @@ import Data.ByteString.Lazy
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
-import qualified Data.Aeson.Internal as Json
 import qualified Data.Aeson.Parser.Internal as Json
 import qualified Data.Aeson.Types as Json
 import qualified Network.WebSockets as WS
