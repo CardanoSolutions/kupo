@@ -1,3 +1,17 @@
+### [2.4.2] - unreleased
+
+#### Added
+
+- Allow connection to remote Ogmios hosts behind TLS. This is now possible by prefixing the hostname with `wss://`.
+
+#### Changed
+
+N/A
+
+#### Removed
+
+N/A
+
 ### [2.4.1] - 2023-06-29
 
 #### Added

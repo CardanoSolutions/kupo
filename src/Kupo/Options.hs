@@ -202,7 +202,7 @@ serverHostOption :: Parser String
 serverHostOption = option str $ mempty
     <> long "host"
     <> metavar "IPv4"
-    <> help "Address to bind to."
+    <> help "Address to bind to. Prefix with 'wss://' to connect to hosts behind TLS."
     <> value "127.0.0.1"
     <> showDefault
     <> completer (bashCompleter "hostname")
