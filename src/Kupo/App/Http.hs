@@ -191,6 +191,8 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
         & Warp.setPort port
         & Warp.setHost (fromString host)
         & Warp.setServerName "kupo"
+        & Warp.setTimeout 120
+        & Warp.setMaximumBodyFlush Nothing
         & Warp.setBeforeMainLoop (logWith tr HttpServerListening{host,port})
 
     withDatabaseWrapped send connectionType action = do
