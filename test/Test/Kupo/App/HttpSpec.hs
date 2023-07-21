@@ -149,6 +149,14 @@ spec = do
         Yaml.decodeFileThrow @IO @OpenApi "./docs/api/latest.yaml"
 
     parallel $ do
+        specify "Preflight" $ do
+            stub <- newStubbedApplication []
+            Wai.withSession stub $ do
+                res <- Wai.request $ Wai.defaultRequest { Wai.requestMethod = "OPTIONS" }
+                    & flip Wai.setPath "/health"
+                res & Wai.assertStatus (Http.statusCode Http.status200)
+                res & Wai.assertHeader "Access-Control-Allow-Origin" "*"
+
         session specification get "/health" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/health"
@@ -690,6 +698,7 @@ sessionWith defaultPatterns specification opL path callback =
 
     assertJson shouldHaveMostRecentCheckpoint schema res = do
         res & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+        res & Wai.assertHeader "Access-Control-Allow-Origin" "*"
         when shouldHaveMostRecentCheckpoint $
             liftIO $ (fst <$> Wai.simpleHeaders res) `shouldContain` ["X-Most-Recent-Checkpoint"]
         case Json.eitherDecode' (Wai.simpleBody res) of

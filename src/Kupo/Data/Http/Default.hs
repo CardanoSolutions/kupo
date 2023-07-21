@@ -4,8 +4,8 @@
 
 module Kupo.Data.Http.Default
     ( headers
+    , corsHeaders
     ) where
-
 
 import Network.HTTP.Types.Header
     ( Header
@@ -14,5 +14,9 @@ import Network.HTTP.Types.Header
 
 headers :: [Header]
 headers =
-    [ ( hContentType, "application/json;charset=utf-8" )
+    ( hContentType, "application/json;charset=utf-8" ) : corsHeaders
+
+corsHeaders :: [Header]
+corsHeaders =
+    [ ( "Access-Control-Allow-Origin", "*" )
     ]

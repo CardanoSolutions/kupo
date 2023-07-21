@@ -227,7 +227,10 @@ app
     -> IO Health
     -> Application
 app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
-    route (pathInfo req)
+    if requestMethod req == "OPTIONS" then
+        send $ responseLBS status200 Default.corsHeaders mempty
+    else
+        route (pathInfo req)
   where
     route = \case
         ("health" : args) ->

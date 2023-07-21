@@ -4,9 +4,11 @@
 
 - Allow connection to remote Ogmios hosts behind TLS. This is now possible by prefixing the hostname with `wss://`.
 
+- The HTTP server now replies to pre-flight requests (i.e. `OPTIONS`).
+
 #### Changed
 
-N/A
+- The HTTP server is now accessible cross-origins by default (`Access-Control-Allow-Origin: *`).
 
 #### Removed
 

@@ -57,6 +57,7 @@ constraints:
   , orphans-deriving-via == 0.1.0.0
   , prettyprinter-configurable == 0.1.0.0
   , protolude < 0.3.1
+  , quickcheck-state-machine >= 0.7.0
   , relude == 0.7.0.0
   , resource-pool == 0.3.1.0
   , strict-containers == 0.1.0.0
