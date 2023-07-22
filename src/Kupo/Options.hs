@@ -75,14 +75,13 @@ import Kupo.Data.Pattern
 import Options.Applicative.Help.Pretty
     ( Doc
     , align
+    , annotate
     , bold
     , fillSep
     , hardline
     , hsep
     , indent
-    , softbreak
-    , string
-    , text
+    , softline
     , vsep
     )
 import Safe
@@ -147,7 +146,7 @@ parserInfo = info (helper <*> parser) $ mempty
 
     footer' = hsep
         [ "See more details on <https://cardanosolutions.github.io/kupo/> or in the manual for"
-        , bold "kupo(1)."
+        , annotate bold "kupo(1)."
         ]
 
 --
@@ -238,7 +237,7 @@ sinceOption = option (maybeReader rdr) $ mempty
     <> metavar "POINT"
     <> helpDoc (Just $ mconcat
         [ "A point on chain from where to start syncing. Mandatory on first start. Optional after. "
-        , softbreak
+        , softline
         , "Expects either:"
         , hardline
         , vsep
@@ -307,7 +306,7 @@ logLevelOption component =
         <> completer (listCompleter severities)
   where
     doc =
-        string $ "Minimal severity of " <> toString component <> " log messages."
+        "Minimal severity of " <> fromString (toString component) <> " log messages."
 
 -- | [--log-level=SEVERITY]
 tracersOption :: Parser (Tracers m MinSeverities)
@@ -318,9 +317,9 @@ tracersOption = fmap defaultTracers $ option severity $ mempty
     <> completer (listCompleter severities)
   where
     doc =
-        vsep $ string <$> mconcat
+        vsep $ mconcat
             [ [ "Minimal severity of all log messages." ]
-            , ("- " <>) <$> severities
+            , ("- " <>) . fromString <$> severities
             , [ "Or alternatively, to turn a logger off:" ]
             , [ "- Off" ]
             ]
@@ -356,12 +355,12 @@ healthCheckCommand =
     subparser $ command "health-check" $ info (helper <*> parser) $ mempty
         <> progDesc helpText
         <> headerDoc (Just $ vsep
-            [ string $ toString $ unwords
+            [ fromString $ toString $ unwords
                 [ "Handy command to check whether a Kupo daemon is up-and-running,"
                 , "and correctly connected to a network / cardano-node."
                 ]
             , mempty
-            , string $ toString $ unwords
+            , fromString $ toString $ unwords
                 [ "This can, for example, be wired to Docker's HEALTHCHECK"
                 , "feature easily."
                 ]
@@ -419,7 +418,7 @@ deriving instance Eq (TracersCopy m MinSeverities)
 --
 
 longline :: Text -> Doc
-longline = fillSep . fmap (text . toString) . words
+longline = fillSep . fmap (fromString . toString) . words
 
 severities :: [String]
 severities =
