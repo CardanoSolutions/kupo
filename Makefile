@@ -4,8 +4,10 @@ OS := $(shell uname -s)
 ARCH := $(shell uname -m)
 VERSION := $(shell cat package.yaml| grep "version:" | sed "s/[^0-9]*\([0-9]\)\(.[0-9].[0-9]\)*\(-.*\)*/\1\2\3/")
 STYLISH_HASKELL_VERSION := 0.13.0.0
+
 NETWORK := preview
 CONFIG := $(shell pwd)/config/network/$(NETWORK)
+WORKDIR := ${HOME}/.cache/kupo/${NETWORK}
 
 LD_LIBRARY_PATH := $(shell echo $$LD_LIBRARY_PATH | sed "s/:/ /g")
 LIBSODIUM := $(shell find $(LD_LIBRARY_PATH) -type file -name "*libsodium.*.dylib" | uniq)
@@ -101,6 +103,15 @@ endif
 .SILENT: doc clean clean-all
 
 archive: kupo-$(VERSION)-$(ARCH)-$(OS).tar.gz # Package the application as a tarball
+
+kupo.sqlite3-$(NETWORK).tar.gz:
+	sqlite3 $(WORKDIR)/kupo.sqlite3 "VACUUM;"
+	sqlite3 $(WORKDIR)/kupo.sqlite3 "PRAGMA optimize;"
+	GZIP=-9 tar cvzf kupo.sqlite3-$(NETWORK).tar.gz $(WORKDIR)/kupo.sqlite3
+
+snapshot: kupo.sqlite3-$(NETWORK).tar.gz # Create database snapshots from existing
+	md5 $<
+	split -b 500m $< $<.part_
 
 lint: # Format source code automatically
 ifeq ($(shell stylish-haskell --version),stylish-haskell $(STYLISH_HASKELL_VERSION))
