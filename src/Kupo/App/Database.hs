@@ -633,9 +633,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
         -- NOTE: It is good to run the 'PRAGMA optimize' every now-and-then. The
         -- SQLite's official documentation recommend to do so either upon
         -- closing every connection, or, every few hours.
-        traceWith tr $ ConnectionBeginQuery "PRAGMA optimize"
-        execute_ conn "PRAGMA optimize"
-        traceWith tr $ ConnectionExitQuery "PRAGMA optimize"
+        traceExecute_ tr conn "PRAGMA optimize"
 
     , close = do
         traceWith tr ConnectionDestroyShortLived{mode}
@@ -684,14 +682,11 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                     ]
 
     , pruneInputs = ReaderT $ \conn -> do
-        traceWith tr (ConnectionBeginQuery "pruneInputs")
         withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $ do
-            execute conn pruneInputsQry [ SQLInteger (fromIntegral longestRollback) ]
-        traceWith tr (ConnectionExitQuery "pruneInputs")
+            traceExecute tr conn pruneInputsQry [ SQLInteger (fromIntegral longestRollback) ]
         changes conn
 
     , foldInputs = \pattern_ slotRange statusFlag sortDirection yield -> ReaderT $ \conn -> do
-        traceWith tr (ConnectionBeginQuery "foldInputs")
         -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
         --
         -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
@@ -710,7 +705,6 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                 yield (DB.resultFromRow DB.Input{..})
             (xs :: [SQLData]) ->
                 throwIO (UnexpectedRow (patternToText pattern_) [xs])
-        traceWith tr (ConnectionExitQuery "foldInputs")
 
     , countInputs = \pattern_ -> ReaderT $ \conn -> do
         query_ conn (countInputsQry pattern_) >>= \case
@@ -790,9 +784,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                 Nothing
 
     , pruneBinaryData = ReaderT $ \conn -> do
-        traceWith tr (ConnectionBeginQuery "pruneBinaryData")
-        execute_ conn pruneBinaryDataQry
-        traceWith tr (ConnectionExitQuery "pruneBinaryData")
+        traceExecute_ tr conn pruneBinaryDataQry
         changes conn
 
     , insertScripts = \scripts -> ReaderT $ \conn -> do
@@ -841,13 +833,11 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             [[currentSlotNo, _]] | currentSlotNo == minSlotNo -> do
                 pure ()
             _otherwise -> do
-                traceWith tr $ ConnectionBeginQuery "rollbackTo"
                 withTemporaryIndex tr conn "inputsByCreatedAt" "inputs(created_at)" $ do
                     withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $ do
-                        execute conn rollbackQryDeleteInputs [ minSlotNo ]
-                        execute conn rollbackQryUpdateInputs [ minSlotNo ]
-                        execute conn rollbackQryDeleteCheckpoints [ minSlotNo ]
-                traceWith tr $ ConnectionExitQuery "rollbackTo"
+                        traceExecute tr conn rollbackQryDeleteInputs [ minSlotNo ]
+                        traceExecute tr conn rollbackQryUpdateInputs [ minSlotNo ]
+                        traceExecute tr conn rollbackQryDeleteCheckpoints [ minSlotNo ]
         query_ conn selectMaxCheckpointQry >>= \case
             [[SQLInteger (fromIntegral -> checkpointSlotNo), SQLBlob checkpointHeaderHash]] ->
                 return $ Just (DB.pointFromRow DB.Checkpoint{..})
@@ -1164,6 +1154,7 @@ installIndexes tr conn = \case
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByAddress" False
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByPaymentCredential" False
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByCreatedAt" False
+        dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsBySpentAt" False
         dropIndexIfExists (contramap DatabaseConnection tr) conn "policiesByPolicyId" False
     InstallIndexesIfNotExist -> do
         installIndex tr conn
@@ -1175,6 +1166,9 @@ installIndexes tr conn = \case
         installIndex tr conn
             "inputsByCreatedAt"
             "inputs(created_at)"
+        installIndex tr conn
+            "inputsBySpentAt"
+            "inputs(spent_at)"
         installIndex tr conn
             "policiesByPolicyId"
             "policies(policy_id)"
@@ -1207,6 +1201,7 @@ withTemporaryIndex tr conn name definition action = do
         , "ON"
         , definition
         ]
+    unless exists $ traceWith tr (ConnectionCreatedTemporaryIndex name)
     a <- action
     unless exists (dropIndexIfExists tr conn name True)
     return a
@@ -1400,6 +1395,9 @@ data TraceConnection where
     ConnectionCreateTemporaryIndex
         :: { newTemporaryIndex :: Text }
         -> TraceConnection
+    ConnectionCreatedTemporaryIndex
+        :: { newTemporaryIndex :: Text }
+        -> TraceConnection
     ConnectionRemoveTemporaryIndex
         :: { indexName :: Text }
         -> TraceConnection
@@ -1425,5 +1423,28 @@ instance HasSeverityAnnotation TraceConnection where
             | exitQuery == "PRAGMA optimize"  -> Notice
         ConnectionExitQuery{}                 -> Debug
         ConnectionCreateTemporaryIndex{}      -> Debug
+        ConnectionCreatedTemporaryIndex{}     -> Debug
         ConnectionRemoveTemporaryIndex{}      -> Debug
         ConnectionRemoveIndex{}               -> Warning
+
+traceExecute
+    :: ToRow q
+    => Tracer IO TraceConnection
+    -> Connection
+    -> Query
+    -> q
+    -> IO ()
+traceExecute tr conn template qs = do
+    traceWith tr $ ConnectionBeginQuery (fromQuery template)
+    execute conn template qs
+    traceWith tr $ ConnectionExitQuery (fromQuery template)
+
+traceExecute_
+    :: Tracer IO TraceConnection
+    -> Connection
+    -> Query
+    -> IO ()
+traceExecute_ tr conn template = do
+    traceWith tr $ ConnectionBeginQuery (fromQuery template)
+    execute_ conn template
+    traceWith tr $ ConnectionExitQuery (fromQuery template)

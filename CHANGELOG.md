@@ -1,4 +1,4 @@
-### [2.4.2] - unreleased
+### [2.5.0] - 2023-07-22
 
 #### Added
 
@@ -9,6 +9,11 @@
 #### Changed
 
 - The HTTP server is now accessible cross-origins by default (`Access-Control-Allow-Origin: *`).
+
+- Increased logs surrounding rollbacks, and adjusted the management of internal
+  indexes related to rollbacks. This should lead to a decrease of I/O activity
+  during rollbacks, without noticeable impact on the application (provided that
+  initial synchronization is done with `--defer-db-indexes`)
 
 #### Removed
 
