@@ -460,7 +460,7 @@ spec = parallel $ do
                     ]
                 )
 
-        context "with extra lookup indxes" $ do
+        context "with extra lookup indexes" $ do
             let installIndexes =
                     InstallIndexesIfNotExist
 
@@ -545,7 +545,7 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByAddress (address=? AND spent_at=?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
                     )
 
                 specifyQuery "Created Before" installIndexes
@@ -556,7 +556,7 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByAddress (address=? AND spent_at=?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
                     )
 
                 specifyQuery "Spent Before" installIndexes
@@ -567,7 +567,7 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByAddress (address=? AND spent_at=?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
                     )
 
                 specifyQuery "OnlySpent" installIndexes
@@ -578,7 +578,12 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByAddress (address=? AND spent_at>?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" :
+                            [ "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
+                            , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                            , "USE TEMP B-TREE FOR ORDER BY"
+                            ]
+                        )
                     )
 
             context "foldInputs / MatchPayment" $ do
@@ -601,7 +606,7 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at=?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)" : suffix )
                     )
 
                 specifyQuery "Spent After" installIndexes
@@ -612,7 +617,7 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at=?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)" : suffix )
                     )
 
                 specifyQuery "Created Between" installIndexes
@@ -623,7 +628,7 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at=?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)" : suffix )
                     )
 
                 specifyQuery "Spent Between" installIndexes
@@ -634,7 +639,7 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at=?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)" : suffix )
                     )
 
                 specifyQuery "Created/Spent Between" installIndexes
@@ -645,7 +650,7 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at=?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)" : suffix )
                     )
 
                 specifyQuery "OnlyUnspent" installIndexes
@@ -656,7 +661,7 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at=?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)" : suffix )
                     )
 
                 specifyQuery "OnlySpent" installIndexes
@@ -667,7 +672,12 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=? AND spent_at>?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)" :
+                            [ "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
+                            , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                            , "USE TEMP B-TREE FOR ORDER BY"
+                            ]
+                        )
                     )
 
             context "foldInputs / MatchDelegation" $ do
@@ -756,7 +766,12 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)" :
+                            [ "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                            , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
+                            , "USE TEMP B-TREE FOR ORDER BY"
+                            ]
+                        )
                     )
 
             context "foldInputs / MatchTransactionId" $ do
@@ -845,7 +860,12 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference>? AND output_reference<?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference>? AND output_reference<?)" :
+                            [ "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                            , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
+                            , "USE TEMP B-TREE FOR ORDER BY"
+                            ]
+                        )
                     )
 
             context "foldInputs / MatchOutputReference" $ do
@@ -952,7 +972,12 @@ spec = parallel $ do
                         <*> pure Asc
                     )
                     (`shouldBe`
-                        ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)" : suffix )
+                        ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)" :
+                            [ "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                            , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
+                            , "USE TEMP B-TREE FOR ORDER BY"
+                            ]
+                        )
                     )
 
             context "foldInputs / MatchPolicyId - MatchAssetId" $ do
@@ -1057,7 +1082,10 @@ spec = parallel $ do
                     (`shouldBe`
                         [ "SEARCH policies USING INDEX policiesByPolicyId (policy_id=?)"
                         , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
-                        ] ++ suffix
+                        , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "USE TEMP B-TREE FOR ORDER BY"
+                        ]
                     )
 
             context "foldPolicies" $ do

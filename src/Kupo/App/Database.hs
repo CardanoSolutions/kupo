@@ -143,7 +143,6 @@ import Kupo.Data.Configuration
 import Kupo.Data.Database
     ( SortDirection (..)
     , patternToSql
-    , statusFlagToSql
     )
 import Kupo.Data.Http.SlotRange
     ( Range (..)
@@ -944,28 +943,35 @@ foldInputsQry
     -> StatusFlag
     -> SortDirection
     -> Query
-foldInputsQry pattern_ slotRange statusFlag sortDirection = Query $
-    "SELECT \
-      \ext_output_reference, address, value, datum_info, script_hash, \
-      \created_at, createdAt.header_hash, \
-      \spent_at, spentAt.header_hash \
-    \FROM inputs \
-    \JOIN checkpoints AS createdAt ON createdAt.slot_no = created_at \
-    \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = spent_at "
-    <> additionalJoin
-    <> " WHERE "
-    <> T.intercalate " AND " (
-        [ patternWhereClause
-        , statusFlagToSql statusFlag
-        , slotRangeToSql slotRange
-        ] & filter (not . T.null)
-       )
-    <>
-    " ORDER BY \
-      \created_at " <> ordering <> ", \
-      \transaction_index " <> ordering <> ", \
-      \output_index " <> ordering
+foldInputsQry pattern_ slotRange statusFlag sortDirection =
+    Query $ "SELECT \
+      \inputs.ext_output_reference, inputs.address, inputs.value, \
+      \inputs.datum_info, inputs.script_hash, \
+      \inputs.created_at, createdAt.header_hash, \
+      \inputs.spent_at, spentAt.header_hash \
+    \FROM (" <> inputs <> ") inputs \
+    \JOIN checkpoints AS createdAt ON createdAt.slot_no = inputs.created_at \
+    \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = inputs.spent_at"
+    <> case statusFlag of
+        NoStatusFlag -> ""
+        OnlyUnspent -> " WHERE spentAt.header_hash IS NULL"
+        OnlySpent -> " WHERE spentAt.header_hash IS NOT NULL"
+    <> " ORDER BY \
+       \inputs.created_at " <> ordering <> ", \
+       \inputs.transaction_index " <> ordering <> ", \
+       \inputs.output_index " <> ordering
   where
+    inputs = "SELECT * FROM inputs "
+        <> additionalJoin
+        <> " WHERE "
+        <> T.intercalate " AND " (
+            [ patternWhereClause
+            , slotRangeToSql slotRange
+            ] & filter (not . T.null)
+           )
+        <> " ORDER BY \
+           \inputs.created_at " <> ordering
+
     (patternWhereClause, fromMaybe "" -> additionalJoin) =
         patternToSql pattern_
 
@@ -1159,10 +1165,10 @@ installIndexes tr conn = \case
     InstallIndexesIfNotExist -> do
         installIndex tr conn
             "inputsByAddress"
-            "inputs(address COLLATE NOCASE, spent_at)"
+            "inputs(address COLLATE NOCASE)"
         installIndex tr conn
             "inputsByPaymentCredential"
-            "inputs(payment_credential COLLATE NOCASE, spent_at)"
+            "inputs(payment_credential COLLATE NOCASE)"
         installIndex tr conn
             "inputsByCreatedAt"
             "inputs(created_at)"
