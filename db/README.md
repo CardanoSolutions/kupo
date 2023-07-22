@@ -31,9 +31,10 @@ CREATE TABLE `inputs` (
 
 CREATE UNIQUE INDEX `inputsByOutputReference` ON `inputs` (`output_reference`);
 
-CREATE INDEX `inputsByAddress` ON `inputs` (`address` COLLATE NOCASE, `spent_at`);
-CREATE INDEX `inputsByPaymentCredential` ON `inputs` (`payment_credential` COLLATE NOCASE, `spent_at`);
+CREATE INDEX `inputsByAddress` ON `inputs` (`address` COLLATE NOCASE);
+CREATE INDEX `inputsByPaymentCredential` ON `inputs` (`payment_credential` COLLATE NOCASE);
 CREATE INDEX `inputsByCreatedAt` ON `inputs` (`created_at`);
+CREATE INDEX `inputsBySpentAt` ON `inputs` (`spent_at`);
 
 CREATE TABLE `policies` (
   `output_reference` BLOB NOT NULL,
@@ -67,6 +68,12 @@ CREATE TABLE `patterns` (
 </details>
 
 ## Changelog
+
+<p align="right"><code>v2.5.0</code></p>
+<hr/>
+
+- Remove `spent_at` from compound indexes `inputsByAddress` and `inputsByPaymentCredential`
+- Add permanent index `inputsBySpentAt(spent_at)`
 
 <p align="right"><code>v2.2.0</code></p>
 <hr/>
