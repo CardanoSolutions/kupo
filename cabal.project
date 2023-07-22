@@ -55,7 +55,7 @@ constraints:
   , measures == 0.1.0.0
   , network >= 3.1.1.0
   , orphans-deriving-via == 0.1.0.0
-  , optparse-applicative == 0.18.1.0
+  , optparse-applicative == 0.17.0.0
   , prettyprinter-configurable == 0.1.0.0
   , protolude < 0.3.1
   , quickcheck-state-machine >= 0.7.0
