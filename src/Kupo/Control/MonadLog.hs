@@ -183,7 +183,8 @@ mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
   where
     mkTime timestamp =
         mconcat
-        [ Ansi.whiteBg $ T.fromString (formatTime defaultTimeLocale "%X%3Q" timestamp) <> " "
+        [ Ansi.whiteBg $ Ansi.black $
+            T.fromString (formatTime defaultTimeLocale "%X%3Q" timestamp) <> " "
         , Ansi.white "\57520"
         ]
 
@@ -217,27 +218,27 @@ mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
 
     (severity, accent) = case getSeverityAnnotation msg of
         Debug ->
-            ( Ansi.whiteBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " + "))
+            ( Ansi.whiteBg (Ansi.black "\57520" <> Ansi.bold (Ansi.white " + "))
                 <> Ansi.white "\57520"
             , Ansi.white
             )
         Info ->
-            ( Ansi.blueBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " ℹ "))
+            ( Ansi.blueBg (Ansi.black "\57520" <> Ansi.bold (Ansi.white " ℹ "))
                 <> Ansi.blue "\57520"
             , Ansi.blue
             )
         Notice ->
-            ( Ansi.magentaBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " ★ "))
+            ( Ansi.magentaBg (Ansi.black "\57520" <> Ansi.bold (Ansi.white " ★ "))
                 <> Ansi.magenta "\57520"
             , Ansi.magenta
             )
         Warning ->
-            ( Ansi.yellowBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " ! "))
+            ( Ansi.yellowBg (Ansi.black "\57520" <> Ansi.bold (Ansi.white " ! "))
                 <> Ansi.yellow "\57520"
             , Ansi.yellow
             )
         Error ->
-            ( Ansi.redBg (Ansi.black "\57520" <> Ansi.bold (Ansi.black " ✖ "))
+            ( Ansi.redBg (Ansi.black "\57520" <> Ansi.bold (Ansi.white " ✖ "))
                 <> Ansi.red "\57520"
             , Ansi.red
             )

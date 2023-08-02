@@ -4,9 +4,8 @@ OS := $(shell uname -s)
 ARCH := $(shell uname -m)
 VERSION := $(shell cat package.yaml| grep "version:" | sed "s/.*\([0-9]\)\(.[0-9].[0-9]\)*\(-.*\)*/\1\2\3/")
 STYLISH_HASKELL_VERSION := 0.13.0.0
-
-# replace with local setup
-CONFIG := /usr/local/share/cardano/network/preview
+NETWORK := preview
+CONFIG := $(shell pwd)/config/network/$(NETWORK)
 
 LD_LIBRARY_PATH := $(shell echo $$LD_LIBRARY_PATH | sed "s/:/ /g")
 LIBSODIUM := $(shell find $(LD_LIBRARY_PATH) -type file -name "*libsodium.*.dylib" | uniq)

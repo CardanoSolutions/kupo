@@ -115,7 +115,7 @@ Key difference(s): cardano-db-sync synchronizes ALL data from the Cardano blockc
 Key differences(s): In a similar fashion to Carp, Marconi offers a modular indexer infrastructure where users can customize data streams through standalone plugins (however written in Haskell). It synchronizes data across multiple streams (utxo, datums and scripts), filters them based on custom plugins and stores them in a SQLite database. At this stage, Marconi is also in at an early development phase.
 
 <p align="right">
-  <a href="https://github.com/input-output-hk/plutus-apps/tree/main/marconi#marconi">Learn more</a>
+  <a href="https://github.com/input-output-hk/marconi">Learn more</a>
 </p>
 </details>
 
