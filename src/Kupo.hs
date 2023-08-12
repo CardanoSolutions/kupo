@@ -44,6 +44,9 @@ import Data.Pool
     , tryWithResource
     , withResource
     )
+import GHC.Conc
+    ( getNumCapabilities
+    )
 import Kupo.App
     ( ChainSyncClient
     , TraceConsumer (..)
@@ -179,10 +182,11 @@ kupoWith tr withProducer withFetchBlock =
             , workDir
             , inputManagement
             , longestRollback
-            , maxConcurrency
             , deferIndexes
             }
         } <- ask
+
+    (minConcurrency, maxConcurrency) <- liftIO getNumCapabilities <&> \n -> (n, 2 * n)
 
     dbFile <- newDatabaseFile (tracerDatabase tr) workDir
 
@@ -192,13 +196,13 @@ kupoWith tr withProducer withFetchBlock =
         (createShortLivedConnection (tracerDatabase tr) ReadOnly lock longestRollback dbFile)
         (\Database{close} -> close)
         30
-        (fromIntegral maxConcurrency)
+        maxConcurrency
 
     readWritePool <- liftIO $ newPool $ defaultPoolConfig
         (createShortLivedConnection (tracerDatabase tr) ReadWrite lock longestRollback dbFile)
         (\Database{close} -> close)
         30
-        2
+        minConcurrency
 
     let run action =
             withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile deferIndexes action

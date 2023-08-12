@@ -574,7 +574,6 @@ skippableContext prefix skippableSpec = do
                     , inputManagement = MarkSpentInputs
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
-                    , maxConcurrency = 50
                     , deferIndexes = InstallIndexesIfNotExist
                     }
             context cardanoNode $ around (withTempDirectory manager ref defaultCfg) skippableSpec
@@ -596,7 +595,6 @@ skippableContext prefix skippableSpec = do
                     , inputManagement = MarkSpentInputs
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
-                    , maxConcurrency = 50
                     , deferIndexes = InstallIndexesIfNotExist
                     }
             context ogmios $ around (withTempDirectory manager ref defaultCfg) skippableSpec

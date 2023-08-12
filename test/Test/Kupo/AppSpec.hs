@@ -249,7 +249,6 @@ spec = do
                    , inputManagement
                    , longestRollback
                    , garbageCollectionInterval
-                   , maxConcurrency
                    , deferIndexes
                    }
               env <- run (newEnvironment config)
@@ -283,7 +282,6 @@ spec = do
     serverHost = "127.0.0.1"
     longestRollback = 10
     garbageCollectionInterval = 0.4
-    maxConcurrency = 50
     deferIndexes = InstallIndexesIfNotExist
     tracers = configureTracers (defaultTracers Nothing) nullTracer
     genServerPort = sized $ \n -> do

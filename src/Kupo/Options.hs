@@ -133,7 +133,6 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> inputManagementOption
                     <*> pure 129600 -- TODO: should be pulled from genesis parameters
                     <*> garbageCollectionIntervalOption
-                    <*> maxConcurrencyOption
                     <*> deferIndexesOption
                 )
             <*> (tracersOption <|> Tracers
@@ -271,21 +270,6 @@ garbageCollectionIntervalOption = option diffTime $ mempty
     <> help "Number of seconds between background database garbage collections pruning obsolete or unnecessary data."
     <> value 3600
     <> showDefault
-
--- | [--max-concurrency=INT]
-maxConcurrencyOption :: Parser Word
-maxConcurrencyOption = option (eitherReader readerMaxConcurrency) $ mempty
-    <> long "max-concurrency"
-    <> metavar "INT"
-    <> help "Maximum number of concurrent (read-only) requests that the HTTP server can handle."
-    <> value 50
-    <> showDefault
-  where
-    readerMaxConcurrency (toText -> txt) = do
-        (maxN, remMaxN) <- T.decimal txt
-        unless (T.null remMaxN) $ fail "should be an integer but isn't"
-        unless (maxN >= 10) $ fail "should be at least greater than 10"
-        pure maxN
 
 -- | [--defer-db-indexes]
 deferIndexesOption :: Parser DeferIndexesInstallation

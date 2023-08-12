@@ -89,8 +89,6 @@ data Configuration = Configuration
         -- ^ Number of slots before which data can be considered immutable
     , garbageCollectionInterval :: !DiffTime
         -- ^ Delay between each garbage-collection of database data
-    , maxConcurrency :: !Word
-        -- ^ Maximum number of connections to create in the db resource pool
     , deferIndexes :: !DeferIndexesInstallation
         -- ^ Whether to install non-essential database indexes on start-up.
         --
