@@ -33,6 +33,9 @@ import Kupo.App.Http.HealthCheck
 import Kupo.Control.MonadCatch
     ( MonadCatch (..)
     )
+import Kupo.Control.MonadDelay
+    ( threadDelay
+    )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..)
     , MonadLog (..)
@@ -196,9 +199,7 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
         & Warp.setBeforeMainLoop (logWith tr HttpServerListening{host,port})
 
     withDatabaseWrapped send connectionType action = do
-        handle onServerError (handle onAssertPointException (withDatabase connectionType action)) >>= \case
-            Nothing -> onServiceUnavailable
-            Just r  -> return r
+        retrying 5 10 $ handle onServerError (handle onAssertPointException (withDatabase connectionType action))
       where
         onAssertPointException = \case
             ErrPointNotFound{} ->
@@ -210,8 +211,10 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
             logWith tr $ HttpUnexpectedError (toText $ displayException hint)
             Just <$> send Errors.serverError
 
-        onServiceUnavailable = do
-            send Errors.serviceUnavailable
+        retrying (n :: Int) ms io = io >>= \case
+            Nothing | n <= 0 -> send Errors.serviceUnavailable
+            Nothing -> threadDelay ms >> retrying (pred n) (2 * ms) io
+            Just r  -> return r
 
 --
 -- Router
