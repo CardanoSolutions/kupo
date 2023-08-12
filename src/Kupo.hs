@@ -218,7 +218,6 @@ kupoWith tr withProducer withFetchBlock =
 
     liftIO $ run $ \db -> do
         patterns <- newPatternsCache (tracerConfiguration tr) config db
-        (mostRecentCheckpoint, checkpoints) <- startOrResume (tracerConfiguration tr) config db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
         let tracerChainSync =  contramap ConsumerChainSync . tracerConsumer
@@ -261,6 +260,7 @@ kupoWith tr withProducer withFetchBlock =
 
                     -- Block producer, fetching blocks from the network
                     ( withChainSyncExceptionHandler (tracerChainSync tr) statusToggle $ do
+                        (mostRecentCheckpoint, checkpoints) <- startOrResume (tracerConfiguration tr) config db
                         initializeHealth health mostRecentCheckpoint
                         producer
                             (tracerChainSync tr)

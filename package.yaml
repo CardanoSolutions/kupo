@@ -133,6 +133,7 @@ tests:
     - text
     - wai
     - wai-extra
+    - websockets
     - yaml
     build-tools:
     - hspec-discover
