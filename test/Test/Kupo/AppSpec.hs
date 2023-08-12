@@ -24,6 +24,12 @@ import Control.Concurrent.STM.TChan
     , tryReadTChan
     , writeTChan
     )
+import Control.Concurrent.STM.TVar
+    ( TVar
+    , newTVarIO
+    , readTVar
+    , writeTVar
+    )
 import Control.Monad.Class.MonadAsync
     ( link
     )
@@ -54,6 +60,9 @@ import Kupo.Control.MonadLog
     ( configureTracers
     , defaultTracers
     , nullTracer
+    )
+import Kupo.Control.MonadThrow
+    ( throwIO
     )
 import Kupo.Control.MonadTime
     ( DiffTime
@@ -132,6 +141,9 @@ import Kupo.Data.Pattern
 import Network.HTTP.Client
     ( defaultManagerSettings
     , newManager
+    )
+import Network.WebSockets
+    ( ConnectionException (..)
     )
 import Test.Hspec
     ( Spec
@@ -223,6 +235,7 @@ spec = do
     prop "State-Machine" $ withMaxSuccess maxSuccess $
       forAll genInputManagement $ \inputManagement -> do
         forAll genServerPort $ \serverPort -> do
+           let httpClient = newHttpClientWith manager (serverHost, serverPort) (\_ -> pure ())
            let stateMachine = StateMachine
                 initModel
                 transition
@@ -231,11 +244,7 @@ spec = do
                 Nothing
                 (generator inputManagement)
                 shrinker
-                (semantics
-                    garbageCollectionInterval
-                    (newHttpClientWith manager (serverHost, serverPort) (\_ -> pure ()))
-                    chan
-                )
+                (semantics garbageCollectionInterval httpClient chan)
                 mock
                 (cleanup chan)
            forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
@@ -252,7 +261,7 @@ spec = do
                    , deferIndexes
                    }
               env <- run (newEnvironment config)
-              producer <- run (newMockProducer <$> atomically (dupTChan chan))
+              producer <- run (newMockProducer httpClient <$> atomically (dupTChan chan))
               fetchBlock <- run (newMockFetchBlock <$> atomically (dupTChan chan))
               let kupo = kupoWith tracers producer fetchBlock `runWith` env
               asyncId <- run (async kupo)
@@ -305,6 +314,7 @@ spec = do
 data Event (r :: Type -> Type)
     = DoRollForward !Tip !PartialBlock
     | DoRollBackward !Tip !Point
+    | LoseConnection
     | GetMostRecentCheckpoint
     | GetPreviousCheckpoint !SlotNo
     | GetUtxo
@@ -325,6 +335,8 @@ instance Show (Event r) where
             toString $ "(DoRollForward " <> showPartialBlock ", " blk <> ")"
         DoRollBackward _ pt ->
             toString $ "(DoRollBackward " <> showPoint pt <> ")"
+        LoseConnection ->
+            "LoseConnection"
         GetMostRecentCheckpoint ->
             "GetMostRecentCheckpoint"
         GetPreviousCheckpoint sl ->
@@ -466,6 +478,8 @@ precondition (LongestRollback k) model = \case
                     if point `elem` points && point /= tip && d <= k
                     then Top
                     else Bot
+    LoseConnection ->
+        Top
     GetPreviousCheckpoint{} ->
         Top
     GetMostRecentCheckpoint ->
@@ -534,6 +548,8 @@ transition model cmd _res =
                             (hasConflictingInput unspentOutputReferences)
                             (mempool model <> foldMap blockBody (reverse dropped))
                     }
+        LoseConnection ->
+            model
         GetMostRecentCheckpoint ->
             model
         GetPreviousCheckpoint{} ->
@@ -642,6 +658,7 @@ generator inputManagement model =
                 <*> selectPastPoint (blockPoint <$> blocks)
               )
             , (1, pure Pause)
+            , (1, pure LoseConnection)
             ]
 
 -- | Generate a new network tip based on the current network tip and a local
@@ -831,22 +848,24 @@ cleanup chan _ = do
 semantics
     :: DiffTime
     -> HttpClient IO
-    -> TChan RequestNextResponse
+    -> TChan (Either ConnectionException RequestNextResponse)
     -> Event Concrete
     -> IO (Response Concrete)
 semantics pause HttpClient{..} chan = \case
     DoRollForward tip block -> do
         cp <- getMostRecentCheckpoint
-        atomically (writeTChan chan (RollForward tip block))
+        atomically $ writeTChan chan (Right $ RollForward tip block)
         fmap Unit $ waitUntilM $ do
             cp' <- getMostRecentCheckpoint
             pure (cp' > cp)
     DoRollBackward tip point -> do
         cp <- getMostRecentCheckpoint
-        atomically (writeTChan chan (RollBackward tip point))
+        atomically $ writeTChan chan (Right $ RollBackward tip point)
         fmap Unit $ waitUntilM $ do
             cp' <- getMostRecentCheckpoint
             pure (cp' < cp)
+    LoseConnection ->
+        Unit <$> atomically (writeTChan chan (Left ConnectionClosed))
     GetMostRecentCheckpoint -> do
         Checkpoint . Just <$> getMostRecentCheckpoint
     GetPreviousCheckpoint sl -> do
@@ -878,6 +897,8 @@ mock model = \case
     DoRollForward{} ->
         pure (Unit ())
     DoRollBackward{} ->
+        pure (Unit ())
+    LoseConnection{} ->
         pure (Unit ())
     GetMostRecentCheckpoint ->
         pure $ Checkpoint $ case currentChain model of
@@ -913,36 +934,53 @@ mock model = \case
 -- bounded queue of events that are generated by the quickcheck machinery. It
 -- does nothing more than passing information around in the mailbox.
 newMockProducer
-    :: TChan RequestNextResponse
+    :: HttpClient IO
+    -> TChan (Either ConnectionException RequestNextResponse)
     -> (  (Point -> ForcedRollbackHandler IO -> IO ())
        -> Mailbox IO (Tip, PartialBlock) (Tip, Point)
        -> ChainSyncClient IO PartialBlock
        -> IO ()
        )
     -> IO ()
-newMockProducer chan callback = do
+newMockProducer HttpClient{..} chan callback = do
+    lastKnownTipVar <- newTVarIO GenesisPoint
     mailbox <- atomically (newMailbox mailboxCapacity)
     callback forcedRollbackCallback mailbox $ \_ -> \case
-        [GenesisPoint] -> do
-            const $ forever $ atomically $ do
-                readTChan chan >>= \case
-                    RollForward tip block ->
-                        putHighFrequencyMessage mailbox (tip, block)
-                    RollBackward tip point ->
-                        putIntermittentMessage mailbox (tip, point)
-        _notGenesis -> do
-            const $ fail
-                "Mock producer cannot start from a list of checkpoints. \
-                \Indeed, the goal is to test arbitrary sequences \
-                \of execution, for which starting 'from scratch' is \
-                \therefore not only sufficient but necessary."
+        requestedTip:_ -> \_ -> do
+            lastKnownTip <- atomically (readTVar lastKnownTipVar)
+            when (requestedTip /= lastKnownTip) $ do
+                putStrLn $ "RequestedTip: " <> show requestedTip
+                putStrLn $ "LastKnowntip: " <> show lastKnownTip
+                fail "Tip out of sync"
+            forever $ do
+                result <- atomically $ readTChan chan >>= \case
+                    Right (RollForward tip block) ->
+                        Right <$> putHighFrequencyMessage mailbox (tip, block)
+                    Right (RollBackward tip point) ->
+                        Right <$> putIntermittentMessage mailbox (tip, point)
+                    Left e -> do
+                        pure (Left e)
+                either
+                    (\e -> do
+                        atomically . writeTVar lastKnownTipVar =<< getMostRecentCheckpoint
+                        throwIO e
+                    )
+                    return
+                    result
+        [] -> do
+            const $ fail "Empty list requested for mock producer"
   where
     forcedRollbackCallback _point _handler =
         fail "Mock producer cannot force rollback."
 
+    getMostRecentCheckpoint =
+        listCheckpoints <&> \case
+            [] -> GenesisPoint
+            h:_ -> h
+
 -- | Mock a request to the node which returns the block immediately following the given point.
 newMockFetchBlock
-    :: TChan RequestNextResponse
+    :: TChan (Either e RequestNextResponse)
     -> (FetchBlockClient IO PartialBlock -> IO ())
     -> IO ()
 newMockFetchBlock chan callback =
@@ -951,13 +989,15 @@ newMockFetchBlock chan callback =
         blocks <- applyBlocks [] <$> atomically (cloneTChan chan >>= flushTChan)
         reply $ find ((== slotNo) . getPointSlotNo . blockPoint) blocks
   where
-    applyBlocks :: [PartialBlock] -> [RequestNextResponse] -> [PartialBlock]
+    applyBlocks :: [PartialBlock] -> [Either e RequestNextResponse] -> [PartialBlock]
     applyBlocks blocks = \case
         [] ->
             reverse blocks
-        (RollForward _ block):rest ->
+        Left{}:rest ->
+            applyBlocks blocks rest
+        (Right (RollForward _ block)):rest ->
             applyBlocks (block:blocks) rest
-        (RollBackward _ point):rest ->
+        (Right (RollBackward _ point)):rest ->
             let blocks' = dropWhile ((/= point) . blockPoint) blocks
              in applyBlocks blocks' rest
 

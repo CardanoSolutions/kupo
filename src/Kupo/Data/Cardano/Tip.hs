@@ -1,6 +1,9 @@
 {-# LANGUAGE PatternSynonyms #-}
 
-module Kupo.Data.Cardano.Tip  where
+module Kupo.Data.Cardano.Tip
+    ( module Kupo.Data.Cardano.Tip
+    , Ouroboros.getTipPoint
+    ) where
 
 import Kupo.Prelude
 

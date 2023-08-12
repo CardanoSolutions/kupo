@@ -373,5 +373,6 @@ test-suite unit
     , text
     , wai
     , wai-extra
+    , websockets
     , yaml
   default-language: Haskell2010
