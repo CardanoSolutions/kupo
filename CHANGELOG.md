@@ -1,3 +1,13 @@
+### [2.6.0] - unreleased
+
+#### Added
+
+N/A
+
+#### Changed
+
+- Support for (and require) Ogmios `>= v6.0.0` when using Ogmios as a blockchain provider.
+
 ### [2.5.0] - 2023-07-22
 
 #### Added

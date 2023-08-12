@@ -25,8 +25,7 @@ import Control.Concurrent.STM.TChan
     , writeTChan
     )
 import Control.Concurrent.STM.TVar
-    ( TVar
-    , newTVarIO
+    ( newTVarIO
     , readTVar
     , writeTVar
     )
@@ -127,7 +126,7 @@ import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..)
     )
 import Kupo.Data.Ogmios
-    ( RequestNextResponse (..)
+    ( NextBlockResponse (..)
     )
 import Kupo.Data.PartialBlock
     ( PartialBlock (..)
@@ -848,7 +847,7 @@ cleanup chan _ = do
 semantics
     :: DiffTime
     -> HttpClient IO
-    -> TChan (Either ConnectionException RequestNextResponse)
+    -> TChan (Either ConnectionException NextBlockResponse)
     -> Event Concrete
     -> IO (Response Concrete)
 semantics pause HttpClient{..} chan = \case
@@ -935,7 +934,7 @@ mock model = \case
 -- does nothing more than passing information around in the mailbox.
 newMockProducer
     :: HttpClient IO
-    -> TChan (Either ConnectionException RequestNextResponse)
+    -> TChan (Either ConnectionException NextBlockResponse)
     -> (  (Point -> ForcedRollbackHandler IO -> IO ())
        -> Mailbox IO (Tip, PartialBlock) (Tip, Point)
        -> ChainSyncClient IO PartialBlock
@@ -980,7 +979,7 @@ newMockProducer HttpClient{..} chan callback = do
 
 -- | Mock a request to the node which returns the block immediately following the given point.
 newMockFetchBlock
-    :: TChan (Either e RequestNextResponse)
+    :: TChan (Either e NextBlockResponse)
     -> (FetchBlockClient IO PartialBlock -> IO ())
     -> IO ()
 newMockFetchBlock chan callback =
@@ -989,7 +988,7 @@ newMockFetchBlock chan callback =
         blocks <- applyBlocks [] <$> atomically (cloneTChan chan >>= flushTChan)
         reply $ find ((== slotNo) . getPointSlotNo . blockPoint) blocks
   where
-    applyBlocks :: [PartialBlock] -> [Either e RequestNextResponse] -> [PartialBlock]
+    applyBlocks :: [PartialBlock] -> [Either e NextBlockResponse] -> [PartialBlock]
     applyBlocks blocks = \case
         [] ->
             reverse blocks

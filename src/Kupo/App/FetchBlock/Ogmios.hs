@@ -12,12 +12,12 @@ import Kupo.Data.FetchBlock
     ( FetchBlockClient
     )
 import Kupo.Data.Ogmios
-    ( PartialBlock
-    , RequestNextResponse (..)
-    , decodeFindIntersectResponse
-    , decodeRequestNextResponse
-    , encodeFindIntersect
-    , encodeRequestNext
+    ( NextBlockResponse (..)
+    , PartialBlock
+    , decodeFindIntersectionResponse
+    , decodeNextBlockResponse
+    , encodeFindIntersectionRequest
+    , encodeNextBlockRequest
     )
 
 import qualified Network.WebSockets as WS
@@ -30,14 +30,14 @@ withFetchBlockClient
     -> IO ()
 withFetchBlockClient host port action =
     action $ \point reply -> WS.runClient host port "/" $ \ws -> do
-        WS.sendJson ws (encodeFindIntersect [point])
-        WS.receiveJson ws (decodeFindIntersectResponse identity) >>= \case
+        WS.sendJson ws (encodeFindIntersectionRequest [point])
+        WS.receiveJson ws (decodeFindIntersectionResponse identity) >>= \case
             Left _notFound -> reply Nothing
             Right{} -> do
-                replicateM_ 2 (WS.sendJson ws encodeRequestNext)
+                replicateM_ 2 (WS.sendJson ws encodeNextBlockRequest)
                 -- NOTE: The first reply is always a 'Roll-Backward' to the requested point. Ignore.
-                void (WS.receiveJson ws decodeRequestNextResponse)
-                WS.receiveJson ws decodeRequestNextResponse >>= \case
+                void (WS.receiveJson ws decodeNextBlockResponse)
+                WS.receiveJson ws decodeNextBlockResponse >>= \case
                     RollBackward _tip _point -> do
                         reply Nothing
                     RollForward _tip block -> do

@@ -37,12 +37,12 @@ import Kupo.Data.ChainSync
     ( IntersectionNotFoundException (..)
     )
 import Kupo.Data.Ogmios
-    ( PartialBlock
-    , RequestNextResponse (..)
-    , decodeFindIntersectResponse
-    , decodeRequestNextResponse
-    , encodeFindIntersect
-    , encodeRequestNext
+    ( NextBlockResponse (..)
+    , PartialBlock
+    , decodeFindIntersectionResponse
+    , decodeNextBlockResponse
+    , encodeFindIntersectionRequest
+    , encodeNextBlockRequest
     )
 
 import qualified Network.WebSockets as WS
@@ -61,20 +61,20 @@ runChainSyncClient
     -> WS.Connection
     -> m IntersectionNotFoundException
 runChainSyncClient mailbox beforeMainLoop pts ws = do
-    WS.sendJson ws (encodeFindIntersect pts)
-    WS.receiveJson ws (decodeFindIntersectResponse (intersectionNotFound pts)) >>= \case
+    WS.sendJson ws (encodeFindIntersectionRequest pts)
+    WS.receiveJson ws (decodeFindIntersectionResponse (intersectionNotFound pts)) >>= \case
         Left notFound -> do
             return notFound
         Right{} -> do
             beforeMainLoop
-            replicateM_ 100 (WS.sendJson ws encodeRequestNext)
+            replicateM_ 100 (WS.sendJson ws encodeNextBlockRequest)
             forever $ do
-                WS.receiveJson ws decodeRequestNextResponse >>= \case
+                WS.receiveJson ws decodeNextBlockResponse >>= \case
                     RollBackward tip point -> do
                         atomically (putIntermittentMessage mailbox (tip, point))
                     RollForward tip block -> do
                         atomically (putHighFrequencyMessage mailbox (tip, block))
-                WS.sendJson ws encodeRequestNext
+                WS.sendJson ws encodeNextBlockRequest
 
 --
 -- Exceptions

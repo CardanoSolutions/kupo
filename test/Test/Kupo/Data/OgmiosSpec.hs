@@ -15,8 +15,8 @@ import Kupo.App.ChainSync.Ogmios
     ( intersectionNotFound
     )
 import Kupo.Data.Ogmios
-    ( decodeFindIntersectResponse
-    , decodeRequestNextResponse
+    ( decodeFindIntersectionResponse
+    , decodeNextBlockResponse
     )
 import System.Directory
     ( listDirectory
@@ -36,6 +36,7 @@ import Test.Hspec.QuickCheck
     )
 import Test.QuickCheck
     ( counterexample
+    , withMaxSuccess
     )
 import Test.QuickCheck.Monadic
     ( assert
@@ -50,21 +51,21 @@ import Data.Aeson.Types as Json
 spec :: Spec
 spec = parallel $ context "can decode relevant Ogmios' test vectors" $ do
     context "decodeFindIntersectResponse" $ do
-        let dir = "./test/vectors/ogmios/server/test/vectors/ChainSync/Response/FindIntersect"
+        let dir = "./test/vectors/ogmios/server/test/vectors/FindIntersectionResponse"
         vectors <- runIO (listDirectory dir)
-        propVector ((dir </>) <$> vectors) (decodeFindIntersectResponse $ intersectionNotFound [])
+        propVector ((dir </>) <$> vectors) (decodeFindIntersectionResponse $ intersectionNotFound [])
 
     context "decodeRequestNextResponse" $ do
-        let dir = "./test/vectors/ogmios/server/test/vectors/ChainSync/Response/RequestNext"
+        let dir = "./test/vectors/ogmios/server/test/vectors/NextBlockResponse"
         vectors <- runIO (listDirectory dir)
-        propVector ((dir </>) <$> vectors) decodeRequestNextResponse
+        propVector ((dir </>) <$> vectors) decodeNextBlockResponse
 
 propVector
     :: [FilePath]
     -> (Json.Value -> Json.Parser a)
     -> SpecWith ()
 propVector vectors decoder = do
-    prop "decode test vectors" $ monadicIO $ do
+    prop "decode test vectors" $ withMaxSuccess 1 $ monadicIO $ do
         forM_ [0 .. (length vectors) - 1] (\i -> shouldDecode (vectors !! i))
   where
     shouldDecode vector = do

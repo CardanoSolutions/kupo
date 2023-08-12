@@ -8,13 +8,13 @@ module Kupo.Data.Ogmios
     ( PartialBlock (..)
     , PartialTransaction (..)
 
-    , RequestNextResponse (..)
+    , NextBlockResponse (..)
 
-    , encodeFindIntersect
-    , encodeRequestNext
+    , encodeFindIntersectionRequest
+    , encodeNextBlockRequest
 
-    , decodeFindIntersectResponse
-    , decodeRequestNextResponse
+    , decodeFindIntersectionResponse
+    , decodeNextBlockResponse
     ) where
 
 import Kupo.Prelude
@@ -39,6 +39,9 @@ import Kupo.Data.Cardano
     , DatumHash
     , Input
     , KeyHash (..)
+    , Metadata
+    , MetadataHash
+    , Metadatum
     , NativeScript
     , Output
     , Point
@@ -52,9 +55,8 @@ import Kupo.Data.Cardano
     , binaryDataFromBytes
     , datumHashFromBytes
     , fromNativeScript
-    , hashScript
     , headerHashToJson
-    , metadataFromJson
+    , mkMetadata
     , mkOutput
     , mkOutputReference
     , pattern BlockPoint
@@ -89,39 +91,35 @@ import Ouroboros.Consensus.HardFork.Combinator
     ( OneEraHash (..)
     )
 
+import qualified Cardano.Ledger.Shelley.TxAuxData as Ledger
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Aeson.Types as Json
 import qualified Data.Map as Map
 import qualified Data.Sequence.Strict as StrictSeq
-import qualified Data.Text as Text
-import qualified Text.Read as T
+import qualified Data.Text as T
+import qualified Data.Text.Read as T
 
 -- RequestNextResponse
 
-data RequestNextResponse
+data NextBlockResponse
     = RollBackward !Tip !Point
     | RollForward  !Tip !PartialBlock
 
 
 -- Encoders
 
-beginWspRequest :: Json.Series
-beginWspRequest = mconcat
-    [ Json.pair "type" (Json.text "jsonwsp/request")
-    , Json.pair "version" (Json.text "1.0")
-    , Json.pair "servicename" (Json.text "ogmios")
-    ]
+encodeFindIntersectionRequest :: [Point] -> Json.Encoding
+encodeFindIntersectionRequest pts = Json.pairs $ mempty
+    <> Json.pair "jsonrpc" (Json.text "2.0")
+    <> Json.pair "method" (Json.text "findIntersection")
+    <> Json.pair "params" (Json.pairs $ Json.pair "points" (Json.list encodePoint pts))
 
-encodeFindIntersect :: [Point] -> Json.Encoding
-encodeFindIntersect pts = Json.pairs $ beginWspRequest
-    <> Json.pair "methodname" (Json.text "FindIntersect")
-    <> Json.pair "args" (Json.pairs $ Json.pair "points" (Json.list encodePoint pts))
-
-encodeRequestNext :: Json.Encoding
-encodeRequestNext = Json.pairs $ beginWspRequest
-    <> Json.pair "methodname" (Json.text "RequestNext")
+encodeNextBlockRequest :: Json.Encoding
+encodeNextBlockRequest = Json.pairs $ mempty
+    <> Json.pair "jsonrpc" (Json.text "2.0")
+    <> Json.pair "method" (Json.text "nextBlock")
 
 encodePoint :: Point -> Json.Encoding
 encodePoint = \case
@@ -130,118 +128,95 @@ encodePoint = \case
     BlockPoint slotNo headerHash ->
         Json.pairs $ mconcat
             [ Json.pair "slot" (slotNoToJson slotNo)
-            , Json.pair "hash" (headerHashToJson headerHash)
+            , Json.pair "id" (headerHashToJson headerHash)
             ]
 
 -- Decoders
 
-decodeFindIntersectResponse
+decodeFindIntersectionResponse
     :: (WithOrigin SlotNo -> e)
     -> Json.Value
     -> Json.Parser (Either e (Point, Tip))
-decodeFindIntersectResponse wrapException json =
-    decodeIntersectionFound json <|> decodeIntersectionNotFound json
-  where
-    decodeIntersectionFound = Json.withObject "FindIntersectResponse" $ \o -> do
-        result <- o .: "result" >>= (.: "IntersectionFound")
-        point <- result .: "point" >>= decodePointOrOrigin
-        tip <- result .: "tip" >>= decodeTipOrOrigin
-        return (Right (point, tip))
+decodeFindIntersectionResponse wrapException = do
+    Json.withObject "FindIntersectionResponse" $ \o -> do
+        o .:? "result" >>= \case
+            Just result -> do
+                intersection <- result .: "intersection" >>= decodePointOrOrigin
+                tip <- result .: "tip" >>= decodeTipOrOrigin
+                return (Right (intersection, tip))
+            _ -> do
+                e <- o .: "error" >>= (.:? "data")
+                tip <-  traverse (.: "tip") e .!= Json.String "origin" >>= decodeSlotNoOrOrigin
+                return (Left (wrapException tip))
 
-    decodeIntersectionNotFound = Json.withObject "FindIntersectResponse" $ \o -> do
-        tip <- o .: "result" >>= (.: "IntersectionNotFound") >>= (.: "tip") >>= decodeSlotNoOrOrigin
-        return (Left (wrapException tip))
-
-decodeRequestNextResponse
+decodeNextBlockResponse
     :: Json.Value
-    -> Json.Parser RequestNextResponse
-decodeRequestNextResponse json =
-    decodeRollForward json <|> decodeRollBackward json
+    -> Json.Parser NextBlockResponse
+decodeNextBlockResponse =
+    Json.withObject "NextBlockResponse" $ \o -> do
+        result <- o .: "result"
+        result .: "direction" >>= \case
+            ("forward" :: Text) -> decodeRollForward result
+            _ -> decodeRollBackward result
   where
-    decodeRollForward =  Json.withObject "RequestNextResponse" $ \o -> do
-        result <- o .: "result" >>= (.: "RollForward")
+    decodeRollForward result = do
         block  <- result .: "block"
         tip    <- result .: "tip" >>= decodeTipOrOrigin
-        RollForward tip <$> asum
-            [ decodeByronBlock block
-            , decodeShelleyBlock block
-            , decodeAllegraBlock block
-            , decodeMaryBlock block
-            , decodeAlonzoBlock block
-            , decodeBabbageBlock block
-            ]
+        RollForward tip <$> decodeBlock block
 
-    decodeRollBackward = Json.withObject "RequestNextResponse" $ \o -> do
-        result <- o .: "result" >>= (.: "RollBackward")
+    decodeRollBackward result = do
         point  <- result .: "point" >>= decodePointOrOrigin
         tip    <- result .: "tip"   >>= decodeTipOrOrigin
         return (RollBackward tip point)
 
-decodeByronBlock
+decodeBlock
     :: Json.Value
     -> Json.Parser PartialBlock
-decodeByronBlock = Json.withObject "Block[Byron]" $ \o -> do
-    block <- o .: "byron"
-    decodeStandardBlock block <|> decodeEpochBoundaryBlock block
-  where
-    decodeStandardBlock = Json.withObject "Block[Byron~Standard]" $ \o -> do
-        txs <- o .: "body" >>= (.: "txPayload")
-        slot <- o .: "header" >>= (.: "slot")
-        headerHash <- o .: "hash" >>= decodeOneEraHash
-        let point = BlockPoint (SlotNo slot) headerHash
-        PartialBlock point <$> traverse decodePartialTransaction txs
+decodeBlock = Json.withObject "Block" $ \o -> do
+    id <- o .: "id" >>= decodeOneEraHash
+    slot <- o .:? "slot" >>= \case
+        Just slot -> pure slot
+        Nothing -> o .: "height"
+    txs <- o .:? "transactions" .!= []
+    PartialBlock (BlockPoint (SlotNo slot) id) <$> traverse decodePartialTransaction txs
 
-    decodeEpochBoundaryBlock = Json.withObject "Block[Byron~Standard]" $ \o -> do
-        slot <- o .: "header" >>= (.: "blockHeight")
-        headerHash <- o .: "hash" >>= decodeOneEraHash
-        let point = BlockPoint (SlotNo slot) headerHash
-        pure (PartialBlock point [])
-
-decodeShelleyBlock
+decodePartialTransaction
     :: Json.Value
-    -> Json.Parser PartialBlock
-decodeShelleyBlock = Json.withObject "ShelleyBlock" $ \o -> do
-    shelley <- o .: "shelley"
-    txs <- shelley .: "body"
-    point <- decodeBlockPoint shelley
-    PartialBlock point <$> traverse decodePartialTransaction txs
+    -> Json.Parser PartialTransaction
+decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
+    id <- o .: "id" >>= decodeTransactionId
 
-decodeAllegraBlock
-    :: Json.Value
-    -> Json.Parser PartialBlock
-decodeAllegraBlock = Json.withObject "AllegraBlock" $ \o -> do
-    allegra <- o .: "allegra"
-    txs <- allegra .: "body"
-    point <- decodeBlockPoint allegra
-    PartialBlock point <$> traverse decodePartialTransaction txs
+    inputSource <- o .: "spends"
 
-decodeMaryBlock
-    :: Json.Value
-    -> Json.Parser PartialBlock
-decodeMaryBlock = Json.withObject "MaryBlock" $ \o -> do
-    mary <- o .: "mary"
-    txs <- mary .: "body"
-    point <- decodeBlockPoint mary
-    PartialBlock point <$> traverse decodePartialTransaction txs
+    inputs <- o .:? inputSource .!= [] >>= traverse decodeInput
 
-decodeAlonzoBlock
-    :: Json.Value
-    -> Json.Parser PartialBlock
-decodeAlonzoBlock = Json.withObject "AlonzoBlock" $ \o -> do
-    alonzo <- o .: "alonzo"
-    txs <- alonzo .: "body"
-    point <- decodeBlockPoint alonzo
-    PartialBlock point <$> traverse decodePartialTransaction txs
+    metadata <- o .:? "metadata" >>= \case
+        Nothing -> pure Nothing
+        Just m -> Just <$> (m .: "labels" >>= decodeMetadata)
 
-decodeBabbageBlock
-    :: Json.Value
-    -> Json.Parser PartialBlock
-decodeBabbageBlock = Json.withObject "babbageBlock" $ \o -> do
-    babbage <- o .: "babbage"
-    txs <- babbage .: "body"
-    point <- decodeBlockPoint babbage
-    PartialBlock point <$> traverse decodePartialTransaction txs
+    datums <- o .:? "datums" .!= Json.Object mempty >>= decodeDatums
 
+    scripts <- o .:? "scripts" .!= Json.Object mempty >>= decodeScripts
+
+    outputs <- case Key.toText inputSource of
+        "collaterals" -> do
+            outs <- o .:? "outputs" .!= []@Json.Value
+            colReturn <- o .:? "collateralReturn" >>= traverse decodeOutput
+            pure $ withReferences (fromIntegral $ length outs) id (maybeToList colReturn)
+        "inputs" -> do
+            outs <- o .:? "outputs" .!= [] >>= traverse decodeOutput
+            pure $ withReferences 0 id outs
+        (_ :: Text) -> do
+            fail "unrecognized input source"
+
+    pure PartialTransaction
+        { id
+        , inputs
+        , outputs
+        , datums
+        , scripts
+        , metadata
+        }
 
 decodeAddress
     :: Text
@@ -254,14 +229,6 @@ decodeAddress txt =
             empty
         Nothing ->
             empty
-
-decodeBlockPoint
-    :: Json.Object
-    -> Json.Parser Point
-decodeBlockPoint o = do
-    headerHash <- o .: "headerHash" >>= decodeOneEraHash
-    slot <- o .: "header" >>= (.: "slot")
-    pure (BlockPoint (SlotNo slot) headerHash)
 
 decodeHash
     :: HashAlgorithm alg
@@ -295,18 +262,6 @@ decodeOutput = Json.withObject "Output" $ \o -> do
                     pure NoDatum
         <*> (o .:? "script" >>= traverse decodeScript)
 
-decodeScripts'
-    :: Map ScriptHash Script
-    -> [Json.Value]
-    -> Json.Parser (Map ScriptHash Script)
-decodeScripts' m0 =
-    foldr
-        (\json accum -> do
-            script <- decodeScript json
-            Map.insert (hashScript script) script <$> accum
-        )
-        (pure m0)
-
 decodeScripts
     :: Json.Value
     -> Json.Parser (Map ScriptHash Script)
@@ -330,116 +285,50 @@ decodeScriptHash k =
 decodeScript
     :: Json.Value
     -> Json.Parser Script
-decodeScript = Json.withObject "Script" $ \o ->
-    decodeNative o <|> decodePlutusV1 o <|> decodePlutusV2 o
+decodeScript = Json.withObject "Script" $ \o -> do
+    o .: "language" >>= \case
+        "native" -> decodeNative =<< o .: "json"
+        "plutus:v1" -> decodePlutus "01" =<< o .: "cbor"
+        "plutus:v2" -> decodePlutus "02" =<< o .: "cbor"
+        "plutus:v3" -> decodePlutus "03" =<< o .: "cbor"
+        (_ :: Text) -> fail "unrecognized script language"
   where
-    decodeNative o = do
-        script <- o .: "native" >>= decodeNativeScript
-        pure (fromNativeScript script)
+    decodeNative =
+        fmap fromNativeScript . decodeNativeScript
 
-    decodePlutusV1 o = do
-        script <- o .: "plutus:v1"
-        case scriptFromBytes <$> decodeBase16 (encodeUtf8 @Text ("01" <> script)) of
+    decodePlutus tag bytes = do
+        case scriptFromBytes <$> decodeBase16 (encodeUtf8 @Text (tag <> bytes)) of
             Right (Just s) ->
-                    pure s
+                pure s
             Right Nothing ->
                 fail "decodeScript: decodePlutusV1: malformed script"
             Left e ->
                 fail $ "decodeScript: decodePlutusV1: not base16: " <> show e
 
-    decodePlutusV2 o = do
-        script <- o .: "plutus:v2"
-        case scriptFromBytes <$> decodeBase16 (encodeUtf8 @Text ("02" <> script)) of
-            Right (Just s) ->
-                    pure s
-            Right Nothing ->
-                fail "decodeScript: decodePlutusV2: malformed script"
-            Left e ->
-                fail $ "decodeScript: decodePlutusV2: not base16: " <> show e
-
 decodeNativeScript
-    :: Json.Value
+    :: Json.Object
     -> Json.Parser NativeScript
-decodeNativeScript json =
-    (decodeRequireSignature json)
-    <|>
-    (Json.withObject "NativeScript::AllOf" decodeAllOf json)
-    <|>
-    (Json.withObject "NativeScript::AnyOf" decodeAnyOf json)
-    <|>
-    (Json.withObject "NativeScript::MOf" decodeMOf json)
-    <|>
-    (Json.withObject "NativeScript::TimeExpire" decodeTimeExpire json)
-    <|>
-    (Json.withObject "NativeScript::TimeStart" decodeTimeStart json)
-  where
-    decodeRequireSignature t = do
-        RequireSignature
-            <$> fmap KeyHash (decodeHash t)
-    decodeAllOf o = do
-        xs <- StrictSeq.fromList <$> (o .: "all")
-        RequireAllOf <$> traverse decodeNativeScript xs
-    decodeAnyOf o = do
-        xs <- StrictSeq.fromList <$> (o .: "any")
-        RequireAnyOf <$> traverse decodeNativeScript xs
-    decodeMOf o =
-        case KeyMap.toList o of
-            [(k, v)] -> do
-                case T.readMaybe (Key.toString k) of
-                    Just n -> do
-                        xs <- StrictSeq.fromList <$> Json.parseJSON v
-                        RequireMOf n <$> traverse decodeNativeScript xs
-                    Nothing ->
-                        fail "cannot decode MOfN constructor, key isn't a natural."
-            _malformedKeyValuePair ->
-                fail "cannot decode MOfN, not a list."
-    decodeTimeExpire o = do
-        RequireTimeExpire . SlotNo <$> (o .: "expiresAt")
-    decodeTimeStart o = do
-        RequireTimeStart . SlotNo <$> (o .: "startsAt")
-
-decodePartialTransaction
-    :: Json.Value
-    -> Json.Parser PartialTransaction
-decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
-    id <- o .: "id" >>= decodeTransactionId
-    inputSource <- o .:? "inputSource"
-    -- NOTE: On Byron transactions, witnesses are an array!
-    witness <- o .: "witness" <|> pure KeyMap.empty
-    auxiliaryData <- o .:? "metadata" .!= KeyMap.empty >>= (\o' -> o' .:? "body" .!= KeyMap.empty)
-    datums <- witness .:? "datums" .!= Json.Object mempty >>= decodeDatums
-    scriptsInWitness <- witness .:? "scripts" .!= Json.Object mempty >>= decodeScripts
-    scriptsInAuxiliaryData <- auxiliaryData .:? "scripts"
-    scripts <- case scriptsInAuxiliaryData of
-        Just xs -> decodeScripts' scriptsInWitness xs
-        Nothing -> pure scriptsInWitness
-    metadata <- auxiliaryData .:? "blob" >>= \case
-        Nothing -> pure Nothing
-        Just v  -> Just <$> metadataFromJson v
-    case inputSource of
-        Just ("collaterals" :: Text) -> do
-            inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "collaterals"))
-            outs :: [Json.Value] <- (o .: "body" >>= (.: "outputs"))
-            colReturn <- traverse decodeOutput =<< (o .: "body" >>= (.:? "collateralReturn"))
-            pure PartialTransaction
-                { id
-                , inputs
-                , outputs = withReferences (fromIntegral $ length outs) id (maybeToList colReturn)
-                , datums
-                , scripts
-                , metadata
-                }
-        _inputs -> do
-            inputs <- traverse decodeInput =<< (o .: "body" >>= (.: "inputs"))
-            outs <- traverse decodeOutput =<< (o .: "body" >>= (.: "outputs"))
-            pure PartialTransaction
-                { id
-                , inputs
-                , outputs = withReferences 0 id outs
-                , datums
-                , scripts
-                , metadata
-                }
+decodeNativeScript o = do
+    o .: "clause" >>= \case
+        "signature" -> do
+            sig <- o .: "from"
+            RequireSignature <$> fmap KeyHash (decodeHash sig)
+        "all" -> do
+            xs <- StrictSeq.fromList <$> (o .: "from")
+            RequireAllOf <$> traverse decodeNativeScript xs
+        "any" -> do
+            xs <- StrictSeq.fromList <$> (o .: "from")
+            RequireAnyOf <$> traverse decodeNativeScript xs
+        "some" -> do
+            xs <- StrictSeq.fromList <$> (o .: "from")
+            n <- o .: "atLeast"
+            RequireMOf n <$> traverse decodeNativeScript xs
+        "before" -> do
+            RequireTimeExpire . SlotNo <$> (o .: "slot")
+        "after" -> do
+            RequireTimeStart . SlotNo <$> (o .: "slot")
+        (_ :: Text) ->
+            fail "unrecognized native script clause"
 
 decodeDatums
     :: Json.Value
@@ -482,7 +371,7 @@ decodeInput
     -> Json.Parser Input
 decodeInput = Json.withObject "Input" $ \o ->
     mkOutputReference
-        <$> (decodeTransactionId =<< (o .: "txId"))
+        <$> (o .: "transaction" >>= (.: "id") >>= decodeTransactionId)
         <*> (o .: "index")
 
 decodePointOrOrigin
@@ -496,7 +385,7 @@ decodePointOrOrigin json =
         _notOrigin -> empty
     decodePoint = Json.withObject "PointOrOrigin" $ \o -> do
         slot <- o .: "slot"
-        hash <- o .: "hash" >>= decodeOneEraHash
+        hash <- o .: "id" >>= decodeOneEraHash
         return $ BlockPoint (SlotNo slot) hash
 
 decodeSlotNoOrOrigin
@@ -522,9 +411,9 @@ decodeTipOrOrigin json =
         _notOrigin-> empty
     decodeTip = Json.withObject "TipOrOrigin" $ \o -> do
         slot <- o .: "slot"
-        hash <- o .: "hash" >>= decodeOneEraHash
-        blockNo <- o .: "blockNo"
-        pure $ Tip (SlotNo slot) hash (BlockNo blockNo)
+        hash <- o .: "id" >>= decodeOneEraHash
+        height <- o .: "height"
+        pure $ Tip (SlotNo slot) hash (BlockNo height)
 
 decodeTransactionId
     :: Json.Value
@@ -536,20 +425,73 @@ decodeValue
     :: Json.Value
     -> Json.Parser Value
 decodeValue = Json.withObject "Value" $ \o -> do
-    coins <- o .: "coins"
-    assets <- o .:? "assets" .!= mempty >>= traverse decodeAsset . Map.toList
+    coins <- o .: "ada" >>= (.: "lovelace")
+    assets <- KeyMap.foldrWithKey
+        (\k v accum ->
+            if k == "ada" then accum else do
+                policyId <- decodeBase16' (Key.toText k)
+                assets <- decodeAssets policyId v
+                xs <- accum
+                pure (assets ++ xs)
+        )
+        (pure mempty)
+        o
     pure (unsafeValueFromList coins assets)
   where
-    decodeBase16' = decodeBase16 . encodeUtf8
+    decodeBase16' = either (fail . toString) pure . decodeBase16 . encodeUtf8
 
-    decodeAsset
-        :: (Text, Integer)
-        -> Json.Parser (ByteString, ByteString, Integer)
-    decodeAsset (assetId, quantity) =
-        case Text.splitOn "." assetId of
-            [ decodeBase16' -> Right policyId, decodeBase16' -> Right assetName ] -> do
-                pure (policyId, assetName, quantity)
-            [ decodeBase16' -> Right policyId ] -> do
-                pure (policyId, mempty, quantity)
-            _malformedAssetId ->
-                empty
+    decodeAssets
+        :: ByteString
+        -> Json.Value
+        -> Json.Parser [(ByteString, ByteString, Integer)]
+    decodeAssets policyId =
+        Json.withObject "Assets" $ KeyMap.foldrWithKey
+            (\k v accum -> do
+                assetId <- decodeBase16' (Key.toText k)
+                quantity <- parseJSON v
+                xs <- accum
+                pure ((policyId, assetId, quantity) : xs)
+            )
+            (pure mempty)
+
+decodeMetadata :: Json.Value -> Json.Parser (MetadataHash, Metadata)
+decodeMetadata = fmap mkMetadata . Json.withObject "Metadata"
+    (KeyMap.foldrWithKey
+        (\k v accum -> Map.insert
+            <$> metadatumLabelFromJson k
+            <*> metadatumFromJson v
+            <*> accum
+        )
+        (pure Map.empty)
+    )
+  where
+    metadatumLabelFromJson :: Json.Key -> Json.Parser Word64
+    metadatumLabelFromJson key = do
+        (lbl, remLbl) <- either fail pure (T.decimal $ Key.toText key)
+        guard (T.null remLbl)
+        pure lbl
+
+    metadatumFromJson :: Json.Value -> Json.Parser Metadatum
+    metadatumFromJson = Json.withObject "Metadatum" $ \o -> do
+        o .:? "cbor" >>= \case
+            Just cbor -> do
+                bytes <- either (fail . show) pure $ decodeBase16 (encodeUtf8 @Text cbor)
+                either (fail . show) pure $ decodeCbor @ShelleyEra "Metadatum" decCBOR (toLazy bytes)
+            Nothing -> do
+                valueToMetadatum <$> o .: "json"
+
+    valueToMetadatum :: Json.Value -> Metadatum
+    valueToMetadatum = \case
+        Json.Object m ->
+            Ledger.Map $ KeyMap.foldrWithKey
+                (\k v ms -> (Ledger.S (Key.toText k), valueToMetadatum v) : ms)
+                []
+                m
+        Json.Array xs ->
+            Ledger.List $ foldr (\v ms -> valueToMetadatum v : ms) [] xs
+        Json.Number i ->
+            Ledger.I (round i)
+        Json.String s ->
+            Ledger.S (toText s)
+        _ -> -- Bool / Null
+            error "impossible: unexpected bool or null JSON in metadatum?"
