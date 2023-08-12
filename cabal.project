@@ -23,6 +23,7 @@ test-show-details: direct
 
 package kupo
   tests: true
+  flags: +production
 
 package websockets-json
   tests: false

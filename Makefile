@@ -1,29 +1,25 @@
 OUT := dist
 
-OS := $(shell uname -s)
-ARCH := $(shell uname -m)
+OS := $(shell uname -s | sed 's/Linux/linux/' | sed 's/Darwin/osx/')
+ARCH := $(shell uname -m | sed 's/X86/x86_64/' | sed 's/arm64/aarch64/')
+GHC := 8.10.7
+NIX_SHELL := github:input-output-hk/devx\#ghc8107-static-minimal-iog
+
 VERSION := $(shell cat package.yaml| grep "version:" | sed "s/[^0-9]*\([0-9]\)\(.[0-9].[0-9]\)*\(-.*\)*/\1\2\3/")
+TAG := $(shell echo $(VERSION) | sed "s/^0$$/nightly/")
+
 STYLISH_HASKELL_VERSION := 0.13.0.0
 
 NETWORK := preview
 CONFIG := $(shell pwd)/config/network/$(NETWORK)
 WORKDIR := ${HOME}/.cache/kupo/${NETWORK}
 
-LD_LIBRARY_PATH := $(shell echo $$LD_LIBRARY_PATH | sed "s/:/ /g")
-LIBSODIUM := $(shell find $(LD_LIBRARY_PATH) -type file -name "*libsodium.*.dylib" | uniq)
-LIBSECP256K1 := $(shell find $(LD_LIBRARY_PATH) -type file -name "*libsecp256k1.*.dylib" | uniq)
-
 all: $(OUT)/bin/kupo \
-		 $(OUT)/lib/$(shell basename $(LIBSODIUM)) \
-		 $(OUT)/lib/$(shell basename $(LIBSECP256K1)) \
 		 $(OUT)/share/zsh/site-functions/_kupo \
 		 $(OUT)/share/bash-completion/completions/kupo \
 		 $(OUT)/share/kupo/api.yaml \
 		 $(OUT)/share/kupo/LICENSE \
 		 $(OUT)/share/man/man1/kupo.1
-ifeq ($(OS),Darwin)
-	@otool -L $(OUT)/bin/kupo
-endif
 
 kupo-$(VERSION)-$(ARCH)-$(OS).tar.gz: all
 	tar -czf $@ dist/*
@@ -48,61 +44,24 @@ $(OUT)/share/kupo/LICENSE:
 	@mkdir -p $(@D)
 	@cp LICENSE $@
 
-$(OUT)/bin/kupo:
+dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo/kupo:
+	@nix develop $(NIX_SHELL) --no-write-lock-file --refresh --command bash -c "cabal build --enable-executable-static --enable-library-stripping --enable-executable-stripping kupo:exe:kupo"
+
+$(OUT)/bin/kupo: dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo/kupo
 	@mkdir -p $(@D)
-ifeq ($(OS),Darwin)
-	cabal install --builddir=.dist-production kupo:exe:kupo --flags +production --installdir=$(@D) --install-method=copy
-	@echo "Build successful."
-	@echo ""
-	@echo "    ╔═══ NOTE ═════════════════════════════════════════════════════════════╗"
-	@echo "    ║                                                                      ║"
-	@echo "    ║  The executable is dynamically linked and has limited portability,   ║"
-	@echo "    ║                                                                      ║"
-	@echo "    ║  Dynamic system libraries should work across same versions of MacOS. ║"
-	@echo "    ║  However, other dependencies such as secpk256k1 or libsodium assume  ║"
-	@echo "    ║  to be provided as standalone .dylib in a 'lib' directory next your  ║"
-	@echo "    ║  installation folder.                                                ║"
-	@echo "    ║                                                                      ║"
-	@echo "    ║  In brief: do not change the folder structure of the archive.        ║"
-	@echo "    ╚══════════════════════════════════════════════════════════════════════╝"
-	@echo ""
-else
-	nix-build -A kupo.components.exes.kupo
-	@cp result/bin/* $(@D)
-	@rm -r result
-	@echo "Build successful."
-	@echo ""
-	@echo "    ╔═══ NOTE ══════════════════════════════════════════════════════════╗"
-	@echo "    ║                                                                   ║"
-	@echo "    ║  The executable is statically linked and portable to amd64 arch.  ║"
-	@echo "    ║                                                                   ║"
-	@echo "    ╚═══════════════════════════════════════════════════════════════════╝"
-	@echo ""
-endif
+	@echo "$^ → $(@D)/kupo"
+	@cp $^ $(@D)
 
 $(OUT)/lib:
 	@mkdir -p $@
 
-$(OUT)/lib/$(shell basename $(LIBSODIUM)): $(OUT)/lib $(OUT)/bin/kupo
-ifeq ($(OS),Darwin)
-	@cp $(LIBSODIUM) $@
-	@install_name_tool -change $(LIBSODIUM) ../lib/$(shell basename $(LIBSODIUM)) $(OUT)/bin/kupo
-else
-	@echo "libsodium is statically linked on Linux. Nothing to do."
-endif
-
-$(OUT)/lib/$(shell basename $(LIBSECP256K1)): $(OUT)/lib $(OUT)/bin/kupo
-ifeq ($(OS),Darwin)
-	@cp $(LIBSECP256K1) $@
-	@install_name_tool -change $(LIBSECP256K1) ../lib/$(shell basename $(LIBSECP256K1)) $(OUT)/bin/kupo
-else
-	@echo "libsecp256k1 is statically linked on Linux. Nothing to do."
-endif
-
-.PHONY: archive lint man doc check clean clean-all help
+.PHONY: archive configure lint man doc check clean clean-all help
 .SILENT: doc clean clean-all
 
-archive: kupo-$(VERSION)-$(ARCH)-$(OS).tar.gz # Package the application as a tarball
+configure: # Freeze projet dependencies and update package index
+	nix develop $(NIX_SHELL) --no-write-lock-file --refresh --command bash -c "cabal update && cabal freeze"
+
+archive: kupo-$(TAG)-$(ARCH)-$(OS).tar.gz # Package the application as a tarball
 
 kupo.sqlite3-$(NETWORK).tar.gz:
 	sqlite3 $(WORKDIR)/kupo.sqlite3 "VACUUM;"
