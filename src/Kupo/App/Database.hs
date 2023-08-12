@@ -65,17 +65,6 @@ import Control.Exception
     , onException
     , throwIO
     )
-import Control.Monad.Class.MonadSTM
-    ( MonadSTM (..)
-    )
-import Control.Monad.Class.MonadThrow
-    ( bracket
-    , bracket_
-    , catch
-    )
-import Control.Monad.Class.MonadTimer
-    ( threadDelay
-    )
 import Control.Tracer
     ( Tracer
     , traceWith
@@ -119,9 +108,22 @@ import GHC.TypeLits
 import Kupo.Control.MonadAsync
     ( concurrently_
     )
+import Kupo.Control.MonadCatch
+    ( catch
+    )
+import Kupo.Control.MonadDelay
+    ( threadDelay
+    )
 import Kupo.Control.MonadLog
     ( TraceProgress (..)
     , nullTracer
+    )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..)
+    )
+import Kupo.Control.MonadThrow
+    ( bracket
+    , bracket_
     )
 import Kupo.Control.MonadTime
     ( DiffTime

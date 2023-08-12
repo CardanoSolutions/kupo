@@ -2,12 +2,12 @@
 
 module Kupo.Data.Cardano.NativeScript
     ( NativeScript
-    , pattern Ledger.RequireSignature
-    , pattern Ledger.RequireAllOf
-    , pattern Ledger.RequireAnyOf
-    , pattern Ledger.RequireMOf
-    , pattern Ledger.RequireTimeExpire
-    , pattern Ledger.RequireTimeStart
+    , pattern Ledger.Allegra.RequireSignature
+    , pattern Ledger.Allegra.RequireAllOf
+    , pattern Ledger.Allegra.RequireAnyOf
+    , pattern Ledger.Allegra.RequireMOf
+    , pattern Ledger.Allegra.RequireTimeExpire
+    , pattern Ledger.Allegra.RequireTimeStart
     , KeyHash(..)
     ) where
 
@@ -17,6 +17,6 @@ import Cardano.Ledger.Keys
     ( KeyHash (..)
     )
 
-import qualified Cardano.Ledger.ShelleyMA.Timelocks as Ledger
+import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
 
-type NativeScript = Ledger.Timelock StandardCrypto
+type NativeScript = Ledger.Allegra.Timelock (BabbageEra StandardCrypto)

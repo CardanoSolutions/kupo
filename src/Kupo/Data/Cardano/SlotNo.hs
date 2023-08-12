@@ -40,8 +40,3 @@ distanceToSlot :: SlotNo -> SlotNo -> Word64
 distanceToSlot (SlotNo a) (SlotNo b)
     | a > b = a - b
     | otherwise = b - a
-
-instance ToJSON (WithOrigin SlotNo) where
-    toEncoding = \case
-        Origin -> toEncoding ("origin" :: Text)
-        At sl -> toEncoding sl

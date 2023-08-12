@@ -18,6 +18,15 @@ module Kupo.Prelude
     , encodeObject
     , encodeMap
 
+      -- * CBOR
+    , serializeCbor
+    , decodeCbor
+    , unsafeDecodeCbor
+    , decodeCborAnn
+    , unsafeDecodeCborAnn
+    , Binary.decCBOR
+    , Binary.encCBOR
+
       -- * Lenses
     , Lens'
     , view
@@ -42,15 +51,11 @@ module Kupo.Prelude
     , encodeBase64
     , decodeBase64
 
-      -- * Serialization
-    , serialize'
-    , decodeFull'
-    , unsafeDeserialize'
-
       -- * Crypto
     , Blake2b_224
     , Blake2b_256
     , Crypto
+    , Era
     , HASH
     , Hash (..)
     , HashAlgorithm (..)
@@ -61,11 +66,13 @@ module Kupo.Prelude
     , unsafeHashFromBytes
 
       -- * Ledger Eras
+    , ByronEra
+    , ShelleyEra
     , AllegraEra
+    , MaryEra
     , AlonzoEra
     , BabbageEra
-    , MaryEra
-    , ShelleyEra
+    , ConwayEra
 
       -- * System
     , ConnectionStatusToggle (..)
@@ -76,11 +83,6 @@ module Kupo.Prelude
     , hClearLine
     ) where
 
-import Cardano.Binary
-    ( decodeFull'
-    , serialize'
-    , unsafeDeserialize'
-    )
 import Cardano.Crypto.Hash
     ( Blake2b_224
     , Blake2b_256
@@ -97,6 +99,14 @@ import Cardano.Ledger.Alonzo
     )
 import Cardano.Ledger.Babbage
     ( BabbageEra
+    )
+import Cardano.Ledger.Conway
+    ( ConwayEra
+    )
+import Cardano.Ledger.Core
+    ( ByronEra
+    , Era
+    , eraProtVerLow
     )
 import Cardano.Ledger.Crypto
     ( Crypto (HASH)
@@ -133,6 +143,10 @@ import Data.ByteString.Base64
     ( decodeBase64
     , encodeBase64
     )
+import Data.ByteString.Builder.Extra
+    ( safeStrategy
+    , toLazyByteStringWith
+    )
 import Data.Generics.Internal.VL.Lens
     ( view
     , (^.)
@@ -149,7 +163,6 @@ import GHC.Generics
 import Relude hiding
     ( MVar
     , Nat
-    , Option
     , STM
     , TMVar
     , TVar
@@ -192,9 +205,6 @@ import Relude.Extra
     , prev
     , safeToEnum
     )
-import System.Environment
-    ( lookupEnv
-    )
 import System.IO
     ( hIsTerminalDevice
     , hPutStr
@@ -207,6 +217,7 @@ import System.Posix.Signals
     , softwareTermination
     )
 
+import qualified Cardano.Ledger.Binary as Binary
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Key as Json
@@ -250,6 +261,62 @@ encodeObject =
 encodeBytes :: ByteString -> Json.Encoding
 encodeBytes =
     Json.text . encodeBase16
+
+--
+-- CBOR
+--
+
+serializeCbor
+    :: forall (era :: Type -> Type) a. (Era (era StandardCrypto))
+    => (a -> Binary.Encoding)
+    -> a
+    -> ByteString
+serializeCbor encode =
+    toStrict . toLazyByteStringWith strategy mempty . Binary.toBuilder version . encode
+  where
+    -- 1024 is the size of the first buffer, 4096 is the size of subsequent
+    -- buffers. Chosen because they seem to give good performance. They are not
+    -- sacred.
+    strategy = safeStrategy 1024 4096
+    version = eraProtVerLow @(era StandardCrypto)
+
+decodeCborAnn
+    :: forall (era :: Type -> Type) a. (Era (era StandardCrypto))
+    => Text
+    -> (forall s. Binary.Decoder s (Binary.Annotator a))
+    -> LByteString
+    -> Either Binary.DecoderError a
+decodeCborAnn =
+    Binary.decodeFullAnnotator (eraProtVerLow @(era StandardCrypto))
+
+unsafeDecodeCborAnn
+    :: forall (era :: Type -> Type) a. (Era (era StandardCrypto), HasCallStack)
+    => Text
+    -> (forall s. Binary.Decoder s (Binary.Annotator a))
+    -> LByteString
+    -> a
+unsafeDecodeCborAnn lbl decoder =
+    either (error . show) identity .
+        Binary.decodeFullAnnotator (eraProtVerLow @(era StandardCrypto)) lbl decoder
+
+decodeCbor
+    :: forall (era :: Type -> Type) a. (Era (era StandardCrypto))
+    => Text
+    -> (forall s. Binary.Decoder s a)
+    -> LByteString
+    -> Either Binary.DecoderError a
+decodeCbor =
+    Binary.decodeFullDecoder (eraProtVerLow @(era StandardCrypto))
+
+unsafeDecodeCbor
+    :: forall (era :: Type -> Type) a. (Era (era StandardCrypto), HasCallStack)
+    => Text
+    -> (forall s. Binary.Decoder s a)
+    -> LByteString
+    -> a
+unsafeDecodeCbor lbl decoder =
+    either (error . show) identity .
+        Binary.decodeFullDecoder (eraProtVerLow @(era StandardCrypto)) lbl decoder
 
 --
 -- Extras

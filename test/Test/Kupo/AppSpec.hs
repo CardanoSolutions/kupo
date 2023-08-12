@@ -48,7 +48,7 @@ import Kupo.Control.MonadAsync
     ( MonadAsync (..)
     )
 import Kupo.Control.MonadDelay
-    ( MonadDelay (..)
+    ( threadDelay
     )
 import Kupo.Control.MonadLog
     ( configureTracers
@@ -132,9 +132,6 @@ import Kupo.Data.Pattern
 import Network.HTTP.Client
     ( defaultManagerSettings
     , newManager
-    )
-import System.Environment
-    ( lookupEnv
     )
 import Test.Hspec
     ( Spec

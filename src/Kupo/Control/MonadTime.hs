@@ -4,12 +4,10 @@
 
 module Kupo.Control.MonadTime
     ( MonadTime (..)
-    , Time (..)
     , DiffTime
-    , addTime
-    , diffTime
     , secondsToDiffTime
     , millisecondsToDiffTime
+    , diffTimeToMicroseconds
     , timeout
     ) where
 
@@ -17,17 +15,19 @@ import Kupo.Prelude
 
 import Control.Monad.Class.MonadTime
     ( MonadTime (..)
-    , Time (..)
-    , addTime
-    , diffTime
     )
 import Control.Monad.Class.MonadTimer
     ( timeout
     )
 import Data.Time.Clock
     ( DiffTime
+    , diffTimeToPicoseconds
+    , picosecondsToDiffTime
     , secondsToDiffTime
     )
 
 millisecondsToDiffTime :: Integer -> DiffTime
-millisecondsToDiffTime = toEnum . fromInteger . (* 1_000_000_000)
+millisecondsToDiffTime = picosecondsToDiffTime . (* 1_000_000_000)
+
+diffTimeToMicroseconds :: DiffTime -> Integer
+diffTimeToMicroseconds = (`div` 1_000_000) . diffTimeToPicoseconds

@@ -47,16 +47,19 @@ library:
     - bech32-th
     - binary
     - bytestring
-    - cardano-binary
     - cardano-crypto-class
     - cardano-crypto-wrapper
+    - cardano-ledger-allegra
     - cardano-ledger-alonzo
     - cardano-ledger-babbage
-    - cardano-ledger-shelley
-    - cardano-ledger-shelley-ma
+    - cardano-ledger-binary
     - cardano-ledger-byron
+    - cardano-ledger-conway
     - cardano-ledger-core
+    - cardano-ledger-mary
+    - cardano-ledger-shelley
     - cardano-slotting
+    - cardano-strict-containers
     - cborg
     - containers
     - contra-tracer
@@ -74,19 +77,19 @@ library:
     - network-mux
     - optparse-applicative
     - ouroboros-consensus
-    - ouroboros-consensus-byron
     - ouroboros-consensus-cardano
+    - ouroboros-consensus-diffusion
     - ouroboros-consensus-protocol
-    - ouroboros-consensus-shelley
     - ouroboros-network
+    - ouroboros-network-api
     - ouroboros-network-framework
+    - ouroboros-network-protocols
     - prometheus
     - relude
     - resource-pool
     - safe
     - safe-exceptions
     - scientific
-    - strict-containers
     - sqlite-simple
     - template-haskell
     - text
@@ -128,6 +131,7 @@ tests:
     - QuickCheck
     - quickcheck-state-machine
     - relude
+    - si-timers
     - sqlite-simple
     - stm
     - temporary

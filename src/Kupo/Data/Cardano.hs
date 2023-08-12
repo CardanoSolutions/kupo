@@ -52,9 +52,6 @@ import Data.Sequence.Strict
     , pattern (:<|)
     , pattern Empty
     )
-import GHC.Records
-    ( HasField (..)
-    )
 import Ouroboros.Consensus.Byron.Ledger.Mempool
     ( GenTx (..)
     )
@@ -99,19 +96,14 @@ import Kupo.Data.Cardano.TransactionIndex
 import Kupo.Data.Cardano.Value
 
 import qualified Cardano.Chain.UTxO as Ledger.Byron
-import qualified Cardano.Ledger.Alonzo.Data as Ledger
-import qualified Cardano.Ledger.Alonzo.Tx as Ledger.Alonzo
-import qualified Cardano.Ledger.Alonzo.TxBody as Ledger.Alonzo
-import qualified Cardano.Ledger.Alonzo.TxSeq as Ledger.Alonzo
-import qualified Cardano.Ledger.Alonzo.TxWitness as Ledger
-import qualified Cardano.Ledger.Babbage.TxBody as Ledger.Babbage
+import qualified Cardano.Ledger.Allegra.TxAuxData as Ledger
+import qualified Cardano.Ledger.Alonzo.Core as Ledger
+import qualified Cardano.Ledger.Alonzo.Tx as Ledger
+import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger
+import qualified Cardano.Ledger.Alonzo.TxWits as Ledger
+import qualified Cardano.Ledger.Babbage.Core as Ledger
 import qualified Cardano.Ledger.Block as Ledger
-import qualified Cardano.Ledger.Shelley.BlockChain as Ledger.Shelley
-import qualified Cardano.Ledger.Shelley.Metadata as Ledger
-import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
-import qualified Cardano.Ledger.ShelleyMA.AuxiliaryData as Ledger.MaryAllegra
-import qualified Cardano.Ledger.ShelleyMA.TxBody as Ledger.MaryAllegra
-import qualified Cardano.Ledger.TxIn as Ledger
+import qualified Cardano.Ledger.Shelley.TxAuxData as Ledger
 import qualified Data.Set as Set
 
 -- IsBlock
@@ -177,15 +169,20 @@ instance IsBlock Block where
              in
                 foldrWithIndex ignoreProtocolTxs result (extractTxs blk)
         BlockShelley (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionShelley) result (Ledger.Shelley.txSeqTxns' txs)
+            foldrWithIndex (\ix -> fn ix . TransactionShelley) result (Ledger.fromTxSeq txs)
         BlockAllegra (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionAllegra) result (Ledger.Shelley.txSeqTxns' txs)
+            foldrWithIndex (\ix -> fn ix . TransactionAllegra) result (Ledger.fromTxSeq txs)
         BlockMary (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionMary) result (Ledger.Shelley.txSeqTxns' txs)
+            foldrWithIndex (\ix -> fn ix . TransactionMary) result (Ledger.fromTxSeq txs)
         BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionAlonzo) result (Ledger.Alonzo.txSeqTxns txs)
+            foldrWithIndex (\ix -> fn ix . TransactionAlonzo) result (Ledger.fromTxSeq txs)
         BlockBabbage (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionBabbage) result (Ledger.Alonzo.txSeqTxns txs)
+            foldrWithIndex (\ix -> fn ix . TransactionBabbage) result (Ledger.fromTxSeq txs)
+        BlockConway{} ->
+            -- FIXME: Finalize once Conway is stable.
+            error "Ho no! Encountered a block from the Conway era. This era is not \
+                  \supported by this version. Upgrade kupo to the latest version and \
+                  \restart the process!"
 
     spentInputs
         :: Transaction
@@ -194,23 +191,23 @@ instance IsBlock Block where
         TransactionByron tx _ ->
             foldr (Set.insert . transformByron) Set.empty (Ledger.Byron.txInputs tx)
         TransactionShelley tx ->
-            getField @"inputs" (getField @"body" tx)
+            tx ^. Ledger.bodyTxL . Ledger.inputsTxBodyL
         TransactionAllegra tx ->
-            getField @"inputs" (getField @"body" tx)
+            tx ^. Ledger.bodyTxL . Ledger.inputsTxBodyL
         TransactionMary tx ->
-            getField @"inputs" (getField @"body" tx)
+            tx ^. Ledger.bodyTxL . Ledger.inputsTxBodyL
         TransactionAlonzo tx ->
-            case Ledger.Alonzo.isValid tx of
-                Ledger.Alonzo.IsValid True ->
-                    getField @"inputs" (getField @"body" tx)
-                Ledger.Alonzo.IsValid False ->
-                    getField @"collateral" (getField @"body" tx)
+            case tx ^. Ledger.isValidTxL of
+                Ledger.IsValid True ->
+                    tx ^. Ledger.bodyTxL . Ledger.inputsTxBodyL
+                Ledger.IsValid False ->
+                    tx ^. Ledger.bodyTxL . Ledger.collateralInputsTxBodyL
         TransactionBabbage tx ->
-            case Ledger.Alonzo.isValid tx of
-                Ledger.Alonzo.IsValid True ->
-                    getField @"inputs" (getField @"body" tx)
-                Ledger.Alonzo.IsValid False ->
-                    getField @"collateral" (getField @"body" tx)
+            case tx ^. Ledger.isValidTxL of
+                Ledger.IsValid True ->
+                    tx ^. Ledger.bodyTxL . Ledger.inputsTxBodyL
+                Ledger.IsValid False ->
+                    tx ^. Ledger.bodyTxL . Ledger.collateralInputsTxBodyL
       where
         transformByron (Ledger.Byron.TxInUtxo txId ix) =
             mkOutputReference
@@ -230,57 +227,57 @@ instance IsBlock Block where
                 traverseAndTransformByron fromByronOutput txId 0 (out : outs)
         TransactionShelley tx ->
             let
-                body = Ledger.Shelley.body tx
+                body = tx ^. Ledger.bodyTxL
                 txId = Ledger.txid @(ShelleyEra StandardCrypto) body
-                outs = Ledger.Shelley._outputs body
-                meta = getField @"auxiliaryData" tx & strictMaybe emptyMetadata fromShelleyMetadata
+                outs = body ^. Ledger.outputsTxBodyL
+                meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromShelleyMetadata
              in
                 traverseAndTransform (fromShelleyOutput inject) txId meta 0 outs
         TransactionAllegra tx ->
             let
-                body = Ledger.Shelley.body tx
+                body = tx ^. Ledger.bodyTxL
                 txId = Ledger.txid @(AllegraEra StandardCrypto) body
-                outs = Ledger.MaryAllegra.outputs' body
-                meta = getField @"auxiliaryData" tx & strictMaybe emptyMetadata fromAllegraMetadata
+                outs = body ^. Ledger.outputsTxBodyL
+                meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromAllegraMetadata
              in
                 traverseAndTransform (fromShelleyOutput inject) txId meta 0 outs
         TransactionMary tx ->
             let
-                body = Ledger.Shelley.body tx
+                body = tx ^. Ledger.bodyTxL
                 txId = Ledger.txid @(MaryEra StandardCrypto) body
-                outs = Ledger.MaryAllegra.outputs' body
-                meta = getField @"auxiliaryData" tx & strictMaybe emptyMetadata fromMaryMetadata
+                outs = body ^. Ledger.outputsTxBodyL
+                meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromMaryMetadata
              in
-                traverseAndTransform (fromShelleyOutput identity) txId meta 0 outs
+                traverseAndTransform (fromShelleyOutput @MaryEra identity) txId meta 0 outs
         TransactionAlonzo tx ->
             let
-                body = Ledger.Alonzo.body tx
+                body = tx ^. Ledger.bodyTxL
                 txId = Ledger.txid @(AlonzoEra StandardCrypto) body
-                outs = Ledger.Alonzo.outputs' body
-                meta = getField @"auxiliaryData" tx & strictMaybe emptyMetadata fromAlonzoMetadata
+                outs = body ^. Ledger.outputsTxBodyL
+                meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromAlonzoMetadata
              in
-                case Ledger.Alonzo.isValid tx of
-                    Ledger.Alonzo.IsValid True ->
+                case tx ^. Ledger.isValidTxL of
+                    Ledger.IsValid True ->
                         traverseAndTransform fromAlonzoOutput txId meta 0 outs
-                    Ledger.Alonzo.IsValid False ->
+                    Ledger.IsValid False ->
                         []
         TransactionBabbage tx ->
             let
-                body = Ledger.Alonzo.body tx
+                body = tx ^. Ledger.bodyTxL
                 txId = Ledger.txid @(BabbageEra StandardCrypto) body
-                outs = Ledger.Babbage.outputs' body
-                meta = getField @"auxiliaryData" tx & strictMaybe emptyMetadata fromBabbageMetadata
+                outs = body ^. Ledger.outputsTxBodyL
+                meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromBabbageMetadata
              in
-                case Ledger.Alonzo.isValid tx of
-                    Ledger.Alonzo.IsValid True ->
+                case tx ^. Ledger.isValidTxL of
+                    Ledger.IsValid True ->
                         traverseAndTransform identity txId meta 0 outs
-                    Ledger.Alonzo.IsValid False ->
+                    Ledger.IsValid False ->
                         -- From Babbage's formal specification:
                         --
                         --   Note that the new collOuts function generates a single output
                         --   with an index |txouts{txb}|.
                         let start = fromIntegral (length outs) in
-                        case Ledger.Babbage.collateralReturn' body of
+                        case body ^. Ledger.collateralReturnTxBodyL of
                             SNothing ->
                                 []
                             SJust r  ->
@@ -340,11 +337,9 @@ instance IsBlock Block where
         TransactionMary{} ->
             mempty
         TransactionAlonzo tx ->
-            fromAlonzoData <$>
-                Ledger.unTxDats (getField @"txdats" (getField @"wits" tx))
+            fromAlonzoData <$> Ledger.unTxDats (tx ^. Ledger.witsTxL . Ledger.datsTxWitsL)
         TransactionBabbage tx ->
-            fromBabbageData <$>
-                Ledger.unTxDats (getField @"txdats" (getField @"wits" tx))
+            fromBabbageData <$> Ledger.unTxDats (tx ^. Ledger.witsTxL . Ledger.datsTxWitsL)
 
     witnessedScripts
         :: Transaction
@@ -355,25 +350,25 @@ instance IsBlock Block where
         TransactionShelley{} ->
             mempty
         TransactionAllegra tx ->
-            ( fromAllegraScript
-                <$> getField @"scriptWits" tx
-            ) & strictMaybe identity (scriptFromAllegraAuxiliaryData fromAllegraScript)
-                    (getField @"auxiliaryData" tx)
+            ( fromAllegraScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)
+            ) & strictMaybe identity
+                    (scriptFromAllegraAuxiliaryData fromAllegraScript)
+                    (tx ^. Ledger.auxDataTxL)
         TransactionMary tx ->
-            ( fromMaryScript
-                <$> getField @"scriptWits" tx
-            ) & strictMaybe identity (scriptFromAllegraAuxiliaryData fromMaryScript)
-                    (getField @"auxiliaryData" tx)
+            ( fromMaryScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)
+            ) & strictMaybe identity
+                    (scriptFromAllegraAuxiliaryData fromMaryScript)
+                    (tx ^. Ledger.auxDataTxL)
         TransactionAlonzo tx ->
-            ( fromAlonzoScript
-                <$> getField @"txscripts" (getField @"wits" tx)
-            ) & strictMaybe identity (scriptFromAlonzoAuxiliaryData fromAlonzoScript)
-                    (getField @"auxiliaryData" tx)
+            ( fromAlonzoScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)
+            ) & strictMaybe identity
+                    (scriptFromAlonzoAuxiliaryData @(AlonzoEra StandardCrypto) fromAlonzoScript)
+                    (tx ^. Ledger.auxDataTxL)
         TransactionBabbage tx ->
-            ( fromBabbageScript
-                <$> getField @"txscripts" (getField @"wits" tx)
-            ) & strictMaybe identity (scriptFromAlonzoAuxiliaryData fromBabbageScript)
-                    (getField @"auxiliaryData" tx)
+            ( fromBabbageScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)
+            ) & strictMaybe identity
+                    (scriptFromAlonzoAuxiliaryData fromBabbageScript)
+                    (tx ^. Ledger.auxDataTxL)
 
     userDefinedMetadata
         :: Transaction
@@ -382,32 +377,32 @@ instance IsBlock Block where
         TransactionByron{} ->
             Nothing
         TransactionShelley tx ->
-            case getField @"auxiliaryData" tx of
+            case tx ^. Ledger.auxDataTxL of
                 SNothing ->
                     Nothing
-                SJust (Ledger.Metadata meta) ->
+                SJust (Ledger.ShelleyTxAuxData meta) ->
                     Just (mkMetadata meta)
         TransactionAllegra tx ->
-            case getField @"auxiliaryData" tx of
+            case tx ^. Ledger.auxDataTxL of
                 SNothing ->
                     Nothing
-                SJust (Ledger.MaryAllegra.AuxiliaryData meta _scripts) ->
+                SJust (Ledger.AllegraTxAuxData meta _scripts) ->
                     Just (mkMetadata meta)
         TransactionMary tx ->
-            case getField @"auxiliaryData" tx of
+            case tx ^. Ledger.auxDataTxL of
                 SNothing ->
                     Nothing
-                SJust (Ledger.MaryAllegra.AuxiliaryData meta _scripts) ->
+                SJust (Ledger.AllegraTxAuxData meta _scripts) ->
                     Just (mkMetadata meta)
         TransactionAlonzo tx ->
-            case getField @"auxiliaryData" tx of
+            case tx ^. Ledger.auxDataTxL of
                 SNothing ->
                     Nothing
-                SJust (Ledger.AuxiliaryData meta _scripts) ->
+                SJust (Ledger.AlonzoTxAuxData meta _scripts _lang) ->
                     Just (mkMetadata meta)
         TransactionBabbage tx ->
-            case getField @"auxiliaryData" tx of
+            case tx ^. Ledger.auxDataTxL of
                 SNothing ->
                     Nothing
-                SJust (Ledger.AuxiliaryData meta _scripts) ->
+                SJust (Ledger.AlonzoTxAuxData meta _scripts _lang) ->
                     Just (mkMetadata meta)

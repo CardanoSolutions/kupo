@@ -25,7 +25,7 @@ import Kupo.Control.MonadCatch
     ( MonadCatch (..)
     )
 import Kupo.Control.MonadDelay
-    ( MonadDelay (..)
+    ( threadDelay
     )
 import Kupo.Data.Cardano
     ( Address

@@ -77,10 +77,7 @@ import Kupo.Control.MonadSTM
     , withTMVar
     )
 import System.IO
-    ( BufferMode (..)
-    , hFlush
-    , hSetBuffering
-    , hSetEncoding
+    ( hSetEncoding
     , utf8
     )
 

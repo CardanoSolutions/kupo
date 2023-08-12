@@ -11,7 +11,7 @@ module Kupo.App.FetchBlock.Node
 
 import Kupo.Prelude
 
-import Control.Monad.Class.MonadSTM
+import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
 import Kupo.Data.Cardano

@@ -8,13 +8,13 @@ module Kupo.App.ChainSync.Node
 
 import Kupo.Prelude
 
-import Control.Monad.Class.MonadSTM
-    ( MonadSTM (..)
-    )
 import Kupo.App.Mailbox
     ( Mailbox
     , putHighFrequencyMessage
     , putIntermittentMessage
+    )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..)
     )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..)

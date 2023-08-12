@@ -38,7 +38,7 @@ module Kupo
 import Kupo.Prelude
 
 import Data.Pool
-    ( PoolConfig (..)
+    ( defaultPoolConfig
     , destroyAllResources
     , newPool
     , tryWithResource
@@ -188,27 +188,17 @@ kupoWith tr withProducer withFetchBlock =
 
     lock <- liftIO newLock
 
-    readOnlyPool <- liftIO $ newPool $ PoolConfig
-        { createResource =
-            createShortLivedConnection (tracerDatabase tr) ReadOnly lock longestRollback dbFile
-        , freeResource =
-            \Database{close} -> close
-        , poolCacheTTL =
-            30
-        , poolMaxResources =
-            fromIntegral maxConcurrency
-        }
+    readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
+        (createShortLivedConnection (tracerDatabase tr) ReadOnly lock longestRollback dbFile)
+        (\Database{close} -> close)
+        30
+        (fromIntegral maxConcurrency)
 
-    readWritePool <- liftIO $ newPool $ PoolConfig
-        { createResource =
-            createShortLivedConnection (tracerDatabase tr) ReadWrite lock longestRollback dbFile
-        , freeResource =
-            \Database{close} -> close
-        , poolCacheTTL =
-            30
-        , poolMaxResources =
-            fromIntegral (maxConcurrency `div` 10)
-        }
+    readWritePool <- liftIO $ newPool $ defaultPoolConfig
+        (createShortLivedConnection (tracerDatabase tr) ReadWrite lock longestRollback dbFile)
+        (\Database{close} -> close)
+        30
+        2
 
     let run action =
             withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile deferIndexes action

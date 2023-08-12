@@ -10,6 +10,9 @@ module Test.Kupo.App.MailboxSpec
 
 import Kupo.Prelude
 
+import Control.Monad.Class.MonadTime.SI
+    ( Time (..)
+    )
 import Control.Monad.IOSim
     ( pattern SimTrace
     , pattern TraceMainReturn
@@ -26,14 +29,14 @@ import Kupo.Control.MonadAsync
     ( MonadAsync (..)
     )
 import Kupo.Control.MonadDelay
-    ( MonadDelay (..)
+    ( MonadDelay
+    , threadDelay
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
 import Kupo.Control.MonadTime
     ( DiffTime
-    , Time (..)
     , secondsToDiffTime
     )
 import Test.Hspec

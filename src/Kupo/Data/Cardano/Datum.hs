@@ -9,7 +9,7 @@ import Kupo.Data.Cardano.DatumHash
     ( DatumHash
     )
 
-import qualified Cardano.Ledger.Alonzo.Data as Ledger
+import qualified Cardano.Ledger.Alonzo.Scripts.Data as Ledger
 
 data Datum
     = NoDatum

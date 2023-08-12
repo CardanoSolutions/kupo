@@ -12,9 +12,6 @@ import Language.Haskell.TH
     , Q
     , runIO
     )
-import System.Environment
-    ( lookupEnv
-    )
 
 -- | Dynamically lookup a git revision in the environment as `GIT_SHA` at compile-time to enhance
 -- the version number.

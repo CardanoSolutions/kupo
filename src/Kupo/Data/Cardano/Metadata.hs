@@ -5,11 +5,7 @@ module Kupo.Data.Cardano.Metadata
 
 import Kupo.Prelude
 
-import Cardano.Binary
-    ( FromCBOR (..)
-    , decodeAnnotator
-    )
-import Cardano.Ledger.Shelley.Metadata
+import Cardano.Ledger.Shelley.TxAuxData
     ( Metadatum (..)
     )
 import Data.Aeson
@@ -23,10 +19,10 @@ import Ouroboros.Consensus.Util
     ( eitherToMaybe
     )
 
-import qualified Cardano.Ledger.Alonzo.Data as Ledger
+import qualified Cardano.Ledger.Allegra.TxAuxData as Ledger
+import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
-import qualified Cardano.Ledger.Shelley.Metadata as Ledger
-import qualified Cardano.Ledger.ShelleyMA.AuxiliaryData as Ledger.MaryAllegra
+import qualified Cardano.Ledger.Shelley.TxAuxData as Ledger
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Key as Json.Key
@@ -37,23 +33,23 @@ import qualified Data.Text as T
 import qualified Data.Text.Read as T
 
 type Metadata =
-    Ledger.Metadata (BabbageEra StandardCrypto)
+    Ledger.ShelleyTxAuxData (BabbageEra StandardCrypto)
 
 emptyMetadata :: Metadata
 emptyMetadata =
-    Ledger.Metadata mempty
+    Ledger.ShelleyTxAuxData mempty
 {-# INLINABLE emptyMetadata #-}
 
 mkMetadata :: Map Word64 Metadatum -> (MetadataHash, Metadata)
-mkMetadata (Ledger.Metadata -> meta) =
+mkMetadata (Ledger.ShelleyTxAuxData -> meta) =
     (hashMetadata meta, meta)
 
 hashMetadata :: Metadata -> MetadataHash
-hashMetadata = Ledger.hashMetadata
+hashMetadata = Ledger.hashShelleyTxAuxData
 {-# INLINABLE hashMetadata #-}
 
 hasMetadataTag :: Word64 -> Metadata -> Bool
-hasMetadataTag tag (Ledger.Metadata metadata) =
+hasMetadataTag tag (Ledger.ShelleyTxAuxData metadata) =
     tag `Map.member` metadata
 
 metadataToText :: Metadata -> Text
@@ -64,10 +60,10 @@ metadataToText =
 metadataFromText :: Text -> Maybe Metadata
 metadataFromText txt = do
     bytes <- eitherToMaybe $ decodeBase16 (encodeUtf8 txt)
-    eitherToMaybe $ decodeAnnotator "Metadata" fromCBOR (toLazy bytes)
+    eitherToMaybe $ decodeCborAnn @BabbageEra "Metadata" decCBOR (toLazy bytes)
 
 metadataToJson :: Metadata -> Json.Encoding
-metadataToJson (Ledger.Metadata meta) =
+metadataToJson (Ledger.ShelleyTxAuxData meta) =
     encodeMap show encodeMetadatum meta
   where
     encodeMetadatum :: Ledger.Metadatum -> Json.Encoding
@@ -155,27 +151,27 @@ metadataToJson' (hash, meta) =
         , ("schema", metadataToJson meta)
         ]
 
-fromShelleyMetadata :: Ledger.Metadata (ShelleyEra StandardCrypto) -> Metadata
+fromShelleyMetadata :: Ledger.ShelleyTxAuxData (ShelleyEra StandardCrypto) -> Metadata
 fromShelleyMetadata =
     coerce
 {-# INLINABLE fromShelleyMetadata #-}
 
-fromAllegraMetadata :: Ledger.MaryAllegra.AuxiliaryData (AllegraEra StandardCrypto) -> Metadata
-fromAllegraMetadata (Ledger.MaryAllegra.AuxiliaryData metadata _) =
-    Ledger.Metadata metadata
+fromAllegraMetadata :: Ledger.AllegraTxAuxData (AllegraEra StandardCrypto) -> Metadata
+fromAllegraMetadata (Ledger.AllegraTxAuxData metadata _) =
+    Ledger.ShelleyTxAuxData metadata
 {-# INLINABLE fromAllegraMetadata #-}
 
-fromMaryMetadata :: Ledger.MaryAllegra.AuxiliaryData (MaryEra StandardCrypto) -> Metadata
-fromMaryMetadata (Ledger.MaryAllegra.AuxiliaryData metadata _) =
-    Ledger.Metadata metadata
+fromMaryMetadata :: Ledger.AllegraTxAuxData (MaryEra StandardCrypto) -> Metadata
+fromMaryMetadata (Ledger.AllegraTxAuxData metadata _) =
+    Ledger.ShelleyTxAuxData metadata
 {-# INLINABLE fromMaryMetadata #-}
 
-fromAlonzoMetadata :: Ledger.AuxiliaryData (AlonzoEra StandardCrypto) -> Metadata
+fromAlonzoMetadata :: Ledger.AlonzoTxAuxData (AlonzoEra StandardCrypto) -> Metadata
 fromAlonzoMetadata =
-    Ledger.Metadata . Ledger.txMD
+    Ledger.ShelleyTxAuxData . Ledger.atadMetadata
 {-# INLINABLE fromAlonzoMetadata #-}
 
-fromBabbageMetadata :: Ledger.AuxiliaryData (BabbageEra StandardCrypto) -> Metadata
+fromBabbageMetadata :: Ledger.AlonzoTxAuxData (BabbageEra StandardCrypto) -> Metadata
 fromBabbageMetadata =
-    Ledger.Metadata . Ledger.txMD
+    Ledger.ShelleyTxAuxData . Ledger.atadMetadata
 {-# INLINABLE fromBabbageMetadata #-}

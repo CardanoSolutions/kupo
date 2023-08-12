@@ -9,8 +9,8 @@ import Kupo.Data.Cardano.TransactionId
 
 import qualified Cardano.Chain.UTxO as Ledger.Byron
 import qualified Cardano.Ledger.Alonzo.Tx as Ledger.Alonzo
+import qualified Cardano.Ledger.Block as Ledger
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
-import qualified Cardano.Ledger.TxIn as Ledger
 
 
 -- Transaction
@@ -22,15 +22,15 @@ data Transaction' crypto
         !Ledger.Byron.Tx
         !Ledger.Byron.TxId
     | TransactionShelley
-        !(Ledger.Shelley.Tx (ShelleyEra crypto))
+        !(Ledger.Shelley.ShelleyTx (ShelleyEra crypto))
     | TransactionAllegra
-        !(Ledger.Shelley.Tx (AllegraEra crypto))
+        !(Ledger.Shelley.ShelleyTx (AllegraEra crypto))
     | TransactionMary
-        !(Ledger.Shelley.Tx (MaryEra crypto))
+        !(Ledger.Shelley.ShelleyTx (MaryEra crypto))
     | TransactionAlonzo
-        !(Ledger.Alonzo.ValidatedTx (AlonzoEra crypto))
+        !(Ledger.Alonzo.AlonzoTx (AlonzoEra crypto))
     | TransactionBabbage
-        !(Ledger.Alonzo.ValidatedTx (BabbageEra crypto))
+        !(Ledger.Alonzo.AlonzoTx (BabbageEra crypto))
 
 instance HasTransactionId Transaction StandardCrypto where
     getTransactionId = \case

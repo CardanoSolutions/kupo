@@ -182,7 +182,6 @@ data NetworkParameters = NetworkParameters
       deriving anyclass (ToJSON)
 
 deriving newtype instance ToJSON EpochSlots
-deriving newtype instance ToJSON SystemStart
 deriving newtype instance ToJSON NetworkMagic
 
 instance FromJSON NetworkParameters where

@@ -3,18 +3,25 @@
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 module Kupo.Control.MonadDelay
-    ( MonadDelay (..)
+    ( MonadDelay
+    , threadDelay
     , foreverCalmly
     ) where
 
 import Kupo.Prelude
 
 import Control.Monad.Class.MonadTimer
-    ( MonadDelay (..)
+    ( MonadDelay
     )
 import Kupo.Control.MonadTime
     ( DiffTime
+    , diffTimeToMicroseconds
     )
+
+import qualified Control.Monad.Class.MonadTimer as MonadTimer
+
+threadDelay :: MonadDelay m => DiffTime -> m ()
+threadDelay = MonadTimer.threadDelay . fromInteger . diffTimeToMicroseconds
 
 foreverCalmly :: (MonadDelay m) => m DiffTime -> m Void
 foreverCalmly a = do

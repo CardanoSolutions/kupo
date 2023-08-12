@@ -55,7 +55,7 @@ import Kupo.Control.MonadLog
     )
 import Kupo.Control.MonadTime
     ( DiffTime
-    , millisecondsToDiffTime
+    , secondsToDiffTime
     )
 import Kupo.Data.Cardano
     ( Point
@@ -438,4 +438,4 @@ diffTime :: ReadM DiffTime
 diffTime = eitherReader $ \s -> do
     (n, remainder) <- T.decimal (toText s)
     unless (T.null remainder) $ Left "Invalid number of seconds, must be a positive integer with no decimals."
-    pure (millisecondsToDiffTime (n * 1_000))
+    pure (secondsToDiffTime n)

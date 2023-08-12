@@ -6,7 +6,7 @@ import Kupo.Data.Cardano.DatumHash
     ( DatumHash
     )
 
-import qualified Cardano.Ledger.Alonzo.Data as Ledger
+import qualified Cardano.Ledger.Alonzo.Scripts.Data as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
@@ -54,10 +54,11 @@ unsafeBinaryDataFromBytes =
 {-# INLINABLE unsafeBinaryDataFromBytes #-}
 
 fromAlonzoData
-    :: Ledger.Data (AlonzoEra StandardCrypto)
+    :: HasCallStack
+    => Ledger.Data (AlonzoEra StandardCrypto)
     -> BinaryData
 fromAlonzoData =
-    Ledger.dataToBinaryData . coerce
+    unsafeBinaryDataFromBytes . Ledger.originalBytes
 {-# INLINEABLE fromAlonzoData #-}
 
 fromBabbageData

@@ -57,6 +57,7 @@ import Kupo.Control.MonadSTM
     )
 import Kupo.Control.MonadTime
     ( DiffTime
+    , diffTimeToMicroseconds
     , timeout
     )
 import Kupo.Data.Cardano
@@ -98,9 +99,6 @@ import Network.HTTP.Client
     , defaultManagerSettings
     , newManager
     , responseTimeoutNone
-    )
-import System.Environment
-    ( lookupEnv
     )
 import System.IO.Temp
     ( withSystemTempDirectory
@@ -652,12 +650,12 @@ currentNetworkTip = do
 
 timeoutOrThrow :: DiffTime -> IO () -> IO () -> IO ()
 timeoutOrThrow t cleanup action = flip onException cleanup $ do
-    res <- timeout t action
+    res <- timeout (fromInteger @Int (diffTimeToMicroseconds t)) action
     res `shouldSatisfy` isJust
 
 shouldThrowTimeout :: forall e. (Exception e) => DiffTime -> IO () -> IO ()
 shouldThrowTimeout t action = do
-    timeout t (try action) >>= \case
+    timeout (fromInteger @Int (diffTimeToMicroseconds t)) (try action) >>= \case
         Nothing ->
             fail $ "shouldThrowTimeout: timed out after " <> show t
         Just (Right ()) ->

@@ -26,23 +26,23 @@ type Value =
     Value' StandardCrypto
 
 type Value' crypto =
-    Ledger.Value crypto
+    Ledger.MaryValue crypto
 
 foldrValue
     :: (PolicyId -> Map AssetName Integer -> a -> a)
     -> a
     -> Value
     -> a
-foldrValue fn a0 (Ledger.Value _ assets) =
+foldrValue fn a0 (Ledger.MaryValue _ (Ledger.MultiAsset assets)) =
     Map.foldrWithKey fn a0 assets
 
 hasAssetId :: Value -> AssetId -> Bool
 hasAssetId value (policyId, assetName) =
-    Ledger.lookup policyId assetName value > 0
+    Ledger.lookupMultiAsset policyId assetName value > 0
 
 hasPolicyId :: Value -> PolicyId -> Bool
-hasPolicyId value policyId =
-    policyId `Set.member` Ledger.policies value
+hasPolicyId (Ledger.MaryValue _ assets) policyId =
+    policyId `Set.member` Ledger.policies assets
 
 unsafeValueFromList
     :: Integer
@@ -56,12 +56,14 @@ unsafeValueFromList ada assets =
         ]
 
 valueToJson :: Value -> Json.Encoding
-valueToJson (Ledger.Value coins assets) = Json.pairs $ mconcat
+valueToJson (Ledger.MaryValue coins (Ledger.MultiAsset assets)) = Json.pairs $ mconcat
     [ Json.pair "coins"  (Json.integer coins)
     , Json.pair "assets" (assetsToJson assets)
     ]
   where
-    assetsToJson :: Map (Ledger.PolicyID StandardCrypto) (Map Ledger.AssetName Integer) -> Json.Encoding
+    assetsToJson
+        :: Map (Ledger.PolicyID StandardCrypto) (Map Ledger.AssetName Integer)
+        -> Json.Encoding
     assetsToJson =
         Json.pairs
         .
@@ -92,8 +94,8 @@ data ComparableValue = ComparableValue
 
 fromComparableValue :: ComparableValue -> Value
 fromComparableValue (ComparableValue ada assets) =
-    Ledger.Value ada assets
+    Ledger.MaryValue ada (Ledger.MultiAsset assets)
 
 toComparableValue :: Value -> ComparableValue
-toComparableValue (Ledger.Value ada assets) =
+toComparableValue (Ledger.MaryValue ada (Ledger.MultiAsset assets)) =
     ComparableValue ada assets

@@ -47,7 +47,7 @@ transactionIdFromHash =
 
 transactionIdToBytes :: TransactionId -> ByteString
 transactionIdToBytes =
-    (\(UnsafeHash h) -> fromShort h) . Ledger.extractHash . Ledger._unTxId
+    (\(UnsafeHash h) -> fromShort h) . Ledger.extractHash . Ledger.unTxId
 {-# INLINABLE transactionIdToBytes #-}
 
 unsafeTransactionIdFromBytes
@@ -60,7 +60,7 @@ unsafeTransactionIdFromBytes =
 
 transactionIdToText :: TransactionId -> Text
 transactionIdToText =
-    encodeBase16 . (\(UnsafeHash h) -> fromShort h) . Ledger.extractHash . Ledger._unTxId
+    encodeBase16 . (\(UnsafeHash h) -> fromShort h) . Ledger.extractHash . Ledger.unTxId
 {-# INLINABLE transactionIdToText #-}
 
 transactionIdFromText
@@ -72,5 +72,5 @@ transactionIdFromText =
 
 transactionIdToJson :: TransactionId -> Json.Encoding
 transactionIdToJson =
-    hashToJson . Ledger.extractHash . Ledger._unTxId
+    hashToJson . Ledger.extractHash . Ledger.unTxId
 {-# INLINABLE transactionIdToJson #-}

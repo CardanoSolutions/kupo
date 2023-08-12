@@ -23,9 +23,6 @@ module Kupo.App
 
 import Kupo.Prelude
 
-import Control.Monad.Class.MonadTimer
-    ( MonadDelay (..)
-    )
 import Kupo.App.ChainSync
     ( TraceChainSync (..)
     , withChainSyncExceptionHandler
@@ -49,6 +46,10 @@ import Kupo.Control.MonadAsync
     )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..)
+    )
+import Kupo.Control.MonadDelay
+    ( MonadDelay
+    , threadDelay
     )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..)

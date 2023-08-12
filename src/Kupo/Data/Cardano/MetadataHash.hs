@@ -11,7 +11,7 @@ import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Data.Aeson as Json
 
 type MetadataHash =
-    Ledger.SafeHash StandardCrypto Ledger.EraIndependentAuxiliaryData
+    Ledger.SafeHash StandardCrypto Ledger.EraIndependentTxAuxData
 
 unsafeMetadataHashFromBytes :: HasCallStack => ByteString -> MetadataHash
 unsafeMetadataHashFromBytes =

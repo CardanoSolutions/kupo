@@ -122,9 +122,9 @@ instance MonadOuroboros IO where
         mkLocalSnocket iocp =
             let snocket = localSnocket iocp
              in snocket
-                    { toBearer = \time trMux fd -> do
-                        bearer <- toBearer snocket time trMux fd
-                        toggleConnected $> bearer
+                    { connect = \fd addr -> do
+                        connect snocket fd addr
+                        toggleConnected
                     }
 
         versions = combineVersions
@@ -132,7 +132,7 @@ instance MonadOuroboros IO where
             | v <- wantedVersions
             ]
           where
-            vData  = NodeToClientVersionData networkMagic
+            vData  = NodeToClientVersionData networkMagic False
 
         mkOuroborosApplication version =
             OuroborosApplication $ \_connectionId _controlMessageSTM ->
@@ -161,7 +161,7 @@ codecs epochSlots nodeToClientV =
     supportedVersions =
         supportedNodeToClientVersions (Proxy @(BlockT IO))
     cfg =
-        CardanoCodecConfig byron shelley allegra mary alonzo babbage
+        CardanoCodecConfig byron shelley allegra mary alonzo babbage conway
       where
         byron    = ByronCodecConfig epochSlots
         shelley  = ShelleyCodecConfig
@@ -169,3 +169,4 @@ codecs epochSlots nodeToClientV =
         mary     = ShelleyCodecConfig
         alonzo   = ShelleyCodecConfig
         babbage  = ShelleyCodecConfig
+        conway   = ShelleyCodecConfig

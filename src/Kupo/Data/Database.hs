@@ -65,9 +65,8 @@ module Kupo.Data.Database
 
 import Kupo.Prelude
 
-import Cardano.Binary
-    ( decodeFull
-    , serialize
+import Cardano.Ledger.SafeHash
+    ( originalBytes
     )
 import Data.Binary
     ( Get
@@ -76,9 +75,7 @@ import Data.Bits
     ( Bits (..)
     )
 import Kupo.Data.Cardano
-    ( binaryDataToBytes
-    , datumHashToBytes
-    , mkOutputReference
+    ( mkOutputReference
     , transactionIdToBytes
     , unsafeTransactionIdFromBytes
     )
@@ -93,9 +90,10 @@ import Ouroboros.Consensus.Block
     )
 
 import qualified Cardano.Ledger.Address as Ledger
+import qualified Cardano.Ledger.Alonzo.Scripts.Data as Ledger
 import qualified Cardano.Ledger.BaseTypes as Ledger
+import qualified Cardano.Ledger.Core as Ledger
 import qualified Cardano.Ledger.Credential as Ledger
-import qualified Cardano.Ledger.Hashes as Ledger
 import qualified Cardano.Ledger.Keys as Ledger
 import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Data.Binary.Get as B
@@ -163,7 +161,7 @@ resultFromRow row = App.Result
     , App.address =
         addressFromRow (address row)
     , App.value =
-        unsafeDeserialize' (value row)
+        unsafeDecodeCbor @MaryEra "Value" decCBOR (toLazy (value row))
     , App.datum =
         datumFromRow (datumInfo row) (datum row)
     , App.scriptReference =
@@ -187,7 +185,7 @@ resultToRow x =
         addressToRow (App.address x)
 
     value =
-        serialize' (App.value x)
+        serializeCbor @MaryEra encCBOR (App.value x)
 
     (datumInfo, datum) =
         datumToRow (App.datum x)
@@ -368,14 +366,14 @@ datumInfoToRow
     -> App.DatumHash
     -> ByteString
 datumInfoToRow flag =
-    BS.cons flag . datumHashToBytes
+    BS.cons flag . datumHashToRow
 {-# INLINABLE datumInfoToRow #-}
 
 datumHashToRow
     :: App.DatumHash
     -> ByteString
 datumHashToRow =
-    datumHashToBytes
+    originalBytes
 {-# INLINABLE datumHashToRow #-}
 
 binaryDataToRow
@@ -384,7 +382,7 @@ binaryDataToRow
     -> BinaryData
 binaryDataToRow hash bin = BinaryData
     { binaryDataHash = datumHashToRow hash
-    , binaryData = binaryDataToBytes bin
+    , binaryData = originalBytes (Ledger.binaryDataToData bin)
     }
 {-# INLINABLE binaryDataToRow #-}
 
@@ -530,7 +528,7 @@ addressToRow
 addressToRow = encodeBase16 . BSL.toStrict . B.runPut . \case
     Ledger.AddrBootstrap (Ledger.BootstrapAddress addr) -> do
         B.putWord8 0
-        B.putLazyByteString (serialize addr)
+        B.putByteString (serializeCbor @ByronEra encCBOR addr)
     Ledger.Addr (Ledger.networkToWord8 -> network) p (Ledger.StakeRefBase s) -> do
         let header = setDelegationBit s (setPaymentBit p network)
         B.putWord8 1
@@ -577,7 +575,7 @@ addressFromRow =
         B.getWord8 >>= \case
             0 -> do
                 bytes <- B.getRemainingLazyByteString
-                case decodeFull bytes of
+                case decodeCbor @ByronEra "Address<Byron>" decCBOR bytes of
                     Left e ->
                         fail (show e)
                     Right r ->
@@ -591,7 +589,7 @@ addressFromRow =
                     (mkPaymentCredential header payment)
                     (Ledger.StakeRefBase (mkDelegationCredential header delegation))
             2 -> do
-                ptr <- Ledger.getPtr
+                ptr <- getPtr
                 header <- B.getWord8
                 payment <- getHash @Blake2b_224
                 pure $ Ledger.Addr
@@ -607,6 +605,11 @@ addressFromRow =
                     Ledger.StakeRefNull
             tag ->
                 fail ("unknown tag: " <> show tag)
+
+    getPtr = Ledger.Ptr
+        <$> (Ledger.SlotNo <$> getVariableLengthWord64)
+        <*> (Ledger.TxIx <$> getVariableLengthWord64)
+        <*> (Ledger.CertIx  <$> getVariableLengthWord64)
 
     getHash :: forall alg. HashAlgorithm alg => Get ByteString
     getHash =
@@ -639,6 +642,24 @@ addressFromRow =
         case Ledger.word8ToNetwork (header .&. 0x0F) of
             Just network -> network
             Nothing -> error "unsafeNetworkFromHeader: invalid network id"
+
+getVariableLengthWord64 :: Get Word64
+getVariableLengthWord64 = word7sToWord64 <$> getWord7s
+
+word7sToWord64 :: [Ledger.Word7] -> Word64
+word7sToWord64 = foldl' f 0
+  where
+    f n (Ledger.Word7 r) = shiftL n 7 .|. fromIntegral r
+
+getWord7s :: Get [Ledger.Word7]
+getWord7s = do
+  nextWord <- B.getWord8
+  -- is the high bit set?
+  if testBit nextWord 7
+    then -- if so, grab more words
+      (:) (Ledger.toWord7 nextWord) <$> getWord7s
+    else -- otherwise, this is the last one
+      pure [Ledger.Word7 nextWord]
 
 --
 -- Filters

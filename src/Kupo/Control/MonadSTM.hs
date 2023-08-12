@@ -9,7 +9,7 @@ module Kupo.Control.MonadSTM
 
 import Kupo.Prelude
 
-import Control.Monad.Class.MonadSTM
+import Control.Concurrent.Class.MonadSTM
     ( MonadSTM (..)
     )
 import Control.Monad.Class.MonadThrow
