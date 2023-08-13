@@ -48,6 +48,9 @@ import Kupo.Control.MonadSTM
 import Kupo.Control.MonadThrow
     ( throwIO
     )
+import Kupo.Control.MonadTime
+    ( DiffTime
+    )
 import Kupo.Data.Cardano
     ( DatumHash
     , IsBlock (..)
@@ -79,6 +82,7 @@ import Kupo.Data.ChainSync
     )
 import Kupo.Data.Configuration
     ( LongestRollback (..)
+    , maxReconnectionAttempts
     )
 import Kupo.Data.Database
     ( mkSortDirection
@@ -199,7 +203,7 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
         & Warp.setBeforeMainLoop (logWith tr HttpServerListening{host,port})
 
     withDatabaseWrapped send connectionType action = do
-        retrying 5 10 $ handle onServerError (handle onAssertPointException (withDatabase connectionType action))
+        retrying 1 10 $ handle onServerError (handle onAssertPointException (withDatabase connectionType action))
       where
         onAssertPointException = \case
             ErrPointNotFound{} ->
@@ -211,10 +215,14 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
             logWith tr $ HttpUnexpectedError (toText $ displayException hint)
             Just <$> send Errors.serverError
 
-        retrying (n :: Int) ms io = io >>= \case
-            Nothing | n <= 0 -> send Errors.serviceUnavailable
-            Nothing -> threadDelay ms >> retrying (pred n) (2 * ms) io
-            Just r  -> return r
+        retrying attempts retryingIn io = io >>= \case
+            Just r  ->
+                return r
+            Nothing | attempts > maxReconnectionAttempts ->
+                send Errors.serviceUnavailable
+            Nothing -> do
+                logWith tr $ HttpFailedToOpenDatabaseConnection { attempts, retryingIn }
+                threadDelay retryingIn >> retrying (next attempts) (2 * retryingIn) io
 
 --
 -- Router
@@ -893,6 +901,9 @@ data TraceHttpServer where
     HttpServerListening
         :: { host :: String, port :: Int }
         -> TraceHttpServer
+    HttpFailedToOpenDatabaseConnection
+        :: { attempts :: Int, retryingIn :: DiffTime }
+        -> TraceHttpServer
     HttpRequest
         :: { path :: [Text], method :: Text }
         -> TraceHttpServer
@@ -903,10 +914,12 @@ data TraceHttpServer where
 
 instance HasSeverityAnnotation TraceHttpServer where
     getSeverityAnnotation = \case
-        HttpUnexpectedError{}  -> Error
-        HttpServerListening{}  -> Notice
-        HttpRequest{}          -> Info
-        HttpResponse{}         -> Info
+        HttpUnexpectedError{} -> Error
+        HttpFailedToOpenDatabaseConnection{attempts} | attempts < maxReconnectionAttempts -> Debug
+        HttpFailedToOpenDatabaseConnection{} -> Warning
+        HttpServerListening{} -> Notice
+        HttpRequest{} -> Info
+        HttpResponse{} -> Info
 
 instance ToJSON TraceHttpServer where
     toEncoding =

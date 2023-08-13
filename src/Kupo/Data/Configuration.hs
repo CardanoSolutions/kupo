@@ -19,6 +19,7 @@ module Kupo.Data.Configuration
     , DeferIndexesInstallation (..)
     , mailboxCapacity
     , pruneInputsMaxIncrement
+    , maxReconnectionAttempts
 
     -- * NetworkParameters
     , NetworkParameters (..)
@@ -171,6 +172,10 @@ mailboxCapacity = 200
 -- Maximum number of inputs pruned at a time. See note on 'pruneInputsQry'
 pruneInputsMaxIncrement :: Int
 pruneInputsMaxIncrement = 50000
+
+-- Maximum number of attempts to acquire a database connection on a retrying strategy
+maxReconnectionAttempts :: Int
+maxReconnectionAttempts = 5
 
 data NetworkParameters = NetworkParameters
     { networkMagic :: !NetworkMagic
