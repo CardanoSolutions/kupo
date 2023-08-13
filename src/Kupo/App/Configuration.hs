@@ -227,6 +227,9 @@ data TraceConfiguration where
     ConfigurationInvalidOrMissingOption
         :: { hint :: Text }
         -> TraceConfiguration
+    ConfigurationMaxConcurrency
+        :: { maxConcurrentReaders :: Int, maxConcurrentWriters :: Int }
+        -> TraceConfiguration
     deriving stock (Generic, Show)
 
 instance ToJSON TraceConfiguration where
@@ -240,4 +243,5 @@ instance HasSeverityAnnotation TraceConfiguration where
         ConfigurationCardanoNode{} -> Info
         ConfigurationPatterns{} -> Info
         ConfigurationCheckpointsForIntersection{} -> Info
+        ConfigurationMaxConcurrency{} -> Info
         ConfigurationInvalidOrMissingOption{} -> Error

@@ -63,7 +63,8 @@ import Kupo.App.ChainSync
     ( withChainSyncExceptionHandler
     )
 import Kupo.App.Configuration
-    ( newPatternsCache
+    ( TraceConfiguration (..)
+    , newPatternsCache
     , startOrResume
     )
 import Kupo.App.Database
@@ -198,7 +199,10 @@ kupoWith tr withProducer withFetchBlock =
             }
         } <- ask
 
-    (minConcurrency, maxConcurrency) <- liftIO getNumCapabilities <&> \n -> (n, 2 * n)
+    (maxConcurrentWriters, maxConcurrentReaders) <- liftIO getNumCapabilities <&> \n -> (n, 4 * n)
+
+    liftIO $ logWith (tracerConfiguration tr) $
+        ConfigurationMaxConcurrency { maxConcurrentReaders, maxConcurrentWriters }
 
     dbFile <- newDatabaseFile (tracerDatabase tr) workDir
 
@@ -208,13 +212,13 @@ kupoWith tr withProducer withFetchBlock =
         (createShortLivedConnection (tracerDatabase tr) ReadOnly lock longestRollback dbFile)
         (\Database{close} -> close)
         30
-        maxConcurrency
+        maxConcurrentReaders
 
     readWritePool <- liftIO $ newPool $ defaultPoolConfig
         (createShortLivedConnection (tracerDatabase tr) ReadWrite lock longestRollback dbFile)
         (\Database{close} -> close)
         30
-        minConcurrency
+        maxConcurrentWriters
 
     let run action =
             withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile deferIndexes action
