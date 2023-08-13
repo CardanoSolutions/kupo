@@ -187,7 +187,7 @@ mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
             )
         Info ->
             ( " ℹ "
-            , Ansi.cyan
+            , Ansi.white
             , Ansi.white
             , Ansi.blueBg
             )
