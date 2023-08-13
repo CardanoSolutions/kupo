@@ -33,9 +33,6 @@ package websockets-json
 package cryptonite
   flags: -support_rdrand
 
-package cardano-crypto-praos
-  flags: -external-libsodium-vrf
-
 package direct-sqlite
   flags: +nomutex
 
