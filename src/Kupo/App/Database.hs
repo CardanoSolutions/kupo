@@ -446,11 +446,13 @@ withLongLivedConnection
     -> IO a
 withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes action = do
     withConnection (mkConnectionString file ReadWrite) $ \conn -> do
+        execute_ conn "PRAGMA page_size = 32768"
+        execute_ conn "PRAGMA cache_size = 1024"
+        execute_ conn "PRAGMA synchronous = NORMAL"
+        execute_ conn "PRAGMA journal_mode = TRUNCATE"
+        execute_ conn "PRAGMA optimize"
         databaseVersion conn >>= runMigrations tr conn
         installIndexes tr conn deferIndexes
-        execute_ conn "PRAGMA synchronous = NORMAL"
-        execute_ conn "PRAGMA page_size = 16184"
-        execute_ conn "PRAGMA journal_mode = TRUNCATE"
         execute_ conn "PRAGMA foreign_keys = ON"
         action (mkDatabase (contramap DatabaseConnection tr) ReadWrite k (bracketConnection conn))
   where
@@ -477,7 +479,6 @@ withWriteOnlyConnection file action = do
         execute_ conn "PRAGMA synchronous = OFF"
         execute_ conn "PRAGMA journal_mode = OFF"
         execute_ conn "PRAGMA locking_mode = EXCLUSIVE"
-        execute_ conn "PRAGMA page_size = 65536"
         action conn (mkDatabase nullTracer ReadWrite k (bracketConnection conn))
   where
     k = LongestRollback maxBound
@@ -960,8 +961,8 @@ foldInputsQry pattern_ slotRange statusFlag sortDirection =
         <> additionalJoin
         <> " WHERE "
         <> T.intercalate " AND " (
-            [ patternWhereClause
-            , slotRangeToSql slotRange
+            [ slotRangeToSql slotRange
+            , patternWhereClause
             ] & filter (not . T.null)
            )
         <> " ORDER BY \
