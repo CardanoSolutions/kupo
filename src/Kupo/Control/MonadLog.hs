@@ -162,33 +162,62 @@ mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
     timestamp <- utcToZonedTime <$> getCurrentTimeZone <*> pure utcTimestamp
     if "tracerProgress" == tracerName && subject /= "Done" then do
         T.hPutStr h $ T.toLazyText $ mconcat
-            [ mkTime timestamp
-            , severity
+            [ bg (Ansi.bold (fgb severity))
+            , mkTime timestamp
             , context
-            , accent details
+            , fg details
             ]
         hFlush h
         hSetCursorColumn h 0
         hClearLine h
     else
         T.hPutStrLn h $ T.toLazyText $ mconcat
-            [ mkTime timestamp
-            , severity
+            [ bg (Ansi.bold (fgb severity))
+            , mkTime timestamp
             , context
-            , accent details
+            , fg details
             ]
   where
+    (severity, fg, fgb, bg) = case getSeverityAnnotation msg of
+        Debug ->
+            ( " + "
+            , Ansi.white
+            , Ansi.black
+            , Ansi.whiteBg
+            )
+        Info ->
+            ( " ℹ "
+            , Ansi.cyan
+            , Ansi.white
+            , Ansi.blueBg
+            )
+        Notice ->
+            ( " ★ "
+            , Ansi.magenta
+            , Ansi.white
+            , Ansi.magentaBg
+            )
+        Warning ->
+            ( " ! "
+            , Ansi.yellow
+            , Ansi.black
+            , Ansi.yellowBg
+            )
+        Error ->
+            ( " ✖ "
+            , Ansi.red
+            , Ansi.white
+            , Ansi.redBg
+            )
+
     mkTime timestamp =
-        mconcat
-        [ Ansi.whiteBg $ Ansi.black $
-            T.fromString (formatTime defaultTimeLocale "%X%3Q" timestamp) <> " "
-        , Ansi.white "\57520"
-        ]
+        bg $ fgb $ T.fromString $
+            formatTime defaultTimeLocale "%X%3Q" timestamp <> " "
 
     context =
         let name = T.fromString $ dropWhile isLower tracerName
             id = T.fromText $ T.drop 9 $ show threadId
-         in accent $ " " <> id <> " ❭ " <> (Ansi.bold (name <> accent "/" <> Ansi.bold (accent subject) <> " "))
+         in fg $ " " <> id <> " ❭ " <> (Ansi.bold (name <> fg "/" <> Ansi.bold (fg subject) <> " "))
 
     (subject, details) =
         let
@@ -212,33 +241,6 @@ mkAnsiEnvelop h _version threadId utcTimestamp (SomeMsg _ tracerName msg) = do
                 & T.fromText
          in
             (subject_, details_)
-
-    (severity, accent) = case getSeverityAnnotation msg of
-        Debug ->
-            ( Ansi.whiteBg (Ansi.black "\57520" <> Ansi.bold (Ansi.white " + "))
-                <> Ansi.white "\57520"
-            , Ansi.white
-            )
-        Info ->
-            ( Ansi.blueBg (Ansi.black "\57520" <> Ansi.bold (Ansi.white " ℹ "))
-                <> Ansi.blue "\57520"
-            , Ansi.blue
-            )
-        Notice ->
-            ( Ansi.magentaBg (Ansi.black "\57520" <> Ansi.bold (Ansi.white " ★ "))
-                <> Ansi.magenta "\57520"
-            , Ansi.magenta
-            )
-        Warning ->
-            ( Ansi.yellowBg (Ansi.black "\57520" <> Ansi.bold (Ansi.white " ! "))
-                <> Ansi.yellow "\57520"
-            , Ansi.yellow
-            )
-        Error ->
-            ( Ansi.redBg (Ansi.black "\57520" <> Ansi.bold (Ansi.white " ✖ "))
-                <> Ansi.red "\57520"
-            , Ansi.red
-            )
 
 --
 -- Progress
