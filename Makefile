@@ -51,6 +51,7 @@ $(OUT)/bin/kupo: dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/
 	@mkdir -p $(@D)
 	@echo "$^ → $(@D)/kupo"
 	@cp $^ $(@D)
+	@chmod +x $@
 
 $(OUT)/lib:
 	@mkdir -p $@
