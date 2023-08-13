@@ -21,6 +21,7 @@ import qualified Data.Aeson.Key as Json
 import qualified Data.ByteString.Short as SBS
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Text.Lazy.Builder as Builder
 
 type Value =
     Value' StandardCrypto
@@ -56,11 +57,15 @@ unsafeValueFromList ada assets =
         ]
 
 valueToJson :: Value -> Json.Encoding
-valueToJson (Ledger.MaryValue coins (Ledger.MultiAsset assets)) = Json.pairs $ mconcat
-    [ Json.pair "coins"  (Json.integer coins)
-    , Json.pair "assets" (assetsToJson assets)
-    ]
+valueToJson (Ledger.MaryValue coins (Ledger.MultiAsset assets)) =
+    Json.pairs $
+        Json.pair "coins"  (Json.integer coins)
+      <>
+        Json.pair "assets" (assetsToJson assets)
   where
+    shortBytesToKey =
+        Builder.fromText . encodeBase16 . fromShort
+
     assetsToJson
         :: Map (Ledger.PolicyID StandardCrypto) (Map Ledger.AssetName Integer)
         -> Json.Encoding
@@ -68,22 +73,26 @@ valueToJson (Ledger.MaryValue coins (Ledger.MultiAsset assets)) = Json.pairs $ m
         Json.pairs
         .
         Map.foldrWithKey
-            (\k v r -> Json.pair (assetIdToKey k) (Json.integer v) <> r)
+            (\(Ledger.PolicyID (Ledger.ScriptHash (UnsafeHash policyId))) inner r ->
+                let fieldName = shortBytesToKey policyId
+                 in r <> Map.foldrWithKey
+                        (\(Ledger.AssetName assetName) quantity json ->
+                            let
+                                k = ( if SBS.null assetName then
+                                        fieldName
+                                      else
+                                        fieldName <> "." <> shortBytesToKey assetName
+                                    ) & Json.fromText . toStrict . Builder.toLazyText
+
+                                v = Json.integer quantity
+                             in
+                                Json.pair k v <> json
+                        )
+                        (mempty :: Json.Series)
+                        inner
+            )
             mempty
-        .
-        flatten
 
-    flatten :: (Ord k1, Ord k2) => Map k1 (Map k2 a) -> Map (k1, k2) a
-    flatten = Map.foldrWithKey
-        (\k inner -> Map.union (Map.mapKeys (k,) inner))
-        mempty
-
-    assetIdToKey :: (Ledger.PolicyID StandardCrypto, Ledger.AssetName) -> Json.Key
-    assetIdToKey (Ledger.PolicyID (Ledger.ScriptHash (UnsafeHash pid)), Ledger.AssetName bytes)
-        | SBS.null bytes = Json.fromText
-            (encodeBase16 (fromShort pid))
-        | otherwise     = Json.fromText
-            (encodeBase16 (fromShort pid) <> "." <> encodeBase16 (fromShort bytes))
 
 -- ComparableValue
 
