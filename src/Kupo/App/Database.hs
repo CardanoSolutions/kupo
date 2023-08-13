@@ -175,8 +175,10 @@ import System.IO.Error
     ( isAlreadyExistsError
     )
 
+import qualified Data.Char as Char
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as T
+import qualified Data.Text.Lazy.Builder as TL
 import qualified Database.SQLite.Simple as Sqlite
 import qualified Kupo.Data.Configuration as Configuration
 import qualified Kupo.Data.Database as DB
@@ -1393,10 +1395,10 @@ data TraceConnection where
         :: { retryingIn :: DiffTime }
         -> TraceConnection
     ConnectionBeginQuery
-        :: { beginQuery :: Text }
+        :: { beginQuery :: LText }
         -> TraceConnection
     ConnectionExitQuery
-        :: { exitQuery :: Text }
+        :: { exitQuery :: LText }
         -> TraceConnection
     ConnectionCreateTemporaryIndex
         :: { newTemporaryIndex :: Text }
@@ -1441,9 +1443,9 @@ traceExecute
     -> q
     -> IO ()
 traceExecute tr conn template qs = do
-    traceWith tr $ ConnectionBeginQuery (fromQuery template)
+    traceWith tr $ ConnectionBeginQuery (trim template)
     execute conn template qs
-    traceWith tr $ ConnectionExitQuery (fromQuery template)
+    traceWith tr $ ConnectionExitQuery (trim template)
 
 traceExecute_
     :: Tracer IO TraceConnection
@@ -1451,6 +1453,25 @@ traceExecute_
     -> Query
     -> IO ()
 traceExecute_ tr conn template = do
-    traceWith tr $ ConnectionBeginQuery (fromQuery template)
+    traceWith tr $ ConnectionBeginQuery (trim template)
     execute_ conn template
-    traceWith tr $ ConnectionExitQuery (fromQuery template)
+    traceWith tr $ ConnectionExitQuery (trim template)
+
+trim :: Query -> LText
+trim =
+    TL.toLazyText
+    .
+    snd
+    .
+    T.foldl
+        (\(prevIsSpace, builder) c ->
+            let currentIsSpace = Char.isSpace c in
+            ( currentIsSpace
+            , if currentIsSpace && prevIsSpace
+                 then builder
+                 else builder <> TL.singleton c
+            )
+        )
+        (False, mempty)
+    .
+    fromQuery
