@@ -12,7 +12,7 @@ STYLISH_HASKELL_VERSION := 0.13.0.0
 
 NETWORK := preview
 CONFIG := $(shell pwd)/config/network/$(NETWORK)
-WORKDIR := ${HOME}/.cache/kupo/${NETWORK}
+CACHEDIR := ${HOME}/.cache/kupo/${NETWORK}
 
 all: $(OUT)/bin/kupo \
 		 $(OUT)/share/zsh/site-functions/_kupo \
@@ -21,8 +21,8 @@ all: $(OUT)/bin/kupo \
 		 $(OUT)/share/kupo/LICENSE \
 		 $(OUT)/share/man/man1/kupo.1
 
-kupo-$(VERSION)-$(ARCH)-$(OS).tar.gz: all
-	tar -czf $@ dist/*
+kupo-$(TAG)-$(ARCH)-$(OS).tar.gz: all
+	tar czf $@ --cd dist .
 
 $(OUT)/share/man/man1/kupo.1:
 	@mkdir -p $(@D)
@@ -64,11 +64,12 @@ configure: # Freeze projet dependencies and update package index
 archive: kupo-$(TAG)-$(ARCH)-$(OS).tar.gz # Package the application as a tarball
 
 kupo.sqlite3-$(NETWORK).tar.gz:
-	sqlite3 $(WORKDIR)/kupo.sqlite3 "VACUUM;"
-	sqlite3 $(WORKDIR)/kupo.sqlite3 "PRAGMA optimize;"
-	GZIP=-9 tar cvzf kupo.sqlite3-$(NETWORK).tar.gz $(WORKDIR)/kupo.sqlite3
+	@echo "Taking snapshot of NETWORK=$(NETWORK)."
+	sqlite3 $(CACHEDIR)/kupo.sqlite3 "VACUUM;"
+	sqlite3 $(CACHEDIR)/kupo.sqlite3 "PRAGMA optimize;"
+	GZIP=-9 tar cvzf kupo.sqlite3-$(NETWORK).tar.gz --cd $(CACHEDIR) kupo.sqlite3
 
-snapshot: kupo.sqlite3-$(NETWORK).tar.gz # Create database snapshots from existing
+snapshot: kupo.sqlite3-$(NETWORK).tar.gz # Take database snapshots. Use NETWORK=XXX to specify target network.
 	md5 $<
 	split -b 500m $< $<.part_
 
@@ -86,18 +87,6 @@ man: $(OUT)/share/man/man1/kupo.1 # Build man page
 
 doc: # Serve the rendered documentation on \033[0;33m<http://localhost:8000>\033[00m
 	@cd docs && python -m SimpleHTTPServer
-
-dev-cardano-node: # Connects Kupo to a local cardano-node on the preview network, with the provided options
-	cabal run kupo:exe:kupo -- \
-		--node-config $(CONFIG)/cardano-node/config.json \
-		--node-socket /tmp/node.socket \
-		$(filter-out $@,$(MAKECMDGOALS))
-
-dev-ogmios: # Connects Kupo to a local ogmios bridge on the preview network, with the provided options
-	cabal run kupo:exe:kupo -- \
-		--ogmios-host 127.0.0.1 \
-		--ogmios-port 1337 \
-		$(filter-out $@,$(MAKECMDGOALS))
 
 clean: # Remove build artifacts
 	(rm -r $(OUT) 2>/dev/null && echo "Build artifacts removed.") || echo "Nothing to remove."
