@@ -37,6 +37,9 @@ module Kupo
 
 import Kupo.Prelude
 
+import Control.Exception.Safe
+    ( isAsyncException
+    )
 import Data.Pool
     ( defaultPoolConfig
     , destroyAllResources
@@ -50,6 +53,7 @@ import GHC.Conc
 import Kupo.App
     ( ChainSyncClient
     , TraceConsumer (..)
+    , TraceKupo (..)
     , consumer
     , gardener
     , newProducer
@@ -87,10 +91,14 @@ import Kupo.App.Mailbox
 import Kupo.Control.MonadAsync
     ( concurrently4
     )
+import Kupo.Control.MonadCatch
+    ( handle
+    )
 import Kupo.Control.MonadLog
     ( Severity (..)
     , TracerDefinition (..)
     , defaultTracers
+    , logWith
     , withTracers
     )
 import Kupo.Control.MonadSTM
@@ -98,6 +106,7 @@ import Kupo.Control.MonadSTM
     )
 import Kupo.Control.MonadThrow
     ( finally
+    , throwIO
     )
 import Kupo.Data.Cardano
     ( IsBlock
@@ -125,6 +134,9 @@ import Kupo.Options
     )
 import Kupo.Version
     ( version
+    )
+import System.Exit
+    ( ExitCode (..)
     )
 
 --
@@ -210,7 +222,7 @@ kupoWith tr withProducer withFetchBlock =
                     destroyAllResources readOnlyPool
                     destroyAllResources readWritePool
 
-    liftIO $ run $ \db -> do
+    liftIO $ handle onUnknownException $ run $ \db -> do
         patterns <- newPatternsCache (tracerConfiguration tr) config db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
@@ -261,6 +273,15 @@ kupoWith tr withProducer withFetchBlock =
                             checkpoints
                             statusToggle
                     )
+
+  where
+    onUnknownException :: SomeException -> IO ()
+    onUnknownException e
+        | isAsyncException e = do
+            throwIO e
+        | otherwise = do
+            logWith (tracerKupo tr) $ KupoUnexpectedError (toText (displayException e))
+            exitWith (ExitFailure 1)
 
 --
 -- Environment

@@ -19,6 +19,7 @@ module Kupo.App
       -- * Tracers
     , TraceConsumer (..)
     , TraceGardener (..)
+    , TraceKupo (..)
     ) where
 
 import Kupo.Prelude
@@ -437,3 +438,20 @@ instance HasSeverityAnnotation TraceGardener where
         GardenerBeginGarbageCollection{} -> Notice
         GardenerPrunedIncrement{} -> Debug
         GardenerExitGarbageCollection{}  -> Notice
+
+data TraceKupo where
+    KupoExit
+        :: TraceKupo
+    KupoUnexpectedError
+        :: { exception :: Text }
+        -> TraceKupo
+    deriving stock (Generic, Show)
+
+instance ToJSON TraceKupo where
+    toEncoding =
+        defaultGenericToEncoding
+
+instance HasSeverityAnnotation TraceKupo where
+    getSeverityAnnotation = \case
+        KupoExit{} -> Debug
+        KupoUnexpectedError{} -> Error

@@ -35,6 +35,7 @@ import Data.Char
 import Kupo.App
     ( TraceConsumer
     , TraceGardener
+    , TraceKupo
     )
 import Kupo.App.Configuration
     ( TraceConfiguration
@@ -141,6 +142,7 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> fmap Const (logLevelOption "consumer")
                     <*> fmap Const (logLevelOption "garbage-collector")
                     <*> fmap Const (logLevelOption "configuration")
+                    <*> pure (Const (Just Debug))
                 )
         )
 
@@ -383,6 +385,8 @@ data Tracers m (kind :: TracerDefinition) = Tracers
         :: !(TracerHKD kind (Tracer m TraceGardener))
     , tracerConfiguration
         :: !(TracerHKD kind (Tracer m TraceConfiguration))
+    , tracerKupo
+        :: !(TracerHKD kind (Tracer m TraceKupo))
     } deriving (Generic)
 
 deriving instance Show (Tracers m MinSeverities)

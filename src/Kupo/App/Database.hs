@@ -1358,6 +1358,9 @@ data TraceDatabase where
         -> TraceDatabase
     DatabaseCopyFinalize
         :: TraceDatabase
+    DatabaseDebug
+        :: Text
+        -> TraceDatabase
     deriving stock (Generic, Show)
 
 instance ToJSON TraceDatabase where
@@ -1382,6 +1385,7 @@ instance HasSeverityAnnotation TraceDatabase where
         DatabaseImported{}             -> Info
         DatabaseRemoveIncompleteCopy{} -> Notice
         DatabaseCopyFinalize{}         -> Notice
+        DatabaseDebug{}                -> Warning
 
 data TraceConnection where
     ConnectionCreateShortLived
