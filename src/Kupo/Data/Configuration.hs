@@ -174,7 +174,7 @@ pruneInputsMaxIncrement :: Int
 pruneInputsMaxIncrement = 50000
 
 -- Maximum number of attempts to acquire a database connection on a retrying strategy
-maxReconnectionAttempts :: Int
+maxReconnectionAttempts :: Word
 maxReconnectionAttempts = 5
 
 data NetworkParameters = NetworkParameters

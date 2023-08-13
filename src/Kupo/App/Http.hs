@@ -203,7 +203,7 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
         & Warp.setBeforeMainLoop (logWith tr HttpServerListening{host,port})
 
     withDatabaseWrapped send connectionType action = do
-        retrying 1 10 $ handle onServerError (handle onAssertPointException (withDatabase connectionType action))
+        retrying 1 0.05 $ handle onServerError (handle onAssertPointException (withDatabase connectionType action))
       where
         onAssertPointException = \case
             ErrPointNotFound{} ->
@@ -902,7 +902,7 @@ data TraceHttpServer where
         :: { host :: String, port :: Int }
         -> TraceHttpServer
     HttpFailedToOpenDatabaseConnection
-        :: { attempts :: Int, retryingIn :: DiffTime }
+        :: { attempts :: Word, retryingIn :: DiffTime }
         -> TraceHttpServer
     HttpRequest
         :: { path :: [Text], method :: Text }

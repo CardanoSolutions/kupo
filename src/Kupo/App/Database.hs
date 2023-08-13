@@ -390,9 +390,13 @@ createShortLivedConnection
 createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
     traceWith tr $ DatabaseConnection ConnectionCreateShortLived{mode}
     let open = Sqlite.open (mkConnectionString file mode)
-    conn <- handle (onOpenException open 0) open
-    return $ mkDatabase (contramap DatabaseConnection tr) mode k (bracketConnection conn)
+    conn <- open
+    retryWhenBusy trConn (constantStrategy 0.25) 1 $ execute_ conn "PRAGMA cache_size = 1024"
+    return $ mkDatabase trConn mode k (bracketConnection conn)
   where
+    trConn :: Tracer IO TraceConnection
+    trConn = contramap DatabaseConnection tr
+
     bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
     bracketConnection conn between =
         case mode of
@@ -411,19 +415,6 @@ createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
                     )
                     (atomically (modifyTVar' shortLived prev))
                     (between conn)
-
-    onOpenException :: IO Connection -> Int -> SQLError -> IO Connection
-    onOpenException io n e
-        | n > 2 =
-            throwIO e
-        | otherwise =
-            case sqlError e of
-                ErrorCan'tOpen ->
-                    threadDelay 0.05 >> handle (onOpenException io (next n)) io
-                ErrorLocked ->
-                    threadDelay 0.05 >> handle (onOpenException io (next n)) io
-                _ ->
-                    throwIO e
 
 withShortLivedConnection
     :: Tracer IO TraceDatabase
@@ -850,7 +841,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                 throwIO $ UnexpectedRow (fromQuery selectMaxCheckpointQry) xs
 
     , runTransaction = \r -> bracketConnection $ \conn ->
-        retryWhenBusy tr $ withTransaction conn mode (runReaderT r conn)
+        retryWhenBusy tr (constantStrategy 0.1) 1 $ withTransaction conn mode (runReaderT r conn)
     }
 
 insertRow
@@ -1081,22 +1072,27 @@ mkPreparedStatement n =
     Query ("(" <> T.intercalate "," (replicate n "?") <> ")")
 {-# INLINABLE mkPreparedStatement #-}
 
-retryWhenBusy :: Tracer IO TraceConnection -> IO a -> IO a
-retryWhenBusy tr action =
+type RetryPolicy = Word -> DiffTime
+
+constantStrategy :: DiffTime -> RetryPolicy
+constantStrategy = const
+
+retryWhenBusy :: Tracer IO TraceConnection -> RetryPolicy -> Word -> IO a -> IO a
+retryWhenBusy tr retryPolicy attempts action =
     action `catch` (\e@SQLError{sqlError} -> case sqlError of
         ErrorLocked -> do
-            traceWith tr $ ConnectionLocked { retryingIn }
+            traceWith tr $ ConnectionLocked { attempts, retryingIn }
             threadDelay retryingIn
-            retryWhenBusy tr action
+            retryWhenBusy tr retryPolicy (next attempts) action
         ErrorBusy -> do
-            traceWith tr $ ConnectionBusy { retryingIn }
+            traceWith tr $ ConnectionBusy { attempts, retryingIn }
             threadDelay retryingIn
-            retryWhenBusy tr action
+            retryWhenBusy tr retryPolicy (next attempts) action
         _otherError ->
             throwIO e
     )
   where
-    retryingIn = 0.1
+    retryingIn = retryPolicy attempts
 
 -- NOTE: Not using sqlite-simple's version because it lacks the crucial
 -- 'onException' on commits; The commit operation may throw an 'SQLiteBusy'
@@ -1395,10 +1391,10 @@ data TraceConnection where
         :: { mode :: ConnectionType }
         -> TraceConnection
     ConnectionLocked
-        :: { retryingIn :: DiffTime }
+        :: { attempts :: Word, retryingIn :: DiffTime }
         -> TraceConnection
     ConnectionBusy
-        :: { retryingIn :: DiffTime }
+        :: { attempts :: Word, retryingIn :: DiffTime }
         -> TraceConnection
     ConnectionBeginQuery
         :: { beginQuery :: LText }
@@ -1426,20 +1422,24 @@ instance ToJSON TraceConnection where
 
 instance HasSeverityAnnotation TraceConnection where
     getSeverityAnnotation = \case
-        ConnectionCreateShortLived{}          -> Debug
-        ConnectionDestroyShortLived{}         -> Debug
-        ConnectionLocked{}                    -> Debug
-        ConnectionBusy{}                      -> Debug
+        ConnectionCreateShortLived{} -> Debug
+        ConnectionDestroyShortLived{} -> Debug
+        ConnectionLocked{attempts, retryingIn}
+            | retryingIn * fromIntegral attempts > 60  -> Warning
+        ConnectionLocked{} -> Debug
+        ConnectionBusy{attempts, retryingIn}
+            | retryingIn * fromIntegral attempts > 60 -> Warning
+        ConnectionBusy{} -> Debug
         ConnectionBeginQuery{beginQuery}
             | beginQuery == "PRAGMA optimize" -> Notice
-        ConnectionBeginQuery{}                -> Debug
+        ConnectionBeginQuery{} -> Debug
         ConnectionExitQuery{exitQuery}
-            | exitQuery == "PRAGMA optimize"  -> Notice
-        ConnectionExitQuery{}                 -> Debug
-        ConnectionCreateTemporaryIndex{}      -> Debug
-        ConnectionCreatedTemporaryIndex{}     -> Debug
-        ConnectionRemoveTemporaryIndex{}      -> Debug
-        ConnectionRemoveIndex{}               -> Warning
+            | exitQuery == "PRAGMA optimize" -> Notice
+        ConnectionExitQuery{} -> Debug
+        ConnectionCreateTemporaryIndex{} -> Debug
+        ConnectionCreatedTemporaryIndex{} -> Debug
+        ConnectionRemoveTemporaryIndex{} -> Debug
+        ConnectionRemoveIndex{} -> Warning
 
 traceExecute
     :: ToRow q
