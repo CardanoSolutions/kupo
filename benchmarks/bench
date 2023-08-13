@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+BASEURL="http://127.0.0.1:1442/matches"
+
+PATTERNS=(
+  "stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6"
+  "stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6?spent_after=98245654"
+  "1d7f33bd23d85e1a25d87d86fac4f199c3197a2f7afeb662a0f34e1e.*"
+  "1d7f33bd23d85e1a25d87d86fac4f199c3197a2f7afeb662a0f34e1e.*?created_before=98245654&spent_after=98764054"
+  "addr1v94725lv4umktv89cg2t04qjn4qq3p6l6zegvtx5esu2zuqfd487u"
+  "addr1v94725lv4umktv89cg2t04qjn4qq3p6l6zegvtx5esu2zuqfd487u?created_after=98677654&created_before=98764054"
+  "*@4301551ce28e83ef1082432f57a13bbbd389f4628592b73d71ca19e8833c0eb7"
+)
+
+for PATTERN in ${PATTERNS[@]}; do
+  for QUERY in "$PATTERN"; do
+    echo "$BASEURL/$QUERY"
+    oha -n 30 -c 8 "$BASEURL/$QUERY"
+    echo -e "\nTotal results\n $(curl -s "$BASEURL/$QUERY" | jq length)\n"
+    echo ""
+  done
+done

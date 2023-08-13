@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-nix-shell -p gnuplot --run "gnuplot -e 'set terminal svg; set ylabel \"Memory Usage (MB)\"; set xlabel \"Time (s)\"; set linetype 1 lc rgb \"#0033ad\"; plot \"$1\" using (\$1):(\$2/1048576) with lines;' -p"
