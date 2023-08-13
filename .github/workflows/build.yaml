@@ -23,7 +23,13 @@ jobs:
       with:
         submodules: true
 
-    - name: ❄️  Install Nix
+    - name: 🧰 Install dependencies
+      shell: sh
+      run: |
+        sudo apt update
+        sudo apt install -y pandoc
+
+    - name: ❄️ Install Nix
       uses: cachix/install-nix-action@v22
       with:
         extra_nix_config: |
@@ -31,7 +37,7 @@ jobs:
           substituters = https://cache.iog.io/ https://cache.zw3rk.com/ https://cache.nixos.org/
         nix_path: nixpkgs=channel:nixos-unstable
 
-    - name: 🔨 Prepare Cache
+    - name: 🧊 Prepare Cache
       run: |
         make configure
 
