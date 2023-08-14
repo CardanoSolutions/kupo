@@ -1,13 +1,5 @@
 # Benchmarks
 
-- [Synchronization](#synchronization)
-- [Queries](#queries)
-  - [By Address](#by-address)
-  - [By Payment Credentials](#by-payment-credentials)
-  - [By Delegation credentials](#by-delegation-credentials)
-  - [By Policy Id](#by-policy-id)
-  - [By Transaction Id](#by-transaction-id)
-
 ## Specifications
 
 - Hardware: MacBook Pro (2021), Apple M1 Max (16-core), 32 GB
