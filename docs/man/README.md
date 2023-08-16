@@ -97,13 +97,6 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
 
     (default: *3600s*).
 
-**--max-concurrency**
-:   Maximum number of concurrent connections to the database. This also seemingly refer to the maximum number of client requests that the server can handle in parallel, beyond which the server will return *503 Service Unavailable* errors as response to new requests.
-
-    The more cores are available on the host machine, the higher can this number be in theory. The default is sensible for a medium hardware.
-
-    (default: *50*).
-
 **--defer-db-indexes**
 :   When enabled, defer the creation of database indexes to the next start. This is useful to make the first-ever synchronization faster but will make certain queries considerably slower.
 
@@ -145,24 +138,32 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
    ┏━━━━━━━━━┓
 ╾┬─┫ ADDRESS ┣───────────────────────────────┬╼
  │ ┗━━━━━━━━━┛                               │
+ │ ┏━━━━━━━━━━━━┓   ╭───╮ ┏━━━━━━━━━━━━┓     │
+ ├─┫ CREDENTIAL ┣───┤ / ├─┫ CREDENTIAL ┣─────┤
+ │ ┗━━━━━━━━━━━━┛   ╰───╯ ┗━━━━━━━━━━━━┛     │
+ │ ┏━━━━━━━━━━━┓    ╭───╮ ┏━━━━━━━━━━━━┓     │
+ ├─┫ POLICY_ID ┣────┤ . ├─┫ ASSET_NAME ┣─────┤
+ │ ┗━━━━━━━━━━━┛    ╰───╯ ┗━━━━━━━━━━━━┛     │
+ │ ┏━━━━━━━━━━━━━━┓ ╭───╮ ┏━━━━━━━━━━━━━━━━┓ │
+ ├─┫ OUTPUT_INDEX ┣─┤ @ ├─┫ TRANSACTION_ID ┣─┤
+ │ ┗━━━━━━━━━━━━━━┛ ╰───╯ ┗━━━━━━━━━━━━━━━━┛ │
+ │ ┏━━━━━━━━━━━━━━┓                          │
+ └─┫ METADATA_TAG ┣──────────────────────────┘
+   ┗━━━━━━━━━━━━━━┛
+```
+
+**ADDRESS**
+
+```
+   ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+╾┬─┫ ADDRESS OR LEGACY ADDRESS ┣─────────────┬╼
+ │ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛             │
  │ ┏━━━━━━━━━━━━━━━┓                         │
- ├─┫ STAKE_ADDRESS ┣─────────────────────────┤
+ ├─┫ STAKE ADDRESS ┣─────────────────────────┤
  │ ┗━━━━━━━━━━━━━━━┛                         │
- │ ┏━━━━━━━━━━━━┓                            │
- ├─┫ CREDENTIAL ┣────────────────────────────┤
- │ ┗━━━━━━━━━━━━┛                            │
- │ ┏━━━━━━━━━━━━┓   ┏━━━┓ ┏━━━━━━━━━━━━┓     │
- ├─┫ CREDENTIAL ┣───┫ / ┣─┫ CREDENTIAL ┣─────┤
- │ ┗━━━━━━━━━━━━┛   ┗━━━┛ ┗━━━━━━━━━━━━┛     │
- │ ┏━━━━━━━━━━━┓    ┏━━━┓ ┏━━━━━━━━━━━━┓     │
- ├─┫ POLICY_ID ┣────┫ . ┣─┫ ASSET_NAME ┣─────┤
- │ ┗━━━━━━━━━━━┛    ┗━━━┛ ┗━━━━━━━━━━━━┛     │
- │ ┏━━━━━━━━━━━━━━┓ ┏━━━┓ ┏━━━━━━━━━━━━━━━━┓ │
- ├─┫ OUTPUT_INDEX ┣─┫ @ ┣─┫ TRANSACTION_ID ┣─┤
- │ ┗━━━━━━━━━━━━━━┛ ┗━━━┛ ┗━━━━━━━━━━━━━━━━┛ │
- │ ┏━━━┓                                     │
- └─┫ * ┣─────────────────────────────────────┘
-   ┗━━━┛
+ │ ╭───╮                                     │
+ └─┤ * ├─────────────────────────────────────┘
+   ╰───╯
 ```
 
 **CREDENTIAL**
@@ -224,6 +225,14 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
    ┏━━━━━━━━━━━┓
  ╾─┫ 64 HEXDIG ┣─╼
    ┗━━━━━━━━━━━┛
+```
+
+**METADATA_TAG**
+
+```
+  ╭───╮  ┏━━━━━━━━━━━━━━┓  ╭───╮
+╾─┤ { ├──┫ METADATA TAG ┣──┤ } ├─╼
+  ╰───╯  ┗━━━━━━━━━━━━━━┛  ╰───╯
 ```
 
 **BECH32DIG** = %x61 / %x63-68 / %x6A-6E / %x70-7A / 0-9
