@@ -12,6 +12,10 @@ module Test.KupoSpec
 
 import Kupo.Prelude
 
+import Control.Monad.Trans.Writer
+    ( execWriterT
+    , tell
+    )
 import Data.Aeson.Lens
     ( _Integer
     , _String
@@ -25,8 +29,11 @@ import GHC.IORef
     ( atomicSwapIORef
     )
 import Kupo
-    ( kupo
+    ( Env
+    , Kupo
+    , kupo
     , newEnvironment
+    , newEnvironmentWith
     , runWith
     , version
     , withTracers
@@ -110,7 +117,8 @@ import System.Process
     , readCreateProcess
     )
 import Test.Hspec
-    ( Spec
+    ( Arg
+    , Spec
     , SpecWith
     , around
     , context
@@ -165,8 +173,24 @@ import Type.Reflection
     , typeRepTyCon
     )
 
+import Control.Monad.Class.MonadThrow
+    ( throwIO
+    )
 import qualified Data.Aeson as Json
+import qualified Data.Text as T
+import Data.Text.Lazy.Builder
+    ( Builder
+    )
+import qualified Data.Text.Lazy.Builder as Builder
 import qualified Prelude
+import System.IO
+    ( hClose
+    , hGetLine
+    , isEOF
+    )
+import System.IO.Error
+    ( IOError
+    )
 
 varCardanoNodeSocket :: String
 varCardanoNodeSocket = "CARDANO_NODE_SOCKET"
@@ -605,24 +629,60 @@ skippableContext prefix skippableSpec = do
         :: Manager
         -> TVar IO Int
         -> Configuration
-        -> ((FilePath, Tracers IO 'Concrete, Configuration, HttpClient IO, IO ()) -> IO ())
+        -> (EndToEndContext -> IO ())
         -> IO ()
-    withTempDirectory manager ref cfg action = do
+    withTempDirectory manager ref defaultCfg action = do
         serverPort <- atomically $ stateTVar ref $ \port -> (port, next port)
-        httpLogs <- newTVarIO []
-        let writeLogs = atomically . modifyTVar' httpLogs . (:)
-        let httpClient = newHttpClientWith manager (serverHost cfg, serverPort) writeLogs
+        httpClientLogsVar <- newTVarIO []
+        let writeLogs = atomically . modifyTVar' httpClientLogsVar . (:)
+        let httpClient = newHttpClientWith manager (serverHost defaultCfg, serverPort) writeLogs
         withSystemTempDirectory "kupo-end-to-end" $ \dir -> do
-            withTempFile dir "traces" $ \_ h ->
-                withTracers h version (defaultTracers (Just Info)) $ \tr ->
-                    action (dir, tr, cfg { serverPort }, httpClient, dumpLogs httpLogs)
+            action
+                ( \mkConfig -> do
+                    let cfg = mkConfig (defaultCfg { serverPort, workDir = Dir dir })
+                    (cfg,) <$> newEnvironmentWith throwIO cfg
+                , \env t test -> do
+                        withTempFile dir "traces" $ \fp h -> do
+                            withTracers h version (defaultTracers (Just Info)) $ \tr -> do
+                                let runner = do
+                                        res <- timeout (fromInteger @Int (diffTimeToMicroseconds t)) (race_ (kupo tr `runWith` env) test)
+                                        res `shouldSatisfy` isJust
+                                runner `catch` \(e :: SomeException) -> do
+                                    throwIO =<< collectLogs e (fp, h) httpClientLogsVar
+                , httpClient
+                )
 
-    dumpLogs :: TVar IO [Text] -> IO ()
-    dumpLogs logs = do
-        xs <- reverse <$> atomically (readTVar logs)
-        putStrLn "\n== HttpClient Debug"
-        mapM_ (putStrLn . toString) xs
+    collectLogs :: SomeException -> (FilePath, Handle) -> TVar IO [Text] -> IO EndToEndException
+    collectLogs originalException (fp, h) logs = do
+        hClose h
+        applicationLogs <- withFile fp ReadMode $ \h' ->
+            let hPrintLines = do
+                    unlessM (lift (hIsEOF h')) $ do
+                        lift (hGetLine h') >>= tell . (<> "\n") . Builder.fromString
+                        hPrintLines
+             in toStrict . Builder.toLazyText <$> execWriterT hPrintLines
 
+        httpClientLogs <- toStrict. Builder.toLazyText . foldMap ((<> "\n") . Builder.fromText) . reverse
+            <$> atomically (readTVar logs)
+
+        pure $ EndToEndException { httpClientLogs, applicationLogs, originalException }
+
+data EndToEndException = EndToEndException
+    { httpClientLogs :: Text
+    , applicationLogs :: Text
+    , originalException :: SomeException
+    }
+
+instance Exception EndToEndException
+
+instance Show EndToEndException where
+    show EndToEndException{httpClientLogs, applicationLogs} =
+        toString $ T.unlines
+            [ "== Application logs"
+            , applicationLogs
+            , "== Http client's logs"
+            , httpClientLogs
+            ]
 
 currentNetworkTip :: IO Point
 currentNetworkTip = do
@@ -646,24 +706,19 @@ currentNetworkTip = do
                         headerHash <- json ^? key "hash" ._String
                         pointFromText (show slotNo <> "." <> headerHash)
 
-timeoutOrThrow :: DiffTime -> IO () -> IO () -> IO ()
-timeoutOrThrow t cleanup action = flip onException cleanup $ do
-    res <- timeout (fromInteger @Int (diffTimeToMicroseconds t)) action
-    res `shouldSatisfy` isJust
-
-shouldThrowTimeout :: forall e. (Exception e) => DiffTime -> IO () -> IO ()
+shouldThrowTimeout :: forall e. (Exception e) => DiffTime -> (DiffTime -> IO () -> IO ()) -> IO ()
 shouldThrowTimeout t action = do
-    timeout (fromInteger @Int (diffTimeToMicroseconds t)) (try action) >>= \case
+    let stub = action (t + 1) (threadDelay (t + 1))
+    timeout (fromInteger @Int (diffTimeToMicroseconds t)) (try stub) >>= \case
         Nothing ->
-            fail $ "shouldThrowTimeout: timed out after " <> show t
+            fail $ "timed out (unexpectedly) after " <> show t
         Just (Right ()) ->
-            fail "shouldThrowTimeout: should have thrown but didn't."
-        Just (Left (e :: SomeException)) -> do
-            case fromException e of
+            fail "should have thrown but didn't."
+        Just (Left (e :: EndToEndException)) -> do
+            case fromException (originalException e) of
                 Nothing ->
-                    fail $ "shouldThrowTimeout: should have thrown '"
-                         <> exceptionName <> "' but did throw instead: "
-                         <> show e
+                    fail $ "should have thrown '" <> exceptionName
+                         <> "' but did throw instead: " <> show (originalException e)
                 Just (_ :: e) ->
                     pure ()
   where

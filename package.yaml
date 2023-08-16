@@ -135,6 +135,7 @@ tests:
     - sqlite-simple
     - stm
     - temporary
+    - transformers
     - text
     - wai
     - wai-extra
