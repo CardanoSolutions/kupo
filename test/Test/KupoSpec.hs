@@ -32,7 +32,6 @@ import Kupo
     ( Env
     , Kupo
     , kupo
-    , newEnvironment
     , newEnvironmentWith
     , runWith
     , version
@@ -56,7 +55,6 @@ import Kupo.Control.MonadDelay
     )
 import Kupo.Control.MonadLog
     ( Severity (..)
-    , TracerDefinition (..)
     , defaultTracers
     )
 import Kupo.Control.MonadSTM
@@ -97,9 +95,6 @@ import Kupo.Data.Pattern
     , Pattern (..)
     , Result (..)
     )
-import Kupo.Options
-    ( Tracers (..)
-    )
 import Network.HTTP.Client
     ( Manager
     , ManagerSettings (..)
@@ -122,13 +117,14 @@ import Test.Hspec
     , SpecWith
     , around
     , context
+    , pendingWith
     , runIO
     , shouldBe
+    , shouldNotBe
     , shouldReturn
     , shouldSatisfy
     , specify
     , xcontext
-    , xspecify
     )
 import Test.Kupo.App.Http.Client
     ( HttpClient (..)
@@ -136,14 +132,12 @@ import Test.Kupo.App.Http.Client
     )
 import Test.Kupo.Fixture
     ( eraBoundaries
-    , lastAllegraPoint
     , lastAlonzoPoint
     , lastByronPoint
-    , lastMaryPoint
-    , someDatumHashInOutput
-    , someDatumHashInWitness
     , someDatumInOutput
+    , someDatumInOutputHash
     , someDatumInWitness
+    , someDatumInWitnessHash
     , someMetadata
     , someNonExistingPoint
     , someOtherPoint
@@ -155,12 +149,12 @@ import Test.Kupo.Fixture
     , somePointNearScripts
     , somePointSuccessor
     , somePolicyId
-    , someScriptHashInMetadata
-    , someScriptHashInOutput
-    , someScriptHashInWitness
     , someScriptInMetadata
+    , someScriptInMetadataHash
     , someScriptInOutput
+    , someScriptInOutputHash
     , someScriptInWitness
+    , someScriptInWitnessHash
     , someSlotWithMetadata
     , someStakeKey
     , someThirdTransactionId
@@ -178,18 +172,11 @@ import Control.Monad.Class.MonadThrow
     )
 import qualified Data.Aeson as Json
 import qualified Data.Text as T
-import Data.Text.Lazy.Builder
-    ( Builder
-    )
 import qualified Data.Text.Lazy.Builder as Builder
 import qualified Prelude
 import System.IO
     ( hClose
     , hGetLine
-    , isEOF
-    )
-import System.IO.Error
-    ( IOError
     )
 
 varCardanoNodeSocket :: String
@@ -269,302 +256,240 @@ spec = skippableContext "End-to-end" $ do
                 }
             shouldThrowTimeout @ConflictingOptionsException 1 (runSpec env)
 
---    xspecify "Can't start the server on a fresh new db without explicit point" $ \(tmp, tr, cfg, _, _) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Nothing
---            , patterns = fromList [MatchAny OnlyShelley]
---            }
---        shouldThrowTimeout @NoStartingPointException 1 (kupo tr `runWith` env)
---
---    xspecify "Retry and wait when chain producer isn't available" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just GenesisPoint
---            , patterns = fromList [MatchAny OnlyShelley]
---            , chainProducer =
---                case chainProducer cfg of
---                    CardanoNode{nodeConfig} ->
---                        CardanoNode
---                            { nodeSocket = "/dev/null"
---                            , nodeConfig
---                            }
---                    Ogmios{ogmiosPort} ->
---                        Ogmios
---                            { ogmiosHost = "/dev/null"
---                            , ogmiosPort
---                            }
---            }
---        timeoutOrThrow 5 $ race_
---            (kupo tr `runWith` env)
---            (do
---                cps <- listCheckpoints
---                threadDelay 1
---                cps' <- listCheckpoints
---                cps `shouldBe` cps'
---            )
---
---    xspecify "Crashes when no intersection is found" $ \(tmp, tr, cfg, _, _) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just someNonExistingPoint
---            , patterns = fromList [MatchAny OnlyShelley]
---            }
---        shouldThrowTimeout @IntersectionNotFoundException 1 (kupo tr `runWith` env)
---
---    xspecify "Crashes when no patterns are defined" $ \(tmp, tr, cfg, _, _) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just somePoint
---            , patterns = fromList []
---            }
---        shouldThrowTimeout @ConflictingOptionsException 1 (kupo tr `runWith` env)
---
---    xspecify "Can prune utxo on-the-fly" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just somePoint
---            , patterns = fromList [MatchAny OnlyShelley]
---            , inputManagement = RemoveSpentInputs
---            }
---
---        timeoutOrThrow 30 $ race_
---            (kupo tr `runWith` env)
---            (do
---                waitSlot (> 50_000)
---                matches <- getAllMatches NoStatusFlag
---                all (isNothing . spentAt) matches `shouldBe` True
---            )
---
---    xspecify "Retrieve checkpoints and ancestors" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just somePointAncestor
---            , patterns = fromList [MatchAny OnlyShelley]
---            , inputManagement = RemoveSpentInputs
---            }
---        let strict = GetCheckpointStrict
---        let flex = GetCheckpointClosestAncestor
---        timeoutOrThrow 5 $ race_
---            (kupo tr `runWith` env)
---            (do
---                waitSlot (> (getPointSlotNo somePointSuccessor))
---                getCheckpointBySlot strict (getPointSlotNo somePoint)
---                    `shouldReturn` Just somePoint
---                getCheckpointBySlot strict (prev (getPointSlotNo somePoint))
---                    `shouldReturn` Nothing
---                getCheckpointBySlot strict (getPointSlotNo somePointSuccessor)
---                    `shouldReturn` Just somePointSuccessor
---                getCheckpointBySlot strict  (prev (getPointSlotNo somePointSuccessor))
---                    `shouldReturn` Nothing
---                getCheckpointBySlot flex (prev (getPointSlotNo somePointSuccessor))
---                    `shouldReturn` Just somePoint
---            )
---
---    xspecify "Retrieve datums associated with datum hashes" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just lastAlonzoPoint
---            , patterns = fromList [MatchAny OnlyShelley]
---            }
---        timeoutOrThrow 20 $ race_
---            (kupo tr `runWith` env)
---            (do
---                waitDatum someDatumHashInWitness
---                    `shouldReturn` someDatumInWitness
---                waitDatum someDatumHashInOutput
---                    `shouldReturn` someDatumInOutput
---            )
---
---    xspecify "Retrieve scripts associated with script hashes" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just somePointNearScripts
---            , patterns = fromList [MatchAny OnlyShelley]
---            }
---        timeoutOrThrow 20 $ race_
---            (kupo tr `runWith` env)
---            (do
---                waitScript someScriptHashInWitness
---                    `shouldReturn` someScriptInWitness
---                waitScript someScriptHashInMetadata
---                    `shouldReturn` someScriptInMetadata
---                waitScript someScriptHashInOutput
---                    `shouldReturn` someScriptInOutput
---            )
---
---    xspecify "Dynamically add pattern and restart to a past point when syncing" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just lastByronPoint
---            , patterns = fromList [MatchDelegation someStakeKey]
---            }
---        let maxSlot = getPointSlotNo lastByronPoint + 100_000
---        let onlyInWindow r
---                | getPointSlotNo (createdAt r) <= maxSlot =
---                    Just r { spentAt = Nothing }
---                | otherwise =
---                    Nothing
---        ref <- newIORef ([], [])
---        timeoutOrThrow 10 $ race_
---            (kupo tr `runWith` env)
---            (do
---                waitSlot (>= maxSlot)
---                xs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
---                res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right lastByronPoint)
---                res `shouldBe` True
---                waitSlot (< maxSlot) -- Observe rollback
---                waitSlot (>= maxSlot)
---                ys <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
---                (xs \\ ys) `shouldBe` []
---                (sort <$> listPatterns) `shouldReturn`
---                    [ MatchDelegation someStakeKey
---                    , MatchDelegation someOtherStakeKey
---                    ]
---                atomicSwapIORef ref (xs, ys)
---            )
---        (xs, ys) <- readIORef ref
---        withSystemTempDirectory "kupo-end-to-end" $ \tmp' -> do
---            env' <- newEnvironment $ cfg
---                { workDir = Dir tmp'
---                , since = Just lastByronPoint
---                , patterns = fromList [MatchDelegation someOtherStakeKey]
---                }
---            timeoutOrThrow 10 $ race_
---                (kupo tr `runWith` env')
---                (do
---                    waitSlot (>= maxSlot)
---                    zs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
---                    ys \\ zs `shouldBe` xs
---                )
---
---    xspecify "Dynamically add pattern and restart to a past point when at the tip" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        tip <- currentNetworkTip
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just tip
---            , patterns = fromList [MatchAny IncludingBootstrap]
---            }
---        timeoutOrThrow 180 $ race_
---            (kupo tr `runWith` env)
---            (do
---                waitSlot (>= getPointSlotNo tip)
---                res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right tip)
---                res `shouldBe` True
---            )
---
---    xspecify "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just lastByronPoint
---            , patterns = fromList [MatchAny OnlyShelley]
---            }
---        timeoutOrThrow 10 $ race_
---            (kupo tr `runWith` env)
---            (do
---                let maxSlot = getPointSlotNo lastByronPoint + 10_000
---                waitSlot (>= maxSlot)
---                slot <- maximum . fmap getPointSlotNo <$> listCheckpoints
---                res <- putPatternSince (MatchDelegation someOtherStakeKey) (Left (maxSlot - 20_000))
---                slot' <- maximum . fmap getPointSlotNo <$> listCheckpoints
---                res `shouldBe` False
---                listPatterns `shouldReturn` [MatchAny OnlyShelley]
---                slot' `shouldSatisfy` (>= slot)
---            )
---
---    xspecify "Failing to insert patterns (non-existing point) doesn't disturb normal operations" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just lastByronPoint
---            , patterns = fromList [MatchAny OnlyShelley]
---            }
---        timeoutOrThrow 5 $ race_
---            (kupo tr `runWith` env)
---            (do
---                let maxSlot = getPointSlotNo lastByronPoint + 10_000
---                waitSlot (>= maxSlot)
---                slot <- maximum . fmap getPointSlotNo <$> listCheckpoints
---                res <- putPatternSince
---                    (MatchDelegation someOtherStakeKey)
---                    (Right someNonExistingPoint)
---                slot' <- maximum . fmap getPointSlotNo <$> listCheckpoints
---                res `shouldBe` False
---                listPatterns `shouldReturn` [MatchAny OnlyShelley]
---                slot' `shouldSatisfy` (>= slot)
---            )
---
---    xspecify "Match by transaction id / output reference" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just lastMaryPoint
---            , patterns = fromList
---                [ MatchTransactionId someTransactionId
---                , MatchOutputReference (mkOutputReference someThirdTransactionId 0)
---                ]
---            }
---        timeoutOrThrow 10 timeoutOrThrow $ race_
---            (kupo tr `runWith` env)
---            (do
---                waitUntilM $ do
---                    outRefs <- fmap outputReference <$> getAllMatches NoStatusFlag
---                    return $
---                        (mkOutputReference someTransactionId 0, 0) `elem` outRefs
---                        &&
---                        (mkOutputReference someTransactionId 1, 0) `elem` outRefs
---                        &&
---                        (mkOutputReference someThirdTransactionId 0, 2) `elem` outRefs
---            )
---
---
---    xspecify "Match by policy id" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just lastMaryPoint
---            , patterns = fromList [MatchPolicyId somePolicyId]
---            }
---        timeoutOrThrow 10 timeoutOrThrow $ race_
---            (kupo tr `runWith` env)
---            (do
---                waitUntilM $ do
---                    values <- fmap value <$> getAllMatches NoStatusFlag
---                    return $ all (`hasPolicyId` somePolicyId) values
---            )
---
---    xspecify "Fetch metadata by slot" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just lastAllegraPoint
---            , patterns = fromList [MatchAny OnlyShelley]
---            }
---        timeoutOrThrow 20 timeoutOrThrow $ race_
---            (kupo tr `runWith` env)
---            (do
---                waitSlot (> someSlotWithMetadata)
---                xs <- lookupMetadataBySlotNo someSlotWithMetadata Nothing
---                [ hash | (hash, _meta) <- xs ] `shouldBe` someMetadata
---
---                xs' <- lookupMetadataBySlotNo someSlotWithMetadata (Just someTransactionIdWithMetadata)
---                [ hash | (hash, _meta) <- xs' ] `shouldBe` take 1 someMetadata
---            )
---
---    xspecify "Index collateral return from failed transactions" $ \(tmp, tr, cfg, HttpClient{..}, timeoutOrThrow) -> do
---        env <- newEnvironment $ cfg
---            { workDir = Dir tmp
---            , since = Just somePointNearPhase2Failure
---            , patterns = fromList [MatchTransactionId somePhase2FailedTransactionIdWithReturn]
---            }
---        timeoutOrThrow 5 timeoutOrThrow $ race_
---            (kupo tr `runWith` env)
---            (do
---                let predicate = (== (mkOutputReference somePhase2FailedTransactionIdWithReturn 1)) . fst . outputReference
---                waitUntilM $ do
---                    results <- getAllMatches NoStatusFlag
---                    return (any predicate results)
---                (find predicate <$> getAllMatches NoStatusFlag) >>= \case
---                    Nothing -> fail "impossible: the result disappeared?"
---                    Just r  -> value r `shouldBe` unsafeValueFromList 7000000 []
---            )
+    endToEnd "Can't start the server on a fresh new db without explicit point" $ \(configure, runSpec, _) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Nothing
+            , patterns = fromList [MatchAny OnlyShelley]
+            }
+        shouldThrowTimeout @NoStartingPointException 1 (runSpec env)
 
+    endToEnd "Retry and wait when chain producer isn't available" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just GenesisPoint
+            , patterns = fromList [MatchAny OnlyShelley]
+            , chainProducer =
+                case chainProducer defaultCfg of
+                    CardanoNode{nodeConfig} ->
+                        CardanoNode
+                            { nodeSocket = "/dev/null"
+                            , nodeConfig
+                            }
+                    Ogmios{ogmiosPort} ->
+                        Ogmios
+                            { ogmiosHost = "/dev/null"
+                            , ogmiosPort
+                            }
+            }
+        runSpec env 5 $ do
+            cps <- listCheckpoints
+            threadDelay 1
+            cps' <- listCheckpoints
+            cps `shouldBe` cps'
+
+    endToEnd "Crashes when no intersection is found" $ \(configure, runSpec, _) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just someNonExistingPoint
+            , patterns = fromList [MatchAny OnlyShelley]
+            }
+        shouldThrowTimeout @IntersectionNotFoundException 1 (runSpec env)
+
+    endToEnd "Crashes when no patterns are defined" $ \(configure, runSpec, _) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just somePoint
+            , patterns = fromList []
+            }
+        shouldThrowTimeout @ConflictingOptionsException 1 (runSpec env)
+
+    endToEnd "Can prune utxo on-the-fly" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just somePoint
+            , patterns = fromList [MatchAny OnlyShelley]
+            , inputManagement = RemoveSpentInputs
+            }
+        runSpec env 30 $ do
+            waitSlot (> 50_000)
+            matches <- getAllMatches NoStatusFlag
+            all (isNothing . spentAt) matches `shouldBe` True
+
+    endToEnd "Retrieve checkpoints and ancestors" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just somePointAncestor
+            , patterns = fromList [MatchAny OnlyShelley]
+            , inputManagement = RemoveSpentInputs
+            }
+        let slot = getPointSlotNo
+        runSpec env 5 $ do
+            waitSlot (> (getPointSlotNo somePointSuccessor))
+            getCheckpointBySlot GetCheckpointStrict (slot somePoint)
+                `shouldReturn` Just somePoint
+            getCheckpointBySlot GetCheckpointStrict (prev (slot somePoint))
+                `shouldReturn` Nothing
+            getCheckpointBySlot GetCheckpointStrict (slot somePointSuccessor)
+                `shouldReturn` Just somePointSuccessor
+            getCheckpointBySlot GetCheckpointStrict  (prev (slot somePointSuccessor))
+                `shouldReturn` Nothing
+            getCheckpointBySlot GetCheckpointClosestAncestor (prev (slot somePointSuccessor))
+                `shouldReturn` Just somePoint
+
+    endToEnd "Retrieve datums associated with datum hashes" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just lastAlonzoPoint
+            , patterns = fromList [MatchAny OnlyShelley]
+            }
+        runSpec env 20 $ do
+            waitDatum someDatumInWitnessHash
+                `shouldReturn` someDatumInWitness
+            waitDatum someDatumInOutputHash
+                `shouldReturn` someDatumInOutput
+
+    endToEnd "Retrieve scripts associated with script hashes" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just somePointNearScripts
+            , patterns = fromList [MatchAny OnlyShelley]
+            }
+        runSpec env 20 $ do
+            waitScript someScriptInWitnessHash
+                `shouldReturn` someScriptInWitness
+            waitScript someScriptInMetadataHash
+                `shouldReturn` someScriptInMetadata
+            waitScript someScriptInOutputHash
+                `shouldReturn` someScriptInOutput
+
+    endToEnd "Dynamically add pattern and restart to a past point when syncing" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just lastByronPoint
+            , patterns = fromList [MatchDelegation someStakeKey]
+            }
+        -- NOTE: maxSlot must be high enough after the rollback point to have a chance to observe the
+        -- rollback. If too low, Kupo might have already re-synchronised and we can't assert that a
+        -- rollback did happen.
+        let maxSlot = getPointSlotNo lastByronPoint + 100_000
+        let onlyInWindow r
+                | getPointSlotNo (createdAt r) <= maxSlot =
+                    Just r { spentAt = Nothing }
+                | otherwise =
+                    Nothing
+        ref <- newIORef ([], [])
+        runSpec env 10 $ do
+            waitSlot (>= maxSlot)
+            xs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
+            xs `shouldNotBe` []
+            res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right lastByronPoint)
+            res `shouldBe` True
+            waitSlot (< maxSlot) -- Observe rollback
+            waitSlot (>= maxSlot)
+            ys <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
+            (xs \\ ys) `shouldBe` []
+            (sort <$> listPatterns) `shouldReturn`
+                [ MatchDelegation someStakeKey
+                , MatchDelegation someOtherStakeKey
+                ]
+            void $ atomicSwapIORef ref (xs, ys)
+        (xs, ys) <- readIORef ref
+        withSystemTempDirectory "kupo-end-to-end" $ \tmp' -> do
+            (_, env') <- configure $ \defaultCfg -> defaultCfg
+                { workDir = Dir tmp'
+                , since = Just lastByronPoint
+                , patterns = fromList [MatchDelegation someOtherStakeKey]
+                }
+            runSpec env' 10 $ do
+                waitSlot (>= maxSlot)
+                zs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
+                ys \\ zs `shouldBe` xs
+
+    endToEnd "Dynamically add pattern and restart to a past point when at the tip" $ \(configure, runSpec, HttpClient{..}) -> do
+        pendingWith "Long to run and requires a fully sync node. So only enabled on demand."
+        tip <- currentNetworkTip
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just tip
+            , patterns = fromList [MatchAny IncludingBootstrap]
+            }
+        runSpec env 120 $ do
+            waitSlot (>= getPointSlotNo tip)
+            res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right tip)
+            res `shouldBe` True
+
+    endToEnd "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(configure, runSpec, HttpClient{..})  -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just lastByronPoint
+            , patterns = fromList [MatchAny OnlyShelley]
+            }
+        runSpec env 10 $ do
+            let maxSlot = getPointSlotNo lastByronPoint + 10_000
+            waitSlot (>= maxSlot)
+            slot <- maximum . fmap getPointSlotNo <$> listCheckpoints
+            res <- putPatternSince (MatchDelegation someOtherStakeKey) (Left (maxSlot - 20_000))
+            slot' <- maximum . fmap getPointSlotNo <$> listCheckpoints
+            res `shouldBe` False
+            listPatterns `shouldReturn` [MatchAny OnlyShelley]
+            slot' `shouldSatisfy` (>= slot)
+
+    endToEnd "Failing to insert patterns (non-existing point) doesn't disturb normal operations" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just lastByronPoint
+            , patterns = fromList [MatchAny OnlyShelley]
+            }
+        runSpec env 5 $ do
+            let maxSlot = getPointSlotNo lastByronPoint + 10_000
+            waitSlot (>= maxSlot)
+            slot <- maximum . fmap getPointSlotNo <$> listCheckpoints
+            res <- putPatternSince
+                (MatchDelegation someOtherStakeKey)
+                (Right someNonExistingPoint)
+            slot' <- maximum . fmap getPointSlotNo <$> listCheckpoints
+            res `shouldBe` False
+            listPatterns `shouldReturn` [MatchAny OnlyShelley]
+            slot' `shouldSatisfy` (>= slot)
+
+    endToEnd "Match by transaction id / output reference" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just lastAlonzoPoint
+            , patterns = fromList
+                [ MatchTransactionId someTransactionId
+                , MatchOutputReference (mkOutputReference someThirdTransactionId 0)
+                ]
+            }
+        runSpec env 10 $ waitUntilM $ do
+            outRefs <- fmap outputReference <$> getAllMatches NoStatusFlag
+            return $
+                (mkOutputReference someTransactionId 0, 0) `elem` outRefs
+                &&
+                (mkOutputReference someThirdTransactionId 0, 2) `elem` outRefs
+
+    endToEnd "Match by policy id" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just lastAlonzoPoint
+            , patterns = fromList [MatchPolicyId somePolicyId]
+            }
+        runSpec env 10 $ waitUntilM $ do
+            values <- fmap value <$> getAllMatches NoStatusFlag
+            return $ all (`hasPolicyId` somePolicyId) values
+
+    endToEnd "Fetch metadata by slot" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just lastAlonzoPoint
+            , patterns = fromList [MatchAny OnlyShelley]
+            }
+        runSpec env 10 $ do
+            waitSlot (> someSlotWithMetadata)
+            xs <- lookupMetadataBySlotNo someSlotWithMetadata Nothing
+            [ hash | (hash, _meta) <- xs ] `shouldBe` someMetadata
+            xs' <- lookupMetadataBySlotNo someSlotWithMetadata (Just someTransactionIdWithMetadata)
+            [ hash | (hash, _meta) <- xs' ] `shouldBe` someMetadata
+
+    endToEnd "Index collateral return from failed transactions" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just somePointNearPhase2Failure
+            , patterns = fromList [MatchTransactionId somePhase2FailedTransactionIdWithReturn]
+            }
+        runSpec env 10 $ do
+            let predicate = (== (mkOutputReference somePhase2FailedTransactionIdWithReturn 1)) . fst . outputReference
+            waitUntilM $ do
+                results <- getAllMatches NoStatusFlag
+                return (any predicate results)
+            (find predicate <$> getAllMatches NoStatusFlag) >>= \case
+                Nothing -> fail "impossible: the result disappeared?"
+                Just r  -> value r `shouldBe` unsafeValueFromList 7_000_000 []
 
 -- | Create an 'EndToEndContext' around each child specification item within that 'Spec' tree. The
 -- spec items are 'skippable' and only executed if the appropriate environment variables are present.
@@ -641,7 +566,9 @@ skippableContext prefix skippableSpec = do
                         withTempFile dir "traces" $ \fp h -> do
                             withTracers h version (defaultTracers (Just Info)) $ \tr -> do
                                 let runner = do
-                                        res <- timeout (fromInteger @Int (diffTimeToMicroseconds t)) (race_ (kupo tr `runWith` env) test)
+                                        res <- timeout
+                                            (fromInteger @Int (diffTimeToMicroseconds t))
+                                            (race_ (kupo tr `runWith` env) test)
                                         res `shouldSatisfy` isJust
                                 runner `catch` \(e :: SomeException) -> do
                                     throwIO =<< collectLogs e (fp, h) httpClientLogsVar
@@ -651,17 +578,35 @@ skippableContext prefix skippableSpec = do
     collectLogs :: SomeException -> (FilePath, Handle) -> TVar IO [Text] -> IO EndToEndException
     collectLogs originalException (fp, h) logs = do
         hClose h
-        applicationLogs <- withFile fp ReadMode $ \h' ->
+        applicationLogs <- withFile fp ReadMode $ \h' -> do
             let hPrintLines = do
                     unlessM (lift (hIsEOF h')) $ do
-                        lift (hGetLine h') >>= tell . (<> "\n") . Builder.fromString
+                        lift (hGetLine h') >>= tell . pure . Builder.fromString
                         hPrintLines
-             in toStrict . Builder.toLazyText <$> execWriterT hPrintLines
 
-        httpClientLogs <- toStrict. Builder.toLazyText . foldMap ((<> "\n") . Builder.fromText) . reverse
+            msgs <- execWriterT hPrintLines
+
+            return $ toStrict . Builder.toLazyText . foldMap ((<> "\n")) $ drop (max 0 (length msgs - 10)) msgs
+
+        httpClientLogs <- toStrict. Builder.toLazyText . foldMap ((<> "\n") . Builder.fromText) . compact
             <$> atomically (readTVar logs)
 
         pure $ EndToEndException { httpClientLogs, applicationLogs, originalException }
+      where
+        compact xs
+            = zip (drop 1 xs ++ []) xs
+            & foldl'
+                (\(count, msgs) (nextMsg, currentMsg) ->
+                    if nextMsg == currentMsg then
+                        (next count, msgs)
+                    else if count > 1 then
+                        (1, currentMsg <> " (" <> show count <> " times" <> ")" : msgs)
+                    else
+                        (1, currentMsg : msgs)
+                )
+                (1 :: Word, mempty)
+            & snd
+
 
 data EndToEndException = EndToEndException
     { httpClientLogs :: Text
@@ -672,9 +617,11 @@ data EndToEndException = EndToEndException
 instance Exception EndToEndException
 
 instance Show EndToEndException where
-    show EndToEndException{httpClientLogs, applicationLogs} =
+    show EndToEndException{httpClientLogs, applicationLogs, originalException} =
         toString $ T.unlines
-            [ "== Application logs"
+            [ toText (displayException originalException)
+            , ""
+            , "== Application logs"
             , applicationLogs
             , "== Http client's logs"
             , httpClientLogs

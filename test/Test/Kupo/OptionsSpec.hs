@@ -129,7 +129,7 @@ spec = parallel $ do
             { inputManagement = RemoveSpentInputs
             }
           )
-        , ( defaultArgs ++ [ "--since", "51292637.2e7ee124eccbc648789008f8669695486f5727cada41b2d86d1c36355c76b771" ]
+        , ( defaultArgs ++ [ "--since", "11017324.195908564a66d713bd2b71a9b1f290be6853cb31085fe7371276a35a2f8f7e62" ]
           , shouldParseAppConfiguration $ defaultConfiguration
             { since = Just somePoint }
           )

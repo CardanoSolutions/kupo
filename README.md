@@ -58,7 +58,7 @@ Finally, [discussions 💡][discussions] contains ongoing discussions regarding 
 | <a href="https://hub.docker.com/r/cardanosolutions/kupo"><img src="https://img.shields.io/docker/pulls/cardanosolutions/kupo?style=for-the-badge&label=&logo=Docker&logoColor=000000&color=f9dd24" /></a> | Docker image pulls |
 | <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/build.yaml"><img src="https://img.shields.io/github/actions/workflow/status/cardanosolutions/kupo/build.yaml?style=for-the-badge&label=&logo=NixOS&logoColor=000000&color=f9dd24" /></a> | Nix build, providing static binary executables as artifacts. |
 | <a href="https://github.com/CardanoSolutions/kupo/actions/workflows/pages/pages-build-deployment"><img src="https://img.shields.io/github/deployments/cardanosolutions/kupo/github-pages?style=for-the-badge&label=&logo=readthedocs&logoColor=000000&color=f9dd24"></a> | [User manual][] and API reference deployment. |
-| <img src="https://img.shields.io/static/v1?style=for-the-badge&label=&message=90%&logo=codecov&logoColor=000000&color=f9dd24"> | Test code coverage. Learn more about the [testing strategy][]. |
+| <img src="https://img.shields.io/static/v1?style=for-the-badge&label=&message=82%&logo=codecov&logoColor=000000&color=f9dd24"> | Test code coverage. Learn more about the [testing strategy][]. |
 
 # Alternatives
 

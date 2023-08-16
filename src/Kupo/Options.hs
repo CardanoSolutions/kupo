@@ -142,7 +142,7 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> fmap Const (logLevelOption "consumer")
                     <*> fmap Const (logLevelOption "garbage-collector")
                     <*> fmap Const (logLevelOption "configuration")
-                    <*> pure (Const (Just Debug))
+                    <*> pure (Const (Just Info))
                 )
         )
 
