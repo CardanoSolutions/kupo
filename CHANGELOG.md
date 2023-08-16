@@ -1,16 +1,29 @@
-### [2.6.0] - unreleased
+### [2.6.0] - 2023-08-16
 
 #### Added
 
-N/A
+- Simple internal retrying strategy on HTTP request, this should make the experience with the API server smoother as request would fail less often. Transient failures would now likely be resolved internally.
 
 #### Changed
 
 - Support for (and require) Ogmios `>= v6.0.0` when using Ogmios as a blockchain provider.
 
+- Use biggger cache and database page size. This makes queries 10-15% faster on average, at the expense of some extra memory usage during period of heavy loads. This new setting is a trial and may be made configurable if deemed necessary.
+
 - Rollbacks are now done incrementally. This doesn't really affect normal
   operations as rollbacks are usually small already, but it does impact the
   dynamic addition of patterns with rollback points far in the past.
+
+- Backported a fix from v2.3.4 that got lost in translation regarding restart on failures.
+
+- Fixed / reworked ANSI logs to be more compatible with fonts that do not support fancy chevron characters. Colors have also been adjusted for better readibility.
+
+- Kupo now has a top-level panic hook acting as a 'catch all' exception. So unexpected failures will now be properly logged as `error` and cause the application to exit with an exit code 1.
+
+
+#### Removed
+
+- `--max-concurrency` command-line option is gone; Kupo now use sensible defaults based on the machine's detected capabilities.
 
 ### [2.5.0] - 2023-07-22
 
