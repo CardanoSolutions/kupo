@@ -22,6 +22,7 @@ module Kupo
     -- * Environment
     , Env (..)
     , newEnvironment
+    , newEnvironmentWith
 
     -- * Command & Options
     , Command (..)
@@ -189,6 +190,7 @@ kupoWith
 kupoWith tr withProducer withFetchBlock =
   hijackSigTerm *> do
     Env { health
+        , crashWith
         , configuration = config@Configuration
             { serverHost
             , serverPort
@@ -226,7 +228,7 @@ kupoWith tr withProducer withFetchBlock =
                     destroyAllResources readOnlyPool
                     destroyAllResources readWritePool
 
-    liftIO $ handle onUnknownException $ run $ \db -> do
+    liftIO $ handle (onUnknownException crashWith) $ run $ \db -> do
         patterns <- newPatternsCache (tracerConfiguration tr) config db
         let notifyTip = recordCheckpoint health
         let statusToggle = connectionStatusToggle health
@@ -279,13 +281,13 @@ kupoWith tr withProducer withFetchBlock =
                     )
 
   where
-    onUnknownException :: SomeException -> IO ()
-    onUnknownException e
+    onUnknownException :: (SomeException -> IO ()) -> SomeException -> IO ()
+    onUnknownException crashWith e
         | isAsyncException e = do
             throwIO e
         | otherwise = do
             logWith (tracerKupo tr) $ KupoUnexpectedError (toText (displayException e))
-            exitWith (ExitFailure 1)
+            crashWith e
 
 --
 -- Environment
@@ -296,13 +298,21 @@ runWith :: forall a. Kupo a -> Env Kupo -> IO a
 runWith app = runReaderT (unKupo app)
 
 data Env (m :: Type -> Type) = Env
-    { configuration :: !Configuration
+    { crashWith :: SomeException -> IO ()
+    , configuration :: !Configuration
     , health :: !(TVar IO Health)
     } deriving stock (Generic)
 
 newEnvironment
     :: Configuration
     -> IO (Env Kupo)
-newEnvironment configuration = do
+newEnvironment =
+    newEnvironmentWith (const (exitWith (ExitFailure 1)))
+
+newEnvironmentWith
+    :: (SomeException -> IO ())
+    -> Configuration
+    -> IO (Env Kupo)
+newEnvironmentWith crashWith configuration = do
     health <- newTVarIO emptyHealth
-    pure Env{configuration, health}
+    pure Env{configuration, health, crashWith}
