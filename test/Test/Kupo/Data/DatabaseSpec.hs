@@ -440,7 +440,9 @@ spec = parallel $ do
                 (pure rollbackQryDeleteInputs)
                 (\conn -> installIndex nullTracer conn "inputsByCreatedAt" "inputs(created_at)")
                 (`shouldBe`
-                    [ "SEARCH inputs USING COVERING INDEX inputsByCreatedAt (created_at>?)"
+                    [ "SEARCH inputs USING INTEGER PRIMARY KEY (rowid=?)"
+                    , "LIST SUBQUERY 1"
+                    , "SEARCH inputs USING COVERING INDEX inputsByCreatedAt (created_at>?)"
                     , "SEARCH policies USING COVERING INDEX sqlite_autoindex_policies_1 (output_reference=?)"
                     ]
                 )

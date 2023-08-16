@@ -8,6 +8,10 @@ N/A
 
 - Support for (and require) Ogmios `>= v6.0.0` when using Ogmios as a blockchain provider.
 
+- Rollbacks are now done incrementally. This doesn't really affect normal
+  operations as rollbacks are usually small already, but it does impact the
+  dynamic addition of patterns with rollback points far in the past.
+
 ### [2.5.0] - 2023-07-22
 
 #### Added

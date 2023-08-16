@@ -830,7 +830,7 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             _otherwise -> do
                 withTemporaryIndex tr conn "inputsByCreatedAt" "inputs(created_at)" $ do
                     withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $ do
-                        traceExecute tr conn rollbackQryDeleteInputs [ minSlotNo ]
+                        deleteInputsIncrementally tr conn minSlotNo
                         traceExecute tr conn rollbackQryUpdateInputs [ minSlotNo ]
                         traceExecute tr conn rollbackQryDeleteCheckpoints [ minSlotNo ]
         query_ conn selectMaxCheckpointQry >>= \case
@@ -844,6 +844,12 @@ mkDatabase tr mode longestRollback bracketConnection = Database
     , runTransaction = \r -> bracketConnection $ \conn ->
         retryWhenBusy tr (constantStrategy 0.1) 1 $ withTransaction conn mode (runReaderT r conn)
     }
+
+deleteInputsIncrementally :: Tracer IO TraceConnection -> Connection -> SQLData -> IO ()
+deleteInputsIncrementally tr conn minSlotNo = do
+    traceExecute tr conn rollbackQryDeleteInputs [ minSlotNo ]
+    deleted <- changes conn
+    unless (deleted < pruneInputsMaxIncrement) $ deleteInputsIncrementally tr conn minSlotNo
 
 insertRow
     :: forall tableName.
@@ -1054,7 +1060,7 @@ selectMaxCheckpointQry =
 
 rollbackQryDeleteInputs :: Query
 rollbackQryDeleteInputs =
-    "DELETE FROM inputs WHERE created_at > ?"
+    "DELETE FROM inputs WHERE rowid IN (SELECT rowid FROM inputs WHERE created_at > ? LIMIT " <> show pruneInputsMaxIncrement <> ")"
 
 rollbackQryUpdateInputs :: Query
 rollbackQryUpdateInputs =
