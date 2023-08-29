@@ -26,5 +26,7 @@ library:
   dependencies:
     - aeson
     - bytestring
+    - connection
     - exceptions
     - websockets
+    - wuss

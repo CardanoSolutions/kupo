@@ -20,8 +20,8 @@ import Kupo.Data.Ogmios
     , encodeRequestNext
     )
 
-import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
+import qualified Network.WebSockets.Tls as WSS
 
 withFetchBlockClient
     :: String
@@ -29,7 +29,7 @@ withFetchBlockClient
     -> (FetchBlockClient IO PartialBlock -> IO ())
     -> IO ()
 withFetchBlockClient host port action =
-    action $ \point reply -> WS.runClient host port "/" $ \ws -> do
+    action $ \point reply -> WSS.runClient host port $ \ws -> do
         WS.sendJson ws (encodeFindIntersect [point])
         WS.receiveJson ws (decodeFindIntersectResponse identity) >>= \case
             Left _notFound -> reply Nothing

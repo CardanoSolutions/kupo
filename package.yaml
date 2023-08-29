@@ -100,7 +100,6 @@ library:
     - warp
     - websockets
     - websockets-json
-    - wuss
 
 tests:
   unit:

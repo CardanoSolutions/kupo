@@ -1,3 +1,18 @@
+### [2.5.1] - unreleased
+
+#### Added
+
+- N/A
+
+#### Changed
+
+- Fixed 'not enough bytes' exception sometimes raised when establishing a connection over TLS.
+- Fixed connection failures for fetching metadata when the connection is configured over TLS.
+
+#### Removed
+
+- N/A
+
 ### [2.5.0] - 2023-07-22
 
 #### Added
