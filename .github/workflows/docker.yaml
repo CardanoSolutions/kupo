@@ -1,11 +1,9 @@
 name: Docker
 
 on:
-  pull_request:
-    branches: [ "master" ]
   push:
-    branches: [ "master" ]
-    tags: [ "*.*.*" ]
+    branches: [ "release/v2.5" ]
+    tags: [ "v2.5.*" ]
 
 jobs:
   build:
