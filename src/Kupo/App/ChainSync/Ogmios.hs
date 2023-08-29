@@ -15,9 +15,6 @@ import Kupo.Prelude
 import Control.Exception.Safe
     ( MonadThrow
     )
-import Data.List
-    ( stripPrefix
-    )
 import Kupo.App.Mailbox
     ( Mailbox
     , putHighFrequencyMessage
@@ -47,7 +44,7 @@ import Kupo.Data.Ogmios
 
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
-import qualified Wuss as WSS
+import qualified Network.WebSockets.Tls as WSS
 
 runChainSyncClient
     :: forall m.
@@ -96,18 +93,4 @@ connect
     -> (WS.Connection -> IO a)
     -> IO a
 connect ConnectionStatusToggle{toggleConnected} url port action =
-    runClientWith port "/"
-        -- TODO: Try to negotiate compact mode v2 once available.
-        --
-        -- See [ogmios#237](https://github.com/CardanoSolutions/ogmios/issues/237)
-        --
-        -- [("Sec-WebSocket-Protocol", "ogmios.v1:compact")]
-        WS.defaultConnectionOptions [] (\ws -> toggleConnected >> action ws)
-  where
-    runClientWith =
-        case stripPrefix "wss://" url of
-            Just host ->
-                WSS.runSecureClientWith host . fromIntegral
-            _ ->
-                let host = fromMaybe url (stripPrefix "ws://" url)
-                 in WS.runClientWith host
+    WSS.runClient url port (\ws -> toggleConnected >> action ws)
