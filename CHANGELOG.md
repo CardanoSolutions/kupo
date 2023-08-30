@@ -1,3 +1,18 @@
+### [2.6.1] - 2023-08-30
+
+#### Added
+
+- N/A
+
+#### Changed
+
+- Fixed 'not enough bytes' exception sometimes raised when establishing a connection over TLS.
+- Fixed connection failures for fetching metadata when the connection is configured over TLS.
+
+#### Removed
+
+- N/A
+
 ### [2.6.0] - 2023-08-16
 
 #### Added
@@ -14,16 +29,32 @@
   operations as rollbacks are usually small already, but it does impact the
   dynamic addition of patterns with rollback points far in the past.
 
-- Backported a fix from v2.3.4 that got lost in translation regarding restart on failures.
+- Re-implemented a fix from v2.3.4 that got lost in translation regarding restart on failures.
 
 - Fixed / reworked ANSI logs to be more compatible with fonts that do not support fancy chevron characters. Colors have also been adjusted for better readibility.
 
 - Kupo now has a top-level panic hook acting as a 'catch all' exception. So unexpected failures will now be properly logged as `error` and cause the application to exit with an exit code 1.
 
-
 #### Removed
 
 - `--max-concurrency` command-line option is gone; Kupo now use sensible defaults based on the machine's detected capabilities.
+
+### [2.5.1] - 2023-08-30
+
+#### Added
+
+- N/A
+
+#### Changed
+
+- Fixed 'not enough bytes' exception sometimes raised when establishing a connection over TLS. (backported from v2.6.1)
+- Fixed connection failures for fetching metadata when the connection is configured over TLS. (backported from v2.6.1)
+- Fixed / reworked ANSI logs to be more compatible with fonts that do not support fancy chevron characters. Colors have also been adjusted for better readibility. (backported from v2.6.0)
+- Re-implemented a fix from v2.3.4 that got lost in translation regarding restart on failures.
+
+#### Removed
+
+- N/A
 
 ### [2.5.0] - 2023-07-22
 

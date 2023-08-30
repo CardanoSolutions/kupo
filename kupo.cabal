@@ -30,8 +30,8 @@ extra-source-files:
     db/v2.2.0/001.sql
 data-files:
     docs/api/latest.yaml
-    docs/api/v2.5.0.yaml
-    docs/api/v2.6.0.yaml
+    docs/api/v2.5.1.yaml
+    docs/api/v2.6.1.yaml
 
 source-repository head
   type: git
@@ -221,7 +221,6 @@ library
     , warp
     , websockets
     , websockets-json
-    , wuss
     , yaml
   default-language: Haskell2010
   if flag(production)

@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.6.
+-- This file has been generated from package.yaml by hpack version 0.35.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -28,6 +28,7 @@ source-repository head
 library
   exposed-modules:
       Network.WebSockets.Json
+      Network.WebSockets.Tls
   other-modules:
       Paths_websockets_json
   hs-source-dirs:
@@ -69,11 +70,13 @@ library
       TypeFamilies
       TypeSynonymInstances
       ViewPatterns
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -fno-warn-unticked-promoted-constructors -fno-warn-partial-fields
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -fno-warn-unticked-promoted-constructors -fno-warn-partial-fields
   build-depends:
       aeson
     , base >=4.7 && <5
     , bytestring
+    , connection
     , exceptions
     , websockets
+    , wuss
   default-language: Haskell2010
