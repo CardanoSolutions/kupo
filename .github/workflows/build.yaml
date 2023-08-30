@@ -2,10 +2,10 @@ name: Build
 
 on:
   pull_request:
-    branches: [ "master" ]
+    branches: [ "release/v2.6" ]
   push:
-    branches: [ "master" ]
-    tags: [ "*.*.*" ]
+    branches: [ "release/v2.6" ]
+    tags: [ "v2.6.*" ]
 
 jobs:
   build:
