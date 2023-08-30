@@ -5,16 +5,21 @@ module Network.WebSockets.Tls where
 
 import Prelude
 
+import Control.Monad
+    ( join
+    )
+import Data.ByteString
+    ( ByteString
+    )
 import Data.List
     ( stripPrefix
     )
 import Data.Maybe
     ( fromMaybe
     )
-import Network.Connection
-    ( connectionGetLine
-    )
 
+import qualified Data.ByteString as BS
+import qualified Network.Connection as Network
 import qualified Network.WebSockets as WS
 import qualified Wuss as WSS
 
@@ -32,7 +37,7 @@ runClient url port =
         Just host ->
             let
                 options = WS.defaultConnectionOptions
-                config  = WSS.defaultConfig { WSS.connectionGet = connectionGetLine (128 * 1024) }
+                config  = WSS.defaultConfig { WSS.connectionGet = connectionGet }
              in
                WSS.runSecureClientWithConfig host (fromIntegral port) "/" config options []
         _ ->
@@ -40,3 +45,26 @@ runClient url port =
                 host = fromMaybe url (stripPrefix "ws://" url)
              in
                 WS.runClient host port "/"
+  where
+    connectionGet
+        :: Network.Connection
+        -> IO ByteString
+    connectionGet conn =
+        more id
+      where
+        more !dl = getChunkRepeatedly
+            (\s -> more (dl . (s:)))
+            (\s -> done (dl . (s:)))
+            (done dl)
+
+        done dl = return $! BS.concat $ dl []
+
+        getChunkRepeatedly
+            :: (ByteString -> IO r) -- moreK: need more input
+            -> (ByteString -> IO r) -- doneK: end of line (line terminator found)
+            -> IO r                 -- eofK:  end of file
+            -> IO r
+        getChunkRepeatedly moreK doneK _eofK =
+            join $ Network.connectionGetChunk' conn $ \s ->
+                if BS.null s then (moreK s, BS.empty)
+                else (doneK s, BS.empty)
