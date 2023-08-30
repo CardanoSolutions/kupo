@@ -1,4 +1,4 @@
-### [2.5.1] - unreleased
+### [2.5.1] - 2023-08-30
 
 #### Added
 
@@ -8,6 +8,8 @@
 
 - Fixed 'not enough bytes' exception sometimes raised when establishing a connection over TLS.
 - Fixed connection failures for fetching metadata when the connection is configured over TLS.
+- Re-implemented a fix from v2.3.4 that got lost in translation regarding restart on failures.
+- Fixed / reworked ANSI logs to be more compatible with fonts that do not support fancy chevron characters. Colors have also been adjusted for better readibility. (backported from v2.6)
 
 #### Removed
 
