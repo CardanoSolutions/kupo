@@ -17,3 +17,4 @@ dist-newstyle
 ## Dist
 /dist
 *.tar.gz
+/cabal.project.local

@@ -40,7 +40,7 @@ source-repository head
 flag production
   description: Compile executables for production.
   manual: True
-  default: False
+  default: True
 
 library
   exposed-modules:
