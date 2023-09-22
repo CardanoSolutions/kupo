@@ -15,12 +15,14 @@ import Kupo.Data.Cardano
     ( BlockNo (..)
     , SlotNo (..)
     , Tip
+    , TransactionId
     , pattern BlockPoint
     , pattern Tip
     , unsafeHeaderHashFromBytes
     )
 import Kupo.Data.PartialBlock
     ( PartialBlock (..)
+    , PartialTransaction
     )
 
 import qualified Data.Aeson.Types as Json
@@ -30,15 +32,18 @@ import qualified Data.ByteString.Builder as BS
 
 data HydraMessage
     = HeadIsOpen
+    | TxValid { tx :: PartialTransaction }
     | SnapshotConfirmed { snapshot :: Snapshot }
     | SomethingElse
 
 data Snapshot = Snapshot
     { number :: Word64
+    , confirmedTransactionIds :: [TransactionId]
     }
 
-fromSnapshotNumber :: Word64 -> (Tip, PartialBlock)
-fromSnapshotNumber number = do
+-- | Create a hydra "block" given a snapshot number and a list of transactions.
+mkHydraBlock :: Word64 -> [PartialTransaction] -> (Tip, PartialBlock)
+mkHydraBlock number txs = do
     let
         headerHash = number
             & hashWith @Blake2b_256 (toStrict . BS.toLazyByteString . BS.word64BE)
@@ -54,7 +59,7 @@ fromSnapshotNumber number = do
         ( Tip slotNo headerHash blockNo
         , PartialBlock
             { blockPoint = BlockPoint slotNo headerHash
-            , blockBody  = []
+            , blockBody  = txs
             }
         )
 
@@ -66,6 +71,7 @@ decodeHydraMessage =
         tag <- o .: "tag"
         case tag of
             ("HeadIsOpen" :: Text) -> pure HeadIsOpen
+            ("TxValid" :: Text) -> TxValid <$> undefined
             ("SnapshotConfirmed" :: Text) -> SnapshotConfirmed <$> decodeSnapshotConfirmed o
             _ -> pure SomethingElse
 
@@ -73,4 +79,4 @@ decodeSnapshotConfirmed :: Json.Object -> Json.Parser Snapshot
 decodeSnapshotConfirmed o = do
     snapshot <- o .: "snapshot"
     number <- snapshot .: "snapshotNumber"
-    pure $ Snapshot { number }
+    pure $ Snapshot { number, confirmedTransactionIds = undefined }

@@ -22,19 +22,20 @@ import Kupo.Control.MonadSTM
 import Kupo.Data.Cardano
     ( Point
     , Tip
+    , TransactionId
     )
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException (..)
     )
-import Kupo.Data.Ogmios
-    ( PartialBlock
-    )
-
 import Kupo.Data.Hydra
     ( HydraMessage (..)
     , Snapshot (..)
     , decodeHydraMessage
-    , fromSnapshotNumber
+    , mkHydraBlock
+    )
+import Kupo.Data.PartialBlock
+    ( PartialBlock
+    , PartialTransaction
     )
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
@@ -52,12 +53,16 @@ runChainSyncClient
     -> m IntersectionNotFoundException
 runChainSyncClient mailbox beforeMainLoop _pts ws = do
     beforeMainLoop
+    TransactionStore{pushTx, popTxById} <- newTransactionStore
     forever $ do
         WS.receiveJson ws decodeHydraMessage >>= \case
-            HeadIsOpen -> do
-                atomically (putHighFrequencyMessage mailbox (fromSnapshotNumber 0))
-            SnapshotConfirmed{ snapshot = Snapshot { number }} -> do
-                atomically (putHighFrequencyMessage mailbox (fromSnapshotNumber number))
+            HeadIsOpen ->
+                atomically (putHighFrequencyMessage mailbox (mkHydraBlock 0 []))
+            TxValid{tx} ->
+                pushTx tx
+            SnapshotConfirmed{ snapshot = Snapshot { number, confirmedTransactionIds }} -> do
+                txs <- mapM popTxById confirmedTransactionIds
+                atomically (putHighFrequencyMessage mailbox (mkHydraBlock number txs))
             SomethingElse -> pure ()
 
 connect
@@ -69,3 +74,20 @@ connect
 connect ConnectionStatusToggle{toggleConnected} host port action =
     WS.runClientWith host port "/"
         WS.defaultConnectionOptions [] (\ws -> toggleConnected >> action ws)
+
+newtype TransactionStoreException = TransactionNotInStore { transactionId :: TransactionId }
+  deriving (Eq, Show)
+
+instance Exception TransactionStoreException
+
+-- | Handle to store and later retrieve transaction.
+data TransactionStore m = TransactionStore
+    { -- | Store a transaction for later retrieval.
+      pushTx :: PartialTransaction -> m ()
+    , -- | Resolves a transaction id and removes it. Throws
+      -- 'TransactionNotInStore' when not found.
+      popTxById :: MonadThrow m => TransactionId -> m PartialTransaction
+    }
+
+newTransactionStore :: m (TransactionStore m)
+newTransactionStore = undefined
