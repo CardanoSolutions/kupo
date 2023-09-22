@@ -14,6 +14,10 @@ import Kupo.Prelude
 
 import Control.Exception.Safe
     ( MonadThrow
+    , throwM
+    )
+import Data.List
+    ( delete
     )
 import Kupo.App.Mailbox
     ( Mailbox
@@ -38,7 +42,7 @@ import Kupo.Data.Hydra
     )
 import Kupo.Data.PartialBlock
     ( PartialBlock
-    , PartialTransaction
+    , PartialTransaction (..)
     )
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
@@ -47,8 +51,7 @@ runChainSyncClient
     :: forall m.
         ( MonadIO m
         , MonadSTM m
-        , MonadThrow m
-        )
+        , MonadThrow m, MonadThrow (STM m))
     => Mailbox m (Tip, PartialBlock) (Tip, Point)
     -> m () -- An action to run before the main loop starts.
     -> [Point]
@@ -92,5 +95,21 @@ data TransactionStore m = TransactionStore
       popTxById :: MonadThrow m => TransactionId -> m PartialTransaction
     }
 
-newTransactionStore :: m (TransactionStore m)
-newTransactionStore = undefined
+newTransactionStore :: (Monad m, MonadSTM m, MonadThrow (STM m)) => m (TransactionStore m)
+newTransactionStore = do
+  txStore <- atomically $ newTVar []
+  pure
+    TransactionStore
+        { pushTx = atomically . modifyTVar' txStore . (:)
+        , popTxById = \txId ->
+            atomically $ do
+                storedTransactions <- readTVar txStore
+                case find (\PartialTransaction{id} -> id == txId) storedTransactions of
+                  Nothing -> throwM $ TransactionNotInStore txId
+                  Just tx -> do
+                      writeTVar txStore (delete tx storedTransactions)
+                      pure tx
+        }
+
+
+
