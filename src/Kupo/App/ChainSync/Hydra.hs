@@ -32,8 +32,9 @@ import Kupo.Data.Ogmios
 
 import Kupo.Data.Hydra
     ( HydraMessage (..)
+    , Snapshot (..)
     , decodeHydraMessage
-    , fromSnapshot
+    , fromSnapshotNumber
     )
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
@@ -53,8 +54,10 @@ runChainSyncClient mailbox beforeMainLoop _pts ws = do
     beforeMainLoop
     forever $ do
         WS.receiveJson ws decodeHydraMessage >>= \case
-            SnapshotConfirmed{ snapshot } -> do
-                atomically (putHighFrequencyMessage mailbox (fromSnapshot snapshot))
+            HeadIsOpen -> do
+                atomically (putHighFrequencyMessage mailbox (fromSnapshotNumber 0))
+            SnapshotConfirmed{ snapshot = Snapshot { number }} -> do
+                atomically (putHighFrequencyMessage mailbox (fromSnapshotNumber number))
             SomethingElse -> pure ()
 
 connect

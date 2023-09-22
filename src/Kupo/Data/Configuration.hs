@@ -65,7 +65,7 @@ import qualified Data.Aeson as Json
 -- | Application-level configuration.
 data Configuration = Configuration
     { chainProducer :: ChainProducer
-        -- ^ Where the data comes from: cardano-node vs ogmios
+        -- ^ Where the data comes from: cardano-node, ogmios, or hydra
         --
         -- NOTE: There's no bang pattern on this field because we do not want it
         -- to be unnecessarily evaluated in some test scenarios (e.g. state-machine)
@@ -101,7 +101,8 @@ data Configuration = Configuration
 -- equivalent in the capabilities and information they offer; a cardano-node
 -- will have to be through a local connection (domain socket) whereas ogmios can
 -- happen _over the wire_ on a remote server but is slower overall. So both have
--- trade-offs.
+-- trade-offs. The 'hydra' chain producer is slightly different as it's "chain"
+-- is actually the UTxO and transactions happening on the Hydra head layer 2.
 data ChainProducer
     = CardanoNode
         { nodeSocket :: !FilePath

@@ -29,15 +29,16 @@ import qualified Data.ByteString.Builder as BS
 -- Types
 
 data HydraMessage
-    = SnapshotConfirmed { snapshot :: Snapshot }
+    = HeadIsOpen
+    | SnapshotConfirmed { snapshot :: Snapshot }
     | SomethingElse
 
 data Snapshot = Snapshot
     { number :: Word64
     }
 
-fromSnapshot :: Snapshot -> (Tip, PartialBlock)
-fromSnapshot Snapshot { number } = do
+fromSnapshotNumber :: Word64 -> (Tip, PartialBlock)
+fromSnapshotNumber number = do
     let
         headerHash = number
             & hashWith @Blake2b_256 (toStrict . BS.toLazyByteString . BS.word64BE)
@@ -64,6 +65,7 @@ decodeHydraMessage =
     Json.withObject "HydraMessage" $ \o -> do
         tag <- o .: "tag"
         case tag of
+            ("HeadIsOpen" :: Text) -> pure HeadIsOpen
             ("SnapshotConfirmed" :: Text) -> SnapshotConfirmed <$> decodeSnapshotConfirmed o
             _ -> pure SomethingElse
 
