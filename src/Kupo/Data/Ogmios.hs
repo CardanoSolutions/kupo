@@ -15,6 +15,8 @@ module Kupo.Data.Ogmios
 
     , decodeFindIntersectionResponse
     , decodeNextBlockResponse
+    -- ** Cardano decoders
+    , decodeTransactionId
     ) where
 
 import Kupo.Prelude

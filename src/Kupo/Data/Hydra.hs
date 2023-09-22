@@ -22,11 +22,15 @@ import Kupo.Data.Cardano
     )
 import Kupo.Data.PartialBlock
     ( PartialBlock (..)
-    , PartialTransaction
+    , PartialTransaction (PartialTransaction, datums, id, inputs, metadata, outputs, scripts)
     )
 
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString.Builder as BS
+import qualified Data.Map.Strict as Map
+import Kupo.Data.Ogmios
+    ( decodeTransactionId
+    )
 
 -- Types
 
@@ -71,12 +75,34 @@ decodeHydraMessage =
         tag <- o .: "tag"
         case tag of
             ("HeadIsOpen" :: Text) -> pure HeadIsOpen
-            ("TxValid" :: Text) -> TxValid <$> undefined
+            ("TxValid" :: Text) -> TxValid <$> decodeTxValid o
             ("SnapshotConfirmed" :: Text) -> SnapshotConfirmed <$> decodeSnapshotConfirmed o
             _ -> pure SomethingElse
+
+decodeTxValid :: Json.Object -> Json.Parser PartialTransaction
+decodeTxValid o = do
+    tx <- o .: "transaction"
+    id <- tx .: "id" >>= decodeTransactionId
+    let inputs  = [] -- TODO
+    let outputs = [] -- TODO
+    let datums = Map.empty -- TODO
+    let scripts = Map.empty -- TODO
+    let metadata = Nothing -- TODO
+    pure PartialTransaction
+        { id
+        , inputs
+        , outputs
+        , datums
+        , scripts
+        , metadata
+        }
 
 decodeSnapshotConfirmed :: Json.Object -> Json.Parser Snapshot
 decodeSnapshotConfirmed o = do
     snapshot <- o .: "snapshot"
     number <- snapshot .: "snapshotNumber"
-    pure $ Snapshot { number, confirmedTransactionIds = undefined }
+    confirmedTransactionIds <- snapshot .: "confirmedTransactions" >>= mapM decodeTransactionId
+    pure Snapshot
+        { number
+        , confirmedTransactionIds
+        }
