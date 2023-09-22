@@ -5,6 +5,9 @@
 module Kupo.App.ChainSync.Hydra
     ( connect
     , runChainSyncClient
+    , newTransactionStore
+    , TransactionStore (..)
+    , TransactionStoreException (..)
     ) where
 
 import Kupo.Prelude
