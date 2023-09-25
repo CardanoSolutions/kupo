@@ -9,16 +9,26 @@ import Cardano.Crypto.Hash
     , hashWith
     )
 import Data.Aeson
-    ( (.:)
+    ( (.!=)
+    , (.:)
+    , (.:?)
     )
 import Kupo.Data.Cardano
     ( BlockNo (..)
+    , Datum (..)
+    , Input
+    , Output
     , SlotNo (..)
     , Tip
     , TransactionId
+    , mkOutput
+    , mkOutputReference
+    , outputIndexFromText
     , pattern BlockPoint
     , pattern Tip
+    , transactionIdFromText
     , unsafeHeaderHashFromBytes
+    , withReferences
     )
 import Kupo.Data.PartialBlock
     ( PartialBlock (..)
@@ -28,8 +38,10 @@ import Kupo.Data.PartialBlock
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString.Builder as BS
 import qualified Data.Map.Strict as Map
+import qualified Data.Text as Text
 import Kupo.Data.Ogmios
-    ( decodeTransactionId
+    ( decodeAddress
+    , decodeTransactionId
     )
 
 -- Types
@@ -75,27 +87,54 @@ decodeHydraMessage =
         tag <- o .: "tag"
         case tag of
             ("HeadIsOpen" :: Text) -> pure HeadIsOpen
-            ("TxValid" :: Text) -> TxValid <$> decodeTxValid o
+            ("TxValid" :: Text) -> TxValid <$> (o .: "transaction" >>= decodePartialTransaction)
             ("SnapshotConfirmed" :: Text) -> SnapshotConfirmed <$> decodeSnapshotConfirmed o
             _ -> pure SomethingElse
 
-decodeTxValid :: Json.Object -> Json.Parser PartialTransaction
-decodeTxValid o = do
-    tx <- o .: "transaction"
-    id <- tx .: "id" >>= decodeTransactionId
-    let inputs  = [] -- TODO
-    let outputs = [] -- TODO
+-- | Decoder for a 'PartialTransaction' in the Hydra JSON schema.
+decodePartialTransaction :: Json.Value -> Json.Parser PartialTransaction
+decodePartialTransaction = Json.withObject "PartialTransaction(Hydra)" $ \o -> do
+    id <- o .: "id" >>= decodeTransactionId
+    body <- o .: "body"
+    inputs <- body .: "inputs" >>= traverse decodeInput
+    outputs <- body .:? "outputs" .!= [] >>= traverse decodeOutput
     let datums = Map.empty -- TODO
     let scripts = Map.empty -- TODO
     let metadata = Nothing -- TODO
     pure PartialTransaction
         { id
         , inputs
-        , outputs
+        , outputs = withReferences 0 id outputs
         , datums
         , scripts
         , metadata
         }
+
+decodeInput
+    :: Json.Value
+    -> Json.Parser Input
+decodeInput = Json.withText "Input(Hydra)" $ \t ->
+    maybe (fail $ "failed to parse: " <> show t) pure $ do
+        (tId, tIx) <- splitInput t
+        id <- transactionIdFromText tId
+        ix <- outputIndexFromText tIx
+        pure $ mkOutputReference id ix
+ where
+    splitInput t =
+        case Text.split (== '#') t of
+            [tId, tIx] -> Just (tId, tIx)
+            _ -> Nothing
+
+decodeOutput
+    :: Json.Value
+    -> Json.Parser Output
+decodeOutput = Json.withObject "Output(Hydra)" $ \o -> do
+    mkOutput
+        <$> (o .: "address" >>= decodeAddress)
+        <*> pure mempty -- TODO (o .: "value" >>= decodeValue)
+        <*> pure NoDatum -- TODO
+        <*> pure Nothing -- TODO (o .:? "script" >>= traverse decodeScript)
+
 
 decodeSnapshotConfirmed :: Json.Object -> Json.Parser Snapshot
 decodeSnapshotConfirmed o = do
