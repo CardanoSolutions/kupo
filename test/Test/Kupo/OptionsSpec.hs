@@ -88,6 +88,12 @@ spec = parallel $ do
         , ( [ "--ogmios-port", "1337" ]
           , shouldFail
           )
+        , ( [ "--hydra-host", "localhost" ]
+          , shouldFail
+          )
+        , ( [ "--hydra-port", "4001" ]
+          , shouldFail
+          )
         , ( defaultArgs
           , shouldParseAppConfiguration $ defaultConfiguration
             { chainProducer = CardanoNode
@@ -102,6 +108,15 @@ spec = parallel $ do
             { chainProducer = Ogmios
                 { ogmiosHost = "localhost"
                 , ogmiosPort = 1337
+                }
+            , workDir = InMemory
+            }
+          )
+        , ( defaultArgs''
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { chainProducer = Hydra
+                { hydraHost = "localhost"
+                , hydraPort = 4001
                 }
             , workDir = InMemory
             }
@@ -339,6 +354,13 @@ defaultArgs' :: [String]
 defaultArgs' =
     [ "--ogmios-host", "localhost"
     , "--ogmios-port", "1337"
+    , "--in-memory"
+    ]
+
+defaultArgs'' :: [String]
+defaultArgs'' =
+    [ "--hydra-host", "localhost"
+    , "--hydra-port", "4001"
     , "--in-memory"
     ]
 
