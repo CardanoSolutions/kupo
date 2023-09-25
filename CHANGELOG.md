@@ -1,3 +1,10 @@
+### [2.7.0] - UNRELEASED
+
+#### Added
+
+- Support for indexing a Hydra head. Use `--hydra-host` and `--hydra-port` to
+  connect `kupo` to a `hydra-node`.
+
 ### [2.6.1] - 2023-08-30
 
 #### Added

@@ -32,22 +32,32 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
 **--node-socket**
 :   Path to the Cardano node domain socket file.
 
-    (**NOTE**: Unused when connecting to Ogmios)
+    (**NOTE**: Unused when connecting to Ogmios or Hydra)
 
 **--node-config**
 :   Path to the Cardano node configuration file.
 
-    (**NOTE**: Unused when connecting to Ogmios)
+    (**NOTE**: Unused when connecting to Ogmios or Hydra)
 
 **--ogmios-host**
 :   Ogmios' host address.
 
-    (**NOTE**: Unused when connecting to a Cardano node)
+    (**NOTE**: Unused when connecting to a Cardano node or Hydra)
 
 **--ogmios-port**
 :   Ogmios' port.
 
-    (**NOTE**: Unused when connecting to a Cardano node)
+    (**NOTE**: Unused when connecting to a Cardano node or Hydra)
+
+**--hydra-host**
+:   Hydra-node host address.
+
+    (**NOTE**: Unused when connecting to a Cardano node or Ogmios)
+
+**--hydra-port**
+:   Hydra-node port.
+
+    (**NOTE**: Unused when connecting to a Cardano node or Ogmios)
 
 **--workdir**
 :   Path to a working directory, where the SQLite database files are stored. By convention, the database is called <u>kupo.sqlite</u>.
@@ -255,6 +265,13 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
   --in-memory\
   --since 16588737.4e9bbbb67e3ae262133d94c3da5bffce7b1127fc436e7433b87668dba34c354a\
   --match addr1vyc29pvl2uyzqt8nwxrcxnf558ffm27u3d9calxn8tdudjgz4xq9p\
+
+**kupo**\
+  --hydra-host 0.0.0.0\
+  --hydra-port 4001\
+  --in-memory\
+  --since origin\
+  --match *
 
 # SEE ALSO
 Online documentation and API reference: <https://cardanosolutions.github.io/kupo/>

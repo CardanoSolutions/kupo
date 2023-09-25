@@ -224,6 +224,25 @@ info:
 
     Kupo will synchronize data directly from Ogmios! Neat isn't it?
 
+    ## --hydra-host {hostname} / --hydra-port {port-number}
+
+    Kupo can also be used to index the layer two ledger available in a
+    [Hydra](https://github.com/input-output-hk/hydra/#readme) head. For this, we
+    need to use `--hydra-host` and `--hydra-port` to point to a machine running
+    a `hydra-node` of a head you want to index and the port of the websocket
+    API.
+
+    For example:
+
+    ```console
+    $ kupo \
+      --hydra-host 0.0.0.0 \
+      --hydra-port 4001 \
+      --since origin \
+      --match * \
+      --workdir ./db
+    ```
+
     ## --help
 
     In case you're lost, don't forget that a summary of this manual is available by running:
