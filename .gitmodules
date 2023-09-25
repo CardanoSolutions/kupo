@@ -4,3 +4,6 @@
 [submodule "test/ogmios"]
 	path = test/vectors/ogmios
 	url = git@github.com:cardanosolutions/ogmios.git
+[submodule "test/vectors/hydra"]
+	path = test/vectors/hydra
+	url = git@github.com/input-output-hk/hydra.git

@@ -7,6 +7,14 @@ module Test.Kupo.Data.HydraSpec
     ( spec
     ) where
 
+import Kupo.Prelude
+
+import qualified Data.Aeson as Json
+import Data.Aeson.Lens
+    ( _Array
+    , key
+    )
+import qualified Data.Aeson.Types as Json
 import qualified Data.Set as Set
 import Kupo.App.ChainSync.Hydra
     ( TransactionStore (..)
@@ -14,10 +22,12 @@ import Kupo.App.ChainSync.Hydra
     , newTransactionStore
     , pushTx
     )
+import Kupo.Data.Hydra
+    ( decodeHydraMessage
+    )
 import Kupo.Data.PartialBlock
     ( PartialTransaction (..)
     )
-import Kupo.Prelude
 import Test.Hspec
     ( Spec
     , context
@@ -35,19 +45,25 @@ import Test.Kupo.Data.Generators
     ( genOutputReference
     )
 import Test.QuickCheck
-    ( label
+    ( Property
+    , counterexample
+    , label
     , listOf1
     , shuffle
+    , withMaxSuccess
     )
 import Test.QuickCheck.Monadic
-    ( monadicIO
+    ( assert
+    , monadicIO
     , monitor
     , pick
     , run
     )
 
 spec :: Spec
-spec = parallel $ context "TransactionStore" $ do
+spec = parallel $ do
+
+  context "TransactionStore" $ do
 
     prop "can retrieve transactions in any order" $ monadicIO $ do
       TransactionStore{pushTx, popTxById} <- run newTransactionStore
@@ -67,4 +83,28 @@ spec = parallel $ context "TransactionStore" $ do
                   TransactionNotInStore txId' -> txId' == txId
 
 
+  context "JSON decoders" $ do
+      context "decodeHydraMessage" $ do
+          prop "can decode test vectors" $ withMaxSuccess 1 $ do
+              prop_canDecodeFile
+                  (mapM decodeHydraMessage . getSamples)
+                  "./test/vectors/hydra/hydra-node/golden/ReasonablySized (ServerOutput (Tx BabbageEra)).json"
 
+getSamples :: Json.Value -> [Json.Value]
+getSamples v =
+  toList $ v ^. key "samples" . _Array
+
+prop_canDecodeFile ::
+  (Json.Value -> Json.Parser b)
+  -> FilePath
+  -> Property
+prop_canDecodeFile decoder vector = monadicIO $ do
+    let errDecode = "Failed to decode JSON"
+    value <- maybe (fail errDecode) pure =<< run (Json.decodeFileStrict vector)
+    case Json.parse decoder value of
+        Json.Error str -> do
+            monitor $ counterexample (decodeUtf8 (Json.encode value))
+            monitor $ counterexample str
+            assert False
+        Json.Success{} -> do
+            assert True
