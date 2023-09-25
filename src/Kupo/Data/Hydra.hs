@@ -23,6 +23,7 @@ import Kupo.Data.Cardano
     , SlotNo (..)
     , Tip
     , TransactionId
+    , Value
     , getOutputIndex
     , getTransactionId
     , mkOutput
@@ -32,6 +33,7 @@ import Kupo.Data.Cardano
     , pattern Tip
     , transactionIdFromText
     , unsafeHeaderHashFromBytes
+    , unsafeValueFromList
     , withReferences
     )
 import Kupo.Data.PartialBlock
@@ -39,7 +41,7 @@ import Kupo.Data.PartialBlock
     , PartialTransaction (PartialTransaction, datums, id, inputs, metadata, outputs, scripts)
     )
 
-import qualified Cardano.Ledger.TxIn as Ledger
+import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString.Builder as BS
@@ -172,10 +174,43 @@ decodeOutput
 decodeOutput = Json.withObject "Output(Hydra)" $ \o -> do
     mkOutput
         <$> (o .: "address" >>= decodeAddress)
-        <*> pure mempty -- TODO (o .: "value" >>= decodeValue)
+        <*> (o .: "value" >>= decodeValue)
         <*> pure NoDatum -- TODO
         <*> pure Nothing -- TODO (o .:? "script" >>= traverse decodeScript)
 
+-- XXX: Very similar to ogmios API (s/ada/lovelace/g)
+decodeValue
+    :: Json.Value
+    -> Json.Parser Value
+decodeValue = Json.withObject "Value(Hydra)" $ \o -> do
+    coins <- o .: "lovelace"
+    assets <- KeyMap.foldrWithKey
+        (\k v accum ->
+            if k == "lovelace" then accum else do
+                policyId <- decodeBase16' (Key.toText k)
+                assets <- decodeAssets policyId v
+                xs <- accum
+                pure (assets ++ xs)
+        )
+        (pure mempty)
+        o
+    pure (unsafeValueFromList coins assets)
+  where
+    decodeBase16' = either (fail . toString) pure . decodeBase16 . encodeUtf8
+
+    decodeAssets
+        :: ByteString
+        -> Json.Value
+        -> Json.Parser [(ByteString, ByteString, Integer)]
+    decodeAssets policyId =
+        Json.withObject "Assets" $ KeyMap.foldrWithKey
+            (\k v accum -> do
+                assetId <- decodeBase16' (Key.toText k)
+                quantity <- parseJSON v
+                xs <- accum
+                pure ((policyId, assetId, quantity) : xs)
+            )
+            (pure mempty)
 
 decodeSnapshotConfirmed :: Json.Object -> Json.Parser Snapshot
 decodeSnapshotConfirmed o = do
