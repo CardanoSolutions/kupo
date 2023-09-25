@@ -18,9 +18,13 @@ import Kupo.Data.Cardano
     , Datum (..)
     , Input
     , Output
+    , OutputIndex
+    , OutputReference
     , SlotNo (..)
     , Tip
     , TransactionId
+    , getOutputIndex
+    , getTransactionId
     , mkOutput
     , mkOutputReference
     , outputIndexFromText
@@ -35,6 +39,8 @@ import Kupo.Data.PartialBlock
     , PartialTransaction (PartialTransaction, datums, id, inputs, metadata, outputs, scripts)
     )
 
+import qualified Cardano.Ledger.TxIn as Ledger
+import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString.Builder as BS
 import qualified Data.Map.Strict as Map
@@ -47,7 +53,7 @@ import Kupo.Data.Ogmios
 -- Types
 
 data HydraMessage
-    = HeadIsOpen
+    = HeadIsOpen { genesisTxs :: [PartialTransaction] }
     | TxValid { tx :: PartialTransaction }
     | SnapshotConfirmed { snapshot :: Snapshot }
     | SomethingElse
@@ -86,10 +92,45 @@ decodeHydraMessage =
     Json.withObject "HydraMessage" $ \o -> do
         tag <- o .: "tag"
         case tag of
-            ("HeadIsOpen" :: Text) -> pure HeadIsOpen
+            ("HeadIsOpen" :: Text) -> HeadIsOpen <$> decodeHeadIsOpen o
             ("TxValid" :: Text) -> TxValid <$> (o .: "transaction" >>= decodePartialTransaction)
             ("SnapshotConfirmed" :: Text) -> SnapshotConfirmed <$> decodeSnapshotConfirmed o
             _ -> pure SomethingElse
+
+-- | Decode a 'HeadIsOpen' as a multiple "genesis" transactions producing the
+-- UTxO as initially available.
+decodeHeadIsOpen :: Json.Object -> Json.Parser [PartialTransaction]
+decodeHeadIsOpen o = do
+    (Json.Object utxoMap) <- o .: "utxo"
+    parsedUTxO <- forM (KeyMap.toList utxoMap) $ \(k,v) -> do
+      txId <- decodeInput $ toJSON k
+      pure (txId, v)
+    let utxoByTxId = groupByTransactionId parsedUTxO
+    forM utxoByTxId $ uncurry decodeGenesisTxForUTxO
+
+groupByTransactionId :: [(OutputReference, a)] -> [(TransactionId, [(OutputIndex, a)])]
+groupByTransactionId =
+    Map.toList . foldr go mempty
+  where
+    go (oref, a) m =
+        Map.unionWith (<>) m $
+            Map.singleton (getTransactionId oref) [(getOutputIndex oref, a)]
+
+decodeGenesisTxForUTxO :: TransactionId -> [(OutputIndex, Json.Value)] -> Json.Parser PartialTransaction
+decodeGenesisTxForUTxO id indexOutputs = do
+    outputs <- forM indexOutputs $ \(ix, v) -> do
+      out <- decodeOutput v
+      pure (mkOutputReference id ix, out)
+    pure PartialTransaction
+        { id
+        , inputs = []
+        , outputs
+        , datums = mempty
+        , scripts = mempty
+        , metadata = Nothing
+        }
+
+
 
 -- | Decoder for a 'PartialTransaction' in the Hydra JSON schema.
 decodePartialTransaction :: Json.Value -> Json.Parser PartialTransaction

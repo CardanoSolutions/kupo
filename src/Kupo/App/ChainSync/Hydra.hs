@@ -60,8 +60,8 @@ runChainSyncClient mailbox beforeMainLoop _pts ws = do
     TransactionStore{pushTx, popTxById} <- newTransactionStore
     forever $ do
         WS.receiveJson ws decodeHydraMessage >>= \case
-            HeadIsOpen ->
-                atomically (putHighFrequencyMessage mailbox (mkHydraBlock 0 []))
+            HeadIsOpen{genesisTxs} ->
+                atomically (putHighFrequencyMessage mailbox (mkHydraBlock 0 genesisTxs))
             TxValid{tx} ->
                 pushTx tx
             SnapshotConfirmed{ snapshot = Snapshot { number, confirmedTransactionIds }} -> do
