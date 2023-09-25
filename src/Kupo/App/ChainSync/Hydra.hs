@@ -16,9 +16,7 @@ import Control.Exception.Safe
     ( MonadThrow
     , throwM
     )
-import Data.List
-    ( delete
-    )
+import qualified Data.Map as Map
 import Kupo.App.Mailbox
     ( Mailbox
     , putHighFrequencyMessage
@@ -97,17 +95,17 @@ data TransactionStore m = TransactionStore
 
 newTransactionStore :: (Monad m, MonadSTM m, MonadThrow (STM m)) => m (TransactionStore m)
 newTransactionStore = do
-  txStore <- atomically $ newTVar []
+  txStore <- atomically $ newTVar mempty
   pure
     TransactionStore
-        { pushTx = atomically . modifyTVar' txStore . (:)
+        { pushTx = \tx@PartialTransaction{id} -> atomically $ modifyTVar' txStore (Map.insert id tx)
         , popTxById = \txId ->
             atomically $ do
-                storedTransactions <- readTVar txStore
-                case find (\PartialTransaction{id} -> id == txId) storedTransactions of
+                txMap <- readTVar txStore
+                case Map.lookup txId txMap of
                   Nothing -> throwM $ TransactionNotInStore txId
                   Just tx -> do
-                      writeTVar txStore (delete tx storedTransactions)
+                      writeTVar txStore (Map.delete txId txMap)
                       pure tx
         }
 
