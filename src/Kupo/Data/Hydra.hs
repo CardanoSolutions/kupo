@@ -36,6 +36,10 @@ import Kupo.Data.Cardano
     , unsafeValueFromList
     , withReferences
     )
+import Kupo.Data.Ogmios
+    ( decodeAddress
+    , decodeTransactionId
+    )
 import Kupo.Data.PartialBlock
     ( PartialBlock (..)
     , PartialTransaction (PartialTransaction, datums, id, inputs, metadata, outputs, scripts)
@@ -47,10 +51,6 @@ import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString.Builder as BS
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
-import Kupo.Data.Ogmios
-    ( decodeAddress
-    , decodeTransactionId
-    )
 
 -- Types
 
@@ -83,7 +83,7 @@ mkHydraBlock number txs = do
         ( Tip slotNo headerHash blockNo
         , PartialBlock
             { blockPoint = BlockPoint slotNo headerHash
-            , blockBody  = txs
+            , blockBody  = toList txs
             }
         )
 

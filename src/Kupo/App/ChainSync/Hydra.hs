@@ -16,7 +16,6 @@ import Control.Exception.Safe
     ( MonadThrow
     , throwM
     )
-import qualified Data.Map as Map
 import Kupo.App.Mailbox
     ( Mailbox
     , putHighFrequencyMessage
@@ -42,6 +41,8 @@ import Kupo.Data.PartialBlock
     ( PartialBlock
     , PartialTransaction (..)
     )
+
+import qualified Data.Map as Map
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
 
@@ -57,17 +58,18 @@ runChainSyncClient
     -> m IntersectionNotFoundException
 runChainSyncClient mailbox beforeMainLoop _pts ws = do
     beforeMainLoop
-    TransactionStore{pushTx, popTxById} <- newTransactionStore
+    TransactionStore{push, pop} <- newTransactionStore
     forever $ do
         WS.receiveJson ws decodeHydraMessage >>= \case
-            HeadIsOpen{genesisTxs} ->
+            HeadIsOpen{genesisTxs} -> do
                 atomically (putHighFrequencyMessage mailbox (mkHydraBlock 0 genesisTxs))
-            TxValid{tx} ->
-                pushTx tx
+            TxValid{tx} -> do
+                push tx
             SnapshotConfirmed{ snapshot = Snapshot { number, confirmedTransactionIds }} -> do
-                txs <- mapM popTxById confirmedTransactionIds
+                txs <- pop confirmedTransactionIds
                 atomically (putHighFrequencyMessage mailbox (mkHydraBlock number txs))
-            SomethingElse -> pure ()
+            SomethingElse -> do
+                pure ()
 
 connect
     :: ConnectionStatusToggle IO
@@ -79,35 +81,34 @@ connect ConnectionStatusToggle{toggleConnected} host port action =
     WS.runClientWith host port "/"
         WS.defaultConnectionOptions [] (\ws -> toggleConnected >> action ws)
 
+-- | Handle to store and later retrieve transaction.
+data TransactionStore m = TransactionStore
+    { -- | Store a transaction for later retrieval.
+      push :: PartialTransaction -> m ()
+
+    , -- | Removes transactions from the store.
+      -- Throws 'TransactionNotInStore' when not found.
+      pop :: MonadThrow m => [TransactionId] -> m [PartialTransaction]
+    }
+
 newtype TransactionStoreException = TransactionNotInStore { transactionId :: TransactionId }
   deriving (Eq, Show)
 
 instance Exception TransactionStoreException
 
--- | Handle to store and later retrieve transaction.
-data TransactionStore m = TransactionStore
-    { -- | Store a transaction for later retrieval.
-      pushTx :: PartialTransaction -> m ()
-    , -- | Resolves a transaction id and removes it. Throws
-      -- 'TransactionNotInStore' when not found.
-      popTxById :: MonadThrow m => TransactionId -> m PartialTransaction
-    }
-
 newTransactionStore :: (Monad m, MonadSTM m, MonadThrow (STM m)) => m (TransactionStore m)
 newTransactionStore = do
-  txStore <- atomically $ newTVar mempty
-  pure
-    TransactionStore
-        { pushTx = \tx@PartialTransaction{id} -> atomically $ modifyTVar' txStore (Map.insert id tx)
-        , popTxById = \txId ->
-            atomically $ do
-                txMap <- readTVar txStore
-                case Map.lookup txId txMap of
-                  Nothing -> throwM $ TransactionNotInStore txId
+  store <- atomically $ newTVar mempty
+  pure TransactionStore
+    { push = \tx@PartialTransaction{id} ->
+        atomically $ modifyTVar' store (Map.insert id tx)
+    , pop = \ids ->
+        atomically $ do
+            txMap <- readTVar store
+            forM ids $ \id -> do
+                case Map.lookup id txMap of
+                  Nothing -> throwM $ TransactionNotInStore id
                   Just tx -> do
-                      writeTVar txStore (Map.delete txId txMap)
+                      writeTVar store (Map.delete id txMap)
                       pure tx
-        }
-
-
-
+    }
