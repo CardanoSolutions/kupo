@@ -5,8 +5,12 @@ module Kupo.Data.Hydra where
 import Kupo.Prelude
 
 import Cardano.Crypto.Hash
-    ( hashToBytes
+    ( hashFromTextAsHex
+    , hashToBytes
     , hashWith
+    )
+import Cardano.Ledger.SafeHash
+    ( unsafeMakeSafeHash
     )
 import Data.Aeson
     ( (.!=)
@@ -14,16 +18,22 @@ import Data.Aeson
     , (.:?)
     )
 import Kupo.Data.Cardano
-    ( BlockNo (..)
+    ( BinaryData
+    , BlockNo (..)
     , Datum (..)
+    , DatumHash
     , Input
     , Output
     , OutputIndex
     , OutputReference
+    , Script
+    , ScriptHash
     , SlotNo (..)
     , Tip
     , TransactionId
     , Value
+    , binaryDataFromBytes
+    , datumHashFromBytes
     , getOutputIndex
     , getTransactionId
     , mkOutput
@@ -31,6 +41,8 @@ import Kupo.Data.Cardano
     , outputIndexFromText
     , pattern BlockPoint
     , pattern Tip
+    , scriptFromBytes
+    , scriptHashFromText
     , transactionIdFromText
     , unsafeHeaderHashFromBytes
     , unsafeValueFromList
@@ -42,12 +54,15 @@ import Kupo.Data.Ogmios
     )
 import Kupo.Data.PartialBlock
     ( PartialBlock (..)
-    , PartialTransaction (PartialTransaction, datums, id, inputs, metadata, outputs, scripts)
+    , PartialTransaction (..)
     )
 
+import qualified Codec.CBOR.Decoding as Cbor
+import qualified Codec.CBOR.Read as Cbor
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Aeson.Types as Json
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as BS
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
@@ -65,7 +80,6 @@ data Snapshot = Snapshot
     , confirmedTransactionIds :: [TransactionId]
     }
 
--- | Create a hydra "block" given a snapshot number and a list of transactions.
 mkHydraBlock :: Word64 -> [PartialTransaction] -> (Tip, PartialBlock)
 mkHydraBlock number txs = do
     let
@@ -107,10 +121,13 @@ decodeHeadIsOpen o = do
     parsedUTxO <- forM (KeyMap.toList utxoMap) $ \(k,v) -> do
       txId <- decodeInput $ toJSON k
       pure (txId, v)
-    let utxoByTxId = groupByTransactionId parsedUTxO
-    forM utxoByTxId $ uncurry decodeGenesisTxForUTxO
+    forM
+        (groupByTransactionId parsedUTxO)
+        (uncurry decodeGenesisTxForUTxO)
 
-groupByTransactionId :: [(OutputReference, a)] -> [(TransactionId, [(OutputIndex, a)])]
+groupByTransactionId
+    :: [(OutputReference, a)]
+    -> [(TransactionId, [(OutputIndex, a)])]
 groupByTransactionId =
     Map.toList . foldr go mempty
   where
@@ -118,7 +135,10 @@ groupByTransactionId =
         Map.unionWith (<>) m $
             Map.singleton (getTransactionId oref) [(getOutputIndex oref, a)]
 
-decodeGenesisTxForUTxO :: TransactionId -> [(OutputIndex, Json.Value)] -> Json.Parser PartialTransaction
+decodeGenesisTxForUTxO
+    :: TransactionId
+    -> [(OutputIndex, Json.Value)]
+    -> Json.Parser PartialTransaction
 decodeGenesisTxForUTxO id indexOutputs = do
     outputs <- forM indexOutputs $ \(ix, v) -> do
       out <- decodeOutput v
@@ -132,18 +152,29 @@ decodeGenesisTxForUTxO id indexOutputs = do
         , metadata = Nothing
         }
 
-
-
--- | Decoder for a 'PartialTransaction' in the Hydra JSON schema.
 decodePartialTransaction :: Json.Value -> Json.Parser PartialTransaction
-decodePartialTransaction = Json.withObject "PartialTransaction(Hydra)" $ \o -> do
+decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     id <- o .: "id" >>= decodeTransactionId
+
     body <- o .: "body"
     inputs <- body .: "inputs" >>= traverse decodeInput
     outputs <- body .:? "outputs" .!= [] >>= traverse decodeOutput
-    let datums = Map.empty -- TODO
-    let scripts = Map.empty -- TODO
-    let metadata = Nothing -- TODO
+
+    wits <- o.: "witnesses"
+    datums <- wits .:? "datums" .!= Json.Object mempty >>= decodeDatums
+    scripts <- wits .:? "scripts" .!= Json.Object mempty >>= decodeScripts
+
+    -- TODO
+    -- This is 'acceptable' for now because:
+    --
+    -- (1) This is only truly required when fetching metadata from a data-source. Kupo does not
+    -- itsself store metadata, so they have no effect when folding over blocks.
+    --
+    -- (2) Hydra does not support fetching metadata of past transactions. If we wanted to support this
+    -- feature for Hydra, we would need to first deal with (1) since Hydra doesn't provide a protocol
+    -- / API for it.
+    let metadata = Nothing
+
     pure PartialTransaction
         { id
         , inputs
@@ -153,10 +184,32 @@ decodePartialTransaction = Json.withObject "PartialTransaction(Hydra)" $ \o -> d
         , metadata
         }
 
+decodeDatums :: Json.Value -> Json.Parser (Map DatumHash BinaryData)
+decodeDatums = Json.withObject "Datums" $
+    KeyMap.foldrWithKey
+        (\k v accum -> Map.insert
+            <$> decodeDatumHash k
+            <*> decodeBinaryData v
+            <*> accum
+        )
+        (pure mempty)
+
+decodeDatumHash
+    :: Json.Key
+    -> Json.Parser DatumHash
+decodeDatumHash k = do
+    case datumHashFromBytes <$> decodeBase16 (encodeUtf8 (Key.toText k)) of
+        Right (Just hash) ->
+            pure hash
+        Right Nothing ->
+            fail "decodeDatumHash: datumHashFromBytes failed."
+        Left e ->
+            fail (toString e)
+
 decodeInput
     :: Json.Value
     -> Json.Parser Input
-decodeInput = Json.withText "Input(Hydra)" $ \t ->
+decodeInput = Json.withText "Input" $ \t ->
     maybe (fail $ "failed to parse: " <> show t) pure $ do
         (tId, tIx) <- splitInput t
         id <- transactionIdFromText tId
@@ -171,18 +224,113 @@ decodeInput = Json.withText "Input(Hydra)" $ \t ->
 decodeOutput
     :: Json.Value
     -> Json.Parser Output
-decodeOutput = Json.withObject "Output(Hydra)" $ \o -> do
+decodeOutput = Json.withObject "Output" $ \o -> do
+    datumHash <- o .:? "datumHash" >>=
+        traverse (fmap unsafeMakeSafeHash . decodeHash @Blake2b_256)
+    datum <- o .:? "datum"
     mkOutput
         <$> (o .: "address" >>= decodeAddress)
         <*> (o .: "value" >>= decodeValue)
-        <*> pure NoDatum -- TODO
-        <*> pure Nothing -- TODO (o .:? "script" >>= traverse decodeScript)
+        <*> case (datumHash, datum) of
+                (Just x, _) ->
+                    pure (Reference (Left x))
+                (Nothing, Just x) ->
+                    Inline . Right <$> decodeBinaryData x
+                (Nothing, Nothing) ->
+                    pure NoDatum
+        <*> (o .:? "script" >>= traverse decodeScript)
 
--- XXX: Very similar to ogmios API (s/ada/lovelace/g)
+decodeHash
+    :: HashAlgorithm alg
+    => Json.Value
+    -> Json.Parser (Hash alg a)
+decodeHash =
+    Json.parseJSON >=> maybe empty pure . hashFromTextAsHex
+
+decodeBinaryData
+    :: Json.Value
+    -> Json.Parser BinaryData
+decodeBinaryData = Json.withText "BinaryData" $ \t ->
+    case binaryDataFromBytes <$> decodeBase16 (encodeUtf8 t) of
+        Right (Just bin) ->
+            pure bin
+        Right Nothing ->
+            fail "decodeBinaryData: binaryDataFromBytes failed."
+        Left e ->
+            fail (toString e)
+
+decodeScript
+    :: Json.Value
+    -> Json.Parser Script
+decodeScript = Json.withText "Script" $ \bytes -> do
+    case scriptFromBytes' <$> decodeBase16 (encodeUtf8 @Text bytes) of
+        Right (Just s) ->
+            pure s
+        Right Nothing ->
+            fail "decodeScript: malformed script"
+        Left e ->
+            fail $ "decodeScript: not base16: " <> show e
+  where
+    scriptFromBytes' (toLazy -> bytes) = do
+        (toStrict -> script, tag) <- either (fail . show) pure $
+            Cbor.deserialiseFromBytes (Cbor.decodeListLen >> Cbor.decodeWord8) bytes
+        maybe (fail "decodeScript: malformed script") pure $
+            scriptFromBytes (BS.singleton tag <> script)
+
+decodeScriptInEnvelope
+    :: Json.Value
+    -> Json.Parser Script
+decodeScriptInEnvelope = Json.withObject "ScriptInEnvelope" $ \o -> do
+    bytes <- o .: "script" >>= (.: "cborHex") >>= decodeBase16'
+    nestedBytes <- either (fail . show) (pure . snd) $
+        Cbor.deserialiseFromBytes Cbor.decodeBytes (toLazy bytes)
+    o .: "scriptLanguage" >>= \case
+        "SimpleScriptLanguage" ->
+            scriptFromBytes' (BS.pack [0] <> nestedBytes)
+        "PlutusScriptLanguage PlutusScriptV1" ->
+            scriptFromBytes' (BS.pack [1] <> nestedBytes)
+        "PlutusScriptLanguage PlutusScriptV2" ->
+            scriptFromBytes' (BS.pack [2] <> nestedBytes)
+        "PlutusScriptLanguage PlutusScriptV3" ->
+            scriptFromBytes' (BS.pack [3] <> nestedBytes)
+        (_ :: Text) ->
+            fail "unrecognized script language"
+  where
+    scriptFromBytes' =
+        maybe (fail "decodeScript: malformed script") pure . scriptFromBytes
+
+decodeScripts :: Json.Value -> Json.Parser (Map ScriptHash Script)
+decodeScripts = Json.withObject "Scripts" $
+    KeyMap.foldrWithKey
+        (\k v accum -> Map.insert
+            <$> decodeScriptHash k
+            <*> decodeScript v
+            <*> accum
+        )
+        (pure mempty)
+
+decodeScriptHash
+    :: Json.Key
+    -> Json.Parser ScriptHash
+decodeScriptHash k =
+    case scriptHashFromText (Key.toText k) of
+        Nothing -> fail "decodeScriptHash"
+        Just scriptHash -> pure scriptHash
+
+decodeSnapshotConfirmed :: Json.Object -> Json.Parser Snapshot
+decodeSnapshotConfirmed o = do
+    snapshot <- o .: "snapshot"
+    number <- snapshot .: "snapshotNumber"
+    confirmedTransactionIds <- snapshot .: "confirmedTransactions" >>= mapM decodeTransactionId
+    pure Snapshot
+        { number
+        , confirmedTransactionIds
+        }
+
 decodeValue
     :: Json.Value
     -> Json.Parser Value
-decodeValue = Json.withObject "Value(Hydra)" $ \o -> do
+decodeValue = Json.withObject "Value" $ \o -> do
     coins <- o .: "lovelace"
     assets <- KeyMap.foldrWithKey
         (\k v accum ->
@@ -196,8 +344,6 @@ decodeValue = Json.withObject "Value(Hydra)" $ \o -> do
         o
     pure (unsafeValueFromList coins assets)
   where
-    decodeBase16' = either (fail . toString) pure . decodeBase16 . encodeUtf8
-
     decodeAssets
         :: ByteString
         -> Json.Value
@@ -212,12 +358,6 @@ decodeValue = Json.withObject "Value(Hydra)" $ \o -> do
             )
             (pure mempty)
 
-decodeSnapshotConfirmed :: Json.Object -> Json.Parser Snapshot
-decodeSnapshotConfirmed o = do
-    snapshot <- o .: "snapshot"
-    number <- snapshot .: "snapshotNumber"
-    confirmedTransactionIds <- snapshot .: "confirmedTransactions" >>= mapM decodeTransactionId
-    pure Snapshot
-        { number
-        , confirmedTransactionIds
-        }
+decodeBase16' :: Text -> Json.Parser ByteString
+decodeBase16' =
+    either (fail . toString) pure . decodeBase16 . encodeUtf8

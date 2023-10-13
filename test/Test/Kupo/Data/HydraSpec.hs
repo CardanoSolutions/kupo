@@ -9,18 +9,14 @@ module Test.Kupo.Data.HydraSpec
 
 import Kupo.Prelude
 
-import qualified Data.Aeson as Json
 import Data.Aeson.Lens
     ( _Array
     , key
     )
-import qualified Data.Aeson.Types as Json
-import qualified Data.Set as Set
 import Kupo.App.ChainSync.Hydra
     ( TransactionStore (..)
-    , TransactionStoreException (TransactionNotInStore)
+    , TransactionStoreException (..)
     , newTransactionStore
-    , pushTx
     )
 import Kupo.Data.Hydra
     ( decodeHydraMessage
@@ -60,28 +56,14 @@ import Test.QuickCheck.Monadic
     , run
     )
 
+import qualified Data.Aeson as Json
+import qualified Data.Aeson.Types as Json
+import qualified Data.Set as Set
+
 spec :: Spec
 spec = parallel $ do
-
   context "TransactionStore" $ do
-
-    prop "can retrieve transactions in any order" $ monadicIO $ do
-      TransactionStore{pushTx, popTxById} <- run newTransactionStore
-      txs <- pick $ do
-           txIns <- listOf1 genOutputReference
-           evalStateT genPartialTransactions (Set.fromList txIns)
-      txsWithIds <- forM txs $ \tx@PartialTransaction{id} -> do
-            run $ pushTx tx
-            pure (tx, id)
-      monitor (label $ "Generated list length is " <> show (length txsWithIds))
-      shuffledTxs <- pick $ shuffle txsWithIds
-      pure $
-          forM_ shuffledTxs $ \(tx, txId) -> do
-              tx' <- popTxById txId
-              tx' `shouldBe` tx
-              popTxById txId `shouldThrow` \case
-                  TransactionNotInStore txId' -> txId' == txId
-
+    prop "can retrieve transactions in any order" prop_canRetrieveTxInAnyOrder
 
   context "JSON decoders" $ do
       context "decodeHydraMessage" $ do
@@ -90,14 +72,29 @@ spec = parallel $ do
                   (mapM decodeHydraMessage . getSamples)
                   "./test/vectors/hydra/hydra-node/golden/ReasonablySized (ServerOutput (Tx BabbageEra)).json"
 
-getSamples :: Json.Value -> [Json.Value]
-getSamples v =
-  toList $ v ^. key "samples" . _Array
+prop_canRetrieveTxInAnyOrder
+    :: Property
+prop_canRetrieveTxInAnyOrder = monadicIO $ do
+      TransactionStore{push, pop} <- run newTransactionStore
+      txs <- pick $ do
+           txIns <- listOf1 genOutputReference
+           evalStateT genPartialTransactions (Set.fromList txIns)
+      txsWithIds <- forM txs $ \tx@PartialTransaction{id} -> do
+            run $ push tx
+            pure (tx, id)
+      monitor (label $ "Generated list length is " <> show (length txsWithIds))
+      shuffledTxs <- pick $ shuffle txsWithIds
+      pure $
+          forM_ shuffledTxs $ \(tx, txId) -> do
+              txs' <- pop [txId]
+              txs' `shouldBe` [tx]
+              pop [txId] `shouldThrow` \case
+                  TransactionNotInStore txId' -> txId' == txId
 
-prop_canDecodeFile ::
-  (Json.Value -> Json.Parser b)
-  -> FilePath
-  -> Property
+prop_canDecodeFile
+    :: (Json.Value -> Json.Parser b)
+    -> FilePath
+    -> Property
 prop_canDecodeFile decoder vector = monadicIO $ do
     let errDecode = "Failed to decode JSON"
     value <- maybe (fail errDecode) pure =<< run (Json.decodeFileStrict vector)
@@ -108,3 +105,7 @@ prop_canDecodeFile decoder vector = monadicIO $ do
             assert False
         Json.Success{} -> do
             assert True
+
+getSamples :: Json.Value -> [Json.Value]
+getSamples v =
+  toList $ v ^. key "samples" . _Array
