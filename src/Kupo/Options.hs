@@ -157,7 +157,7 @@ parserInfo = info (helper <*> parser) $ mempty
 
 chainProducerOption :: Parser ChainProducer
 chainProducerOption =
-    cardanoNodeOptions <|> ogmiosOptions
+    cardanoNodeOptions <|> ogmiosOptions <|> hydraOptions
   where
     cardanoNodeOptions = CardanoNode
         <$> nodeSocketOption
@@ -166,6 +166,10 @@ chainProducerOption =
     ogmiosOptions = Ogmios
         <$> ogmiosHostOption
         <*> ogmiosPortOption
+
+    hydraOptions = Hydra
+        <$> hydraHostOption
+        <*> hydraPortOption
 
 -- | --node-socket=FILEPATH
 nodeSocketOption :: Parser FilePath
@@ -231,6 +235,21 @@ ogmiosPortOption = option auto $ mempty
     <> long "ogmios-port"
     <> metavar "TCP/PORT"
     <> help "Ogmios' port."
+
+-- | [--hydra-host=IPv4]
+hydraHostOption :: Parser String
+hydraHostOption = option str $ mempty
+    <> long "hydra-host"
+    <> metavar "IPv4"
+    <> help "Hydra-node host address to connect to."
+    <> completer (bashCompleter "hostname")
+
+-- | [--hydra-port=TCP/PORT]
+hydraPortOption :: Parser Int
+hydraPortOption = option auto $ mempty
+    <> long "hydra-port"
+    <> metavar "TCP/PORT"
+    <> help "Hydra-node port to connect to."
 
 -- | [--since=POINT]
 sinceOption :: Parser Point

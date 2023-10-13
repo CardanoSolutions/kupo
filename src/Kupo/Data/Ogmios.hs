@@ -15,6 +15,9 @@ module Kupo.Data.Ogmios
 
     , decodeFindIntersectionResponse
     , decodeNextBlockResponse
+    -- ** Cardano decoders
+    , decodeTransactionId
+    , decodeAddress
     ) where
 
 import Kupo.Prelude
@@ -301,9 +304,9 @@ decodeScript = Json.withObject "Script" $ \o -> do
             Right (Just s) ->
                 pure s
             Right Nothing ->
-                fail "decodeScript: decodePlutusV1: malformed script"
+                fail "decodeScript: malformed script"
             Left e ->
-                fail $ "decodeScript: decodePlutusV1: not base16: " <> show e
+                fail $ "decodeScript: not base16: " <> show e
 
 decodeNativeScript
     :: Json.Object

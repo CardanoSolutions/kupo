@@ -40,13 +40,14 @@ source-repository head
 flag production
   description: Compile executables for production.
   manual: True
-  default: False
+  default: True
 
 library
   exposed-modules:
       Kupo
       Kupo.App
       Kupo.App.ChainSync
+      Kupo.App.ChainSync.Hydra
       Kupo.App.ChainSync.Node
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
@@ -107,6 +108,7 @@ library
       Kupo.Data.Http.SlotRange
       Kupo.Data.Http.Status
       Kupo.Data.Http.StatusFlag
+      Kupo.Data.Hydra
       Kupo.Data.Ogmios
       Kupo.Data.PartialBlock
       Kupo.Data.Pattern
@@ -295,6 +297,7 @@ test-suite unit
       Test.Kupo.Data.Http.OrderMatchesBySpec
       Test.Kupo.Data.Http.SlotRangeSpec
       Test.Kupo.Data.OgmiosSpec
+      Test.Kupo.Data.HydraSpec
       Test.Kupo.Data.Pattern.Fixture
       Test.Kupo.Data.PatternSpec
       Test.Kupo.Data.UtxoConstraint

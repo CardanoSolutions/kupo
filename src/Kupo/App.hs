@@ -2,6 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App
@@ -77,6 +78,7 @@ import Kupo.Data.Cardano
     , distanceToTip
     , getPoint
     , getPointSlotNo
+    , pattern GenesisPoint
     )
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
@@ -100,6 +102,9 @@ import Kupo.Data.Database
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
     )
+import Kupo.Data.PartialBlock
+    ( PartialBlock
+    )
 import Kupo.Data.Pattern
     ( Codecs (..)
     , Match (..)
@@ -111,6 +116,7 @@ import Kupo.Data.Pattern
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Kupo.App.ChainSync.Hydra as Hydra
 import qualified Kupo.App.ChainSync.Node as Node
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 import qualified Kupo.App.FetchBlock.Node as Node
@@ -166,6 +172,38 @@ newProducer tr chainProducer callback = do
 
                 runOgmios checkpoints (return ()) throwIO restart
 
+        Hydra{hydraHost, hydraPort} -> do
+            logWith tr ConfigurationHydra{hydraHost, hydraPort}
+            mailbox <- atomically (newMailbox mailboxCapacity)
+
+            callback forcedRollbackCallback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
+                let runHydra pts beforeMainLoop onIntersectionNotFound continuation = do
+                        res <- race
+                            (Hydra.connect statusToggle hydraHost hydraPort $
+                                -- NOTE: Kupo does not generally index the genesis 'block' / configuration.
+                                -- That's true for the normal case with ogmios or cardano-node; but for
+                                -- Hydra, we might want to.
+                                --
+                                -- This is debatable and should be backed by use-cases, and may also be
+                                -- confusing since normally Kupo starts indexing only the blocks that
+                                -- follows the given checkpoints. But now we make an exception for genesis.
+                                Hydra.runChainSyncClient mailbox beforeMainLoop (filter (/= GenesisPoint) pts)
+                            )
+                            (atomically (takeTMVar forcedRollbackVar))
+                        case res of
+                            Left notFound ->
+                                onIntersectionNotFound notFound
+                            Right (point, handler) ->
+                                continuation point handler
+
+                let restart point handler =
+                        runHydra [point]
+                            (onSuccess handler)
+                            (\e -> onFailure handler >> throwIO e)
+                            restart
+
+                runHydra checkpoints (return ()) throwIO restart
+
         CardanoNode{nodeSocket, nodeConfig} -> do
             logWith tr ConfigurationCardanoNode{nodeSocket,nodeConfig}
             mailbox <- atomically (newMailbox mailboxCapacity)
@@ -209,6 +247,8 @@ withFetchBlockClient chainProducer callback = do
     case chainProducer of
         Ogmios{ogmiosHost, ogmiosPort} ->
             Ogmios.withFetchBlockClient ogmiosHost ogmiosPort callback
+        Hydra{} ->
+            callback @PartialBlock (\_point respond -> respond Nothing)
         CardanoNode{nodeSocket, nodeConfig} -> do
             NetworkParameters
                 { networkMagic

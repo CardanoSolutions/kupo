@@ -191,6 +191,12 @@ varOgmiosHost = "OGMIOS_HOST"
 varOgmiosPort :: String
 varOgmiosPort = "OGMIOS_PORT"
 
+varHydraHost :: String
+varHydraHost = "HYDRA_HOST"
+
+varHydraPort :: String
+varHydraPort = "HYDRA_PORT"
+
 type EndToEndContext
     = ( (Configuration -> Configuration) -> IO (Configuration, Env Kupo)
       , Env Kupo -> DiffTime -> IO () -> IO ()
@@ -202,6 +208,18 @@ endToEnd = specify
 
 spec :: Spec
 spec = skippableContext "End-to-end" $ do
+
+    endToEnd "can connect" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_cfg, env) <- configure $ \defaultCfg -> defaultCfg
+            { workDir = InMemory
+            , since = Just GenesisPoint
+            , patterns = fromList [MatchAny OnlyShelley]
+            }
+        runSpec env 5 $ do
+            waitSlot (>= 0)
+            matches <- getAllMatches NoStatusFlag
+            matches `shouldSatisfy` not . null
+
     endToEnd "in-memory" $ \(configure, runSpec, HttpClient{..}) -> do
         (cfg, env) <- configure $ \defaultCfg -> defaultCfg
             { workDir = InMemory
@@ -278,6 +296,11 @@ spec = skippableContext "End-to-end" $ do
                         Ogmios
                             { ogmiosHost = "/dev/null"
                             , ogmiosPort
+                            }
+                    Hydra{hydraPort} ->
+                        Hydra
+                            { hydraHost = "/dev/null"
+                            , hydraPort
                             }
             }
         runSpec env 5 $ do
@@ -501,6 +524,9 @@ spec = skippableContext "End-to-end" $ do
 -- - If 'varOgmiosHost' AND 'varOgmiosPort' are set, the spec items will execute against an Ogmios
 -- server expected to be running and available through the context defined by these variables.
 --
+-- - If 'varHydraHost' AND 'varHydraPort' are set, the spec items will execute against a Hydra node
+-- with an open head running and available through the context defined by these variables.
+--
 -- If either set of variables is missing, then the spec items do not run for that item.
 skippableContext :: String -> SpecWith (Arg (EndToEndContext -> IO ())) -> Spec
 skippableContext prefix skippableSpec = do
@@ -545,6 +571,27 @@ skippableContext prefix skippableSpec = do
             context ogmios $ around (withTempDirectory manager ref defaultCfg) skippableSpec
         _skipOtherwise ->
             xcontext ogmios (pure ())
+
+    let hydra = prefix <> " (hydra)"
+    runIO ((,) <$> lookupEnv varHydraHost <*> lookupEnv varHydraPort) >>= \case
+        (Just hydraHost, Just (Prelude.read -> hydraPort)) -> do
+            manager <- runIO $ newManager $
+                defaultManagerSettings { managerResponseTimeout = responseTimeoutNone }
+            let defaultCfg = Configuration
+                    { chainProducer = Hydra {hydraHost, hydraPort}
+                    , workDir = InMemory
+                    , serverHost = "127.0.0.1"
+                    , serverPort = 0
+                    , since = Nothing
+                    , patterns = fromList []
+                    , inputManagement = MarkSpentInputs
+                    , longestRollback = 43200
+                    , garbageCollectionInterval = 180
+                    , deferIndexes = InstallIndexesIfNotExist
+                    }
+            context hydra $ around (withTempDirectory manager ref defaultCfg) skippableSpec
+        _skipOtherwise ->
+            xcontext hydra (pure ())
   where
     withTempDirectory
         :: Manager

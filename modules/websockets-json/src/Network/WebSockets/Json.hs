@@ -13,7 +13,7 @@ import Prelude
 import Control.Exception
     ( Exception
     )
-import Control.Monad.Catch
+import Control.Monad.Class.MonadThrow
     ( MonadThrow (..)
     )
 import Control.Monad.IO.Class
@@ -54,7 +54,7 @@ receiveJson
 receiveJson ws decoder =  do
     bytes <- liftIO (WS.receiveData ws)
     either
-        (\(path, err) -> throwM $ MalformedOrUnexpectedResponse bytes path err)
+        (\(path, err) -> throwIO $ MalformedOrUnexpectedResponse bytes path err)
         pure
         (Json.eitherDecodeWith Json.jsonEOF (Json.iparse decoder) bytes)
 
