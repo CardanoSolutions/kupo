@@ -18,6 +18,9 @@
   > unlike Ogmios or Cardano-node, metadata cannot be retrieved when Hydra is
   > used as a chain producer.
 
+- Added TLS certificates to the Docker image so that remote connections to
+  Ogmios or Hydra instances behind TLS can mostly work out-of-the-box
+
 #### Changed
 
 - N/A
