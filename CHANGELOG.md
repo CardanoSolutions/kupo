@@ -1,9 +1,30 @@
-### [2.7.0] - UNRELEASED
+### [2.7.0] - 2023-10-13
 
 #### Added
 
-- Support for indexing a Hydra head. Use `--hydra-host` and `--hydra-port` to
-  connect `kupo` to a `hydra-node`.
+- Support for indexing a Hydra head.
+
+  Use `--hydra-host` and `--hydra-port` to connect `kupo` to a `hydra-node`.
+
+  > **Note**:
+  >
+  > Hydra heads do not actually form a 'chain'; Hydra doesn't have blocks, but
+  > snapshots which are akin to blocks so we treat them as such. The block
+  > header hash we opted for is arbitrary and is a hash of all the transaction
+  > id present in the snapshot.
+  >
+  > It also comes with diminished capabilities since Hydra doesn't have any
+  > protocol to query metadata for example and Kupo does not store them. So
+  > unlike Ogmios or Cardano-node, metadata cannot be retrieved when Hydra is
+  > used as a chain producer.
+
+#### Changed
+
+- N/A
+
+#### Removed
+
+- N/A
 
 ### [2.6.1] - 2023-08-30
 

@@ -2,6 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Kupo.App
@@ -77,6 +78,7 @@ import Kupo.Data.Cardano
     , distanceToTip
     , getPoint
     , getPointSlotNo
+    , pattern GenesisPoint
     )
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
@@ -173,11 +175,19 @@ newProducer tr chainProducer callback = do
         Hydra{hydraHost, hydraPort} -> do
             logWith tr ConfigurationHydra{hydraHost, hydraPort}
             mailbox <- atomically (newMailbox mailboxCapacity)
+
             callback forcedRollbackCallback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
                 let runHydra pts beforeMainLoop onIntersectionNotFound continuation = do
                         res <- race
                             (Hydra.connect statusToggle hydraHost hydraPort $
-                                Hydra.runChainSyncClient mailbox beforeMainLoop pts
+                                -- NOTE: Kupo does not generally index the genesis 'block' / configuration.
+                                -- That's true for the normal case with ogmios or cardano-node; but for
+                                -- Hydra, we might want to.
+                                --
+                                -- This is debatable and should be backed by use-cases, and may also be
+                                -- confusing since normally Kupo starts indexing only the blocks that
+                                -- follows the given checkpoints. But now we make an exception for genesis.
+                                Hydra.runChainSyncClient mailbox beforeMainLoop (filter (/= GenesisPoint) pts)
                             )
                             (atomically (takeTMVar forcedRollbackVar))
                         case res of

@@ -44,6 +44,7 @@ import Kupo.Data.Cardano
     , scriptFromBytes
     , scriptHashFromText
     , transactionIdFromText
+    , transactionIdToBytes
     , unsafeHeaderHashFromBytes
     , unsafeValueFromList
     , withReferences
@@ -63,7 +64,7 @@ import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Builder as BS
+import qualified Data.ByteString.Builder as B
 import qualified Data.Map.Strict as Map
 import qualified Data.Text as Text
 
@@ -83,8 +84,9 @@ data Snapshot = Snapshot
 mkHydraBlock :: Word64 -> [PartialTransaction] -> (Tip, PartialBlock)
 mkHydraBlock number txs = do
     let
-        headerHash = number
-            & hashWith @Blake2b_256 (toStrict . BS.toLazyByteString . BS.word64BE)
+        headerHash = txs
+            & foldr (\PartialTransaction{id} -> (B.byteString (transactionIdToBytes id) <>)) mempty
+            & hashWith @Blake2b_256 (toStrict . B.toLazyByteString)
             & hashToBytes
             & unsafeHeaderHashFromBytes
 

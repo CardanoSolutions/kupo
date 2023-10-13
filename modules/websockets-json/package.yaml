@@ -28,5 +28,6 @@ library:
     - bytestring
     - connection
     - exceptions
+    - io-classes
     - websockets
     - wuss
