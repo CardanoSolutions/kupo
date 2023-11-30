@@ -1,3 +1,21 @@
+### [2.7.1] - unreleased
+
+#### Added
+
+- N/A
+
+#### Changed
+
+- Upgraded internal dependencies to `cardano-node==8.6.0`.
+
+- Fixed Kupo choking on mainnet pointer addresses following ledger internal updates in `cardano-node>=8.1.2`. See also: [input-output-hk/cardano-ledger#3898](https://github.com/input-output-hk/cardano-ledger/issues/3898).
+
+- Fixed Kupo not indexing inline-scripts in output until they were used in a transaction. See also [#148](https://github.com/CardanoSolutions/kupo/issues/148).
+
+#### Removed
+
+- N/A
+
 ### [2.7.0] - 2023-10-13
 
 #### Added
