@@ -60,6 +60,12 @@ spec = parallel $ context "can decode relevant Ogmios' test vectors" $ do
         vectors <- runIO (listDirectory dir)
         propVector ((dir </>) <$> vectors) decodeNextBlockResponse
 
+    context "decodeRequestNextResponse (extra golden)" $ do
+        let dir = "./test/vectors/golden"
+        vectors <- runIO (listDirectory dir)
+        propVector ((dir </>) <$> vectors) decodeNextBlockResponse
+
+
 propVector
     :: [FilePath]
     -> (Json.Value -> Json.Parser a)

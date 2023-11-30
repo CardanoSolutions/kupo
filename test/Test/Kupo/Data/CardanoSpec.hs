@@ -11,7 +11,8 @@ module Test.Kupo.Data.CardanoSpec
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( assetNameFromText
+    ( addressFromBytes
+    , assetNameFromText
     , assetNameToText
     , datumHashFromText
     , datumHashToText
@@ -46,6 +47,7 @@ import Test.Hspec
     , context
     , parallel
     , shouldBe
+    , shouldSatisfy
     , specify
     )
 import Test.Hspec.QuickCheck
@@ -168,6 +170,11 @@ spec = parallel $ do
                     case assetNameFromText (assetNameToText x) of
                         Just{} -> property True
                         Nothing -> property False
+
+    context "Address" $ do
+        specify "desesialize pointer addresses" $ do
+            let addr = "412813b99a80cfb4024374bd0f502959485aa56e0648564ff805f2e51bbcd9819561bddc6614"
+            addressFromBytes (unsafeDecodeBase16 addr) `shouldSatisfy` isJust
 
 --
 -- Generators
