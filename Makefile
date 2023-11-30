@@ -50,7 +50,7 @@ dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo/k
 $(OUT)/bin/kupo: dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo/kupo
 	@mkdir -p $(@D)
 	@echo "$^ → $(@D)/kupo"
-	@cp $^ $(@D)
+	@mv $^ $(@D)
 	@chmod +x $@
 
 $(OUT)/lib:
