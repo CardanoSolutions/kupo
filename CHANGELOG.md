@@ -12,6 +12,8 @@
 
 - Fixed Kupo not indexing inline-scripts in output until they were used in a transaction. See also [#148](https://github.com/CardanoSolutions/kupo/issues/148).
 
+- Binary data is now pruned incrementally to avoid blocking the main writer thread for too long, especially in scenario where the garbage collection has been 'snoozed' many times. See also [#143](https://github.com/CardanoSolutions/kupo/issues/143)
+
 #### Removed
 
 - N/A

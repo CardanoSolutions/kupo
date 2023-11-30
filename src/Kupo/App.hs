@@ -399,7 +399,7 @@ gardener tr config patterns withDatabase = forever $ do
     case inputManagement config of
         RemoveSpentInputs -> do
             logWith tr GardenerBeginGarbageCollection { pruning = "inputs" }
-            totalPrunedRows <- pruneInputsIncrementally
+            totalPrunedRows <- incrementally $ \Database{..} -> runTransaction pruneInputs
             logWith tr $ GardenerExitGarbageCollection { totalPrunedRows }
         MarkSpentInputs ->
             return ()
@@ -409,19 +409,19 @@ gardener tr config patterns withDatabase = forever $ do
             return ()
         _needPruning -> do
             logWith tr GardenerBeginGarbageCollection { pruning = "binary_data" }
-            totalPrunedRows <- withDatabase $ \Database{..} -> runTransaction pruneBinaryData
+            totalPrunedRows <- incrementally $ \Database{..} -> runTransaction pruneBinaryData
             logWith tr $ GardenerExitGarbageCollection { totalPrunedRows }
 
     withDatabase $ \Database{..} -> runTransaction optimize
   where
-      pruneInputsIncrementally = do
-        prunedRows <- withDatabase $ \Database{..} -> runTransaction pruneInputs
+    incrementally action = do
+        prunedRows <- withDatabase action
         prunedRows' <-
             if prunedRows < pruneInputsMaxIncrement
             then return 0
             else do
                 logWith tr GardenerPrunedIncrement { prunedRows }
-                pruneInputsIncrementally
+                incrementally action
         return (prunedRows + prunedRows')
 
 --

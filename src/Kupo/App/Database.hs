@@ -1046,6 +1046,7 @@ pruneBinaryDataQry =
     \   ON binary_data_hash = inputs.datum_hash \
     \   WHERE inputs.ext_output_reference IS NULL \
     \   ORDER BY inputs.datum_hash \
+    \   LIMIT " <> show pruneInputsMaxIncrement <> "\
     \ )"
 
 getScriptQry :: Query
