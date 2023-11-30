@@ -147,6 +147,21 @@ getScript (Ledger.Babbage.BabbageTxOut _address _value _datum refScript) =
     strictMaybeToMaybe refScript
 {-# INLINABLE getScript #-}
 
+scriptsFromOutputs
+    :: forall f.
+        ( Foldable f
+        )
+    => f Output
+    -> Map ScriptHash Script
+    -> Map ScriptHash Script
+scriptsFromOutputs =
+    flip $ foldr
+        (\out -> case getScript out of
+            Nothing -> identity
+            Just s -> Map.insert (hashScript s) s
+        )
+{-# INLINABLE scriptsFromOutputs #-}
+
 -- ComparableOutput
 
 data ComparableOutput = ComparableOutput
