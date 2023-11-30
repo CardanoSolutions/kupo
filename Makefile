@@ -3,7 +3,7 @@ OUT := dist
 OS := $(shell uname -s | sed 's/Linux/linux/' | sed 's/Darwin/osx/')
 ARCH := $(shell uname -m | sed 's/X86/x86_64/' | sed 's/arm64/aarch64/')
 GHC := 8.10.7
-NIX_SHELL := github:input-output-hk/devx\#ghc8107-static-minimal-iog
+NIX_SHELL := github:input-output-hk/devx\#ghc810-static-minimal-iog
 
 VERSION := $(shell cat package.yaml| grep "version:" | sed "s/[^0-9]*\([0-9]\)\(.[0-9].[0-9]\)*\(-.*\)*/\1\2\3/")
 TAG := $(shell echo $(VERSION) | sed "s/^0$$/nightly/")
