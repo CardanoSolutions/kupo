@@ -1,4 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 --  This Source Code Form is subject to the terms of the Mozilla Public
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -20,7 +22,9 @@ module Kupo.Prelude
 
       -- * CBOR
     , serializeCbor
+    , serializeCborLatest
     , decodeCbor
+    , decodeCborLatest
     , unsafeDecodeCbor
     , decodeCborAnn
     , unsafeDecodeCborAnn
@@ -73,6 +77,7 @@ module Kupo.Prelude
     , AlonzoEra
     , BabbageEra
     , ConwayEra
+    , MostRecentEra
 
       -- * System
     , ConnectionStatusToggle (..)
@@ -159,6 +164,16 @@ import Data.Sequence.Strict
     )
 import GHC.Generics
     ( Rep
+    )
+import GHC.TypeLits
+    ( ErrorMessage (..)
+    , TypeError
+    )
+import Ouroboros.Consensus.Cardano.Block
+    ( CardanoEras
+    )
+import Ouroboros.Consensus.Shelley.Ledger
+    ( ShelleyBlock
     )
 import Relude hiding
     ( MVar
@@ -280,6 +295,19 @@ serializeCbor encode =
     strategy = safeStrategy 1024 4096
     version = eraProtVerLow @(era StandardCrypto)
 
+serializeCborLatest
+    :: (a -> Binary.Encoding)
+    -> a
+    -> ByteString
+serializeCborLatest encode =
+    toStrict . toLazyByteStringWith strategy mempty . Binary.toBuilder version . encode
+  where
+    -- 1024 is the size of the first buffer, 4096 is the size of subsequent
+    -- buffers. Chosen because they seem to give good performance. They are not
+    -- sacred.
+    strategy = safeStrategy 1024 4096
+    version = eraProtVerLow @(MostRecentEra StandardCrypto)
+
 decodeCborAnn
     :: forall (era :: Type -> Type) a. (Era (era StandardCrypto))
     => Text
@@ -307,6 +335,14 @@ decodeCbor
     -> Either Binary.DecoderError a
 decodeCbor =
     Binary.decodeFullDecoder (eraProtVerLow @(era StandardCrypto))
+
+decodeCborLatest
+    :: Text
+    -> (forall s. Binary.Decoder s a)
+    -> LByteString
+    -> Either Binary.DecoderError a
+decodeCborLatest =
+    Binary.decodeFullDecoder (eraProtVerLow @(MostRecentEra StandardCrypto))
 
 unsafeDecodeCbor
     :: forall (era :: Type -> Type) a. (Era (era StandardCrypto), HasCallStack)
@@ -426,3 +462,18 @@ hClearLine h = hPutStr h (csi [2] "K")
 
 csi :: [Int] -> [Char] -> [Char]
 csi args code = "\ESC[" ++ intercalate ";" (map show args) ++ code
+
+--
+-- Type-level
+--
+
+-- | Access the last element of a type-level list.
+type family LastElem xs where
+    LastElem '[]       = TypeError ('Text "LastElem: empty list.")
+    LastElem (x : '[]) = x
+    LastElem (x : xs)  = LastElem xs
+
+type MostRecentEra crypto = BlockEra (LastElem (CardanoEras crypto))
+
+type family BlockEra block :: Type where
+   BlockEra (ShelleyBlock protocol era) = era
