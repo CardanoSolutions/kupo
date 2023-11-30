@@ -62,9 +62,9 @@ import Ouroboros.Network.Magic
     )
 import Ouroboros.Network.Mux
     ( MiniProtocol (..)
+    , MiniProtocolCb (..)
     , MiniProtocolLimits (..)
     , MiniProtocolNum (..)
-    , MuxPeer (..)
     , OuroborosApplication (..)
     , RunMiniProtocol (..)
     )
@@ -135,14 +135,14 @@ instance MonadOuroboros IO where
             vData  = NodeToClientVersionData networkMagic False
 
         mkOuroborosApplication version =
-            OuroborosApplication $ \_connectionId _controlMessageSTM ->
+            OuroborosApplication
                 [ MiniProtocol
                     { miniProtocolNum =
                         MiniProtocolNum 5
                     , miniProtocolLimits =
                         MiniProtocolLimits (fromIntegral $ maxBound @Word32)
                     , miniProtocolRun =
-                        InitiatorProtocolOnly $ MuxPeerRaw $ \channel ->
+                        InitiatorProtocolOnly $ MiniProtocolCb $ \_ channel ->
                             let
                                 peer = chainSyncClientPeerPipelined client
                                 codec = cChainSyncCodec (codecs slotsPerEpoch version)

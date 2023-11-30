@@ -228,10 +228,10 @@ decodeAddress txt =
     case patternFromText txt of
         Just (MatchExact addr) ->
             pure addr
-        Just{} ->
-            empty
+        Just p ->
+            fail ("expected an address but got partial pattern: " <> show p)
         Nothing ->
-            empty
+            fail ("not a valid address: " <> toString txt)
 
 decodeHash
     :: HashAlgorithm alg

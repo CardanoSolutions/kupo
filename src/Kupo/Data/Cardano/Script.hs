@@ -18,11 +18,12 @@ import Ouroboros.Consensus.Util
     ( eitherToMaybe
     )
 
+import qualified Cardano.Ledger.Language as Ledger
+
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
 import qualified Cardano.Ledger.Allegra.TxAuxData as Ledger.Allegra
 import qualified Cardano.Ledger.Alonzo as Ledger.Alonzo
-import qualified Cardano.Ledger.Alonzo.Language as Ledger
-import qualified Cardano.Ledger.Alonzo.Scripts as Ledger
+import qualified Cardano.Ledger.Alonzo.Scripts as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Era as Ledger
@@ -36,7 +37,7 @@ import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 
 type Script =
-    Ledger.Script (BabbageEra StandardCrypto)
+    Ledger.Alonzo.Script (BabbageEra StandardCrypto)
 
 scriptFromAllegraAuxiliaryData
     :: forall era.
@@ -65,7 +66,7 @@ scriptFromAlonzoAuxiliaryData
     -> Map ScriptHash Script
 scriptFromAlonzoAuxiliaryData liftScript (Ledger.Alonzo.AlonzoTxAuxData _ scripts _) m0 =
     foldr
-        (\((liftScript . Ledger.TimelockScript) -> s) -> Map.insert (hashScript s) s)
+        (\((liftScript . Ledger.Alonzo.TimelockScript) -> s) -> Map.insert (hashScript s) s)
         m0
         scripts
 {-# INLINABLE scriptFromAlonzoAuxiliaryData #-}
@@ -74,27 +75,27 @@ fromAllegraScript
     :: Ledger.Allegra.Timelock (AllegraEra StandardCrypto)
     -> Script
 fromAllegraScript =
-    Ledger.TimelockScript . Ledger.Allegra.translateTimelock
+    Ledger.Alonzo.TimelockScript . Ledger.Allegra.translateTimelock
 {-# INLINABLE fromAllegraScript #-}
 
 fromMaryScript
     :: Ledger.Allegra.Timelock (MaryEra StandardCrypto)
     -> Script
 fromMaryScript =
-    Ledger.TimelockScript . Ledger.Allegra.translateTimelock
+    Ledger.Alonzo.TimelockScript . Ledger.Allegra.translateTimelock
 {-# INLINABLE fromMaryScript  #-}
 
 fromAlonzoScript
-    :: Ledger.Script (AlonzoEra StandardCrypto)
+    :: Ledger.Alonzo.Script (AlonzoEra StandardCrypto)
     -> Script
 fromAlonzoScript = \case
-    Ledger.TimelockScript script ->
-        Ledger.TimelockScript (Ledger.Allegra.translateTimelock script)
-    Ledger.PlutusScript lang bytes ->
-        Ledger.PlutusScript lang bytes
+    Ledger.Alonzo.TimelockScript script ->
+        Ledger.Alonzo.TimelockScript (Ledger.Allegra.translateTimelock script)
+    Ledger.Alonzo.PlutusScript plutus ->
+        Ledger.Alonzo.PlutusScript plutus
 
 fromBabbageScript
-    :: Ledger.Script (BabbageEra StandardCrypto)
+    :: Ledger.Alonzo.Script (BabbageEra StandardCrypto)
     -> Script
 fromBabbageScript =
     identity
@@ -106,13 +107,13 @@ scriptToJson
 scriptToJson script = encodeObject
     [ ("script", encodeBytes (Ledger.originalBytes script))
     , ("language", case script of
-        Ledger.TimelockScript{} ->
+        Ledger.Alonzo.TimelockScript{} ->
           Json.text "native"
-        Ledger.PlutusScript Ledger.PlutusV1 _ ->
+        Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV1 _) ->
           Json.text "plutus:v1"
-        Ledger.PlutusScript Ledger.PlutusV2 _ ->
+        Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV2 _) ->
           Json.text "plutus:v2"
-        Ledger.PlutusScript Ledger.PlutusV3 _ ->
+        Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV3 _) ->
           Json.text "plutus:v3"
       )
     ]
@@ -121,13 +122,13 @@ scriptToBytes
     :: Script
     -> ByteString
 scriptToBytes = \case
-    script@Ledger.TimelockScript{} ->
+    script@Ledger.Alonzo.TimelockScript{} ->
         BS.singleton 0 <> Ledger.originalBytes script
-    script@(Ledger.PlutusScript Ledger.PlutusV1 _) ->
+    script@(Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV1 _)) ->
         BS.singleton 1 <> Ledger.originalBytes script
-    script@(Ledger.PlutusScript Ledger.PlutusV2 _) ->
+    script@(Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV2 _)) ->
         BS.singleton 2 <> Ledger.originalBytes script
-    script@(Ledger.PlutusScript Ledger.PlutusV3 _) ->
+    script@(Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV3 _)) ->
         BS.singleton 3 <> Ledger.originalBytes script
 
 unsafeScriptFromBytes
@@ -146,17 +147,20 @@ scriptFromBytes (toLazy -> bytes) =
         (script, tag) <- left (DecoderErrorDeserialiseFailure "Script") $
             Cbor.deserialiseFromBytes Cbor.decodeWord8 bytes
         case tag of
-            0 -> Ledger.TimelockScript <$> decodeCborAnn @BabbageEra "Timelock" decCBOR script
-            1 -> pure $ Ledger.PlutusScript Ledger.PlutusV1 (toShort $ toStrict script)
-            2 -> pure $ Ledger.PlutusScript Ledger.PlutusV2 (toShort $ toStrict script)
-            3 -> pure $ Ledger.PlutusScript Ledger.PlutusV3 (toShort $ toStrict script)
+            0 -> Ledger.Alonzo.TimelockScript <$> decodeCborAnn @BabbageEra "Timelock" decCBOR script
+            1 -> pure $ plutusScript Ledger.PlutusV1 script
+            2 -> pure $ plutusScript Ledger.PlutusV2 script
+            3 -> pure $ plutusScript Ledger.PlutusV3 script
             t -> Left (DecoderErrorUnknownTag "Script" t)
+  where
+    plutusScript lang =
+        Ledger.Alonzo.PlutusScript . Ledger.Plutus lang . Ledger.BinaryPlutus . toShort . toStrict
 
 fromNativeScript
     :: NativeScript
     -> Script
 fromNativeScript =
-    Ledger.TimelockScript
+    Ledger.Alonzo.TimelockScript
 {-# INLINABLE fromNativeScript #-}
 
 hashScript
