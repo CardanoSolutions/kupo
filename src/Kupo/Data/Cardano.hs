@@ -369,6 +369,8 @@ instance IsBlock Block where
             ) & strictMaybe identity
                     (scriptFromAlonzoAuxiliaryData fromBabbageScript)
                     (tx ^. Ledger.auxDataTxL)
+              & scriptsFromOutputs
+                    (tx ^. Ledger.bodyTxL . Ledger.outputsTxBodyL)
 
     userDefinedMetadata
         :: Transaction
