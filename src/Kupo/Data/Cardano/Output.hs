@@ -22,7 +22,11 @@ import Kupo.Data.Cardano.Script
     ( ComparableScript
     , Script
     , fromComparableScript
+    , hashScript
     , toComparableScript
+    )
+import Kupo.Data.Cardano.ScriptHash
+    ( ScriptHash
     )
 import Kupo.Data.Cardano.Value
     ( ComparableValue
@@ -40,6 +44,8 @@ import qualified Cardano.Ledger.Coin as Ledger
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Mary.Value as Ledger
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
+
+import qualified Data.Map as Map
 
 -- Output
 
