@@ -36,6 +36,7 @@ import Kupo.Data.Cardano
     , TransactionIndex
     , Value
     , assetNameMaxLength
+    , hashMetadata
     , mkMetadata
     , mkOutput
     , mkOutputReference
@@ -330,7 +331,8 @@ genForcedRollback =
 genMetadata :: Gen (MetadataHash, Metadata)
 genMetadata = do
     n <- choose (1, 3)
-    mkMetadata . Map.fromList <$> liftA2 zip (vector n) (vectorOf n genMetadatum)
+    meta <- mkMetadata . Map.fromList <$> liftA2 zip (vector n) (vectorOf n genMetadatum)
+    pure (hashMetadata meta, meta)
   where
     genMetadatum :: Gen Metadatum
     genMetadatum = sized $ \case

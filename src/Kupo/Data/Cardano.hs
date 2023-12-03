@@ -96,14 +96,11 @@ import Kupo.Data.Cardano.TransactionIndex
 import Kupo.Data.Cardano.Value
 
 import qualified Cardano.Chain.UTxO as Ledger.Byron
-import qualified Cardano.Ledger.Allegra.TxAuxData as Ledger
 import qualified Cardano.Ledger.Alonzo.Core as Ledger
 import qualified Cardano.Ledger.Alonzo.Tx as Ledger
-import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger
 import qualified Cardano.Ledger.Alonzo.TxWits as Ledger
 import qualified Cardano.Ledger.Babbage.Core as Ledger
 import qualified Cardano.Ledger.Block as Ledger
-import qualified Cardano.Ledger.Shelley.TxAuxData as Ledger
 import qualified Data.Set as Set
 
 -- IsBlock
@@ -382,29 +379,34 @@ instance IsBlock Block where
             case tx ^. Ledger.auxDataTxL of
                 SNothing ->
                     Nothing
-                SJust (Ledger.ShelleyTxAuxData meta) ->
-                    Just (mkMetadata meta)
+                SJust auxData ->
+                    let meta = fromShelleyMetadata auxData
+                     in Just (hashMetadata meta, meta)
         TransactionAllegra tx ->
             case tx ^. Ledger.auxDataTxL of
                 SNothing ->
                     Nothing
-                SJust (Ledger.AllegraTxAuxData meta _scripts) ->
-                    Just (mkMetadata meta)
+                SJust auxData ->
+                    let meta = fromAllegraMetadata auxData
+                     in Just (hashMetadata meta, meta)
         TransactionMary tx ->
             case tx ^. Ledger.auxDataTxL of
                 SNothing ->
                     Nothing
-                SJust (Ledger.AllegraTxAuxData meta _scripts) ->
-                    Just (mkMetadata meta)
+                SJust auxData ->
+                    let meta = fromMaryMetadata auxData
+                     in Just (hashMetadata meta, meta)
         TransactionAlonzo tx ->
             case tx ^. Ledger.auxDataTxL of
                 SNothing ->
                     Nothing
-                SJust (Ledger.AlonzoTxAuxData meta _scripts _lang) ->
-                    Just (mkMetadata meta)
+                SJust auxData ->
+                    let meta = fromAlonzoMetadata auxData
+                     in Just (hashMetadata meta, meta)
         TransactionBabbage tx ->
             case tx ^. Ledger.auxDataTxL of
                 SNothing ->
                     Nothing
-                SJust (Ledger.AlonzoTxAuxData meta _scripts _lang) ->
-                    Just (mkMetadata meta)
+                SJust auxData ->
+                    let meta = fromBabbageMetadata auxData
+                     in Just (hashMetadata meta, meta)

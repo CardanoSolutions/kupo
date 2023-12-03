@@ -5,8 +5,15 @@ module Kupo.Data.Cardano.Metadata
 
 import Kupo.Prelude
 
+import Cardano.Ledger.Allegra.TxAuxData
+    ( AllegraTxAuxData (..)
+    )
+import Cardano.Ledger.Alonzo.TxAuxData
+    ( AlonzoTxAuxData (..)
+    )
 import Cardano.Ledger.Shelley.TxAuxData
     ( Metadatum (..)
+    , ShelleyTxAuxData (..)
     )
 import Data.Aeson
     ( (.:)
@@ -19,8 +26,9 @@ import Ouroboros.Consensus.Util
     ( eitherToMaybe
     )
 
-import qualified Cardano.Ledger.Allegra.TxAuxData as Ledger
-import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger
+import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
+import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
+import qualified Cardano.Ledger.Core as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Cardano.Ledger.Shelley.TxAuxData as Ledger
 import qualified Data.Aeson as Json
@@ -33,24 +41,25 @@ import qualified Data.Text as T
 import qualified Data.Text.Read as T
 
 type Metadata =
-    Ledger.ShelleyTxAuxData (BabbageEra StandardCrypto)
+    AlonzoTxAuxData (BabbageEra StandardCrypto)
 
 emptyMetadata :: Metadata
 emptyMetadata =
-    Ledger.ShelleyTxAuxData mempty
+    AlonzoTxAuxData mempty mempty mempty
 {-# INLINABLE emptyMetadata #-}
 
-mkMetadata :: Map Word64 Metadatum -> (MetadataHash, Metadata)
-mkMetadata (Ledger.ShelleyTxAuxData -> meta) =
-    (hashMetadata meta, meta)
+mkMetadata :: Map Word64 Metadatum -> Metadata
+mkMetadata labels =
+    AlonzoTxAuxData labels mempty mempty
+{-# INLINABLE mkMetadata #-}
 
 hashMetadata :: Metadata -> MetadataHash
-hashMetadata = Ledger.hashShelleyTxAuxData
+hashMetadata = Ledger.Alonzo.unsafeAuxiliaryDataHash . Ledger.hashTxAuxData
 {-# INLINABLE hashMetadata #-}
 
 hasMetadataTag :: Word64 -> Metadata -> Bool
-hasMetadataTag tag (Ledger.ShelleyTxAuxData metadata) =
-    tag `Map.member` metadata
+hasMetadataTag tag (AlonzoTxAuxData labels _ _) =
+    tag `Map.member` labels
 
 metadataToText :: Metadata -> Text
 metadataToText =
@@ -63,8 +72,8 @@ metadataFromText txt = do
     eitherToMaybe $ decodeCborAnn @BabbageEra "Metadata" decCBOR (toLazy bytes)
 
 metadataToJson :: Metadata -> Json.Encoding
-metadataToJson (Ledger.ShelleyTxAuxData meta) =
-    encodeMap show encodeMetadatum meta
+metadataToJson (AlonzoTxAuxData labels _ _) =
+    encodeMap show encodeMetadatum labels
   where
     encodeMetadatum :: Ledger.Metadatum -> Json.Encoding
     encodeMetadatum = \case
@@ -86,7 +95,7 @@ metadataToJson (Ledger.ShelleyTxAuxData meta) =
             , ( "v", encodeMetadatum v )
             ]
 
-metadataFromJson :: Json.Value -> Json.Parser (MetadataHash, Metadata)
+metadataFromJson :: Json.Value -> Json.Parser Metadata
 metadataFromJson = fmap mkMetadata . Json.withObject "Metadata"
     (Json.KeyMap.foldrWithKey
         (\k v accum -> Map.insert
@@ -151,27 +160,27 @@ metadataToJson' (hash, meta) =
         , ("schema", metadataToJson meta)
         ]
 
-fromShelleyMetadata :: Ledger.ShelleyTxAuxData (ShelleyEra StandardCrypto) -> Metadata
-fromShelleyMetadata =
-    coerce
+fromShelleyMetadata :: ShelleyTxAuxData (ShelleyEra StandardCrypto) -> Metadata
+fromShelleyMetadata (ShelleyTxAuxData labels) =
+    AlonzoTxAuxData labels mempty mempty
 {-# INLINABLE fromShelleyMetadata #-}
 
-fromAllegraMetadata :: Ledger.AllegraTxAuxData (AllegraEra StandardCrypto) -> Metadata
-fromAllegraMetadata (Ledger.AllegraTxAuxData metadata _) =
-    Ledger.ShelleyTxAuxData metadata
+fromAllegraMetadata :: AllegraTxAuxData (AllegraEra StandardCrypto) -> Metadata
+fromAllegraMetadata (AllegraTxAuxData labels timelocks) =
+    AlonzoTxAuxData labels (Ledger.Allegra.translateTimelock <$> timelocks) mempty
 {-# INLINABLE fromAllegraMetadata #-}
 
-fromMaryMetadata :: Ledger.AllegraTxAuxData (MaryEra StandardCrypto) -> Metadata
-fromMaryMetadata (Ledger.AllegraTxAuxData metadata _) =
-    Ledger.ShelleyTxAuxData metadata
+fromMaryMetadata :: AllegraTxAuxData (MaryEra StandardCrypto) -> Metadata
+fromMaryMetadata (AllegraTxAuxData labels timelocks) =
+    AlonzoTxAuxData labels (Ledger.Allegra.translateTimelock <$> timelocks) mempty
 {-# INLINABLE fromMaryMetadata #-}
 
-fromAlonzoMetadata :: Ledger.AlonzoTxAuxData (AlonzoEra StandardCrypto) -> Metadata
+fromAlonzoMetadata :: AlonzoTxAuxData (AlonzoEra StandardCrypto) -> Metadata
 fromAlonzoMetadata =
-    Ledger.ShelleyTxAuxData . Ledger.atadMetadata
+    Ledger.Alonzo.translateAlonzoTxAuxData
 {-# INLINABLE fromAlonzoMetadata #-}
 
-fromBabbageMetadata :: Ledger.AlonzoTxAuxData (BabbageEra StandardCrypto) -> Metadata
+fromBabbageMetadata :: AlonzoTxAuxData (BabbageEra StandardCrypto) -> Metadata
 fromBabbageMetadata =
-    Ledger.ShelleyTxAuxData . Ledger.atadMetadata
+    identity
 {-# INLINABLE fromBabbageMetadata #-}

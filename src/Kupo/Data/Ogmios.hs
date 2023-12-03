@@ -59,6 +59,7 @@ import Kupo.Data.Cardano
     , datumHashFromBytes
     , fromNativeScript
     , headerHashToJson
+    , metadataHashFromText
     , mkMetadata
     , mkOutput
     , mkOutputReference
@@ -195,7 +196,10 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
 
     metadata <- o .:? "metadata" >>= \case
         Nothing -> pure Nothing
-        Just m -> Just <$> (m .: "labels" >>= decodeMetadata)
+        Just m -> do
+            k <- m .: "hash" >>= decodeMetadataHash
+            v <- m .: "labels" >>= decodeMetadata
+            pure $ Just (k, v)
 
     datums <- o .:? "datums" .!= Json.Object mempty >>= decodeDatums
 
@@ -238,7 +242,13 @@ decodeHash
     => Json.Value
     -> Json.Parser (Hash alg a)
 decodeHash =
-    Json.parseJSON >=> maybe empty pure . hashFromTextAsHex
+    Json.parseJSON >=> maybe (fail "invalid hash") pure . hashFromTextAsHex
+
+decodeMetadataHash
+    :: Json.Value
+    -> Json.Parser MetadataHash
+decodeMetadataHash =
+    Json.parseJSON >=> maybe (fail "invalid metadata hash") pure . metadataHashFromText
 
 decodeOneEraHash
     :: Json.Value
@@ -457,7 +467,7 @@ decodeValue = Json.withObject "Value" $ \o -> do
             )
             (pure mempty)
 
-decodeMetadata :: Json.Value -> Json.Parser (MetadataHash, Metadata)
+decodeMetadata :: Json.Value -> Json.Parser Metadata
 decodeMetadata = fmap mkMetadata . Json.withObject "Metadata"
     (KeyMap.foldrWithKey
         (\k v accum -> Map.insert
