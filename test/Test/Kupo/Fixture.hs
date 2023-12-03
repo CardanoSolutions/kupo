@@ -432,7 +432,7 @@ someSlotWithMetadata = 10_620_154
 -- | The metadata associated with 'someSlotWithMetadata'
 someMetadata :: [MetadataHash]
 someMetadata = unsafeMetadataHashFromBytes . unsafeDecodeBase16 <$>
-    [ "0374dea61cb8db15886e42fdc01f846803e1da68381ccfcd19b7af8b717d8558"
+    [ "56ef9d2933811580c7beb451bcf69d305153644d9ba149dee95e455536ee8b8f"
     ]
 
 -- | The transaction associated with the first metadata of 'someMetadata'
