@@ -38,7 +38,9 @@ jobs:
         nix_path: nixpkgs=channel:nixos-unstable
 
     - name: 🧊 Prepare Cache
+      shell: bash
       run: |
+        echo -e "package kupo\n    flags: +production" > cabal.project.local
         make configure
 
     - name: 💾 Cache
