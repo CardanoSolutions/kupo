@@ -45,7 +45,7 @@ $(OUT)/share/kupo/LICENSE:
 	@cp LICENSE $@
 
 dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo/kupo:
-	@nix develop $(NIX_SHELL) --no-write-lock-file --refresh --command bash -c "cabal build --enable-executable-static kupo:exe:kupo"
+	@nix develop $(NIX_SHELL) --no-write-lock-file --refresh --command bash -c "cabal build -f +production --enable-executable-static kupo:exe:kupo"
 
 $(OUT)/bin/kupo: dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo/kupo
 	@mkdir -p $(@D)
