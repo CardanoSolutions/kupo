@@ -207,7 +207,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
 
     outputs <- case Key.toText inputSource of
         "collaterals" -> do
-            outs <- o .:? "outputs" .!= []@Json.Value
+            outs <- o .:? "outputs" .!= ([] :: [Json.Value])
             colReturn <- o .:? "collateralReturn" >>= traverse decodeOutput
             pure $ withReferences (fromIntegral $ length outs) id (maybeToList colReturn)
         "inputs" -> do

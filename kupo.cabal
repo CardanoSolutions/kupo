@@ -30,7 +30,6 @@ extra-source-files:
     db/v2.2.0/001.sql
 data-files:
     docs/api/latest.yaml
-    docs/api/v2.5.1.yaml
     docs/api/v2.6.1.yaml
     docs/api/v2.7.1.yaml
 
@@ -368,7 +367,6 @@ test-suite unit
     , openapi3
     , process
     , quickcheck-state-machine
-    , relude
     , si-timers
     , sqlite-simple
     , stm

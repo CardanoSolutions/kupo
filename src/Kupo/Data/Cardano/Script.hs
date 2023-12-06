@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeOperators #-}
+
 module Kupo.Data.Cardano.Script where
 
 import Kupo.Prelude

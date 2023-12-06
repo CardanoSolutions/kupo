@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeOperators #-}
+
 module Kupo.Data.Cardano.DatumHash where
 
 import Kupo.Prelude

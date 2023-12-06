@@ -4,6 +4,7 @@
 
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Kupo.App.Http
     ( -- * Server

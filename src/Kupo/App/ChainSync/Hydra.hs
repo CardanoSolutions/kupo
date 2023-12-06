@@ -186,8 +186,7 @@ instance Exception TransactionStoreException
 
 newTransactionStore
     :: forall m.
-        ( Monad m
-        , MonadSTM m
+        ( MonadSTM m
         , MonadThrow (STM m)
         )
     => m (TransactionStore m)
