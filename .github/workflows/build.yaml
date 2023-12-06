@@ -40,7 +40,8 @@ jobs:
     - name: 🧊 Prepare Cache
       shell: bash
       run: |
-        echo -e "package kupo\n    flags: +production" > cabal.project.local
+        cat /nix/store/vd865r55pdbndjwh994h90m35qq77x44-cabal.project.local >> cabal.project.local
+        echo -e "\npackage kupo\n  flags: +production" >> cabal.project.local
         make configure
 
     - name: 💾 Cache
