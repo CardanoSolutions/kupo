@@ -1166,6 +1166,7 @@ installIndexes
 installIndexes tr conn = \case
     SkipNonEssentialIndexes -> do
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByAddress" False
+        dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByDatumHash" False
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByPaymentCredential" False
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByCreatedAt" False
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsBySpentAt" False
@@ -1174,6 +1175,9 @@ installIndexes tr conn = \case
         installIndex tr conn
             "inputsByAddress"
             "inputs(address COLLATE NOCASE)"
+        installIndex tr conn
+            "inputsByDatumHash"
+            "inputs(datum_hash)"
         installIndex tr conn
             "inputsByPaymentCredential"
             "inputs(payment_credential COLLATE NOCASE)"
