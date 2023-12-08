@@ -12,10 +12,10 @@ jobs:
     strategy:
       matrix:
         os: [ linux ]
-        arch: [ x86_64 ]
+        arch: [ x86_64, aarch64 ]
         compiler: [ ghc963 ]
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-latest' || 'buildjet-4vcpu-ubuntu-2204' }}
     steps:
 
     - name: 📥 Checkout repository
@@ -75,7 +75,7 @@ jobs:
     strategy:
       matrix:
         os: [ linux ]
-        arch: [ x86_64 ]
+        arch: [ x86_64, aarch64 ]
         target: [ kupo ]
 
     runs-on: ${{ matrix.os == 'linux' && 'ubuntu-latest' }}
