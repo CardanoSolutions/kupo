@@ -38,37 +38,29 @@ jobs:
         nix_path: nixpkgs=channel:nixos-unstable
 
     - name: 🧊 Prepare Cache
-      if: ${{ matrix.arch == 'x86_64' }}
       shell: bash
       run: |
-        nix develop github:input-output-hk/devx\#ghc96-static-minimal-iog --no-write-lock-file --refresh --command bash -c "cat /nix/store/vd865r55pdbndjwh994h90m35qq77x44-cabal.project.local >> cabal.project.local"
-        echo -e "\npackage kupo\n  flags: +production" >> cabal.project.local
         make configure
 
-    - name: 🧊 Prepare Cache
-      if: ${{ matrix.arch == 'aarch64' }}
-      shell: bash
-      run: |
-        nix develop github:input-output-hk/devx\#ghc96-static-minimal-iog --no-write-lock-file --refresh --command bash -c "cat /nix/store/hviyb5sciblcyr5fc3vsqcwmfh1nz69w-cabal.project.local >> cabal.project.local"
-        echo -e "\npackage kupo\n  flags: +production" >> cabal.project.local
-        make configure
-
-    #    - name: 💾 Cache
-    #      uses: actions/cache@v3
-    #      with:
-    #        path: |
-    #          ~/.cabal-static/packages
-    #          ~/.cabal-static/store
-    #          dist-newstyle
-    #        key: cabal-cache-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.compiler }}-${{ hashFiles('cabal.project.freeze') }}
-    #        restore-keys: |
-    #          cabal-cache-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.compiler }}
+    - name: 💾 Cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cabal-static/packages
+          ~/.cabal-static/store
+        key: cabal-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.compiler }}-${{ hashFiles('cabal.project.freeze') }}
+        restore-keys: |
+          cabal-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.compiler }}
 
     - name: 🔨 Build
       run: |
         make
       env:
         GIT_SHA: ${{ github.sha }}
+
+    - name: 🔎 Verify
+        ./dist/bin/kupo --version
+        ./dist/bin/kupo +RTS --info -RTS
 
     - name: 📎 Upload Artifact
       uses: actions/upload-artifact@v3
