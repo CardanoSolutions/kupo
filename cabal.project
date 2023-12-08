@@ -32,6 +32,16 @@ package websockets-json
 package cryptonite
   flags: -support_rdrand
 
+-- Depending on C++ for just so slightly faster utf8 parsing is a bit annoying
+-- especially as it brings in all kinds of complications for GHC.
+package text
+  flags: -simdutf
+
+-- formatting (>= 7.2) allows us do drop double-conversion (which again is one
+-- of the offending c++ dependencies)
+package formatting
+  flags: +no-double-conversion
+
 package direct-sqlite
   flags: +nomutex
 
@@ -40,6 +50,11 @@ constraints:
   , any.cardano-node == 8.6.0
   , any.cardano-ledger-conway == 1.10.1.0
   , direct-sqlite == 2.3.29
+  , any.text source
+  , any.formatting >= 7.2
+
+allow-newer:
+  *:formatting
 
 source-repository-package
   type: git
