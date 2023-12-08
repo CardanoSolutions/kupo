@@ -59,6 +59,7 @@ jobs:
         GIT_SHA: ${{ github.sha }}
 
     - name: 🔎 Verify
+      run: |
         ./dist/bin/kupo --version
         ./dist/bin/kupo +RTS --info -RTS
 
