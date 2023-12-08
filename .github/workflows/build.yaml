@@ -15,7 +15,7 @@ jobs:
         arch: [ x86_64, aarch64 ]
         compiler: [ ghc963 ]
 
-    runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-latest' || 'buildjet-4vcpu-ubuntu-2204' }}
+    runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-latest' || 'buildjet-4vcpu-ubuntu-2204-arm' }}
     steps:
 
     - name: 📥 Checkout repository
