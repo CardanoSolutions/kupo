@@ -53,16 +53,16 @@ jobs:
         echo -e "\npackage kupo\n  flags: +production" >> cabal.project.local
         make configure
 
-    - name: 💾 Cache
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cabal-static/packages
-          ~/.cabal-static/store
-          dist-newstyle
-        key: cabal-cache-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.compiler }}-${{ hashFiles('cabal.project.freeze') }}
-        restore-keys: |
-          cabal-cache-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.compiler }}
+    #    - name: 💾 Cache
+    #      uses: actions/cache@v3
+    #      with:
+    #        path: |
+    #          ~/.cabal-static/packages
+    #          ~/.cabal-static/store
+    #          dist-newstyle
+    #        key: cabal-cache-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.compiler }}-${{ hashFiles('cabal.project.freeze') }}
+    #        restore-keys: |
+    #          cabal-cache-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.compiler }}
 
     - name: 🔨 Build
       run: |
