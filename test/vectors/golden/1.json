@@ -1,0 +1,609 @@
+{
+  "jsonrpc": "2.0",
+  "method": "nextBlock",
+  "result": {
+    "direction": "forward",
+    "block": {
+      "type": "praos",
+      "era": "mary",
+      "id": "afcb6d128c1c09abd11601b22ccae05c4af29bb9768884d985f61f4d6db23ed9",
+      "ancestor": "33f13affdc2daa78739f794bb6ba845d82d42f7c96a0272bc66dd3c38ba679e8",
+      "nonce": {
+        "output": "19d7fe0158822d40fd6f9714d3ab59917143a140ffe6c9806bc3d40fe32da55f5c003dd88abfca5b00346a1383042d0d909801ba519cd8accc8e9da1c45b3e69",
+        "proof": "663109d127ffe6a6108dbb5f0dc8f4718ddc04940f82ec93f745cc7b0995da7b8ab2fbfad3ef56eaf6d131a610d8d8e2de8a084a2fd00ac53ceb86c1b13a13560ec0d35554476c0b5143e5c5fa923204"
+      },
+      "height": 5567164,
+      "slot": 26366727,
+      "issuer": {
+        "verificationKey": "84e2a6d242e32ce72fe28c4c1c5def61069ea5b2497d1bc7676ee29fe1702bcf",
+        "vrfVerificationKey": "7ad6099a782ea2f3b0b8bb6756c30973252bb09b69d7da94b9b4c2561caf8e34",
+        "leaderValue": {
+          "output": "00089d64c9a1458a7164c08bbda4a928801ecd473905a3a66d405b7f29dde817ca1c2859245c8f29a4eb56e4ad49d6385c8ef1cc4d81a2c8e19cfc31fe2181a0",
+          "proof": "9710835e5b53c2673646dd81273ef138d421028b6af5f3effafd876d31c7f44fcac53c75a82132000d8aeff88433e19c842f8349e4559b120941340a1cd2026aa1096750066db47a912cc41bb869c804"
+        },
+        "operationalCertificate": {
+          "count": 1,
+          "kes": {
+            "period": 154,
+            "verificationKey": "c4e52c259953ed347619b0088711a37dd936b56739e94b4f6b017c5d9f35ac3a"
+          }
+        }
+      },
+      "protocol": {
+        "version": {
+          "major": 4,
+          "minor": 0
+        }
+      },
+      "size": {
+        "bytes": 5183
+      },
+      "transactions": [
+        {
+          "id": "9a47e091709e4fe1a8ba1291bc8cfd0c0ed0bb9220688b3ccfad5f2d961e8d8e",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "37bd6f94819f37c2329f11304a96affa5ce0b7d67d4e9cf7aca40702dcca1c6c"
+              },
+              "index": 0
+            }
+          ],
+          "outputs": [
+            {
+              "address": "addr1gy5p8wv6sr8mgqjrwj7s75pft9y94ftwqey9vnlcqhew2xaumxqe2cdam3npgv60hqa",
+              "value": {
+                "ada": {
+                  "lovelace": 50000000
+                }
+              }
+            },
+            {
+              "address": "addr1qx7jguqlsz7sl8ntj9t774aqv3uu6j2r77nl5nqj37tty4un6d7uhmq5drpx36c8226n3sjk345680yc8hzanl7jd85s76vfaq",
+              "value": {
+                "ada": {
+                  "lovelace": 51159073
+                }
+              }
+            }
+          ],
+          "fee": {
+            "lovelace": 167965
+          },
+          "validityInterval": {
+            "invalidAfter": 26373768
+          },
+          "signatories": [
+            {
+              "key": "4944ed7e9690285a0762b1f980125bb2c6d81a435baa5edea4779112235990ae",
+              "signature": "5283f2b0e79da5481fd843fd8f868f4b8074e160c9f790b708ea8f102f0cf95b1fa4c01c09a65e58dd971f433fc510e8c837b4510c2f65b30e9972c6eba7ff09"
+            }
+          ]
+        },
+        {
+          "id": "0e94543b92371e3967a6e9230895e1029287e98820d5fc8746d6dc2b454e7113",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "0271bbb9e5bb48f80032de0ab6fc0b0c4e599e8604b7eb5ba5899d92dc1f4afc"
+              },
+              "index": 11
+            },
+            {
+              "transaction": {
+                "id": "57b6d78f43fa28da2f893f676015f3af409e2dab3ffcebc7436006bd8c665989"
+              },
+              "index": 0
+            },
+            {
+              "transaction": {
+                "id": "8cb14a5bb435d63b94d2982c5072156582730d5cc7f0d6a91127dccc6a30ed26"
+              },
+              "index": 11
+            },
+            {
+              "transaction": {
+                "id": "f65386e234c533fc58e0cbfed921dd751877c70ac1b19a29cc900d121e3369bc"
+              },
+              "index": 5
+            }
+          ],
+          "outputs": [
+            {
+              "address": "addr1qy9dmt65r0fs8gz5v47m5efe8vvg6qsam4msnfflqnsxvq9j7jettkfp00etks7533rsa755xn0f7wzx3rs2sunla9asransdx",
+              "value": {
+                "ada": {
+                  "lovelace": 161028920
+                }
+              }
+            },
+            {
+              "address": "addr1q974lmm0ajczza0lv3k2nkge595922evznazdgjsw30x8f0wzpzayr6ejvjwhjcprlph3hs3na239cxdcpet2kx60vqq2xa5mq",
+              "value": {
+                "ada": {
+                  "lovelace": 23999000000
+                }
+              }
+            },
+            {
+              "address": "DdzFFzCqrhtCwu1SwuTR7BbedvHS9iA7pe8LAwGACZkkniEwKNiqdFhVMAFjNSwEKPSqPxvCGwqiBYRJDxBexNRYEnz1aLw6ZVQ4P3cN",
+              "value": {
+                "ada": {
+                  "lovelace": 145123919
+                }
+              }
+            },
+            {
+              "address": "DdzFFzCqrht4pRuxspw3iyjuzhbnoEmDKujJioXke4wNXV9AWUow3AoQrMb4JRf9TDaQGCcP7mFgKN9Mzf2jwcCL7dRTwAHCLCob3PKQ",
+              "value": {
+                "ada": {
+                  "lovelace": 21480557385
+                }
+              }
+            }
+          ],
+          "fee": {
+            "lovelace": 209765
+          },
+          "validityInterval": {
+            "invalidAfter": 26373534
+          },
+          "signatories": [
+            {
+              "key": "b7fae9c75543d905ba6b4840d576ac4e94261e317385772a9ed3dcffc4621c2e",
+              "signature": "c81a0aeeb04682d006b2279f9208f2831ac235569e565a8826fd609814ce411cbb4712e63eac83c59cd67e41de60d51efe97d1a13363fa9522b446c827234301",
+              "chainCode": "2510d2019b62016efbe77514b1f2cbbfcbd63bcb7dab27f14a355c46a121c4ab",
+              "addressAttributes": "a101581e581cca3e553c9c63c5f7ecb12943269abef19834ac6c90c6508cd382c661"
+            },
+            {
+              "key": "9f83ff72cf9d2bc3154d984f1fcd1514931f5a80ff8449b36d15c817fe5eed1e",
+              "signature": "540d7a12c10d58a150bcabf605e16895325c670104d052002424b6e68ee83c2bd2594e18ee2eb259c27941848295b3d003c92097cedc0f468f8de9b7ed30610f",
+              "chainCode": "a9c6418fe7d3ea275cc660baea54e3410bacf8f91c37781c4b723d51a3537974",
+              "addressAttributes": "a101581e581cca3e553c9c63c5b71cf958438fe0cbbbb8e57a35b5ad4d287eed966d"
+            },
+            {
+              "key": "0e284391a3141ef29ce73af1ddc1a9010630e3561d79f09a0404f9f61a6f9122",
+              "signature": "89ba2b709604fe7909d6335c28c14c144ceade1a15da31630035d28080de33494a43acd47b0f4d45d13c7f8f1991eb062913aa31104c9dfeda8009381c700807",
+              "chainCode": "fc997343fe63daf97141a0330104b145a02160288dc349749451462b1f3c86de",
+              "addressAttributes": "a101581e581cca3e553c9c63c5f495d51943f394322b5bc89b2151931c6c1335f9da"
+            },
+            {
+              "key": "ec439b80fd3bfb3199b7c52e3f25cf8b614db3b585f66db8ccaf7eb15c26dbcf",
+              "signature": "59ecf00432e671854a7f339cd9ac3f91659229aca6bb3a1e68738beb0faf33ecb46fba5deb0e99353787b9b91d5b2aa3ce6122c369e138c3336312b640caff00",
+              "chainCode": "660f6b2b139961dde16e006787a719c2f2ef6649e9ffeace92a329ac5ef7ccab",
+              "addressAttributes": "a101581e581cca3e553c9c63c5be6b68f643e1f31490a60b0b0413956d714dacb86c"
+            }
+          ]
+        },
+        {
+          "id": "d7628a831c0635d3bcc9a922e959a474427a3c53b2c52174419ebbf83046eef4",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "58eaeb135bf5d9e4abecf97de2f40f7611366a3d6ff5586007b6e7dcef1168e6"
+              },
+              "index": 1
+            }
+          ],
+          "outputs": [
+            {
+              "address": "addr1qy5fpsa5p8u2f2mnt092jzrez3jwtnwm0zzz92wmv7wd0ne9yxt0q3h6mu6wnggz23pq3mz6u7y4ll89ycpwpf3kw7csecatse",
+              "value": {
+                "ada": {
+                  "lovelace": 857000000
+                }
+              }
+            },
+            {
+              "address": "addr1q9v6yy035v7nrwl50egehv9jjzd7n8x832gcs9286ug3luc2ksqh0e6q8dtdhmtywqkneusu68june7pqm3sxwzd55fsz4ugea",
+              "value": {
+                "ada": {
+                  "lovelace": 4000003391
+                }
+              }
+            }
+          ],
+          "fee": {
+            "lovelace": 168801
+          },
+          "validityInterval": {
+            "invalidAfter": 26373883
+          },
+          "signatories": [
+            {
+              "key": "961f1e146bc0b52bd1f1f04b9d49fd5d9497f11c668ede3cc23ff6753abd53df",
+              "signature": "3d86699483474d2b0bbfa8ee34e19b47109b368f58099b0c46683c17a273360fe6fcc7b3e51d8b116360e2f65233b080d1ed8853bda881c73286cf035c502e0a"
+            }
+          ]
+        },
+        {
+          "id": "54d1fa1ddcfed354d16084d307ea3270bd7986f77c9a7a24bd4e43dd99989b6e",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "885ae12de56bb41f9d06cb28da8c0ccae9e71c80b035a67ba740168cc5dd802d"
+              },
+              "index": 4
+            }
+          ],
+          "outputs": [
+            {
+              "address": "DdzFFzCqrhsf2Ap4neKY4KErPYFidNE6UL3YdUq314sSiWbmXswhWkZ28HTWarV28Ru8DbQWYhKxkQpG6Wzxt9jGQgFS6iGetYPQkSKG",
+              "value": {
+                "ada": {
+                  "lovelace": 27000000
+                }
+              }
+            },
+            {
+              "address": "DdzFFzCqrhsegtmjcQYe8zrAZpqo2XgT1JZM8HMFD2jPrDy7DbtMHAB13txm3iMRD65A32PY9dBG9Tb5aEpytrLsNa9kf1ikd6NP664x",
+              "value": {
+                "ada": {
+                  "lovelace": 440306854
+                }
+              }
+            }
+          ],
+          "fee": {
+            "lovelace": 174257
+          },
+          "validityInterval": {
+            "invalidAfter": 26373914
+          },
+          "signatories": [
+            {
+              "key": "96690cbd696d70f4baec39057633270ece7dbbb5f3c96ec797d284a3b6df7a63",
+              "signature": "c377e895d19db697a52d59adcec60064b45f3509a43d1ac7eeba06fb90461c2f7e7bf0880625c05d55ed111fbaaef9b4715a4806ba65d682653775a8e9c7450f",
+              "chainCode": "7adc573a0054e51f601e9c3ae7b7250dceb9481d38cf2b58b7cbbb22e81ea3db",
+              "addressAttributes": "a101581e581c84b2ff88d08bc40c3d15e0c9f23a1825d5685bae8a599e179976dc61"
+            }
+          ]
+        },
+        {
+          "id": "a233fd6773fc96f556099a67d56a784b7a828d05ca1b317c7c845b3e3def5aac",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "32a55a522a4da1d81f3947b5cd79366aa54aa72f9432d77fea2819c0e4e14eb8"
+              },
+              "index": 0
+            },
+            {
+              "transaction": {
+                "id": "6912217552682f28e92d59adbe69e1105b5dbd6f99722b32309830ccb356a674"
+              },
+              "index": 1
+            },
+            {
+              "transaction": {
+                "id": "707958b6d32a6c010b6ccbdf46f8bf5eb58d6d1628111f0c8fcb2192e9a17132"
+              },
+              "index": 0
+            },
+            {
+              "transaction": {
+                "id": "8d075ca188a6c734bdb15a0ede831e034fbfb90bbb43a2011ed0437d8c707f8d"
+              },
+              "index": 0
+            },
+            {
+              "transaction": {
+                "id": "8d075ca188a6c734bdb15a0ede831e034fbfb90bbb43a2011ed0437d8c707f8d"
+              },
+              "index": 1
+            }
+          ],
+          "outputs": [
+            {
+              "address": "addr1q9te62qcwnwyrwlajc90cuvnvaqm4f43rwvcrvx3alfypq6hn55psaxugxalm9s2l3cexe6ph2ntzxuesxcdrm7jgzpsa6g4r9",
+              "value": {
+                "ada": {
+                  "lovelace": 1000000
+                }
+              }
+            },
+            {
+              "address": "addr1q9te62qcwnwyrwlajc90cuvnvaqm4f43rwvcrvx3alfypq6hn55psaxugxalm9s2l3cexe6ph2ntzxuesxcdrm7jgzpsa6g4r9",
+              "value": {
+                "ada": {
+                  "lovelace": 1008176016
+                }
+              }
+            }
+          ],
+          "withdrawals": {
+            "stake1u9te62qcwnwyrwlajc90cuvnvaqm4f43rwvcrvx3alfypqcke450w": {
+              "lovelace": 3100126
+            }
+          },
+          "fee": {
+            "lovelace": 215675
+          },
+          "validityInterval": {
+            "invalidAfter": 100000000
+          },
+          "signatories": [
+            {
+              "key": "2a223b0b220711f1c0e100aaebbe6d0287f23cb7c13f6f097543792fedd56e0a",
+              "signature": "aafa843e7b9c532ec7a3dd56dbdc5e59b2dce8e321d93cbea6eaecae6df1e264f924d09ccbbc971a463e8043f82d7deba0a72d50e12915aa2f94785531f84d08"
+            }
+          ]
+        },
+        {
+          "id": "f519d90a51e810aacc63ba9dd209a61ec0736de5a3d6875d531026124eebee5e",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "4fff6f54a2807f51283f197bee12eb8ea5b1787cffd72456808633f1cf79cff3"
+              },
+              "index": 2
+            }
+          ],
+          "outputs": [
+            {
+              "address": "DdzFFzCqrhsexrVdmVpzJrJjj4jpbcMu3n3pEpubGsKFuJ79CkLJqhLVN4LLRkoyhggBBeR7TvDAR5exWMrd4Unt4vBCCVQ4WP5gXRvQ",
+              "value": {
+                "ada": {
+                  "lovelace": 16500000000
+                }
+              }
+            },
+            {
+              "address": "DdzFFzCqrhsjkE4SMUaEDGnHu5ZDYPvwPR3SxZzP8vuGrCW26ZuSw3mk6NnWtsRMR3iqRQsqLbcSEETv8mzNh2c2qZDQDypm7S258owo",
+              "value": {
+                "ada": {
+                  "lovelace": 20419012245
+                }
+              }
+            }
+          ],
+          "fee": {
+            "lovelace": 174433
+          },
+          "validityInterval": {
+            "invalidAfter": 26373917
+          },
+          "signatories": [
+            {
+              "key": "2a47772236dc2c26aff0f45b03ad146b1739d5c745b6e3e769d462260976a701",
+              "signature": "67dc08127cb97f66b09200a2ba12b57514faef69feeb78482a364dbceea9f18b0b6c48b88647a552574e6402266fa1616f96b20bacd31b114ec5db61d5987f0e",
+              "chainCode": "863e12505cafc4ee238fa77f4b49271608cb0bb6e8d9d6cadb39c3e4a7cbf0cc",
+              "addressAttributes": "a101581e581c149e92a5de458b6f12838e5b54c429fa58e56f405e4f27e37c53f132"
+            }
+          ]
+        },
+        {
+          "id": "09cfb64334a9e5b751b17ea8e6e9759bafaf8526630f14e1938f2a54337912eb",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "f4bf0b70eecd049f7f888d3d42a8ab57f68fa0f681b94edc1d2cf19ca6390835"
+              },
+              "index": 1
+            }
+          ],
+          "outputs": [
+            {
+              "address": "addr1qy2snz8660jrnmgde7ae83mk6889fs9895axh8pfgtqn3nm69efaj0futge74ztprg5ftz56ccxrtrwv2zl6z82d2dzsq7hvp2",
+              "value": {
+                "ada": {
+                  "lovelace": 46571270
+                }
+              }
+            },
+            {
+              "address": "addr1v95sf69jcfhnmknvffwmfvlvnccatqwfjcyh0nlfc6gh5scta2yzg",
+              "value": {
+                "ada": {
+                  "lovelace": 72728325
+                }
+              }
+            }
+          ],
+          "fee": {
+            "lovelace": 171221
+          },
+          "validityInterval": {
+            "invalidAfter": 26366907
+          },
+          "signatories": [
+            {
+              "key": "393b3d3cab6be0897cbc87143cc3a24825dc1d8249df4d37969502931cf856ff",
+              "signature": "3f8ad3f5328a0f5c02b15a3f78debfcd5b09dd4cc57527e05db9b20d2e45618504d5b059921f38fe63f197295f90cb9a3ef542f587598dd0eeab34921fdb4e07"
+            }
+          ]
+        },
+        {
+          "id": "3c37a1f3d23fdf5818475f51711ea10e40cf545934bf6bfaafa9b7c2be164989",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "ef3f2021ea028f83f597f24b9d831a80bef66594d65598e50b8466c25ce87169"
+              },
+              "index": 1
+            }
+          ],
+          "outputs": [
+            {
+              "address": "Ae2tdPwUPEZ834WsZU3C2Fn9vsZF5oGt2SBGXRvNFH8uPkbSScTpMKHxNc9",
+              "value": {
+                "ada": {
+                  "lovelace": 546000000
+                }
+              }
+            },
+            {
+              "address": "DdzFFzCqrht1FErVHjZQfAm1ZShZfrFMuzxJ2TZKrSrV6hAYK4YLornY2MetuXuW1JxKxkgdakZUMPVt8RimvbbAjitcq5b6r3LZ5DNz",
+              "value": {
+                "ada": {
+                  "lovelace": 20900115388
+                }
+              }
+            }
+          ],
+          "fee": {
+            "lovelace": 172805
+          },
+          "validityInterval": {
+            "invalidAfter": 26373918
+          },
+          "signatories": [
+            {
+              "key": "2f74a7bc0818fb79b842af3aecc73ce1fbbbe000821dab2064f48da621fa065b",
+              "signature": "fa666959fcbfc7087e0cbb384423fd33210d97806e93c2b2342eb5c3fec73101e6075629a01e1e82e5581f9f792d16eae19ee37e8167c2cfc69bc62a0a6c350c",
+              "chainCode": "648ba3dbcea0129ce9cf43fe18aebaa8f603b49ed4a3b7e3350b19ef37e1a2ad",
+              "addressAttributes": "a101581e581cb57a8272ba9e9db8863961280cc6ed0882d4c41106ba0d79abcad176"
+            }
+          ]
+        },
+        {
+          "id": "06e20ea37f89c81d7e68864de3a16cfd21328968402889626af030c6b8f85368",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "8609b7fa68dc1aacbd1c3526b0045216a76cafff68612995691f298fe88db58b"
+              },
+              "index": 1
+            }
+          ],
+          "outputs": [
+            {
+              "address": "DdzFFzCqrhssNtUFg5R18WK3t11ndN94AW73kz87biLF9iyFVWjRMotvPxEG66wbonbQDiyFaS86VvV5DDBbjVzcyWzdFUT6j4CZcp5J",
+              "value": {
+                "ada": {
+                  "lovelace": 2989600000
+                }
+              }
+            },
+            {
+              "address": "addr1v9u7va2sktlnz8dp3qadpnxxlv4m03672jy6elmntlxxs7q9nnwl9",
+              "value": {
+                "ada": {
+                  "lovelace": 11129455450
+                }
+              }
+            }
+          ],
+          "fee": {
+            "lovelace": 171221
+          },
+          "validityInterval": {
+            "invalidAfter": 26366907
+          },
+          "signatories": [
+            {
+              "key": "6687a36f0a4b8abf2671f8affb7febeb8940e9ee83548d2a2924dbc74679c466",
+              "signature": "5d1bbf8c59b5ef82219e9c85e4b933b76ef12b33de3ffc12e2f2c78978012028954df02cb92b503de235d565f32dcb31b7e56db889d32a9da90d44e423fcbf05"
+            }
+          ]
+        },
+        {
+          "id": "b4cd36f76f5cf0a58f1acc5a5cdaf957ba03c92c39d9ac5b9b02ddc775174716",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "9027310aa2f6603e5cd93fbaf3485feafbfe63bdd63c337377b38c3c98aee935"
+              },
+              "index": 1
+            }
+          ],
+          "outputs": [
+            {
+              "address": "DdzFFzCqrht4Ha5y1fsQ9udxWiqf9vxdWJHMoye6149H3ZB9MwfVcLcEEW3EfJZ8p2RivaAAj6XmQgRvq72TcyQh3D7YmxYX4UnXFkez",
+              "value": {
+                "ada": {
+                  "lovelace": 868849531
+                }
+              }
+            },
+            {
+              "address": "DdzFFzCqrhsnHzDfy4RiCU1PWAbGrYs26UCGsss4Kh4xMVs45U1rp36xnAoYf9WUTBfSxoMsHreTzFsz6QFLpx2spPGWZf5xLPgLbE7o",
+              "value": {
+                "ada": {
+                  "lovelace": 42507890938
+                }
+              }
+            }
+          ],
+          "fee": {
+            "lovelace": 174257
+          },
+          "validityInterval": {
+            "invalidAfter": 26373920
+          },
+          "signatories": [
+            {
+              "key": "92f134e3752aba650e3fbf642d73c8e85ba8246ea6a5124ee71ce619a4121614",
+              "signature": "71ca4e278b5bae12f0f13637b9d46138940f4266c950ac4fa3045c64f0faf43eb6161f1af59cd81e8a8044475860638b4950bccdde348e9e69ea1399f67c9c0e",
+              "chainCode": "1674b35e36fa3a440244033a937d5626d55e5636b8046081a452f3984711a55f",
+              "addressAttributes": "a101581e581cb57a8272ba9e9dfc63f99d284b42a98c7b76c5780b568e45a1bf0d55"
+            }
+          ]
+        },
+        {
+          "id": "77135f948398d7f1061a072441e5cd904bb13a4e1a9be6f5416c7ab0db3cea0b",
+          "spends": "inputs",
+          "inputs": [
+            {
+              "transaction": {
+                "id": "9df153943f518430f568b1b0a710001988b395901962870226d49f3238eb272b"
+              },
+              "index": 0
+            }
+          ],
+          "outputs": [
+            {
+              "address": "addr1q82rmk6wmmg6e0fwz2y2jz5llvwkk2q5em3u52mpy2zn94wa6al24n8mu8cl4v04xgwdlq06882eutzecv6rv8y3xt9ska5dnl",
+              "value": {
+                "ada": {
+                  "lovelace": 4995651222
+                }
+              }
+            }
+          ],
+          "certificates": [
+            {
+              "type": "stakeDelegation",
+              "credential": "ddd77eaaccfbe1f1fab1f5321cdf81fa39d59e2c59c334361c9132cb",
+              "stakePool": {
+                "id": "pool10capak8jppvj8h46e35xdth6h22pahtr3lcgscrpa06jzv0xn8w"
+              }
+            }
+          ],
+          "fee": {
+            "lovelace": 173641
+          },
+          "validityInterval": {
+            "invalidAfter": 26373924
+          },
+          "signatories": [
+            {
+              "key": "02667bd1df7e9169b283f42f321af83f5892ae2f06a4861cfd32737041ba2abd",
+              "signature": "82d1bf4bcbde7027b14c0af73d69ca0b3a16c39a7acaa078bd18604b1868e996d734eaeea2c3a9b6c4c95a000c3aec27b0b4d5d5f7544c3c6f42fd7cdaf86a00"
+            },
+            {
+              "key": "586063e1a370b963d317ecd12f3acdd0b505023d7c35cd0fc8f48c5f3e3668d5",
+              "signature": "19f08a61e08fd55fdf4186042446dbafa57775dd41300234f057162ab32999814abc25fd21654b9a982b82654fcf81c51efea008fc3ee5525e5c374c3da04d0c"
+            }
+          ]
+        }
+      ]
+    },
+    "tip": {
+      "slot": 109682522,
+      "id": "f4d6a16f341e149e6c9cec7387c357f7f92233657af2cf9488fd90f4de9f0083",
+      "height": 9608560
+    }
+  },
+  "id": null
+}

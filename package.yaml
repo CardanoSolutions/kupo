@@ -129,7 +129,6 @@ tests:
     - process
     - QuickCheck
     - quickcheck-state-machine
-    - relude
     - si-timers
     - sqlite-simple
     - stm

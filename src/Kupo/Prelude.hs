@@ -140,9 +140,11 @@ import Data.Aeson
     , Zero
     , genericToEncoding
     )
+import Data.Base16.Types
+    ( extractBase16
+    )
 import Data.ByteString.Base16
-    ( decodeBase16
-    , encodeBase16
+    ( decodeBase16Untyped
     )
 import Data.ByteString.Base64
     ( decodeBase64
@@ -240,6 +242,7 @@ import qualified Data.Aeson.Parser as Json
 import qualified Data.Aeson.Parser.Internal as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Base16 as Base16
 import qualified Data.ByteString.Base58 as Base58
 import qualified Data.Map as Map
 
@@ -378,6 +381,14 @@ foldrWithIndex outer result xs =
 --
 -- Encoding / Decoding
 --
+
+encodeBase16 :: ByteString -> Text
+encodeBase16 = extractBase16 . Base16.encodeBase16
+{-# INLINEABLE encodeBase16 #-}
+
+decodeBase16 :: ByteString -> Either Text ByteString
+decodeBase16 = decodeBase16Untyped
+{-# INLINABLE decodeBase16 #-}
 
 -- | An unsafe version of 'decodeBase16'. Use with caution.
 unsafeDecodeBase16 :: HasCallStack => Text -> ByteString

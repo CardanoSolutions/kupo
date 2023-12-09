@@ -472,6 +472,18 @@ spec = parallel $ do
                     , "USE TEMP B-TREE FOR ORDER BY"
                     ]
 
+            context "pruneBinaryData" $ do
+                specifyQuery "pruneBinaryData" installIndexes
+                    (pure pruneBinaryDataQry)
+                    (`shouldBe`
+                        [ "SEARCH binary_data USING INDEX sqlite_autoindex_binary_data_1 (binary_data_hash=?)"
+                        , "LIST SUBQUERY 1"
+                        , "SCAN binary_data USING COVERING INDEX sqlite_autoindex_binary_data_1"
+                        , "SEARCH inputs USING INDEX inputsByDatumHash (datum_hash=?) LEFT-JOIN"
+                        , "USE TEMP B-TREE FOR ORDER BY"
+                        ]
+                    )
+
             context "foldInputs / MatchExact" $ do
                 specifyQuery "NoStatusFlag" installIndexes
                     (foldInputsQry

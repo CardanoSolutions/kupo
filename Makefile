@@ -1,16 +1,18 @@
 OUT := dist
 
-OS := $(shell uname -s | sed 's/Linux/linux/' | sed 's/Darwin/osx/')
-ARCH := $(shell uname -m | sed 's/X86/x86_64/' | sed 's/arm64/aarch64/')
-GHC := 8.10.7
-NIX_SHELL := github:input-output-hk/devx\#ghc810-static-minimal-iog
-
-VERSION := $(shell cat package.yaml| grep "version:" | sed "s/[^0-9]*\([0-9]\)\(.[0-9].[0-9]\)*\(-.*\)*/\1\2\3/")
-TAG := $(shell echo $(VERSION) | sed "s/^0$$/nightly/")
-
+GHC := 9.6.3
 STYLISH_HASKELL_VERSION := 0.13.0.0
 
+# Default network for snapshots.
 NETWORK := preview
+
+OS := $(shell uname -s | sed 's/Linux/linux/' | sed 's/Darwin/osx/')
+ARCH := $(shell uname -m | sed 's/X86/x86_64/' | sed 's/arm64/aarch64/')
+NIX_GHC := $(shell echo $(GHC) | sed 's/^\([0-9]\)\.\([0-9]\)\..*/\1\2/')
+NIX_SHELL := github:input-output-hk/devx\#ghc$(NIX_GHC)-static-minimal-iog
+NIX_OPTS := --no-write-lock-file --refresh
+VERSION := $(shell cat package.yaml| grep "version:" | sed "s/[^0-9]*\([0-9]\)\(.[0-9].[0-9]\)*\(-.*\)*/\1\2\3/")
+TAG := $(shell echo $(VERSION) | sed "s/^0$$/nightly/")
 CONFIG := $(shell pwd)/config/network/$(NETWORK)
 CACHEDIR := ${HOME}/.cache/kupo/${NETWORK}
 
@@ -60,7 +62,12 @@ $(OUT)/lib:
 .SILENT: doc clean clean-all
 
 configure: # Freeze projet dependencies and update package index
-	nix develop $(NIX_SHELL) --no-write-lock-file --refresh --command bash -c "cabal update && cabal freeze"
+ifeq ($(ARCH),x86_64)
+	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cat /nix/store/vd865r55pdbndjwh994h90m35qq77x44-cabal.project.local >> cabal.project.local"
+else
+	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cat /nix/store/hviyb5sciblcyr5fc3vsqcwmfh1nz69w-cabal.project.local >> cabal.project.local"
+endif
+	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal update && cabal freeze -f +production"
 
 archive: kupo-$(TAG)-$(ARCH)-$(OS).tar.gz # Package the application as a tarball
 
