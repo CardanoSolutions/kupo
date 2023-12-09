@@ -1,3 +1,19 @@
+### [2.7.2] - 2023-12-09
+
+#### Added
+
+- Add missing index on inputs' datum (speed up garbage collection).
+- Automated aarch64 static builds for Linux.
+
+#### Changed
+
+- Fix missing runtime flags on pre-compiled binary.
+
+
+#### Removed
+
+- N/A
+
 ### [2.7.1] - 2023-12-03
 
 #### Added
