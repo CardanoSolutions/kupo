@@ -17,13 +17,12 @@ import Kupo.Data.Cardano.Address
     )
 import Kupo.Data.Cardano.Datum
     ( Datum
-    , fromBabbageDatum
-    , toBabbageDatum
+    , fromConwayDatum
+    , toConwayDatum
     )
 import Kupo.Data.Cardano.Script
     ( ComparableScript
     , Script
-    , fromComparableScript
     , hashScript
     , toComparableScript
     )
@@ -33,7 +32,6 @@ import Kupo.Data.Cardano.ScriptHash
 import Kupo.Data.Cardano.Value
     ( ComparableValue
     , Value
-    , fromComparableValue
     , toComparableValue
     )
 
@@ -43,6 +41,7 @@ import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.TxBody as Ledger.Alonzo
 import qualified Cardano.Ledger.Babbage.TxBody as Ledger.Babbage
 import qualified Cardano.Ledger.Coin as Ledger
+import qualified Cardano.Ledger.Conway as Ledger.Conway
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Mary.Value as Ledger
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
@@ -55,7 +54,7 @@ type Output =
     Output' StandardCrypto
 
 type Output' crypto =
-    Ledger.Babbage.BabbageTxOut (BabbageEra crypto)
+    Ledger.Babbage.BabbageTxOut (ConwayEra crypto)
 
 mkOutput
     :: Address
@@ -67,7 +66,7 @@ mkOutput address value datum script =
     Ledger.Babbage.BabbageTxOut
         address
         value
-        (toBabbageDatum datum)
+        (toConwayDatum datum)
         (maybeToStrictMaybe script)
 {-# INLINABLE mkOutput #-}
 
@@ -76,7 +75,7 @@ fromByronOutput
         ( Crypto crypto
         )
     => Ledger.Byron.TxOut
-    -> Ledger.Core.TxOut (BabbageEra crypto)
+    -> Output' crypto
 fromByronOutput (Ledger.Byron.TxOut address value) =
     Ledger.Babbage.BabbageTxOut
         (Ledger.AddrBootstrap (Ledger.BootstrapAddress address))
@@ -94,7 +93,7 @@ fromShelleyOutput
         )
     => (Ledger.Core.Value (era crypto) -> Ledger.MaryValue crypto)
     -> Ledger.Core.TxOut (era crypto)
-    -> Ledger.Core.TxOut (BabbageEra crypto)
+    -> Output' crypto
 fromShelleyOutput liftValue (Ledger.Shelley.ShelleyTxOut addr value) =
     Ledger.Babbage.BabbageTxOut addr (liftValue value) Ledger.Babbage.NoDatum SNothing
 {-# INLINABLE fromShelleyOutput #-}
@@ -104,7 +103,7 @@ fromAlonzoOutput
         ( Crypto crypto
         )
     => Ledger.Core.TxOut (AlonzoEra crypto)
-    -> Ledger.Core.TxOut (BabbageEra crypto)
+    -> Output' crypto
 fromAlonzoOutput (Ledger.Alonzo.AlonzoTxOut addr value datum) =
     case datum of
         SNothing ->
@@ -120,6 +119,15 @@ fromAlonzoOutput (Ledger.Alonzo.AlonzoTxOut addr value datum) =
                 value
                 (Ledger.Babbage.DatumHash datumHash)
                 SNothing
+
+fromBabbageOutput
+    :: forall crypto.
+        ( Crypto crypto
+        )
+    => Ledger.Core.TxOut (BabbageEra crypto)
+    -> Output' crypto
+fromBabbageOutput = Ledger.Core.upgradeTxOut
+{-# INLINABLE fromBabbageOutput #-}
 
 getAddress
     :: Output
@@ -139,7 +147,7 @@ getDatum
     :: Output
     -> Datum
 getDatum (Ledger.Babbage.BabbageTxOut _address _value datum _refScript) =
-    fromBabbageDatum datum
+    fromConwayDatum datum
 {-# INLINABLE getDatum #-}
 
 getScript
@@ -182,9 +190,3 @@ toComparableOutput out = ComparableOutput
     , comparableOutputDatum = getDatum out
     , comparableOutputScript = toComparableScript <$> getScript out
     }
-
-fromComparableOutput
-    :: ComparableOutput
-    -> Output
-fromComparableOutput (ComparableOutput addr val datum script) =
-    mkOutput addr (fromComparableValue val) datum (fromComparableScript <$> script)

@@ -41,7 +41,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Read as T
 
 type Metadata =
-    AlonzoTxAuxData (BabbageEra StandardCrypto)
+    AlonzoTxAuxData (ConwayEra StandardCrypto)
 
 emptyMetadata :: Metadata
 emptyMetadata =
@@ -182,5 +182,10 @@ fromAlonzoMetadata =
 
 fromBabbageMetadata :: AlonzoTxAuxData (BabbageEra StandardCrypto) -> Metadata
 fromBabbageMetadata =
-    identity
+    Ledger.upgradeTxAuxData
 {-# INLINABLE fromBabbageMetadata #-}
+
+fromConwayMetadata :: AlonzoTxAuxData (ConwayEra StandardCrypto) -> Metadata
+fromConwayMetadata =
+    identity
+{-# INLINABLE fromConwayMetadata #-}

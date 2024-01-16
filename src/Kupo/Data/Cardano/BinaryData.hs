@@ -12,7 +12,7 @@ import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 
 type BinaryData =
-    Ledger.BinaryData (BabbageEra StandardCrypto)
+    Ledger.BinaryData (ConwayEra StandardCrypto)
 
 type BinaryDataHash =
     DatumHash
@@ -65,6 +65,13 @@ fromBabbageData
     :: Ledger.Data (BabbageEra StandardCrypto)
     -> BinaryData
 fromBabbageData =
-    Ledger.dataToBinaryData
+      Ledger.dataToBinaryData
+    . Ledger.upgradeData
 {-# INLINEABLE fromBabbageData #-}
 
+fromConwayData
+    :: Ledger.Data (ConwayEra StandardCrypto)
+    -> BinaryData
+fromConwayData =
+      Ledger.dataToBinaryData
+{-# INLINEABLE fromConwayData #-}
