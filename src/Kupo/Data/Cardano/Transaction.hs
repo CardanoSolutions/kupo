@@ -31,6 +31,8 @@ data Transaction' crypto
         !(Ledger.Alonzo.AlonzoTx (AlonzoEra crypto))
     | TransactionBabbage
         !(Ledger.Alonzo.AlonzoTx (BabbageEra crypto))
+    | TransactionConway
+        !(Ledger.Alonzo.AlonzoTx (ConwayEra crypto))
 
 instance HasTransactionId Transaction StandardCrypto where
     getTransactionId = \case
@@ -51,3 +53,6 @@ instance HasTransactionId Transaction StandardCrypto where
         TransactionBabbage tx ->
             let body = Ledger.Alonzo.body tx
              in Ledger.txid @(BabbageEra StandardCrypto) body
+        TransactionConway tx ->
+            let body = Ledger.Alonzo.body tx
+             in Ledger.txid @(ConwayEra StandardCrypto) body

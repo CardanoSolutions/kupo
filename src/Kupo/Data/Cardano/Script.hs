@@ -39,7 +39,7 @@ import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 
 type Script =
-    Ledger.Alonzo.Script (BabbageEra StandardCrypto)
+    Ledger.Alonzo.Script (ConwayEra StandardCrypto)
 
 scriptFromAllegraAuxiliaryData
     :: forall era.
@@ -100,8 +100,15 @@ fromBabbageScript
     :: Ledger.Alonzo.Script (BabbageEra StandardCrypto)
     -> Script
 fromBabbageScript =
-    identity
+    Ledger.Core.upgradeScript
 {-# INLINABLE fromBabbageScript #-}
+
+fromConwayScript
+    :: Ledger.Alonzo.Script (ConwayEra StandardCrypto)
+    -> Script
+fromConwayScript =
+    identity
+{-# INLINABLE fromConwayScript #-}
 
 scriptToJson
     :: Script
@@ -169,7 +176,7 @@ hashScript
     :: Script
     -> ScriptHash
 hashScript =
-    Ledger.Core.hashScript @(BabbageEra StandardCrypto)
+    Ledger.Core.hashScript @(ConwayEra StandardCrypto)
 {-# INLINABLE hashScript #-}
 
 newtype ComparableScript = ComparableScript { unComparableScript :: Script }

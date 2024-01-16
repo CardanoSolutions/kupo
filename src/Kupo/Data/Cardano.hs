@@ -175,11 +175,8 @@ instance IsBlock Block where
             foldrWithIndex (\ix -> fn ix . TransactionAlonzo) result (Ledger.fromTxSeq txs)
         BlockBabbage (ShelleyBlock (Ledger.Block _ txs) _) ->
             foldrWithIndex (\ix -> fn ix . TransactionBabbage) result (Ledger.fromTxSeq txs)
-        BlockConway{} ->
-            -- FIXME: Finalize once Conway is stable.
-            error "Ho no! Encountered a block from the Conway era. This era is not \
-                  \supported by this version. Upgrade kupo to the latest version and \
-                  \restart the process!"
+        BlockConway (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldrWithIndex (\ix -> fn ix . TransactionConway) result (Ledger.fromTxSeq txs)
 
     spentInputs
         :: Transaction
@@ -200,6 +197,12 @@ instance IsBlock Block where
                 Ledger.IsValid False ->
                     tx ^. Ledger.bodyTxL . Ledger.collateralInputsTxBodyL
         TransactionBabbage tx ->
+            case tx ^. Ledger.isValidTxL of
+                Ledger.IsValid True ->
+                    tx ^. Ledger.bodyTxL . Ledger.inputsTxBodyL
+                Ledger.IsValid False ->
+                    tx ^. Ledger.bodyTxL . Ledger.collateralInputsTxBodyL
+        TransactionConway tx ->
             case tx ^. Ledger.isValidTxL of
                 Ledger.IsValid True ->
                     tx ^. Ledger.bodyTxL . Ledger.inputsTxBodyL
@@ -267,9 +270,30 @@ instance IsBlock Block where
              in
                 case tx ^. Ledger.isValidTxL of
                     Ledger.IsValid True ->
-                        traverseAndTransform identity txId meta 0 outs
+                        traverseAndTransform fromBabbageOutput txId meta 0 outs
                     Ledger.IsValid False ->
                         -- From Babbage's formal specification:
+                        --
+                        --   Note that the new collOuts function generates a single output
+                        --   with an index |txouts{txb}|.
+                        let start = fromIntegral (length outs) in
+                        case body ^. Ledger.collateralReturnTxBodyL of
+                            SNothing ->
+                                []
+                            SJust r  ->
+                                traverseAndTransform fromBabbageOutput txId meta start (r :<| mempty)
+        TransactionConway tx ->
+            let
+                body = tx ^. Ledger.bodyTxL
+                txId = Ledger.txid @(ConwayEra StandardCrypto) body
+                outs = body ^. Ledger.outputsTxBodyL
+                meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromConwayMetadata
+             in
+                case tx ^. Ledger.isValidTxL of
+                    Ledger.IsValid True ->
+                        traverseAndTransform identity txId meta 0 outs
+                    Ledger.IsValid False ->
+                        -- From Conway formal specification:
                         --
                         --   Note that the new collOuts function generates a single output
                         --   with an index |txouts{txb}|.
@@ -337,6 +361,8 @@ instance IsBlock Block where
             fromAlonzoData <$> Ledger.unTxDats (tx ^. Ledger.witsTxL . Ledger.datsTxWitsL)
         TransactionBabbage tx ->
             fromBabbageData <$> Ledger.unTxDats (tx ^. Ledger.witsTxL . Ledger.datsTxWitsL)
+        TransactionConway tx ->
+            fromConwayData <$> Ledger.unTxDats (tx ^. Ledger.witsTxL . Ledger.datsTxWitsL)
 
     witnessedScripts
         :: Transaction
@@ -364,7 +390,14 @@ instance IsBlock Block where
         TransactionBabbage tx ->
             ( fromBabbageScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)
             ) & strictMaybe identity
-                    (scriptFromAlonzoAuxiliaryData fromBabbageScript)
+                    (scriptFromAlonzoAuxiliaryData identity)
+                    (fromBabbageMetadata <$> tx ^. Ledger.auxDataTxL)
+              & scriptsFromOutputs
+                    (fromBabbageOutput <$> tx ^. Ledger.bodyTxL . Ledger.outputsTxBodyL)
+        TransactionConway tx ->
+            ( tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL
+            ) & strictMaybe identity
+                    (scriptFromAlonzoAuxiliaryData identity)
                     (tx ^. Ledger.auxDataTxL)
               & scriptsFromOutputs
                     (tx ^. Ledger.bodyTxL . Ledger.outputsTxBodyL)
@@ -409,4 +442,11 @@ instance IsBlock Block where
                     Nothing
                 SJust auxData ->
                     let meta = fromBabbageMetadata auxData
+                     in Just (hashMetadata meta, meta)
+        TransactionConway tx ->
+            case tx ^. Ledger.auxDataTxL of
+                SNothing ->
+                    Nothing
+                SJust auxData ->
+                    let meta = fromConwayMetadata auxData
                      in Just (hashMetadata meta, meta)

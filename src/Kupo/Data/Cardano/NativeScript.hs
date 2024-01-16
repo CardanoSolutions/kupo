@@ -19,4 +19,4 @@ import Cardano.Ledger.Keys
 
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
 
-type NativeScript = Ledger.Allegra.Timelock (BabbageEra StandardCrypto)
+type NativeScript = Ledger.Allegra.Timelock (ConwayEra StandardCrypto)
