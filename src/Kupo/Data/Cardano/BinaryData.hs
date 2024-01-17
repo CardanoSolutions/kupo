@@ -73,5 +73,5 @@ fromConwayData
     :: Ledger.Data (ConwayEra StandardCrypto)
     -> BinaryData
 fromConwayData =
-      Ledger.dataToBinaryData
+    Ledger.dataToBinaryData
 {-# INLINEABLE fromConwayData #-}

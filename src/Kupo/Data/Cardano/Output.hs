@@ -41,7 +41,6 @@ import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.TxBody as Ledger.Alonzo
 import qualified Cardano.Ledger.Babbage.TxBody as Ledger.Babbage
 import qualified Cardano.Ledger.Coin as Ledger
-import qualified Cardano.Ledger.Conway as Ledger.Conway
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Mary.Value as Ledger
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
@@ -126,7 +125,8 @@ fromBabbageOutput
         )
     => Ledger.Core.TxOut (BabbageEra crypto)
     -> Output' crypto
-fromBabbageOutput = Ledger.Core.upgradeTxOut
+fromBabbageOutput =
+    Ledger.Core.upgradeTxOut
 {-# INLINABLE fromBabbageOutput #-}
 
 getAddress
