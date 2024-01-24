@@ -160,6 +160,7 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -fno-warn-unticked-promoted-constructors -fno-warn-partial-fields
   build-depends:
       aeson
+    , attoparsec-aeson
     , base >=4.7 && <5
     , base16
     , base58-bytestring

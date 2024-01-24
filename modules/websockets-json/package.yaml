@@ -25,6 +25,7 @@ library:
   ghc-options: *ghc-options-lib
   dependencies:
     - aeson
+    - attoparsec-aeson
     - bytestring
     - connection
     - exceptions

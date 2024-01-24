@@ -57,7 +57,7 @@ import Test.QuickCheck
 
 spec :: Spec
 spec = parallel $ context "Mailbox" $ do
-    specify "producer / consumer simulations" $ do
+    specify @(IO ()) "producer / consumer simulations" $ do
         let n = 10_000
         msgs <- generate $ vectorOf n $ frequency
             [ (1, Right <$> arbitrary)
@@ -73,7 +73,7 @@ spec = parallel $ context "Mailbox" $ do
                     (producer mailbox msgs)
                 pure msgs'
         let analyze = \case
-                TraceMainReturn t msgs' _ -> do
+                TraceMainReturn t _ msgs' _ -> do
                     -- NOTE: The diving factor is 'arbitrary' but it just shows
                     -- that it is much faster to do this work concurrently than
                     -- it would be to process all messages one-by-one. We show

@@ -6,7 +6,7 @@ import Kupo.Data.Cardano.DatumHash
     ( DatumHash
     )
 
-import qualified Cardano.Ledger.Alonzo.Scripts.Data as Ledger
+import qualified Cardano.Ledger.Plutus.Data as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json

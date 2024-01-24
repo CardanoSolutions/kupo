@@ -90,16 +90,16 @@ import Ouroboros.Consensus.Block
     )
 
 import qualified Cardano.Ledger.Address as Ledger
-import qualified Cardano.Ledger.Alonzo.Scripts.Data as Ledger
 import qualified Cardano.Ledger.BaseTypes as Ledger
 import qualified Cardano.Ledger.Core as Ledger
 import qualified Cardano.Ledger.Credential as Ledger
 import qualified Cardano.Ledger.Keys as Ledger
+import qualified Cardano.Ledger.Plutus.Data as Ledger
 import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Data.Binary.Get as B
 import qualified Data.Binary.Put as B
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString.Lazy as BL
 import qualified Kupo.Data.Cardano as App
 import qualified Kupo.Data.Pattern as App
 
@@ -232,24 +232,24 @@ policyToRow (outputReferenceToRow -> outputReference) (App.policyIdToBytes -> po
 --
 extendedOutputReferenceToRow :: App.ExtendedOutputReference -> ByteString
 extendedOutputReferenceToRow (Ledger.TxIn txId (Ledger.TxIx outIx), txIx) =
-    BSL.toStrict $ B.runPut $ do
+    BL.toStrict $ B.runPut $ do
         B.putByteString (transactionIdToBytes txId)
         B.putWord16be (fromIntegral outIx)
         B.putWord16be txIx
 
 outputReferenceToRow :: App.OutputReference -> ByteString
 outputReferenceToRow (Ledger.TxIn txId (Ledger.TxIx outIx)) =
-    BSL.toStrict $ B.runPut $ do
+    BL.toStrict $ B.runPut $ do
         B.putByteString (transactionIdToBytes txId)
         B.putWord16be (fromIntegral outIx)
 
 extendedOutputReferenceFromRow :: ByteString -> App.ExtendedOutputReference
 extendedOutputReferenceFromRow bytes =
-    case B.runGetOrFail parser (BSL.fromStrict bytes) of
+    case B.runGetOrFail parser (BL.fromStrict bytes) of
         Left (_remaining, _offset, hint) ->
             error (toText hint)
         Right (remaining, _offset, result) ->
-            if BSL.null remaining
+            if BL.null remaining
             then result
             else error "outputReferenceFromRow: non-empty remaining bytes"
   where
@@ -525,7 +525,7 @@ scriptReferenceFromRow hash = \case
 addressToRow
     :: App.Address
     -> Text
-addressToRow = encodeBase16 . BSL.toStrict . B.runPut . \case
+addressToRow = encodeBase16 . BL.toStrict . B.runPut . \case
     Ledger.AddrBootstrap (Ledger.BootstrapAddress addr) -> do
         B.putWord8 0
         B.putByteString (serializeCbor @ByronEra encCBOR addr)
@@ -563,11 +563,11 @@ addressFromRow =
     unsafeDeserialize . unsafeDecodeBase16
   where
     unsafeDeserialize bytes =
-        case B.runGetOrFail getAddr (BSL.fromStrict bytes) of
+        case B.runGetOrFail getAddr (BL.fromStrict bytes) of
             Left (_remaining, _offset, hint) ->
                 error (toText hint)
             Right (remaining, _offset, result) ->
-                if BSL.null remaining
+                if BL.null remaining
                 then result
                 else error "addressFromRow: non-empty remaining bytes"
 

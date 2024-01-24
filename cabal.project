@@ -47,11 +47,14 @@ package direct-sqlite
 
 constraints:
   , any.base == 4.18.1.0
-  , any.cardano-node == 8.6.0
-  , any.cardano-ledger-conway == 1.10.1.0
-  , direct-sqlite == 2.3.29
+  , any.cardano-node == 8.7.2
+  , any.cardano-ledger-conway == 1.11.0.0
+  , any.ouroboros-consensus == 0.14.0.0
+  , any.ouroboros-consensus-cardano == 0.12.1.0
+  , any.formatting == 7.2.0
+  , quickcheck-state-machine ^>= 0.7
   , any.text source
-  , any.formatting >= 7.2
+  , direct-sqlite == 2.3.29
 
 allow-newer:
   *:formatting

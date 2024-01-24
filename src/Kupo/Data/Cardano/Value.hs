@@ -13,6 +13,7 @@ import Kupo.Data.Cardano.PolicyId
     , unsafePolicyIdFromBytes
     )
 
+import qualified Cardano.Ledger.Coin as Ledger
 import qualified Cardano.Ledger.Hashes as Ledger
 import qualified Cardano.Ledger.Mary.Value as Ledger
 import qualified Data.Aeson as Json
@@ -51,13 +52,13 @@ unsafeValueFromList
     -> Value
 unsafeValueFromList ada assets =
     Ledger.valueFromList
-        ada
+        (Ledger.Coin ada)
         [ ( unsafePolicyIdFromBytes pid, unsafeAssetNameFromBytes name, q)
         | (pid, name, q) <- assets
         ]
 
 valueToJson :: Value -> Json.Encoding
-valueToJson (Ledger.MaryValue coins (Ledger.MultiAsset assets)) =
+valueToJson (Ledger.MaryValue (Ledger.Coin coins) (Ledger.MultiAsset assets)) =
     Json.pairs $
         Json.pair "coins"  (Json.integer coins)
       <>
@@ -103,8 +104,8 @@ data ComparableValue = ComparableValue
 
 fromComparableValue :: ComparableValue -> Value
 fromComparableValue (ComparableValue ada assets) =
-    Ledger.MaryValue ada (Ledger.MultiAsset assets)
+    Ledger.MaryValue (Ledger.Coin ada) (Ledger.MultiAsset assets)
 
 toComparableValue :: Value -> ComparableValue
-toComparableValue (Ledger.MaryValue ada (Ledger.MultiAsset assets)) =
+toComparableValue (Ledger.MaryValue (Ledger.Coin ada) (Ledger.MultiAsset assets)) =
     ComparableValue ada assets

@@ -20,7 +20,7 @@ import Ouroboros.Consensus.Util
     ( eitherToMaybe
     )
 
-import qualified Cardano.Ledger.Language as Ledger
+import qualified Cardano.Ledger.Plutus.Language as Ledger
 
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
 import qualified Cardano.Ledger.Allegra.TxAuxData as Ledger.Allegra
