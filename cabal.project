@@ -60,15 +60,18 @@ source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/ogmios
   tag: 01f7787216e7ceb8e39c8c6807f7ae53fc14ab9e
+  --sha256: 18wxmz3452lwnd169r408b54h5grjws3q25i30nkl425sl4k8p87
   subdir:
     server/modules/fast-bech32
 
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/direct-sqlite
+  --sha256: 1r1g6nf65d9n436ppcjky3gkywpnx4y0a3v88ddngchmf8za3qky
   tag: 82c5ab46715ecd51901256144f1411b480e2cb8b
 
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/text-ansi
+  --sha256: 16ki7wsf7wivxn65acv4hxwfrzmphq4zp61lpxwzqkgrg8shi8bv
   tag: e204822d2f343b2d393170a2ec46ee935571345c
