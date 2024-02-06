@@ -39,7 +39,8 @@ library:
     - -Werror
     - -O2
   dependencies:
-    - aeson
+    - aeson >= 2.2
+    - attoparsec-aeson >= 2.2
     - base16
     - base58-bytestring
     - base64
