@@ -180,7 +180,7 @@ pruneInputsMaxIncrement = 50000
 
 -- Maximum number of attempts to acquire a database connection on a retrying strategy
 maxReconnectionAttempts :: Word
-maxReconnectionAttempts = 5
+maxReconnectionAttempts = 3
 
 data NetworkParameters = NetworkParameters
     { networkMagic :: !NetworkMagic

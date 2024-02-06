@@ -204,7 +204,7 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
         & Warp.setBeforeMainLoop (logWith tr HttpServerListening{host,port})
 
     withDatabaseWrapped send connectionType action = do
-        retrying 1 0.05 $ handle onServerError (handle onAssertPointException (withDatabase connectionType action))
+        retrying 1 0.025 $ handle onServerError (handle onAssertPointException (withDatabase connectionType action))
       where
         onAssertPointException = \case
             ErrPointNotFound{} ->

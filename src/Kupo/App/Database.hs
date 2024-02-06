@@ -391,7 +391,10 @@ createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
     traceWith tr $ DatabaseConnection ConnectionCreateShortLived{mode}
     let open = Sqlite.open (mkConnectionString file mode)
     conn <- open
-    retryWhenBusy trConn (constantStrategy 0.25) 1 $ execute_ conn "PRAGMA cache_size = 1024"
+    let pragma = "PRAGMA cache_size = 1024"
+    handle
+        (\(_ :: SomeException) -> traceWith trConn ConnectionFailedPragma{pragma})
+        (execute_ conn (Query pragma))
     return $ mkDatabase trConn mode k (bracketConnection conn)
   where
     trConn :: Tracer IO TraceConnection
@@ -449,7 +452,7 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
         execute_ conn "PRAGMA page_size = 32768"
         execute_ conn "PRAGMA cache_size = 1024"
         execute_ conn "PRAGMA synchronous = NORMAL"
-        execute_ conn "PRAGMA journal_mode = TRUNCATE"
+        execute_ conn "PRAGMA journal_mode = WAL"
         execute_ conn "PRAGMA optimize"
         databaseVersion conn >>= runMigrations tr conn
         installIndexes tr conn deferIndexes
@@ -1426,6 +1429,9 @@ data TraceConnection where
     ConnectionRemoveIndex
         :: { indexName :: Text }
         -> TraceConnection
+    ConnectionFailedPragma
+        :: { pragma :: Text }
+        -> TraceConnection
     deriving stock (Generic, Show)
 
 instance ToJSON TraceConnection where
@@ -1452,6 +1458,7 @@ instance HasSeverityAnnotation TraceConnection where
         ConnectionCreatedTemporaryIndex{} -> Debug
         ConnectionRemoveTemporaryIndex{} -> Debug
         ConnectionRemoveIndex{} -> Warning
+        ConnectionFailedPragma{} -> Warning
 
 traceExecute
     :: ToRow q

@@ -213,7 +213,7 @@ kupoWith tr withProducer withFetchBlock =
     readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
         (createShortLivedConnection (tracerDatabase tr) ReadOnly lock longestRollback dbFile)
         (\Database{close} -> close)
-        30
+        600
         maxConcurrentReaders
 
     readWritePool <- liftIO $ newPool $ defaultPoolConfig
