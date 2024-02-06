@@ -69,7 +69,7 @@ metadataToText =
 metadataFromText :: Text -> Maybe Metadata
 metadataFromText txt = do
     bytes <- eitherToMaybe $ decodeBase16 (encodeUtf8 txt)
-    eitherToMaybe $ decodeCborAnn @BabbageEra "Metadata" decCBOR (toLazy bytes)
+    eitherToMaybe $ decodeCborAnn @ConwayEra "Metadata" decCBOR (toLazy bytes)
 
 metadataToJson :: Metadata -> Json.Encoding
 metadataToJson (AlonzoTxAuxData labels _ _) =
