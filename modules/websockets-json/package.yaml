@@ -24,7 +24,8 @@ library:
   source-dirs: src
   ghc-options: *ghc-options-lib
   dependencies:
-    - aeson
+    - aeson >= 2.2
+    - attoparsec-aeson >= 2.2
     - bytestring
     - connection
     - exceptions
