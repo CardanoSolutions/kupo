@@ -282,6 +282,7 @@ newHttpClientWith manager (serverHost, serverPort) log =
                     "native" -> Just "00"
                     "plutus:v1" -> Just "01"
                     "plutus:v2" -> Just "02"
+                    "plutus:v3" -> Just "03"
                     _ -> Nothing
                 scriptFromBytes (unsafeDecodeBase16 (prefix <> bytes))
 
