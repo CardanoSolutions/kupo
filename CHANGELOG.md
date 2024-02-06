@@ -1,3 +1,21 @@
+### [2.8.0] - UNRELEASED
+
+#### Added
+
+- Automatically restart and setup indexes when `--defer-db-indexes` is provide and the tip of the chain is reached.
+
+#### Changed
+
+- Integrate with `cardano-node==8.7.2` including the (preliminary) Conway era.
+
+- Reinstate WAL journal mode for SQLite main writer.
+
+- Fine-tune some internal constraints around database connections management for better performances.
+
+#### Remove
+
+- N/A
+
 ### [2.7.2] - 2023-12-09
 
 #### Added

@@ -101,6 +101,7 @@ import Kupo.Control.MonadLog
     , TracerDefinition (..)
     , defaultTracers
     , logWith
+    , traceWith
     , withTracers
     )
 import Kupo.Control.MonadSTM
@@ -114,12 +115,16 @@ import Kupo.Data.Cardano
     ( IsBlock
     , Point
     , Tip
+    , distanceToTip
+    , getPointSlotNo
     )
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler
     )
 import Kupo.Data.Configuration
     ( Configuration (..)
+    , DeferIndexesInstallation (..)
+    , NodeTipHasBeenReached (..)
     )
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
@@ -223,14 +228,29 @@ kupoWith tr withProducer withFetchBlock =
         maxConcurrentWriters
 
     let run action =
-            withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile deferIndexes action
-                `finally` do
-                    destroyAllResources readOnlyPool
-                    destroyAllResources readWritePool
+            handle
+                (\NodeTipHasBeenReached{distance} -> do
+                    traceWith (tracerKupo tr) KupoRestartingWithIndexes { distance }
+                    io InstallIndexesIfNotExist
+                )
+                (io deferIndexes)
+            where
+              io indexMode =
+                  withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile indexMode (action indexMode)
+                      `finally` do
+                           destroyAllResources readOnlyPool
+                           destroyAllResources readWritePool
 
-    liftIO $ handle (onUnknownException crashWith) $ run $ \db -> do
+
+    liftIO $ handle (onUnknownException crashWith) $ run $ \indexMode db -> do
         patterns <- newPatternsCache (tracerConfiguration tr) config db
-        let notifyTip = recordCheckpoint health
+        let notifyTip tip point = do
+                case indexMode of
+                    InstallIndexesIfNotExist -> pure ()
+                    SkipNonEssentialIndexes  -> do
+                        let distance = maybe maxBound (distanceToTip tip . getPointSlotNo) point
+                        when (distance <= 60) $ throwIO NodeTipHasBeenReached{ distance }
+                recordCheckpoint health tip point
         let statusToggle = connectionStatusToggle health
         let tracerChainSync =  contramap ConsumerChainSync . tracerConsumer
         withProducer $ \forceRollback mailbox producer -> do

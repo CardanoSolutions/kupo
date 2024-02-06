@@ -17,6 +17,7 @@ module Kupo.Data.Configuration
     , ChainProducer (..)
     , LongestRollback (..)
     , DeferIndexesInstallation (..)
+    , NodeTipHasBeenReached (..)
     , mailboxCapacity
     , pruneInputsMaxIncrement
     , maxReconnectionAttempts
@@ -160,6 +161,10 @@ data DeferIndexesInstallation
     = SkipNonEssentialIndexes
     | InstallIndexesIfNotExist
     deriving (Generic, Eq, Show)
+
+-- | A signal sent by the consumer once the tip of the chain has been reached.
+data NodeTipHasBeenReached = NodeTipHasBeenReached { distance :: Word64 } deriving (Generic, Eq, Show)
+instance Exception NodeTipHasBeenReached
 
 -- Mailbox's capacity, or how many messages can be enqueued in the queue between
 -- the consumer and the producer workers. More means faster synchronization (up

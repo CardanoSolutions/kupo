@@ -482,6 +482,9 @@ instance HasSeverityAnnotation TraceGardener where
 data TraceKupo where
     KupoExit
         :: TraceKupo
+    KupoRestartingWithIndexes
+        :: { distance :: Word64 }
+        -> TraceKupo
     KupoUnexpectedError
         :: { exception :: Text }
         -> TraceKupo
@@ -494,4 +497,5 @@ instance ToJSON TraceKupo where
 instance HasSeverityAnnotation TraceKupo where
     getSeverityAnnotation = \case
         KupoExit{} -> Debug
+        KupoRestartingWithIndexes{} -> Notice
         KupoUnexpectedError{} -> Error
