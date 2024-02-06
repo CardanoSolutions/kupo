@@ -90,6 +90,7 @@ import Database.SQLite.Simple
     , Query (..)
     , SQLData (..)
     , SQLError (..)
+    , SQLOpenFlag (..)
     , ToRow (..)
     , changes
     , execute
@@ -98,7 +99,7 @@ import Database.SQLite.Simple
     , nextRow
     , query_
     , totalChanges
-    , withConnection
+    , withConnection'
     , withStatement
     )
 import GHC.TypeLits
@@ -363,19 +364,19 @@ newDatabaseOnDiskFile tr onFileMissing dir = liftIO $ do
 mkConnectionString
     :: DatabaseFile
     -> ConnectionType
-    -> String
+    -> (String, [SQLOpenFlag])
 mkConnectionString filePath mode =
     case (filePath, mode) of
         (OnDisk fp, ReadOnly)  ->
-           "file:" <> fp <> "?mode=ro"
+           ("file:" <> fp, [SQLOpenReadOnly, SQLOpenNoMutex])
         (OnDisk fp, ReadWrite) ->
-           "file:" <> fp <> "?mode=rwc"
+           ("file:" <> fp, [SQLOpenReadWrite, SQLOpenNoMutex])
         (OnDisk fp, WriteOnly) ->
-           "file:" <> fp <> "?mode=rwc"
+           ("file:" <> fp, [SQLOpenReadWrite, SQLOpenNoMutex])
         (InMemory Nothing, _ ) ->
-           "file::kupo:?mode=memory&cache=shared"
+           ("file::kupo:?mode=memory&cache=shared", [])
         (InMemory (Just fp), _) ->
-            fp
+            (fp, [])
 
 -- | A short-lived connection meant to be used in a resource-pool. These connections can be opened
 -- either as read-only connection or read-write; depending on the client needs. Read-only connections
@@ -389,8 +390,8 @@ createShortLivedConnection
     -> IO (Database IO)
 createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
     traceWith tr $ DatabaseConnection ConnectionCreateShortLived{mode}
-    let open = Sqlite.open (mkConnectionString file mode)
-    conn <- open
+    let (str, flags) = mkConnectionString file mode
+    conn <- Sqlite.open' str flags
     let pragma = "PRAGMA cache_size = 1024"
     handle
         (\(_ :: SomeException) -> traceWith trConn ConnectionFailedPragma{pragma})
@@ -448,7 +449,8 @@ withLongLivedConnection
     -> (Database IO -> IO a)
     -> IO a
 withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes action = do
-    withConnection (mkConnectionString file ReadWrite) $ \conn -> do
+    let (str, flags) = mkConnectionString file ReadWrite
+    withConnection' str flags $ \conn -> do
         execute_ conn "PRAGMA page_size = 32768"
         execute_ conn "PRAGMA cache_size = 1024"
         execute_ conn "PRAGMA synchronous = NORMAL"
@@ -476,7 +478,8 @@ withWriteOnlyConnection
     -> (Sqlite.Connection -> Database IO -> IO a)
     -> IO a
 withWriteOnlyConnection file action = do
-    withConnection (mkConnectionString file WriteOnly) $ \conn -> do
+    let (str, flags) = mkConnectionString file WriteOnly
+    withConnection' str flags $ \conn -> do
         databaseVersion conn >>= runMigrations nullTracer conn
         installIndexes nullTracer conn SkipNonEssentialIndexes
         execute_ conn "PRAGMA synchronous = OFF"
