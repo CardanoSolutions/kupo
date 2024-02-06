@@ -366,17 +366,18 @@ mkConnectionString
     -> ConnectionType
     -> (String, [SQLOpenFlag])
 mkConnectionString filePath mode =
-    case (filePath, mode) of
-        (OnDisk fp, ReadOnly)  ->
-           ("file:" <> fp, [SQLOpenReadOnly, SQLOpenNoMutex])
-        (OnDisk fp, ReadWrite) ->
-           ("file:" <> fp, [SQLOpenReadWrite, SQLOpenNoMutex])
-        (OnDisk fp, WriteOnly) ->
-           ("file:" <> fp, [SQLOpenReadWrite, SQLOpenNoMutex])
-        (InMemory Nothing, _ ) ->
-           ("file::kupo:?mode=memory&cache=shared", [])
-        (InMemory (Just fp), _) ->
-            (fp, [])
+    case filePath of
+        OnDisk fp ->
+            ("file:" <> fp, SQLOpenNoMutex : openFlags)
+        InMemory Nothing ->
+            ("file::kupo:?mode=memory&cache=shared", openFlags)
+        InMemory (Just fp) ->
+            (fp, SQLOpenMemory : openFlags)
+  where
+    openFlags = case mode of
+        ReadOnly  -> [SQLOpenReadOnly]
+        ReadWrite -> [SQLOpenReadWrite, SQLOpenCreate]
+        WriteOnly -> [SQLOpenReadWrite, SQLOpenCreate]
 
 -- | A short-lived connection meant to be used in a resource-pool. These connections can be opened
 -- either as read-only connection or read-write; depending on the client needs. Read-only connections
