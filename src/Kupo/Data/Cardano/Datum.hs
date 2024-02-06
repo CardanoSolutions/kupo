@@ -17,20 +17,20 @@ data Datum
     | Inline !(Either DatumHash BinaryData)
     deriving (Generic, Show, Eq, Ord)
 
-toBabbageDatum
+toConwayDatum
     :: Datum
-    -> Ledger.Datum (BabbageEra StandardCrypto)
-toBabbageDatum = \case
+    -> Ledger.Datum (ConwayEra StandardCrypto)
+toConwayDatum = \case
     NoDatum -> Ledger.NoDatum
     Reference (Left ref) -> Ledger.DatumHash ref
     Reference (Right bin) -> Ledger.Datum bin
     Inline (Left ref) -> Ledger.DatumHash ref
     Inline (Right bin) -> Ledger.Datum bin
 
-fromBabbageDatum
-    :: Ledger.Datum (BabbageEra StandardCrypto)
+fromConwayDatum
+    :: Ledger.Datum (ConwayEra StandardCrypto)
     -> Datum
-fromBabbageDatum = \case
+fromConwayDatum = \case
     Ledger.NoDatum -> NoDatum
     Ledger.DatumHash ref -> Reference (Left ref)
     Ledger.Datum bin -> Inline (Right bin)
