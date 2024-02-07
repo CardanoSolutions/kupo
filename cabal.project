@@ -77,7 +77,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/direct-sqlite
-  --sha256: 1r1g6nf65d9n436ppcjky3gkywpnx4y0a3v88ddngchmf8za3qky
+  --sha256: 1lwaariy0zjjh006ll1zbpdi9sphyqmcbbxhb0rj99nii5s91fd7
   tag: 2b14a78cb73805e2e5d84354230e872a223faa39
 
 source-repository-package
