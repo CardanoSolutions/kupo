@@ -3,7 +3,7 @@
 ## Specifications
 
 - Hardware: MacBook Pro (2021), Apple M1 Max (16-core), 32 GB
-- Version: 2.6.0
+- Version: 2.8.0
 
 ## Parameters
 
@@ -14,15 +14,14 @@ Benchmarks are conducted on a local Kupo instance, using [`oha`](https://github.
 
 ## Dataset
 
-The data source used for benchmarks is the pruned mainnet database matching on `*` from genesis until around slot = 98,555,773 (~ July 23rd, 2023)
-
-It contains a grand total of 10,526,277 indexed outputs and 18,382,599 transactions with native tokens.
+The data source used for the benchmarks is the pruned mainnet database matching on `*` from genesis until around slot = 115,816,544 (~ Feb 8th, 2024)
+It contains a grand total of 11,406,779 indexed outputs, 91,641 unique token policies and 13,592,035 datums.
 
 ## Results
 
 #### stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6
 
-##### [default]
+`[default]`
 
 <table>
 <tr>
@@ -57,7 +56,7 @@ Average:        5.3138 s
 </tr>
 </table>
 
-##### ?spent_after=98245654
+`?spent_after=98245654`
 
 <table>
 <tr>
@@ -94,7 +93,7 @@ Average:          0.6686 s
 
 #### 1d7f33bd23d85e1a25d87d86fac4f199c3197a2f7afeb662a0f34e1e.\*
 
-##### [default]
+`[default]`
 
 <table>
 <tr>
@@ -129,7 +128,7 @@ Average:        2.5943 s
 </tr>
 </table>
 
-##### ?created_before=98245654&spent_after=98764054
+`?created_before=98245654&spent_after=98764054`
 
 <table>
 <tr>
@@ -166,7 +165,7 @@ Average:        1.2034 s
 
 #### addr1v94725lv4umktv89cg2t04qjn4qq3p6l6zegvtx5esu2zuqfd487u
 
-##### [default]
+`[default]`
 
 <table>
 <tr>
@@ -201,7 +200,7 @@ Average:        0.1349 s
 </tr>
 </table>
 
-##### ?created_after=98677654&created_before=98764054
+`?created_after=98677654&created_before=98764054`
 
 <table>
 <tr>
@@ -239,7 +238,7 @@ Average:        0.0616 s
 
 #### \*@4301551ce28e83ef1082432f57a13bbbd389f4628592b73d71ca19e8833c0eb7
 
-##### [default]
+`[default]`
 
 <table>
 <tr>

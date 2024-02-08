@@ -204,7 +204,10 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
         & Warp.setBeforeMainLoop (logWith tr HttpServerListening{host,port})
 
     withDatabaseWrapped send connectionType action = do
-        retrying 1 0.025 $ handle onServerError (handle onAssertPointException (withDatabase connectionType action))
+        retrying 1 0.025
+            $ handle onServerError
+            $ handle onAssertPointException
+            $ withDatabase connectionType action
       where
         onAssertPointException = \case
             ErrPointNotFound{} ->
@@ -222,7 +225,7 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
             Nothing | attempts > maxReconnectionAttempts ->
                 send Errors.serviceUnavailable
             Nothing -> do
-                logWith tr $ HttpFailedToOpenDatabaseConnection { attempts, retryingIn }
+                logWith tr $ HttpFailedToAcquireDatabaseConnection { attempts, retryingIn }
                 threadDelay retryingIn >> retrying (next attempts) (2 * retryingIn) io
 
 --
@@ -902,7 +905,7 @@ data TraceHttpServer where
     HttpServerListening
         :: { host :: String, port :: Int }
         -> TraceHttpServer
-    HttpFailedToOpenDatabaseConnection
+    HttpFailedToAcquireDatabaseConnection
         :: { attempts :: Word, retryingIn :: DiffTime }
         -> TraceHttpServer
     HttpRequest
@@ -916,8 +919,8 @@ data TraceHttpServer where
 instance HasSeverityAnnotation TraceHttpServer where
     getSeverityAnnotation = \case
         HttpUnexpectedError{} -> Error
-        HttpFailedToOpenDatabaseConnection{attempts} | attempts < maxReconnectionAttempts -> Debug
-        HttpFailedToOpenDatabaseConnection{} -> Warning
+        HttpFailedToAcquireDatabaseConnection{attempts} | attempts < maxReconnectionAttempts -> Debug
+        HttpFailedToAcquireDatabaseConnection{} -> Warning
         HttpServerListening{} -> Notice
         HttpRequest{} -> Info
         HttpResponse{} -> Info

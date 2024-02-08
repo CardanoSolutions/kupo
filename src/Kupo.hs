@@ -206,7 +206,7 @@ kupoWith tr withProducer withFetchBlock =
             }
         } <- ask
 
-    (maxConcurrentWriters, maxConcurrentReaders) <- liftIO getNumCapabilities <&> \n -> (n,  10 + 5 * n)
+    (maxConcurrentWriters, maxConcurrentReaders) <- liftIO getNumCapabilities <&> \n -> (n,  5 * n)
 
     liftIO $ logWith (tracerConfiguration tr) $
         ConfigurationMaxConcurrency { maxConcurrentReaders, maxConcurrentWriters }

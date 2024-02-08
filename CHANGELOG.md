@@ -14,7 +14,7 @@
 
 #### Remove
 
-- N/A
+- 'Content-Length' header on some of the server responses which turned out to be already handled by the underlying server when necessary (according to the original HTTP specification).
 
 ### [2.7.2] - 2023-12-09
 

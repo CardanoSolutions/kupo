@@ -18,7 +18,6 @@ import GHC.Weak
     )
 import Network.HTTP.Types.Header
     ( Header
-    , hContentLength
     )
 import Network.HTTP.Types.Status
     ( status200
@@ -31,7 +30,6 @@ import Network.Wai
 
 import qualified Data.Aeson as Json
 import qualified Data.Binary.Builder as B
-import qualified Data.ByteString.Lazy as BL
 import qualified Network.HTTP.Types.Status as Http
 
 responseJsonEncoding
@@ -42,10 +40,10 @@ responseJsonEncoding
 responseJsonEncoding status headers a =
     let
         bytes = B.toLazyByteString $ Json.fromEncoding a
-        len = BL.length bytes
-        contentLength = ( hContentLength, encodeUtf8 (show @Text len) )
+        -- len = BL.length bytes
+        -- contentLength = ( hContentLength, encodeUtf8 (show @Text len) )
      in
-        responseLBS status (contentLength : headers) bytes
+        responseLBS status headers bytes
 {-# INLINEABLE responseJsonEncoding #-}
 
 responseJson

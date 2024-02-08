@@ -391,12 +391,16 @@ createShortLivedConnection
     -> IO (Database IO)
 createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
     traceWith tr $ DatabaseConnection ConnectionCreateShortLived{mode}
+
     let (str, flags) = mkConnectionString file mode
-    conn <- Sqlite.open' str flags
-    let pragma = "PRAGMA cache_size = 1024"
-    handle
-        (\(_ :: SomeException) -> traceWith trConn ConnectionFailedPragma{pragma})
-        (execute_ conn (Query pragma))
+
+    !conn <- Sqlite.open' str flags
+
+    forM_ ["PRAGMA cache_size = 1024"] $ \pragma ->
+        handle
+            (\(_ :: SomeException) -> traceWith trConn ConnectionFailedPragma{pragma})
+            (execute_ conn (Query pragma))
+
     return $ mkDatabase trConn mode k (bracketConnection conn)
   where
     trConn :: Tracer IO TraceConnection
@@ -1103,7 +1107,14 @@ retryWhenBusy tr retryPolicy attempts action =
             traceWith tr $ ConnectionBusy { attempts, retryingIn }
             threadDelay retryingIn
             retryWhenBusy tr retryPolicy (next attempts) action
-        _otherError ->
+        ErrorCan'tOpen -> do
+            let hint = "Failed to open the database file; this is usually due to \
+                       \the operating system limiting the number of file descriptors \
+                       \opened at the same time. Depending on your OS, you may want \
+                       \to increase it (see 'ulimit' and 'limit')."
+            traceWith tr $ ConnectionFailedToOpenDatabase { hint }
+            throwIO e
+        _otherError -> do
             throwIO e
     )
   where
@@ -1436,6 +1447,9 @@ data TraceConnection where
     ConnectionFailedPragma
         :: { pragma :: Text }
         -> TraceConnection
+    ConnectionFailedToOpenDatabase
+        :: { hint :: Text }
+        -> TraceConnection
     deriving stock (Generic, Show)
 
 instance ToJSON TraceConnection where
@@ -1463,6 +1477,7 @@ instance HasSeverityAnnotation TraceConnection where
         ConnectionRemoveTemporaryIndex{} -> Debug
         ConnectionRemoveIndex{} -> Warning
         ConnectionFailedPragma{} -> Warning
+        ConnectionFailedToOpenDatabase{} -> Error
 
 traceExecute
     :: ToRow q
