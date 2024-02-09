@@ -39,6 +39,7 @@ module Kupo.App.Database
     , newDatabaseFile
     , createShortLivedConnection
     , withLongLivedConnection
+    , withShortLivedConnection
     , copyDatabase
     , Connection
     , ConnectionType (..)

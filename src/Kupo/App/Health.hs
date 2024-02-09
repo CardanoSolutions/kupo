@@ -16,8 +16,9 @@ import Kupo.Control.MonadSTM
     )
 import Kupo.Data.Cardano
     ( Point
-    , Tip
-    , getTipSlotNo
+    )
+import Kupo.Data.Cardano.SlotNo
+    ( SlotNo
     )
 import Kupo.Data.Health
     ( ConnectionStatus (..)
@@ -56,10 +57,10 @@ recordCheckpoint
         ( MonadSTM m
         )
     => TVar m Health
-    -> Tip
+    -> SlotNo
     -> Maybe Point
     -> m ()
-recordCheckpoint health (Just . getTipSlotNo -> mostRecentNodeTip) mostRecentCheckpoint =
+recordCheckpoint health (Just -> mostRecentNodeTip) mostRecentCheckpoint =
     atomically $ modifyTVar' health $ \h -> h
         { mostRecentNodeTip
         , mostRecentCheckpoint

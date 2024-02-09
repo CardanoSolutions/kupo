@@ -177,12 +177,14 @@ import qualified Network.Wai.Handler.Warp as Warp
 -- Server
 --
 
+type WithDatabase m res = ConnectionType -> (Database m -> m res) -> m (Maybe res)
+
 httpServer
     :: forall block.
         ( IsBlock block
         )
     => Tracer IO TraceHttpServer
-    -> (ConnectionType -> (Database IO -> IO ResponseReceived) -> IO (Maybe ResponseReceived))
+    -> WithDatabase IO ResponseReceived
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)

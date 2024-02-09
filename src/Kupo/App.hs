@@ -13,9 +13,14 @@ module Kupo.App
 
       -- * Consumer
     , consumer
+    , readOnlyConsumer
 
       -- * Gardener
     , gardener
+
+      -- * Utils
+    , idle
+    , mkNotifyTip
 
       -- * Tracers
     , TraceConsumer (..)
@@ -36,6 +41,9 @@ import Kupo.App.Configuration
 import Kupo.App.Database
     ( DBTransaction
     , Database (..)
+    )
+import Kupo.App.Health
+    ( recordCheckpoint
     )
 import Kupo.App.Mailbox
     ( Mailbox
@@ -78,6 +86,7 @@ import Kupo.Data.Cardano
     , distanceToTip
     , getPoint
     , getPointSlotNo
+    , getTipSlotNo
     , pattern GenesisPoint
     )
 import Kupo.Data.ChainSync
@@ -87,9 +96,11 @@ import Kupo.Data.ChainSync
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
+    , DeferIndexesInstallation (..)
     , InputManagement (..)
     , LongestRollback (..)
     , NetworkParameters (..)
+    , NodeTipHasBeenReached (..)
     , mailboxCapacity
     , pruneInputsMaxIncrement
     )
@@ -101,6 +112,9 @@ import Kupo.Data.Database
     )
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
+    )
+import Kupo.Data.Health
+    ( Health
     )
 import Kupo.Data.PartialBlock
     ( PartialBlock
@@ -144,7 +158,7 @@ newProducer
     -> IO ()
 newProducer tr chainProducer callback = do
     forcedRollbackVar <- newEmptyTMVarIO
-    let forcedRollbackCallback = \point handler ->
+    let forcedRollbackCallback point handler =
             atomically (putTMVar forcedRollbackVar (point, handler))
 
     case chainProducer of
@@ -360,6 +374,22 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
         unstableWindow =
             getLongestRollback longestRollback
 
+readOnlyConsumer
+    :: forall m.
+        ( MonadSTM m
+        , MonadDelay m
+        )
+    => TVar m Health
+    -> Database m
+    -> m Void
+readOnlyConsumer health Database{..} = do
+    forever $ do
+        mostRecentCheckpoint <- runTransaction listCheckpointsDesc <&> \case
+            []  -> Nothing
+            h:_ -> Just h
+        recordCheckpoint health (maybe 0 getPointSlotNo mostRecentCheckpoint) mostRecentCheckpoint
+        threadDelay 5
+
 -- | Periodically garbage collect the database from entries that aren't of
 -- interest. This is mainly the case for:
 --
@@ -423,6 +453,28 @@ gardener tr config patterns withDatabase = forever $ do
                 logWith tr GardenerPrunedIncrement { prunedRows }
                 incrementally action
         return (prunedRows + prunedRows')
+
+--
+-- Utils
+--
+
+idle :: (MonadDelay m) => m Void
+idle = forever (threadDelay 86400)
+
+mkNotifyTip
+    :: (MonadThrow m, MonadSTM m)
+    => DeferIndexesInstallation
+    -> TVar m Health
+    -> Tip
+    -> Maybe Point
+    -> m ()
+mkNotifyTip indexMode health tip point = do
+    case indexMode of
+        InstallIndexesIfNotExist -> pure ()
+        SkipNonEssentialIndexes  -> do
+            let distance = maybe maxBound (distanceToTip tip . getPointSlotNo) point
+            when (distance <= 60) $ throwIO NodeTipHasBeenReached{ distance }
+    recordCheckpoint health (getTipSlotNo tip) point
 
 --
 -- Tracer

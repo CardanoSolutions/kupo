@@ -57,7 +57,10 @@ import Kupo.App
     , TraceKupo (..)
     , consumer
     , gardener
+    , idle
+    , mkNotifyTip
     , newProducer
+    , readOnlyConsumer
     , withFetchBlockClient
     )
 import Kupo.App.ChainSync
@@ -76,12 +79,12 @@ import Kupo.App.Database
     , newDatabaseFile
     , newLock
     , withLongLivedConnection
+    , withShortLivedConnection
     )
 import Kupo.App.Health
     ( connectionStatusToggle
     , initializeHealth
     , readHealth
-    , recordCheckpoint
     )
 import Kupo.App.Http
     ( healthCheck
@@ -115,8 +118,6 @@ import Kupo.Data.Cardano
     ( IsBlock
     , Point
     , Tip
-    , distanceToTip
-    , getPointSlotNo
     )
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler
@@ -125,6 +126,7 @@ import Kupo.Data.Configuration
     ( Configuration (..)
     , DeferIndexesInstallation (..)
     , NodeTipHasBeenReached (..)
+    , OperationalMode (..)
     )
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
@@ -203,6 +205,7 @@ kupoWith tr withProducer withFetchBlock =
             , inputManagement
             , longestRollback
             , deferIndexes
+            , operationalMode
             }
         } <- ask
 
@@ -228,29 +231,40 @@ kupoWith tr withProducer withFetchBlock =
         maxConcurrentWriters
 
     let run action =
-            handle
-                (\NodeTipHasBeenReached{distance} -> do
-                    traceWith (tracerKupo tr) KupoRestartingWithIndexes { distance }
-                    io InstallIndexesIfNotExist
-                )
-                (io deferIndexes)
-            where
-              io indexMode =
-                  withLongLivedConnection (tracerDatabase tr) lock longestRollback dbFile indexMode (action indexMode)
-                      `finally` do
-                           destroyAllResources readOnlyPool
-                           destroyAllResources readWritePool
-
+            case operationalMode of
+                FullServer ->
+                    handle
+                        (\NodeTipHasBeenReached{distance} -> do
+                            traceWith (tracerKupo tr) KupoRestartingWithIndexes { distance }
+                            io InstallIndexesIfNotExist
+                        )
+                        (io deferIndexes)
+                  where
+                    io indexMode =
+                        withLongLivedConnection
+                            (tracerDatabase tr)
+                            lock
+                            longestRollback
+                            dbFile
+                            indexMode
+                            (action indexMode)
+                          `finally` do
+                               destroyAllResources readOnlyPool
+                               destroyAllResources readWritePool
+                ReadOnlyReplica ->
+                    -- NOTE: 'ShortLived' is a bad name here. What it really means is 'occasional
+                    -- writers but mostly readers'. However, in the 'ReadOnlyReplica' mode we only
+                    -- ever allow read-only connections and never perform a single write.
+                    withShortLivedConnection
+                        (tracerDatabase tr)
+                        ReadOnly
+                        lock
+                        longestRollback
+                        dbFile
+                        (action indexMode)
 
     liftIO $ handle (onUnknownException crashWith) $ run $ \indexMode db -> do
         patterns <- newPatternsCache (tracerConfiguration tr) config db
-        let notifyTip tip point = do
-                case indexMode of
-                    InstallIndexesIfNotExist -> pure ()
-                    SkipNonEssentialIndexes  -> do
-                        let distance = maybe maxBound (distanceToTip tip . getPointSlotNo) point
-                        when (distance <= 60) $ throwIO NodeTipHasBeenReached{ distance }
-                recordCheckpoint health tip point
         let statusToggle = connectionStatusToggle health
         let tracerChainSync =  contramap ConsumerChainSync . tracerConsumer
         withProducer $ \forceRollback mailbox producer -> do
@@ -260,9 +274,16 @@ kupoWith tr withProducer withFetchBlock =
                     ( httpServer
                         (tracerHttp tr)
                         (\case
-                            ReadOnly  -> tryWithResource readOnlyPool
-                            ReadWrite -> tryWithResource readWritePool
-                            WriteOnly -> const (fail "impossible: tried to acquire WriteOnly database?")
+                            ReadOnly  ->
+                                tryWithResource readOnlyPool
+                            ReadWrite ->
+                                case operationalMode of
+                                    FullServer ->
+                                        tryWithResource readWritePool
+                                    ReadOnlyReplica ->
+                                        const (fail "cannot acquire read/write connection on read-only replica.")
+                            WriteOnly ->
+                                const (fail "impossible: tried to acquire WriteOnly database?")
                         )
                         forceRollback
                         fetchBlock
@@ -273,31 +294,45 @@ kupoWith tr withProducer withFetchBlock =
                     )
 
                     -- Block consumer fueling the database
-                    ( consumer
-                        (tracerConsumer tr)
-                        inputManagement
-                        notifyTip
-                        mailbox
-                        patterns
-                        db
+                    ( case operationalMode of
+                        FullServer ->
+                            consumer
+                                (tracerConsumer tr)
+                                inputManagement
+                                (mkNotifyTip indexMode health)
+                                mailbox
+                                patterns
+                                db
+                        ReadOnlyReplica ->
+                            readOnlyConsumer
+                                health
+                                db
                     )
 
                     -- Database garbage-collector
-                    ( gardener
-                        (tracerGardener tr)
-                        config
-                        patterns
-                        (withResource readWritePool)
+                    ( case operationalMode of
+                        FullServer ->
+                            gardener
+                                (tracerGardener tr)
+                                config
+                                patterns
+                                (withResource readWritePool)
+                        ReadOnlyReplica ->
+                            idle
                     )
 
                     -- Block producer, fetching blocks from the network
-                    ( withChainSyncExceptionHandler (tracerChainSync tr) statusToggle $ do
-                        (mostRecentCheckpoint, checkpoints) <- startOrResume (tracerConfiguration tr) config db
-                        initializeHealth health mostRecentCheckpoint
-                        producer
-                            (tracerChainSync tr)
-                            checkpoints
-                            statusToggle
+                    ( case operationalMode of
+                        FullServer ->
+                            withChainSyncExceptionHandler (tracerChainSync tr) statusToggle $ do
+                                (mostRecentCheckpoint, checkpoints) <- startOrResume (tracerConfiguration tr) config db
+                                initializeHealth health mostRecentCheckpoint
+                                producer
+                                    (tracerChainSync tr)
+                                    checkpoints
+                                    statusToggle
+                        ReadOnlyReplica ->
+                            idle
                     )
 
   where
