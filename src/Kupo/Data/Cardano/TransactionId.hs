@@ -20,6 +20,9 @@ class HasTransactionId (a :: Type) (crypto :: Type) where
         :: a
         -> TransactionId' crypto
 
+instance HasTransactionId Void crypto where
+    getTransactionId = absurd
+
 instance HasTransactionId (Ledger.TxIn crypto) crypto where
     getTransactionId (Ledger.TxIn i _) = i
 

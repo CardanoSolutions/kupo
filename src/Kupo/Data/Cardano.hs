@@ -141,6 +141,16 @@ class HasTransactionId (BlockBody block) StandardCrypto => IsBlock (block :: Typ
 
 -- Block
 
+instance IsBlock Void where
+    type BlockBody Void = Void
+    getPoint = absurd
+    foldBlock _ _ = absurd
+    spentInputs = absurd
+    mapMaybeOutputs _ = absurd
+    witnessedDatums = absurd
+    witnessedScripts = absurd
+    userDefinedMetadata = absurd
+
 instance IsBlock Block where
     type BlockBody Block = Transaction
 

@@ -172,9 +172,6 @@ import Type.Reflection
 import Control.Monad.Class.MonadThrow
     ( throwIO
     )
-import Kupo.Data.Configuration
-    ( OperationalMode (..)
-    )
 import System.IO
     ( hClose
     , hGetLine
@@ -293,6 +290,8 @@ spec = skippableContext "End-to-end" $ do
             , patterns = fromList [MatchAny OnlyShelley]
             , chainProducer =
                 case chainProducer defaultCfg of
+                    ReadOnlyReplica ->
+                        ReadOnlyReplica
                     CardanoNode{nodeConfig} ->
                         CardanoNode
                             { nodeSocket = "/dev/null"
@@ -553,7 +552,6 @@ skippableContext prefix skippableSpec = do
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
                     , deferIndexes = InstallIndexesIfNotExist
-                    , operationalMode = FullServer
                     }
             context cardanoNode $ around (withTempDirectory manager ref defaultCfg) skippableSpec
         _skipOtherwise ->
@@ -575,7 +573,6 @@ skippableContext prefix skippableSpec = do
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
                     , deferIndexes = InstallIndexesIfNotExist
-                    , operationalMode = FullServer
                     }
             context ogmios $ around (withTempDirectory manager ref defaultCfg) skippableSpec
         _skipOtherwise ->
@@ -597,7 +594,6 @@ skippableContext prefix skippableSpec = do
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
                     , deferIndexes = InstallIndexesIfNotExist
-                    , operationalMode = FullServer
                     }
             context hydra $ around (withTempDirectory manager ref defaultCfg) skippableSpec
         _skipOtherwise ->

@@ -100,7 +100,8 @@ import Kupo.Data.Configuration
     , InputManagement (..)
     , LongestRollback (..)
     , NetworkParameters (..)
-    , NodeTipHasBeenReached (..)
+    , NodeTipHasBeenReachedException (..)
+    , UnableToFetchBlockFromReadOnlyReplicaException (..)
     , mailboxCapacity
     , pruneInputsMaxIncrement
     )
@@ -162,6 +163,10 @@ newProducer tr chainProducer callback = do
             atomically (putTMVar forcedRollbackVar (point, handler))
 
     case chainProducer of
+        ReadOnlyReplica -> do
+            mailbox <- atomically (newMailbox mailboxCapacity)
+            callback @Void forcedRollbackCallback mailbox $ \_ _ _ -> pure ()
+
         Ogmios{ogmiosHost, ogmiosPort} -> do
             logWith tr ConfigurationOgmios{ogmiosHost, ogmiosPort}
             mailbox <- atomically (newMailbox mailboxCapacity)
@@ -259,6 +264,8 @@ withFetchBlockClient
     -> IO ()
 withFetchBlockClient chainProducer callback = do
     case chainProducer of
+        ReadOnlyReplica{} ->
+            callback @Void (\_point _respond -> throwIO UnableToFetchBlockFromReadOnlyReplica)
         Ogmios{ogmiosHost, ogmiosPort} ->
             Ogmios.withFetchBlockClient ogmiosHost ogmiosPort callback
         Hydra{} ->

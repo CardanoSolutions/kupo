@@ -67,7 +67,6 @@ import Kupo.Data.Configuration
     , Configuration (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
-    , OperationalMode (..)
     , WorkDir (..)
     )
 import Kupo.Data.Pattern
@@ -135,7 +134,6 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> pure 129600 -- TODO: should be pulled from genesis parameters
                     <*> garbageCollectionIntervalOption
                     <*> deferIndexesOption
-                    <*> operationalModeOption
                 )
             <*> (tracersOption <|> Tracers
                     <$> fmap Const (logLevelOption "http-server")
@@ -158,7 +156,7 @@ parserInfo = info (helper <*> parser) $ mempty
 
 chainProducerOption :: Parser ChainProducer
 chainProducerOption =
-    cardanoNodeOptions <|> ogmiosOptions <|> hydraOptions
+    cardanoNodeOptions <|> ogmiosOptions <|> hydraOptions <|> readOnlyReplicaFlag
   where
     cardanoNodeOptions = CardanoNode
         <$> nodeSocketOption
@@ -302,11 +300,12 @@ deferIndexesOption = flag InstallIndexesIfNotExist SkipNonEssentialIndexes $ mem
             \queries considerably slower."
 
 -- | [--read-only]
-operationalModeOption :: Parser OperationalMode
-operationalModeOption = flag FullServer ReadOnlyReplica $ mempty
+readOnlyReplicaFlag :: Parser ChainProducer
+readOnlyReplicaFlag = flag' ReadOnlyReplica $ mempty
     <> long "read-only"
     <> help "Start this Kupo instance as a read-only replica. It will only read from the database. \
-            \Requires a master write server to keep it synchronized."
+            \Requires a master write server to keep it synchronized. Note: replicas cannot access \
+            \transactions metadata."
 
 -- | [--log-level-{COMPONENT}=SEVERITY], default: Info
 logLevelOption :: Text -> Parser (Maybe Severity)

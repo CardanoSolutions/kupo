@@ -17,11 +17,14 @@ module Kupo.Data.Configuration
     , ChainProducer (..)
     , LongestRollback (..)
     , DeferIndexesInstallation (..)
-    , NodeTipHasBeenReached (..)
-    , OperationalMode (..)
     , mailboxCapacity
     , pruneInputsMaxIncrement
     , maxReconnectionAttempts
+    , isReadOnlyReplica
+
+    -- * Signals
+    , NodeTipHasBeenReachedException (..)
+    , UnableToFetchBlockFromReadOnlyReplicaException (..)
 
     -- * NetworkParameters
     , NetworkParameters (..)
@@ -66,7 +69,7 @@ import qualified Data.Aeson as Json
 
 -- | Application-level configuration.
 data Configuration = Configuration
-    { chainProducer :: ChainProducer
+    { chainProducer :: !ChainProducer
         -- ^ Where the data comes from: cardano-node, ogmios, or hydra
         --
         -- NOTE: There's no bang pattern on this field because we do not want it
@@ -97,9 +100,15 @@ data Configuration = Configuration
         --
         -- Non-essential refers to indexes that make query faster but that aren't
         -- necessary for the application to synchronize at high speed.
-    , operationalMode :: !OperationalMode
-        -- ^ Whether this is a read-only replica or a full server.
     } deriving (Generic, Eq, Show)
+
+isReadOnlyReplica :: Configuration -> Bool
+isReadOnlyReplica Configuration{chainProducer} =
+    case chainProducer of
+        CardanoNode{} -> False
+        Ogmios{} -> False
+        Hydra{} -> False
+        ReadOnlyReplica{} -> True
 
 -- | Where does kupo pulls its data from. Both 'cardano-node' and 'ogmios' are
 -- equivalent in the capabilities and information they offer; a cardano-node
@@ -120,6 +129,12 @@ data ChainProducer
         { hydraHost :: !String
         , hydraPort :: !Int
         }
+    | ReadOnlyReplica
+        -- ^ A read-only replica will only watch the database and do not require a connection to the
+        -- network. Such a replica therefore needs to be combined with a main writer. This would allow
+        -- horizontally scaling kupo more easily, as new replicas can be added so long as the
+        -- file-system supports it. Ultimately, the work that can be done on a single database file is
+        -- bounded by the CPU capabilities and the I/O read access.
     deriving (Generic, Eq, Show)
 
 -- | Database working directory. 'in-memory' runs the database in hot memory,
@@ -165,15 +180,21 @@ data DeferIndexesInstallation
     | InstallIndexesIfNotExist
     deriving (Generic, Eq, Show)
 
--- | Control the operation mode of Kupo. A read-only replica will only watch the database and do not require a connection to the network. Such a replica therefore needs to be combined with a main writer. This would allow horizontally scaling kupo more easily, as new replicas can be added so long as the file-system supports it. Ultimately, the work that can be done on a single database file is bounded by the CPU capabilities and the I/O read access.
-data OperationalMode
-    = ReadOnlyReplica
-    | FullServer
-    deriving (Generic, Eq, Show)
-
 -- | A signal sent by the consumer once the tip of the chain has been reached.
-data NodeTipHasBeenReached = NodeTipHasBeenReached { distance :: Word64 } deriving (Generic, Eq, Show)
-instance Exception NodeTipHasBeenReached
+data NodeTipHasBeenReachedException = NodeTipHasBeenReached
+    { distance :: Word64
+    } deriving (Generic, Eq, Show)
+instance Exception NodeTipHasBeenReachedException
+
+-- | An exception which occurs when a client tries to fetch metadata from a read-only replicas.
+data UnableToFetchBlockFromReadOnlyReplicaException = UnableToFetchBlockFromReadOnlyReplica
+    deriving (Generic, Eq, Show)
+instance Exception UnableToFetchBlockFromReadOnlyReplicaException where
+    displayException _ =
+        "An attempt to fetch a block from a read-only replica has occured likely \
+        \caused by a request to access transaction metadata. This is, unfortunately, \
+        \not a possible operation from a read-only replica. Only the master server \
+        \can do that."
 
 -- Mailbox's capacity, or how many messages can be enqueued in the queue between
 -- the consumer and the producer workers. More means faster synchronization (up

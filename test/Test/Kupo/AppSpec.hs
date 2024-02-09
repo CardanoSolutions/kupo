@@ -109,11 +109,11 @@ import Kupo.Data.ChainSync
     ( ForcedRollbackHandler
     )
 import Kupo.Data.Configuration
-    ( Configuration (..)
+    ( ChainProducer (..)
+    , Configuration (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
     , LongestRollback (..)
-    , OperationalMode (..)
     , WorkDir (..)
     , mailboxCapacity
     )
@@ -249,18 +249,20 @@ spec = do
                 (cleanup chan)
            forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
               let config = Configuration
-                   { chainProducer = error "chainProducer: unused."
-                   , workDir = InMemory
-                   , serverHost
-                   , serverPort
-                   , since = Just GenesisPoint
-                   , patterns = fromList [MatchAny IncludingBootstrap]
-                   , inputManagement
-                   , longestRollback
-                   , garbageCollectionInterval
-                   , deferIndexes
-                   , operationalMode = FullServer
-                   }
+                      { chainProducer = CardanoNode -- NOTE: unused, but must be different than ReadOnlyReplica
+                          { nodeSocket = "/dev/null"
+                          , nodeConfig = "/dev/null"
+                          }
+                      , workDir = InMemory
+                      , serverHost
+                      , serverPort
+                      , since = Just GenesisPoint
+                      , patterns = fromList [MatchAny IncludingBootstrap]
+                      , inputManagement
+                      , longestRollback
+                      , garbageCollectionInterval
+                      , deferIndexes
+                      }
               env <- run (newEnvironment config)
               producer <- run (newMockProducer httpClient <$> atomically (dupTChan chan))
               fetchBlock <- run (newMockFetchBlock <$> atomically (dupTChan chan))
