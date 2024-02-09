@@ -83,6 +83,7 @@ import Kupo.Data.ChainSync
     )
 import Kupo.Data.Configuration
     ( LongestRollback (..)
+    , mailboxCapacity
     , maxReconnectionAttempts
     )
 import Kupo.Data.Database
@@ -92,7 +93,8 @@ import Kupo.Data.FetchBlock
     ( FetchBlockClient
     )
 import Kupo.Data.Health
-    ( Health (..)
+    ( ConnectionStatus (..)
+    , Health (..)
     , mkPrometheusMetrics
     )
 import Kupo.Data.Http.FilterMatchesBy
@@ -141,7 +143,9 @@ import Network.HTTP.Types
     ( hAccept
     , hContentType
     , status200
+    , status202
     , status304
+    , status503
     )
 import Network.Wai
     ( Application
@@ -447,19 +451,40 @@ handleGetHealth reqHeaders health =
     case findContentType reqHeaders of
         Just ct | cTextPlain `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders [(hContentType, cTextPlain <> ";charset=utf-8")] health
-            return $ responseBuilder status200 resHeaders (mkPrometheusMetrics health)
+            return $ responseBuilder status resHeaders (mkPrometheusMetrics health)
         Just ct | cApplicationJson `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders Default.headers health
-            return $ responseJson status200 resHeaders health
+            return $ responseJson status resHeaders health
         Just ct | cAny `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders Default.headers health
-            return $ responseBuilder status200 resHeaders (mkPrometheusMetrics health)
+            return $ responseBuilder status resHeaders (mkPrometheusMetrics health)
         Nothing -> do
             let resHeaders = addCacheHeaders Default.headers health
-            return $ responseJson status200 resHeaders health
+            return $ responseJson status resHeaders health
         Just{} ->
             return $ Errors.unsupportedContentType (prettyContentTypes <$> [cApplicationJson, cTextPlain])
   where
+    status = case connectionStatus of
+        -- We consider the server 'far away' from another point if it is more than a 'batch' distance
+        -- from that point. The 'mailboxCapacity' is given in slot, and we consider an active slot
+        -- coefficient of 1/20 (which has been the default on ALL cardano networks).
+        --
+        -- If the distance is lower than that, it means we are one roll-forward away from being
+        -- synchronized, in which case, we consider the server synchronized. Note that we could
+        -- theoritically consider 0 here, but this gives us some resilience to rollbacks so long as
+        -- they aren't longer than 'mailboxCapacity' blocks.
+        Connected | fromMaybe maxBound d < fromIntegral (mailboxCapacity * 20) ->
+            status200
+        Connected ->
+            status202
+        Disconnected ->
+            status503
+      where
+        Health{..} = health
+        d = distanceToSlot
+            <$> mostRecentNodeTip
+            <*> (getPointSlotNo <$> mostRecentCheckpoint)
+
     findContentType = \case
         [] -> Nothing
         (headerName, headerValue):rest ->

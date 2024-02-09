@@ -2,15 +2,23 @@
 
 #### Added
 
-- Automatically restart and setup indexes when `--defer-db-indexes` is provide and the tip of the chain is reached.
+- A new mode `--read-only` which can be used to boot-up an HTTP server with only read access to the underlying database. This option comes as an alternative to the other options for chain producers (e.g. `--node-socket` and `--node-config`). The replica can only reply successfully to GET queries with the exception of queries under `/metadata`. The latter must go through the master server.
+
+- Automatic restart and setup indexes when `--defer-db-indexes` is provided and the tip of the chain is reached.
+
+- A new field `configuration.indexes` to the health object that indicates whether the server is still deferring the installation of lookup indexes or has already installed them.
 
 #### Changed
 
 - Integrate with `cardano-node==8.7.2` including the (preliminary) Conway era.
 
+- The server now returns:
+  - `503` from `/health` if the `connection_status` is `"disconnected"`;
+  - `202` if the server is `connected` but far away from the node's tip (i.e. still syncing)
+
 - Reinstate WAL journal mode for SQLite main writer. This should allow setting up more concurrent readers on top of the same database.
 
-- Fine-tune some internal constraints around database connections management for better performances.
+- Fine-tune some internal constraints around database connections management for better performances. In particular, the maximum number of concurrent readers have been increased.
 
 #### Remove
 

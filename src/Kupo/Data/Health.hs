@@ -146,7 +146,7 @@ mkPrometheusMetrics Health{..} =
           ]
 
         , [ ( "configuration_indexes"
-            , mkCounter $ case indexes of
+            , mkGauge $ case indexes of
                 SkipNonEssentialIndexes  -> 0
                 InstallIndexesIfNotExist -> 1
             ) | Just indexes <- [configuration]

@@ -173,7 +173,8 @@ import Control.Monad.Class.MonadThrow
     ( throwIO
     )
 import Kupo.Data.Health
-    ( Health (..)
+    ( ConnectionStatus (..)
+    , Health (..)
     )
 import System.IO
     ( hClose
@@ -522,6 +523,9 @@ spec = skippableContext "End-to-end" $ do
             withReplica cfg $ \replicaHttpClient -> do
                 mostRecentCheckpoint <- Prelude.head <$> listCheckpoints httpClient
                 waitSlot replicaHttpClient (>= (getPointSlotNo mostRecentCheckpoint))
+                Health{connectionStatus, configuration} <- getHealth replicaHttpClient
+                connectionStatus `shouldBe` Connected
+                configuration `shouldBe` Nothing
 
     -- NOTE: Run last, as they rely on the tip to have moved forward. We fetch the current tip at the
     -- beginning of the test suite, so it's less time to wait if we run those tests last.

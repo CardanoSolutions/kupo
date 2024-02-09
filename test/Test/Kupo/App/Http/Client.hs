@@ -391,11 +391,11 @@ decodeHealth :: Json.Value -> Json.Parser Health
 decodeHealth = Json.withObject "Health" $ \o -> do
     connectionStatus <- o .: "connection_status" >>= decodeConnectionStatus
     mostRecentNodeTip <- o .: "most_recent_node_tip"
-    configuration <- o .: "configuration" >>= (.: "indexes") >>= decodeDeferIndexesInstallation
+    configuration <- o .: "configuration" >>= (.:? "indexes") >>= traverse decodeDeferIndexesInstallation
     pure Health
         { connectionStatus
+        , configuration
         , mostRecentNodeTip = Just (SlotNo mostRecentNodeTip)
-        , configuration = Just configuration
         -- NOTE: We only have the point's slot number here. No test should rely on that.
         , mostRecentCheckpoint = Nothing
         }
