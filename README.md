@@ -49,7 +49,7 @@ Finally, [discussions 💡][discussions] contains ongoing discussions regarding 
 | Architecture     | arm64 / amd64    |
 | RAM              | 256MB-2048MB[^1] |
 | CPU              | 2+ cores         |
-| Disk Storage     | 1MB-40GB[^2]     |
+| Disk Storage     | 1MB-220GB[^2]    |
 
 # Continuous Integration
 
@@ -131,4 +131,4 @@ A big thank to [all our sponsors 💖](https://github.com/CardanoSolutions#-spon
 
 [^1]: The maximum memory usage depends on runtime flags and internal settings. This can be made lower if necessary (possibly as small as a hundred megabytes) by tweaking those settings. The obvious counter-part being slower synchronization times when syncing over large chunks of data. When synchronized, however, this has close to no impact.
 
-[^2]: The size of the database depends on the patterns the indexer is configured with. Storing every single entry of Mainnet currently come close to ~40GB. However, if pruned (i.e. only keep unspent entries), Mainnet is around 4GB.
+[^2]: The size of the database depends on the patterns the indexer is configured with. Storing every single entry of Mainnet currently come close to ~220GB. However, if pruned (i.e. only keep unspent entries), Mainnet is around 12GB.
