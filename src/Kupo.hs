@@ -148,6 +148,8 @@ import System.Exit
     ( ExitCode (..)
     )
 
+import qualified Kupo.Data.Health as Health
+
 --
 -- Environment
 --
@@ -268,6 +270,7 @@ kupoWith tr withProducer withFetchBlock =
         patterns <- newPatternsCache (tracerConfiguration tr) config db
         let statusToggle = connectionStatusToggle health
         let tracerChainSync =  contramap ConsumerChainSync . tracerConsumer
+        atomically $ modifyTVar' health $ \h -> h { Health.configuration = Just indexMode }
         withProducer $ \forceRollback mailbox producer -> do
             withFetchBlock $ \fetchBlock -> do
                 concurrently4

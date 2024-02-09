@@ -56,6 +56,9 @@ import Kupo.Data.Cardano
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
     )
+import Kupo.Data.Configuration
+    ( DeferIndexesInstallation (..)
+    )
 import Kupo.Data.Database
     ( policyToRow
     )
@@ -516,6 +519,7 @@ healthStub =
         { connectionStatus = Connected
         , mostRecentCheckpoint = Just $ BlockPoint 42 (generateWith 42 genHeaderHash)
         , mostRecentNodeTip = Just 42
+        , configuration = Just InstallIndexesIfNotExist
         }
 
 databaseStub :: Database IO

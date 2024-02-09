@@ -55,7 +55,8 @@ import Kupo.Data.Cardano
     , unsafeValueFromList
     )
 import Kupo.Data.Configuration
-    ( InputManagement (..)
+    ( DeferIndexesInstallation (..)
+    , InputManagement (..)
     )
 import Kupo.Data.Health
     ( ConnectionStatus (..)
@@ -204,6 +205,7 @@ genHealth = Health
     <$> genConnectionStatus
     <*> frequency [(1, pure Nothing), (5, Just <$> genNonGenesisPoint)]
     <*> frequency [(1, pure Nothing), (5, Just <$> genSlotNo)]
+    <*> frequency [(1, pure Nothing), (5, Just <$> elements [SkipNonEssentialIndexes, InstallIndexesIfNotExist])]
 
 genNonGenesisPoint :: Gen Point
 genNonGenesisPoint = do

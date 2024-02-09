@@ -1,13 +1,13 @@
 % KUPO
 % Matthias Benkort <matthias.benkort+kupo@cardanofoundation.org>
-% October 2022
+% February 2024
 
 # NAME
 kupo - Fast, lightweight & configurable chain-index for Cardano.
 
 # SYNOPSIS
 **kupo**\
-    (--node-socket *FILEPATH* --node-config *FILEPATH* | --ogmios-host *IPv4* --ogmios-port *TCP/PORT*)\
+    (--node-socket *FILEPATH* --node-config *FILEPATH* | --ogmios-host *IPv4* --ogmios-port *TCP/PORT* | --hydra-host *IPv4* --hydra-port *TCP/PORT | --read-only)\
     (--workdir *DIRECTORY* | --in-memory)\
     [--host *IPv4*] [--port *TCP/PORT*]\
     [--since *POINT*]\
@@ -58,6 +58,11 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
 :   Hydra-node port.
 
     (**NOTE**: Unused when connecting to a Cardano node or Ogmios)
+
+**--read-only**
+:   Start as read-only replica.
+
+    In this mode, an instance will only read from the database. Requires a master write server to keep it synchronized. Note: replicas cannot access transactions metadata.
 
 **--workdir**
 :   Path to a working directory, where the SQLite database files are stored. By convention, the database is called <u>kupo.sqlite</u>.
@@ -272,6 +277,10 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
   --in-memory\
   --since origin\
   --match *
+
+**kupo**\
+  --read-only\
+  --wordir $HOME/.cache/kupo
 
 # SEE ALSO
 Online documentation and API reference: <https://cardanosolutions.github.io/kupo/>

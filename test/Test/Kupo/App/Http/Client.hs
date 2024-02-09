@@ -58,6 +58,13 @@ import Kupo.Data.Cardano
     , transactionIdToText
     , unsafeValueFromList
     )
+import Kupo.Data.Configuration
+    ( DeferIndexesInstallation (..)
+    )
+import Kupo.Data.Health
+    ( ConnectionStatus (..)
+    , Health (..)
+    )
 import Kupo.Data.Http.ForcedRollback
     ( ForcedRollback (..)
     , ForcedRollbackLimit (..)
@@ -128,6 +135,8 @@ data HttpClient (m :: Type -> Type) = HttpClient
         -> m Bool
     , listPatterns
         :: m [Pattern]
+    , getHealth
+        :: m Health
     }
 
 newHttpClient :: (String, Int) -> IO (HttpClient IO)
@@ -162,6 +171,8 @@ newHttpClientWith manager (serverHost, serverPort) log =
             \a0 a1 -> waitForServer >> _putPatternSince a0 a1
         , listPatterns =
             waitForServer >> _listPatterns
+        , getHealth =
+            waitForServer >> _getHealth
         }
   where
     baseUrl :: String
@@ -356,9 +367,48 @@ newHttpClientWith manager (serverHost, serverPort) log =
             Right (Just xs) ->
                 pure xs
 
+    _getHealth :: IO Health
+    _getHealth = do
+        req <- parseRequest (baseUrl <> "/health")
+        res <- httpLbs
+            (req
+                { requestHeaders = [("Accept", "application/json")]
+                }
+            )
+            manager
+        let body = responseBody res
+        case eitherDecodeJson decodeHealth body of
+            Left e ->
+                fail (show body <> " ----> " <> show e)
+            Right h ->
+                pure h
+
 --
 -- Decoders
 --
+
+decodeHealth :: Json.Value -> Json.Parser Health
+decodeHealth = Json.withObject "Health" $ \o -> do
+    connectionStatus <- o .: "connection_status" >>= decodeConnectionStatus
+    mostRecentNodeTip <- o .: "most_recent_node_tip"
+    configuration <- o .: "configuration" >>= (.: "indexes") >>= decodeDeferIndexesInstallation
+    pure Health
+        { connectionStatus
+        , mostRecentNodeTip = Just (SlotNo mostRecentNodeTip)
+        , configuration = Just configuration
+        -- NOTE: We only have the point's slot number here. No test should rely on that.
+        , mostRecentCheckpoint = Nothing
+        }
+  where
+    decodeConnectionStatus = Json.withText "ConnectionStatus" $ \case
+        "connected" -> pure Connected
+        "disconnected" -> pure Disconnected
+        _ -> empty
+
+    decodeDeferIndexesInstallation = Json.withText "DeferIndexesInstallation" $ \case
+        "deferred" -> pure SkipNonEssentialIndexes
+        "installed" -> pure InstallIndexesIfNotExist
+        _ -> empty
 
 decodeOutputReference :: Json.KeyMap Json.Value -> Json.Parser ExtendedOutputReference
 decodeOutputReference o = do

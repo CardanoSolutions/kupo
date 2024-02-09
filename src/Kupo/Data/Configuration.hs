@@ -65,6 +65,7 @@ import Ouroboros.Consensus.BlockchainTime.WallClock.Types
     )
 
 import qualified Data.Aeson as Json
+import qualified Data.Aeson.Encoding as Json
 
 
 -- | Application-level configuration.
@@ -179,6 +180,11 @@ data DeferIndexesInstallation
     = SkipNonEssentialIndexes
     | InstallIndexesIfNotExist
     deriving (Generic, Eq, Show)
+
+instance ToJSON DeferIndexesInstallation where
+    toEncoding = Json.text . \case
+        SkipNonEssentialIndexes -> "deferred"
+        InstallIndexesIfNotExist -> "installed"
 
 -- | A signal sent by the consumer once the tip of the chain has been reached.
 data NodeTipHasBeenReachedException = NodeTipHasBeenReached

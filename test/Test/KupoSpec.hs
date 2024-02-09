@@ -119,7 +119,6 @@ import Test.Hspec
     , SpecWith
     , around
     , context
-    , pendingWith
     , runIO
     , shouldBe
     , shouldNotBe
@@ -130,6 +129,7 @@ import Test.Hspec
     )
 import Test.Kupo.App.Http.Client
     ( HttpClient (..)
+    , newHttpClient
     , newHttpClientWith
     )
 import Test.Kupo.Fixture
@@ -172,6 +172,9 @@ import Type.Reflection
 import Control.Monad.Class.MonadThrow
     ( throwIO
     )
+import Kupo.Data.Health
+    ( Health (..)
+    )
 import System.IO
     ( hClose
     , hGetLine
@@ -211,6 +214,7 @@ endToEnd = specify
 
 spec :: Spec
 spec = skippableContext "End-to-end" $ do
+    tip <- runIO currentNetworkTip
 
     endToEnd "can connect" $ \(configure, runSpec, HttpClient{..}) -> do
         (_cfg, env) <- configure $ \defaultCfg -> defaultCfg
@@ -425,18 +429,6 @@ spec = skippableContext "End-to-end" $ do
                 zs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
                 ys \\ zs `shouldBe` xs
 
-    endToEnd "Dynamically add pattern and restart to a past point when at the tip" $ \(configure, runSpec, HttpClient{..}) -> do
-        pendingWith "Long to run and requires a fully sync node. So only enabled on demand."
-        tip <- currentNetworkTip
-        (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just tip
-            , patterns = fromList [MatchAny IncludingBootstrap]
-            }
-        runSpec env 120 $ do
-            waitSlot (>= getPointSlotNo tip)
-            res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right tip)
-            res `shouldBe` True
-
     endToEnd "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(configure, runSpec, HttpClient{..})  -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
             { since = Just lastByronPoint
@@ -519,6 +511,41 @@ spec = skippableContext "End-to-end" $ do
             matches >>= \case
                 Nothing -> fail "impossible: the result disappeared?"
                 Just r  -> value r `shouldBe` unsafeValueFromList 7_000_000 []
+
+    endToEnd "Read-only replica eventually synchronize" $ \(configure, runSpec, httpClient) -> do
+        (cfg, env) <- configure $ \defaultCfg -> defaultCfg
+                { since = Just lastAlonzoPoint
+                , patterns = fromList [MatchAny OnlyShelley]
+                }
+        runSpec env 5 $ do
+            waitSlot httpClient (> (getPointSlotNo lastAlonzoPoint))
+            withReplica cfg $ \replicaHttpClient -> do
+                mostRecentCheckpoint <- Prelude.head <$> listCheckpoints httpClient
+                waitSlot replicaHttpClient (>= (getPointSlotNo mostRecentCheckpoint))
+
+    -- NOTE: Run last, as they rely on the tip to have moved forward. We fetch the current tip at the
+    -- beginning of the test suite, so it's less time to wait if we run those tests last.
+    endToEnd "Dynamically add pattern and restart to a past point when at the tip" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just tip
+            , patterns = fromList [MatchAny IncludingBootstrap]
+            }
+        runSpec env 120 $ do
+            waitSlot (>= getPointSlotNo tip)
+            res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right tip)
+            res `shouldBe` True
+
+    endToEnd "Auto-magically restart when reaching the tip (--defer-db-indexes enabled)" $ \(configure, runSpec, HttpClient{..}) -> do
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just tip
+            , patterns = fromList [MatchAny IncludingBootstrap]
+            , deferIndexes = SkipNonEssentialIndexes
+            }
+        runSpec env 120 $ do
+            waitSlot (>= getPointSlotNo tip)
+            Health{configuration} <- getHealth
+            configuration `shouldBe` (Just InstallIndexesIfNotExist)
+
 
 -- | Create an 'EndToEndContext' around each child specification item within that 'Spec' tree. The
 -- spec items are 'skippable' and only executed if the appropriate environment variables are present.
@@ -679,6 +706,22 @@ instance Show EndToEndException where
             , "== Http client's logs"
             , httpClientLogs
             ]
+
+withReplica :: Configuration -> (HttpClient IO -> IO b) -> IO ()
+withReplica cfg test = do
+    let replicaCfg = cfg
+            { chainProducer = ReadOnlyReplica
+            , serverPort = serverPort cfg + 1000
+            }
+
+    replicaHttpClient <- newHttpClient (serverHost replicaCfg, serverPort replicaCfg)
+
+    replicaEnv <- newEnvironmentWith throwIO replicaCfg
+
+    withSystemTempDirectory "kupo-end-to-end-replica" $ \dir -> do
+        withTempFile dir "traces" $ \_fp h -> do
+            withTracers h version (defaultTracers (Just Info)) $ \tr -> do
+                race_ (kupo tr `runWith` replicaEnv) (test replicaHttpClient)
 
 currentNetworkTip :: IO Point
 currentNetworkTip = do

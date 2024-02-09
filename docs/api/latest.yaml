@@ -1277,6 +1277,7 @@ components:
         - connection_status
         - most_recent_checkpoint
         - most_recent_node_tip
+        - configuration
         - version
       properties:
         connection_status:
@@ -1297,6 +1298,19 @@ components:
               description: Absolute slot number of the current tip of the node.
             - type: "null"
               description: Absolute slot number of the current tip of the node.
+        configuration:
+          type: object
+          description: A summary of hand-picked configuration parameters.
+          additionalProperties: false
+          required:
+            - indexes
+          properties:
+            indexes:
+              type: string
+              description: Behaviour surrounding the database query indexes.
+              enum:
+                - deferred
+                - installed
         version:
           type: string
           description: Current software version.
@@ -2110,3 +2124,6 @@ paths:
 
                     # TYPE kupo_most_recent_node_tip counter
                     kupo_most_recent_node_tip  71753381
+
+                    # TYPE kupo_configuration_indexes gauge
+                    kupo_configuration_indexes  1.0

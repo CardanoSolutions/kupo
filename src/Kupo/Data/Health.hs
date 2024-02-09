@@ -27,6 +27,9 @@ import Kupo.Data.Cardano
 import Data.ByteString.Builder
     ( Builder
     )
+import Kupo.Data.Configuration
+    ( DeferIndexesInstallation (..)
+    )
 import Kupo.Version
     ( version
     )
@@ -62,6 +65,8 @@ data Health = Health
         -- ^ Absolute slot number of the most recent database checkpoint.
     , mostRecentNodeTip :: !(Maybe SlotNo)
         -- ^ Absolute slot number of the tip of the node
+    , configuration :: !(Maybe DeferIndexesInstallation)
+        -- ^ Some useful server configuration
     } deriving stock (Generic, Eq, Show)
 
 instance ToJSON Health where
@@ -76,6 +81,14 @@ instance ToJSON Health where
             "most_recent_node_tip"
             (maybe Json.null_ slotNoToJson mostRecentNodeTip)
         , Json.pair
+            "configuration"
+            (Json.pairs $ mconcat
+                [ Json.pair
+                    "indexes"
+                    (maybe Json.null_ toEncoding configuration)
+                ]
+            )
+        , Json.pair
             "version"
             (toEncoding version)
         ]
@@ -85,6 +98,7 @@ emptyHealth = Health
     { connectionStatus = Disconnected
     , mostRecentCheckpoint = Nothing
     , mostRecentNodeTip = Nothing
+    , configuration = Nothing
     }
 
 -- | Reflect the current state of the connection with the underlying node.
@@ -129,5 +143,12 @@ mkPrometheusMetrics Health{..} =
         , [ ( "most_recent_node_tip"
             , mkCounter $ fromEnum $ unSlotNo s
             ) | Just s <- [mostRecentNodeTip]
+          ]
+
+        , [ ( "configuration_indexes"
+            , mkCounter $ case indexes of
+                SkipNonEssentialIndexes  -> 0
+                InstallIndexesIfNotExist -> 1
+            ) | Just indexes <- [configuration]
           ]
         ]
