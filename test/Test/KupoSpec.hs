@@ -5,6 +5,8 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use fewer imports" #-}
 
 module Test.KupoSpec
     ( spec
@@ -170,14 +172,18 @@ import Type.Reflection
 import Control.Monad.Class.MonadThrow
     ( throwIO
     )
-import qualified Data.Aeson as Json
-import qualified Data.Text as T
-import qualified Data.Text.Lazy.Builder as Builder
-import qualified Prelude
+import Kupo.Data.Configuration
+    ( OperationalMode (..)
+    )
 import System.IO
     ( hClose
     , hGetLine
     )
+
+import qualified Data.Aeson as Json
+import qualified Data.Text as T
+import qualified Data.Text.Lazy.Builder as Builder
+import qualified Prelude
 
 varCardanoNodeSocket :: String
 varCardanoNodeSocket = "CARDANO_NODE_SOCKET"
@@ -510,7 +516,8 @@ spec = skippableContext "End-to-end" $ do
             waitUntilM $ do
                 results <- getAllMatches NoStatusFlag
                 return (any predicate results)
-            (find predicate <$> getAllMatches NoStatusFlag) >>= \case
+            let matches = find predicate <$> getAllMatches NoStatusFlag
+            matches >>= \case
                 Nothing -> fail "impossible: the result disappeared?"
                 Just r  -> value r `shouldBe` unsafeValueFromList 7_000_000 []
 
@@ -546,6 +553,7 @@ skippableContext prefix skippableSpec = do
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
                     , deferIndexes = InstallIndexesIfNotExist
+                    , operationalMode = FullServer
                     }
             context cardanoNode $ around (withTempDirectory manager ref defaultCfg) skippableSpec
         _skipOtherwise ->
@@ -567,6 +575,7 @@ skippableContext prefix skippableSpec = do
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
                     , deferIndexes = InstallIndexesIfNotExist
+                    , operationalMode = FullServer
                     }
             context ogmios $ around (withTempDirectory manager ref defaultCfg) skippableSpec
         _skipOtherwise ->
@@ -588,6 +597,7 @@ skippableContext prefix skippableSpec = do
                     , longestRollback = 43200
                     , garbageCollectionInterval = 180
                     , deferIndexes = InstallIndexesIfNotExist
+                    , operationalMode = FullServer
                     }
             context hydra $ around (withTempDirectory manager ref defaultCfg) skippableSpec
         _skipOtherwise ->
@@ -636,12 +646,12 @@ skippableContext prefix skippableSpec = do
             return $ toStrict . Builder.toLazyText . foldMap ((<> "\n")) $ drop (max 0 (length msgs - 10)) msgs
 
         httpClientLogs <- toStrict. Builder.toLazyText . foldMap ((<> "\n") . Builder.fromText) . compact
-            <$> atomically (readTVar logs)
+            <$> readTVarIO logs
 
         pure $ EndToEndException { httpClientLogs, applicationLogs, originalException }
       where
         compact xs
-            = zip (drop 1 xs ++ []) xs
+            = zip (drop 1 xs) xs
             & foldl'
                 (\(count, msgs) (nextMsg, currentMsg) ->
                     if nextMsg == currentMsg then

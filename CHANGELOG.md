@@ -8,7 +8,7 @@
 
 - Integrate with `cardano-node==8.7.2` including the (preliminary) Conway era.
 
-- Reinstate WAL journal mode for SQLite main writer.
+- Reinstate WAL journal mode for SQLite main writer. This should allow setting up more concurrent readers on top of the same database.
 
 - Fine-tune some internal constraints around database connections management for better performances.
 

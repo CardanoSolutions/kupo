@@ -18,6 +18,7 @@ module Kupo.Data.Configuration
     , LongestRollback (..)
     , DeferIndexesInstallation (..)
     , NodeTipHasBeenReached (..)
+    , OperationalMode (..)
     , mailboxCapacity
     , pruneInputsMaxIncrement
     , maxReconnectionAttempts
@@ -96,6 +97,8 @@ data Configuration = Configuration
         --
         -- Non-essential refers to indexes that make query faster but that aren't
         -- necessary for the application to synchronize at high speed.
+    , operationalMode :: !OperationalMode
+        -- ^ Whether this is a read-only replica or a full server.
     } deriving (Generic, Eq, Show)
 
 -- | Where does kupo pulls its data from. Both 'cardano-node' and 'ogmios' are
@@ -160,6 +163,12 @@ newtype LongestRollback = LongestRollback
 data DeferIndexesInstallation
     = SkipNonEssentialIndexes
     | InstallIndexesIfNotExist
+    deriving (Generic, Eq, Show)
+
+-- | Control the operation mode of Kupo. A read-only replica will only watch the database and do not require a connection to the network. Such a replica therefore needs to be combined with a main writer. This would allow horizontally scaling kupo more easily, as new replicas can be added so long as the file-system supports it. Ultimately, the work that can be done on a single database file is bounded by the CPU capabilities and the I/O read access.
+data OperationalMode
+    = ReadOnlyReplica
+    | FullServer
     deriving (Generic, Eq, Show)
 
 -- | A signal sent by the consumer once the tip of the chain has been reached.

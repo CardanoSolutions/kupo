@@ -30,6 +30,7 @@ import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
     , InputManagement (..)
+    , OperationalMode (..)
     , WorkDir (..)
     )
 import Kupo.Data.Pattern
@@ -240,6 +241,14 @@ spec = parallel $ do
           , shouldFail
           )
         , ( defaultArgs ++ [ "--gc-interval", "14.42" ]
+          , shouldFail
+          )
+        , ( defaultArgs ++ [ "--read-only" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { operationalMode = ReadOnlyReplica
+            }
+          )
+        , ( defaultArgs ++ [ "--read-only", "foo" ]
           , shouldFail
           )
         ]

@@ -67,6 +67,7 @@ import Kupo.Data.Configuration
     , Configuration (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
+    , OperationalMode (..)
     , WorkDir (..)
     )
 import Kupo.Data.Pattern
@@ -134,6 +135,7 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> pure 129600 -- TODO: should be pulled from genesis parameters
                     <*> garbageCollectionIntervalOption
                     <*> deferIndexesOption
+                    <*> operationalModeOption
                 )
             <*> (tracersOption <|> Tracers
                     <$> fmap Const (logLevelOption "http-server")
@@ -298,6 +300,13 @@ deferIndexesOption = flag InstallIndexesIfNotExist SkipNonEssentialIndexes $ mem
     <> help "When enabled, defer the creation of database indexes to the next start. \
             \This is useful to make the first-ever synchronization faster but will make certain \
             \queries considerably slower."
+
+-- | [--read-only]
+operationalModeOption :: Parser OperationalMode
+operationalModeOption = flag FullServer ReadOnlyReplica $ mempty
+    <> long "read-only"
+    <> help "Start this Kupo instance as a read-only replica. It will only read from the database. \
+            \Requires a master write server to keep it synchronized."
 
 -- | [--log-level-{COMPONENT}=SEVERITY], default: Info
 logLevelOption :: Text -> Parser (Maybe Severity)

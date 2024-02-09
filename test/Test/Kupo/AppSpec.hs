@@ -113,6 +113,7 @@ import Kupo.Data.Configuration
     , DeferIndexesInstallation (..)
     , InputManagement (..)
     , LongestRollback (..)
+    , OperationalMode (..)
     , WorkDir (..)
     , mailboxCapacity
     )
@@ -258,6 +259,7 @@ spec = do
                    , longestRollback
                    , garbageCollectionInterval
                    , deferIndexes
+                   , operationalMode = FullServer
                    }
               env <- run (newEnvironment config)
               producer <- run (newMockProducer httpClient <$> atomically (dupTChan chan))
@@ -1124,7 +1126,7 @@ collectDatumInBlock =
     collectDatumInTransaction tx =
         datums tx
         <>
-        foldMap collectDatumInOutput (snd <$> outputs tx)
+        foldMap (collectDatumInOutput . snd) (outputs tx)
 
     collectDatumInOutput :: Output -> Map DatumHash BinaryData
     collectDatumInOutput o = do
@@ -1158,7 +1160,7 @@ collectScriptInBlock =
     collectScriptInTransaction tx =
         scripts tx
         <>
-        foldMap collectScriptInOutput (snd <$> outputs tx)
+        foldMap (collectScriptInOutput . snd) (outputs tx)
 
     collectScriptInOutput :: Output -> Map ScriptHash Script
     collectScriptInOutput o = do
