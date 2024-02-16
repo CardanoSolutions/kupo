@@ -64,7 +64,7 @@ source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/ogmios
   tag: 01f7787216e7ceb8e39c8c6807f7ae53fc14ab9e
-  --sha256: 18wxmz3452lwnd169r408b54h5grjws3q25i30nkl425sl4k8p87
+  --sha256: 16mdvv3qws92fins673jb2qiw7b9vd0pwzwvq9zvi6zkhhhkfdfm
   subdir:
     server/modules/fast-bech32
 
