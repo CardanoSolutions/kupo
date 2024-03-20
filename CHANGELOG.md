@@ -2,6 +2,8 @@
 
 #### Added
 
+* Compatibility with hydra-node 0.16.0.
+
 - A new mode `--read-only` which can be used to boot-up an HTTP server with only read access to the underlying database. This option comes as an alternative to the other options for chain producers (e.g. `--node-socket` and `--node-config`). The replica can only reply successfully to GET queries with the exception of queries under `/metadata`. The latter must go through the master server.
 
 - Automatic restart and setup indexes when `--defer-db-indexes` is provided and the tip of the chain is reached.
