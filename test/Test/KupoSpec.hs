@@ -215,8 +215,6 @@ endToEnd = specify
 
 spec :: Spec
 spec = skippableContext "End-to-end" $ do
-    tip <- runIO currentNetworkTip
-
     endToEnd "can connect" $ \(configure, runSpec, HttpClient{..}) -> do
         (_cfg, env) <- configure $ \defaultCfg -> defaultCfg
             { workDir = InMemory
@@ -527,9 +525,8 @@ spec = skippableContext "End-to-end" $ do
                 connectionStatus `shouldBe` Connected
                 configuration `shouldBe` Nothing
 
-    -- NOTE: Run last, as they rely on the tip to have moved forward. We fetch the current tip at the
-    -- beginning of the test suite, so it's less time to wait if we run those tests last.
     endToEnd "Dynamically add pattern and restart to a past point when at the tip" $ \(configure, runSpec, HttpClient{..}) -> do
+        tip <- currentNetworkTip
         (_, env) <- configure $ \defaultCfg -> defaultCfg
             { since = Just tip
             , patterns = fromList [MatchAny IncludingBootstrap]
@@ -540,6 +537,7 @@ spec = skippableContext "End-to-end" $ do
             res `shouldBe` True
 
     endToEnd "Auto-magically restart when reaching the tip (--defer-db-indexes enabled)" $ \(configure, runSpec, HttpClient{..}) -> do
+        tip <- currentNetworkTip
         (_, env) <- configure $ \defaultCfg -> defaultCfg
             { since = Just tip
             , patterns = fromList [MatchAny IncludingBootstrap]
