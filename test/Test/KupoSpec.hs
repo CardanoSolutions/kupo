@@ -222,7 +222,7 @@ spec = skippableContext "End-to-end" $ do
             , patterns = fromList [MatchAny OnlyShelley]
             }
         runSpec env 5 $ do
-            waitSlot (>= 0)
+            waitSlot (> 0)
             matches <- getAllMatches NoStatusFlag
             matches `shouldSatisfy` not . null
 
