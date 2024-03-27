@@ -48,11 +48,16 @@ package direct-sqlite
 constraints:
   , any.base == 4.18.1.0
   , any.cardano-node == 8.8.0
+
+  -- following cardano-node
+  , any.ouroboros-consensus ^>= 0.15.0.0
+  , any.ouroboros-consensus-cardano ^>= 0.13
+
+  -- bump to allow ouroboros-consensus
+  , quickcheck-state-machine ^>= 0.9
+
   , any.cardano-ledger-conway >= 1.11.0.0
-  , any.ouroboros-consensus >= 0.14.0.0
-  , any.ouroboros-consensus-cardano >= 0.12.1.0
   , any.formatting == 7.2.0
-  , quickcheck-state-machine ^>= 0.7
   , any.text source
   , direct-sqlite == 2.3.29.1
   , sqlite-simple == 0.4.19.0.1
