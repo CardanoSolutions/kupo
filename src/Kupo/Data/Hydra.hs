@@ -66,7 +66,7 @@ import Kupo.Data.PartialBlock
     ( PartialBlock (..)
     , PartialTransaction (..)
     )
-import qualified Cardano.Ledger.Api as LedgerApi
+import Cardano.Ledger.Api (Data)
 import qualified Cardano.Ledger.Babbage.TxBody as Babbage
 import qualified Cardano.Ledger.Core as Ledger
 import qualified Codec.CBOR.Decoding as Cbor
@@ -171,17 +171,9 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
 
     bytes <- decodeBase16' hexText
 
-    tx <- case decodeFullAnnotator (Ledger.eraProtVerLow @(BabbageEra StandardCrypto)) "foo" decCBOR (fromStrict bytes) of
+    tx <- case decodeFullAnnotator (Ledger.eraProtVerLow @(BabbageEra StandardCrypto)) "PartialTransaction" decCBOR (fromStrict bytes) of
       Left e -> fail $ show e
       Right tx -> pure tx
-
-    let body' = tx ^. bodyTxL
-    let inputs = toList (body' ^. inputsTxBodyL)
-    let outputs = map convertOutput $ toList (body' ^. outputsTxBodyL)
-    let wits' = tx ^. witsTxL
-    let scripts = Map.map convertScript (wits' ^. scriptTxWitsL)
-    let datums = Map.map convertData $ unTxDats (wits' ^. datsTxWitsL)
-    let id = txid body'
 
     -- TODO
     -- This is 'acceptable' for now because:
@@ -192,26 +184,30 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     -- (2) Hydra does not support fetching metadata of past transactions. If we wanted to support this
     -- feature for Hydra, we would need to first deal with (1) since Hydra doesn't provide a protocol
     -- / API for it.
-    let metadata = Nothing
+
+    let body' = tx ^. bodyTxL
+    let id = txid body'
+    let wits' = tx ^. witsTxL
+    let outputs' = map convertOutput $ toList (body' ^. outputsTxBodyL)
 
     pure PartialTransaction
         { id
-        , inputs
-        , outputs = withReferences 0 id outputs
-        , datums
-        , scripts
-        , metadata
+        , inputs = toList (body' ^. inputsTxBodyL)
+        , outputs = withReferences 0 id outputs'
+        , datums = Map.map convertData $ unTxDats (wits' ^. datsTxWitsL)
+        , scripts = Map.map convertScript (wits' ^. scriptTxWitsL)
+        , metadata = Nothing
         }
     where
-        convertOutput :: Babbage.BabbageTxOut (BabbageEra StandardCrypto) -> Output
-        convertOutput (Babbage.BabbageTxOut addr val datum maybeScript) =
-            (Babbage.BabbageTxOut addr val (translateDatum datum) (convertScript <$> maybeScript))
+      convertOutput :: Babbage.BabbageTxOut (BabbageEra StandardCrypto) -> Output
+      convertOutput (Babbage.BabbageTxOut addr val datum maybeScript) =
+          (Babbage.BabbageTxOut addr val (translateDatum datum) (convertScript <$> maybeScript))
 
-        convertData :: LedgerApi.Data (BabbageEra StandardCrypto) -> BinaryData
-        convertData = dataToBinaryData . upgradeData
+      convertData :: Data (BabbageEra StandardCrypto) -> BinaryData
+      convertData = dataToBinaryData . upgradeData
 
-        convertScript :: AlonzoScript (BabbageEra StandardCrypto) -> Script
-        convertScript = \case
+      convertScript :: AlonzoScript (BabbageEra StandardCrypto) -> Script
+      convertScript = \case
             TimelockScript timelock -> TimelockScript (translateTimelock timelock)
             PlutusScript script -> PlutusScript script
 
@@ -225,10 +221,10 @@ decodeInput = Json.withText "Input" $ \t ->
         ix <- outputIndexFromText tIx
         pure $ mkOutputReference id ix
  where
-    splitInput t =
-        case Text.split (== '#') t of
-            [tId, tIx] -> Just (tId, tIx)
-            _ -> Nothing
+   splitInput t =
+       case Text.split (== '#') t of
+           [tId, tIx] -> Just (tId, tIx)
+           _ -> Nothing
 
 decodeOutput
     :: Json.Value
