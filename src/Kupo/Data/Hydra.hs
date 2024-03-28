@@ -9,31 +9,41 @@ import Cardano.Crypto.Hash
     , hashToBytes
     , hashWith
     )
+import Cardano.Ledger.Allegra.Scripts (translateTimelock)
+import Cardano.Ledger.Alonzo.Scripts (AlonzoScript (..))
+import Cardano.Ledger.Alonzo.TxWits (unTxDats)
+import Cardano.Ledger.Api (
+    outputsTxBodyL,
+    inputsTxBodyL,
+    datsTxWitsL,
+    scriptTxWitsL,
+    witsTxL,
+    bodyTxL
+    )
+import Cardano.Ledger.Binary (decodeFullAnnotator)
+import Cardano.Ledger.Block (txid)
+import Cardano.Ledger.Plutus.Data (translateDatum, dataToBinaryData, upgradeData)
 import Cardano.Ledger.SafeHash
     ( unsafeMakeSafeHash
     )
 import Data.Aeson
-    ( (.!=)
-    , (.:)
+    ( (.:)
     , (.:?)
     )
 import Kupo.Data.Cardano
     ( BinaryData
     , BlockNo (..)
     , Datum (..)
-    , DatumHash
     , Input
     , Output
     , OutputIndex
     , OutputReference
     , Script
-    , ScriptHash
     , SlotNo (..)
     , Tip
     , TransactionId
     , Value
     , binaryDataFromBytes
-    , datumHashFromBytes
     , getOutputIndex
     , getTransactionId
     , mkOutput
@@ -42,7 +52,6 @@ import Kupo.Data.Cardano
     , pattern BlockPoint
     , pattern Tip
     , scriptFromBytes
-    , scriptHashFromText
     , transactionIdFromText
     , transactionIdToBytes
     , unsafeHeaderHashFromBytes
@@ -57,7 +66,9 @@ import Kupo.Data.PartialBlock
     ( PartialBlock (..)
     , PartialTransaction (..)
     )
-
+import Cardano.Ledger.Api (Data)
+import qualified Cardano.Ledger.Babbage.TxBody as Babbage
+import qualified Cardano.Ledger.Core as Ledger
 import qualified Codec.CBOR.Decoding as Cbor
 import qualified Codec.CBOR.Read as Cbor
 import qualified Data.Aeson.Key as Key
@@ -156,15 +167,13 @@ decodeGenesisTxForUTxO id indexOutputs = do
 
 decodePartialTransaction :: Json.Value -> Json.Parser PartialTransaction
 decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
-    id <- o .: "id" >>= decodeTransactionId
+    hexText <- o .: "cborHex"
 
-    body <- o .: "body"
-    inputs <- body .: "inputs" >>= traverse decodeInput
-    outputs <- body .:? "outputs" .!= [] >>= traverse decodeOutput
+    bytes <- decodeBase16' hexText
 
-    wits <- o.: "witnesses"
-    datums <- wits .:? "datums" .!= Json.Object mempty >>= decodeDatums
-    scripts <- wits .:? "scripts" .!= Json.Object mempty >>= decodeScripts
+    tx <- case decodeFullAnnotator (Ledger.eraProtVerLow @(BabbageEra StandardCrypto)) "PartialTransaction" decCBOR (fromStrict bytes) of
+      Left e -> fail $ show e
+      Right tx -> pure tx
 
     -- TODO
     -- This is 'acceptable' for now because:
@@ -175,38 +184,32 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     -- (2) Hydra does not support fetching metadata of past transactions. If we wanted to support this
     -- feature for Hydra, we would need to first deal with (1) since Hydra doesn't provide a protocol
     -- / API for it.
-    let metadata = Nothing
+
+    let body' = tx ^. bodyTxL
+    let id = txid body'
+    let wits' = tx ^. witsTxL
+    let outputs' = map convertOutput $ toList (body' ^. outputsTxBodyL)
 
     pure PartialTransaction
         { id
-        , inputs
-        , outputs = withReferences 0 id outputs
-        , datums
-        , scripts
-        , metadata
+        , inputs = toList (body' ^. inputsTxBodyL)
+        , outputs = withReferences 0 id outputs'
+        , datums = Map.map convertData $ unTxDats (wits' ^. datsTxWitsL)
+        , scripts = Map.map convertScript (wits' ^. scriptTxWitsL)
+        , metadata = Nothing
         }
+    where
+      convertOutput :: Babbage.BabbageTxOut (BabbageEra StandardCrypto) -> Output
+      convertOutput (Babbage.BabbageTxOut addr val datum maybeScript) =
+          (Babbage.BabbageTxOut addr val (translateDatum datum) (convertScript <$> maybeScript))
 
-decodeDatums :: Json.Value -> Json.Parser (Map DatumHash BinaryData)
-decodeDatums = Json.withObject "Datums" $
-    KeyMap.foldrWithKey
-        (\k v accum -> Map.insert
-            <$> decodeDatumHash k
-            <*> decodeBinaryData v
-            <*> accum
-        )
-        (pure mempty)
+      convertData :: Data (BabbageEra StandardCrypto) -> BinaryData
+      convertData = dataToBinaryData . upgradeData
 
-decodeDatumHash
-    :: Json.Key
-    -> Json.Parser DatumHash
-decodeDatumHash k = do
-    case datumHashFromBytes <$> decodeBase16 (encodeUtf8 (Key.toText k)) of
-        Right (Just hash) ->
-            pure hash
-        Right Nothing ->
-            fail "decodeDatumHash: datumHashFromBytes failed."
-        Left e ->
-            fail (toString e)
+      convertScript :: AlonzoScript (BabbageEra StandardCrypto) -> Script
+      convertScript = \case
+            TimelockScript timelock -> TimelockScript (translateTimelock timelock)
+            PlutusScript script -> PlutusScript script
 
 decodeInput
     :: Json.Value
@@ -218,10 +221,10 @@ decodeInput = Json.withText "Input" $ \t ->
         ix <- outputIndexFromText tIx
         pure $ mkOutputReference id ix
  where
-    splitInput t =
-        case Text.split (== '#') t of
-            [tId, tIx] -> Just (tId, tIx)
-            _ -> Nothing
+   splitInput t =
+       case Text.split (== '#') t of
+           [tId, tIx] -> Just (tId, tIx)
+           _ -> Nothing
 
 decodeOutput
     :: Json.Value
@@ -301,24 +304,6 @@ decodeScriptInEnvelope = Json.withObject "ScriptInEnvelope" $ \o -> do
     scriptFromBytes' =
         maybe (fail "decodeScript: malformed script") pure . scriptFromBytes
 
-decodeScripts :: Json.Value -> Json.Parser (Map ScriptHash Script)
-decodeScripts = Json.withObject "Scripts" $
-    KeyMap.foldrWithKey
-        (\k v accum -> Map.insert
-            <$> decodeScriptHash k
-            <*> decodeScript v
-            <*> accum
-        )
-        (pure mempty)
-
-decodeScriptHash
-    :: Json.Key
-    -> Json.Parser ScriptHash
-decodeScriptHash k =
-    case scriptHashFromText (Key.toText k) of
-        Nothing -> fail "decodeScriptHash"
-        Just scriptHash -> pure scriptHash
-
 decodeSnapshotConfirmed :: Json.Object -> Json.Parser Snapshot
 decodeSnapshotConfirmed o = do
     snapshot <- o .: "snapshot"
@@ -333,7 +318,7 @@ decodeValue
     :: Json.Value
     -> Json.Parser Value
 decodeValue = Json.withObject "Value" $ \o -> do
-    coins <- o .: "lovelace"
+    coins <- o .:? "lovelace"
     assets <- KeyMap.foldrWithKey
         (\k v accum ->
             if k == "lovelace" then accum else do
@@ -344,7 +329,7 @@ decodeValue = Json.withObject "Value" $ \o -> do
         )
         (pure mempty)
         o
-    pure (unsafeValueFromList coins assets)
+    pure (unsafeValueFromList (maybe 0 (\x -> x) coins) assets)
   where
     decodeAssets
         :: ByteString

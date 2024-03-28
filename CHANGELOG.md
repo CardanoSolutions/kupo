@@ -1,3 +1,10 @@
+
+### [2.8.1] - UNRELEASED
+
+#### Added
+
+* Compatibility with hydra-node 0.16.0.
+
 ### [2.8.0] - 2024-02-09
 
 #### Added
