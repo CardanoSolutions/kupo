@@ -30,6 +30,7 @@ import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Era as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
+import qualified Cardano.Ledger.Binary.Plain as Ledger
 
 import qualified Codec.CBOR.Decoding as Cbor
 import qualified Codec.CBOR.Read as Cbor
@@ -157,13 +158,17 @@ scriptFromBytes (toLazy -> bytes) =
             Cbor.deserialiseFromBytes Cbor.decodeWord8 bytes
         case tag of
             0 -> Ledger.Alonzo.TimelockScript <$> decodeCborAnn @BabbageEra "Timelock" decCBOR script
-            1 -> pure $ plutusScript Ledger.PlutusV1 script
-            2 -> pure $ plutusScript Ledger.PlutusV2 script
-            3 -> pure $ plutusScript Ledger.PlutusV3 script
+            1 -> plutusScript Ledger.PlutusV1 script
+            2 -> plutusScript Ledger.PlutusV2 script
+            3 -> plutusScript Ledger.PlutusV3 script
             t -> Left (DecoderErrorUnknownTag "Script" t)
   where
-    plutusScript lang =
-        Ledger.Alonzo.PlutusScript . Ledger.Plutus lang . Ledger.BinaryPlutus . toShort . toStrict
+    plutusScript lang s =
+        let bytes = Ledger.PlutusBinary $ toShort $ toStrict s
+            script = maybeToRight
+                (Ledger.DecoderErrorCustom "Incompatible language and script" $ "(" <> show lang <> ", " <> show bytes <> ")")
+                (Ledger.Alonzo.mkBinaryPlutusScript @(ConwayEra StandardCrypto) lang bytes)
+         in Ledger.Alonzo.PlutusScript <$> script
 
 fromNativeScript
     :: NativeScript
