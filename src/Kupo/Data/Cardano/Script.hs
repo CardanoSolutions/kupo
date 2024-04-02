@@ -131,15 +131,14 @@ scriptToJson script = encodeObject
 scriptToBytes
     :: Script
     -> ByteString
-scriptToBytes = \case
-    script@Ledger.Alonzo.TimelockScript{} ->
-        BS.singleton 0 <> Ledger.originalBytes script
-    script@(Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV1 _)) ->
-        BS.singleton 1 <> Ledger.originalBytes script
-    script@(Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV2 _)) ->
-        BS.singleton 2 <> Ledger.originalBytes script
-    script@(Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV3 _)) ->
-        BS.singleton 3 <> Ledger.originalBytes script
+scriptToBytes =
+    let prependInt n s= BS.singleton n <> Ledger.originalBytes s
+     in \case
+        Ledger.Alonzo.TimelockScript script -> prependInt 0 script
+        Ledger.Alonzo.PlutusScript script -> case Ledger.Alonzo.plutusScriptLanguage script of
+            Ledger.PlutusV1 -> prependInt 1 script
+            Ledger.PlutusV2 -> prependInt 2 script
+            Ledger.PlutusV3 -> prependInt 3 script
 
 unsafeScriptFromBytes
     :: HasCallStack
