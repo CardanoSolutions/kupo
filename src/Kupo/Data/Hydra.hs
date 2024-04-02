@@ -9,20 +9,23 @@ import Cardano.Crypto.Hash
     , hashToBytes
     , hashWith
     )
-import Cardano.Ledger.Allegra.Scripts (translateTimelock)
-import Cardano.Ledger.Alonzo.Scripts (AlonzoScript (..))
-import Cardano.Ledger.Alonzo.TxWits (unTxDats)
-import Cardano.Ledger.Api (
-    outputsTxBodyL,
-    inputsTxBodyL,
-    datsTxWitsL,
-    scriptTxWitsL,
-    witsTxL,
-    bodyTxL
+import Cardano.Ledger.Alonzo.TxWits
+    ( unTxDats
     )
-import Cardano.Ledger.Binary (decodeFullAnnotator)
-import Cardano.Ledger.Block (txid)
-import Cardano.Ledger.Plutus.Data (translateDatum, dataToBinaryData, upgradeData)
+import Cardano.Ledger.Api
+    ( bodyTxL
+    , datsTxWitsL
+    , inputsTxBodyL
+    , outputsTxBodyL
+    , scriptTxWitsL
+    , witsTxL
+    )
+import Cardano.Ledger.Binary
+    ( decodeFullAnnotator
+    )
+import Cardano.Ledger.Block
+    ( txid
+    )
 import Cardano.Ledger.SafeHash
     ( unsafeMakeSafeHash
     )
@@ -44,6 +47,9 @@ import Kupo.Data.Cardano
     , TransactionId
     , Value
     , binaryDataFromBytes
+    , fromBabbageData
+    , fromBabbageOutput
+    , fromBabbageScript
     , getOutputIndex
     , getTransactionId
     , mkOutput
@@ -66,8 +72,7 @@ import Kupo.Data.PartialBlock
     ( PartialBlock (..)
     , PartialTransaction (..)
     )
-import Cardano.Ledger.Api (Data)
-import qualified Cardano.Ledger.Babbage.TxBody as Babbage
+
 import qualified Cardano.Ledger.Core as Ledger
 import qualified Codec.CBOR.Decoding as Cbor
 import qualified Codec.CBOR.Read as Cbor
@@ -77,7 +82,7 @@ import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as B
 import qualified Data.Map.Strict as Map
-import qualified Data.Text as Text
+import qualified Data.Text as T
 
 -- Types
 
@@ -188,28 +193,16 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     let body' = tx ^. bodyTxL
     let id = txid body'
     let wits' = tx ^. witsTxL
-    let outputs' = map convertOutput $ toList (body' ^. outputsTxBodyL)
+    let outputs' = map fromBabbageOutput $ toList (body' ^. outputsTxBodyL)
 
     pure PartialTransaction
         { id
         , inputs = toList (body' ^. inputsTxBodyL)
         , outputs = withReferences 0 id outputs'
-        , datums = Map.map convertData $ unTxDats (wits' ^. datsTxWitsL)
-        , scripts = Map.map convertScript (wits' ^. scriptTxWitsL)
+        , datums = Map.map fromBabbageData $ unTxDats (wits' ^. datsTxWitsL)
+        , scripts = Map.map fromBabbageScript (wits' ^. scriptTxWitsL)
         , metadata = Nothing
         }
-    where
-      convertOutput :: Babbage.BabbageTxOut (BabbageEra StandardCrypto) -> Output
-      convertOutput (Babbage.BabbageTxOut addr val datum maybeScript) =
-          (Babbage.BabbageTxOut addr val (translateDatum datum) (convertScript <$> maybeScript))
-
-      convertData :: Data (BabbageEra StandardCrypto) -> BinaryData
-      convertData = dataToBinaryData . upgradeData
-
-      convertScript :: AlonzoScript (BabbageEra StandardCrypto) -> Script
-      convertScript = \case
-            TimelockScript timelock -> TimelockScript (translateTimelock timelock)
-            PlutusScript script -> PlutusScript script
 
 decodeInput
     :: Json.Value
@@ -222,7 +215,7 @@ decodeInput = Json.withText "Input" $ \t ->
         pure $ mkOutputReference id ix
  where
    splitInput t =
-       case Text.split (== '#') t of
+       case T.split (== '#') t of
            [tId, tIx] -> Just (tId, tIx)
            _ -> Nothing
 
@@ -329,7 +322,7 @@ decodeValue = Json.withObject "Value" $ \o -> do
         )
         (pure mempty)
         o
-    pure (unsafeValueFromList (maybe 0 (\x -> x) coins) assets)
+    pure (unsafeValueFromList (maybe 0 identity coins) assets)
   where
     decodeAssets
         :: ByteString
