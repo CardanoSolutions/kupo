@@ -117,14 +117,11 @@ scriptToJson
 scriptToJson script = encodeObject
     [ ("script", encodeBytes (Ledger.originalBytes script))
     , ("language", case script of
-        Ledger.Alonzo.TimelockScript{} ->
-          Json.text "native"
-        Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV1 _) ->
-          Json.text "plutus:v1"
-        Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV2 _) ->
-          Json.text "plutus:v2"
-        Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV3 _) ->
-          Json.text "plutus:v3"
+        Ledger.Alonzo.TimelockScript script -> Json.text "native"
+        Ledger.Alonzo.PlutusScript script -> case Ledger.Alonzo.plutusScriptLanguage script of
+            Ledger.PlutusV1 -> Json.text "plutus:v1"
+            Ledger.PlutusV2 -> Json.text "plutus:v2"
+            Ledger.PlutusV3 -> Json.text "plutus:v3"
       )
     ]
 
