@@ -40,8 +40,8 @@ module Kupo.Data.Cardano
 
 import Kupo.Prelude
 
-import Cardano.Ledger.Val
-    ( Val (inject)
+import Cardano.Ledger.BaseTypes
+    ( inject
     )
 import Data.Maybe.Strict
     ( StrictMaybe (..)
@@ -393,9 +393,9 @@ instance IsBlock Block where
                     (scriptFromAllegraAuxiliaryData fromMaryScript)
                     (tx ^. Ledger.auxDataTxL)
         TransactionAlonzo tx ->
-            ( fromAlonzoScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)
+            ( unsafeFromAlonzoScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)
             ) & strictMaybe identity
-                    (scriptFromAlonzoAuxiliaryData @(AlonzoEra StandardCrypto) fromAlonzoScript)
+                    (scriptFromAlonzoAuxiliaryData @(AlonzoEra StandardCrypto) unsafeFromAlonzoScript)
                     (tx ^. Ledger.auxDataTxL)
         TransactionBabbage tx ->
             ( fromBabbageScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)

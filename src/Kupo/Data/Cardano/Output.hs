@@ -39,11 +39,14 @@ import qualified Cardano.Chain.Common as Ledger.Byron
 import qualified Cardano.Chain.UTxO as Ledger.Byron
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.Alonzo.TxBody as Ledger.Alonzo
+import qualified Cardano.Ledger.BaseTypes as Ledger
+import qualified Cardano.Ledger.Babbage as Ledger.Babbage
 import qualified Cardano.Ledger.Babbage.TxBody as Ledger.Babbage
 import qualified Cardano.Ledger.Coin as Ledger
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Mary.Value as Ledger
-import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
+import qualified Cardano.Ledger.Shelley.API as Ledger.Shelley
+import qualified Cardano.Ledger.Plutus.Data as Ledger
 
 import qualified Data.Map as Map
 
@@ -78,8 +81,8 @@ fromByronOutput
 fromByronOutput (Ledger.Byron.TxOut address value) =
     Ledger.Babbage.BabbageTxOut
         (Ledger.AddrBootstrap (Ledger.BootstrapAddress address))
-        (inject $ Ledger.Coin $ toInteger $ Ledger.Byron.unsafeGetLovelace value)
-        Ledger.Babbage.NoDatum
+        (Ledger.inject $ Ledger.Coin $ toInteger $ Ledger.Byron.unsafeGetLovelace value)
+        Ledger.NoDatum
         SNothing
 {-# INLINABLE fromByronOutput #-}
 
@@ -94,7 +97,7 @@ fromShelleyOutput
     -> Ledger.Core.TxOut (era crypto)
     -> Output' crypto
 fromShelleyOutput liftValue (Ledger.Shelley.ShelleyTxOut addr value) =
-    Ledger.Babbage.BabbageTxOut addr (liftValue value) Ledger.Babbage.NoDatum SNothing
+    Ledger.Babbage.BabbageTxOut addr (liftValue value) Ledger.NoDatum SNothing
 {-# INLINABLE fromShelleyOutput #-}
 
 fromAlonzoOutput
@@ -109,14 +112,14 @@ fromAlonzoOutput (Ledger.Alonzo.AlonzoTxOut addr value datum) =
             Ledger.Babbage.BabbageTxOut
                 addr
                 value
-                Ledger.Babbage.NoDatum
+                Ledger.NoDatum
                 SNothing
 
         SJust datumHash ->
             Ledger.Babbage.BabbageTxOut
                 addr
                 value
-                (Ledger.Babbage.DatumHash datumHash)
+                (Ledger.DatumHash datumHash)
                 SNothing
 
 fromBabbageOutput
