@@ -63,6 +63,7 @@ scriptFromAlonzoAuxiliaryData
     :: forall era.
         ( Ledger.Era era
         , Ledger.Core.Script era ~ Ledger.Alonzo.AlonzoScript era
+        , Ledger.Alonzo.AlonzoEraScript era
         )
     => (Ledger.Core.Script era -> Script)
     -> Ledger.Alonzo.AlonzoTxAuxData era
