@@ -27,6 +27,7 @@ import qualified Cardano.Ledger.Allegra.TxAuxData as Ledger.Allegra
 import qualified Cardano.Ledger.Alonzo as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.Scripts as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
+import qualified Cardano.Ledger.Conway.Scripts as Ledger.Conway
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Era as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
@@ -88,14 +89,30 @@ fromMaryScript =
     Ledger.Alonzo.TimelockScript . Ledger.Allegra.translateTimelock
 {-# INLINABLE fromMaryScript  #-}
 
-fromAlonzoScript
-    :: Ledger.Alonzo.Script (AlonzoEra StandardCrypto)
+-- TODO Remove unneeded unsafe upgrade from AlonzoEra to ConwayEra
+--  I could not find any evidence that we should upgrade
+--  from AlonzoEra to ConwayEra but to avoid introducing
+--  breaking changes I'm keeping current design through
+--  this unsafe function
+unsafeFromAlonzoScript
+    :: HasCallStack
+    => Ledger.Alonzo.Script (AlonzoEra StandardCrypto)
     -> Script
-fromAlonzoScript = \case
-    Ledger.Alonzo.TimelockScript script ->
-        Ledger.Alonzo.TimelockScript (Ledger.Allegra.translateTimelock script)
-    Ledger.Alonzo.PlutusScript plutus ->
-        Ledger.Alonzo.PlutusScript plutus
+unsafeFromAlonzoScript script =
+    fromMaybe (error "unsafeFromAlonzoScript") $  case script of
+        Ledger.Alonzo.TimelockScript tl
+            -> Just 
+             $ Ledger.Alonzo.TimelockScript
+             $ Ledger.Allegra.translateTimelock
+                @(AlonzoEra StandardCrypto) 
+                @(ConwayEra StandardCrypto) 
+                tl
+        Ledger.Alonzo.PlutusScript ps
+            -> Ledger.Alonzo.withPlutusScript 
+                ps 
+                (\pl -> Ledger.Alonzo.PlutusScript 
+                    <$> Ledger.Alonzo.mkPlutusScript pl
+                )
 
 fromBabbageScript
     :: Ledger.Alonzo.Script (BabbageEra StandardCrypto)
