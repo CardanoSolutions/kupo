@@ -238,7 +238,7 @@ instance IsBlock Block where
         TransactionShelley tx ->
             let
                 body = tx ^. Ledger.bodyTxL
-                txId = Ledger.txid @(ShelleyEra StandardCrypto) body
+                txId = Ledger.txIdTxBody @(ShelleyEra StandardCrypto) body
                 outs = body ^. Ledger.outputsTxBodyL
                 meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromShelleyMetadata
              in
@@ -246,7 +246,7 @@ instance IsBlock Block where
         TransactionAllegra tx ->
             let
                 body = tx ^. Ledger.bodyTxL
-                txId = Ledger.txid @(AllegraEra StandardCrypto) body
+                txId = Ledger.txIdTxBody  @(AllegraEra StandardCrypto) body
                 outs = body ^. Ledger.outputsTxBodyL
                 meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromAllegraMetadata
              in
@@ -254,7 +254,7 @@ instance IsBlock Block where
         TransactionMary tx ->
             let
                 body = tx ^. Ledger.bodyTxL
-                txId = Ledger.txid @(MaryEra StandardCrypto) body
+                txId = Ledger.txIdTxBody @(MaryEra StandardCrypto) body
                 outs = body ^. Ledger.outputsTxBodyL
                 meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromMaryMetadata
              in
@@ -262,7 +262,7 @@ instance IsBlock Block where
         TransactionAlonzo tx ->
             let
                 body = tx ^. Ledger.bodyTxL
-                txId = Ledger.txid @(AlonzoEra StandardCrypto) body
+                txId = Ledger.txIdTxBody @(AlonzoEra StandardCrypto) body
                 outs = body ^. Ledger.outputsTxBodyL
                 meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromAlonzoMetadata
              in
@@ -274,7 +274,7 @@ instance IsBlock Block where
         TransactionBabbage tx ->
             let
                 body = tx ^. Ledger.bodyTxL
-                txId = Ledger.txid @(BabbageEra StandardCrypto) body
+                txId = Ledger.txIdTxBody @(BabbageEra StandardCrypto) body
                 outs = body ^. Ledger.outputsTxBodyL
                 meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromBabbageMetadata
              in
@@ -295,7 +295,7 @@ instance IsBlock Block where
         TransactionConway tx ->
             let
                 body = tx ^. Ledger.bodyTxL
-                txId = Ledger.txid @(ConwayEra StandardCrypto) body
+                txId = Ledger.txIdTxBody @(ConwayEra StandardCrypto) body
                 outs = body ^. Ledger.outputsTxBodyL
                 meta = tx ^. Ledger.auxDataTxL & strictMaybe emptyMetadata fromConwayMetadata
              in

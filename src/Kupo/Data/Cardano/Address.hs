@@ -13,6 +13,7 @@ import Data.ByteString.Bech32
 import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.BaseTypes as Ledger
 import qualified Cardano.Ledger.Credential as Ledger
+import qualified Cardano.Ledger.Api as Ledger.Api
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 
@@ -47,8 +48,9 @@ unsafeAddressFromBytes =
 
 addressFromBytes :: ByteString -> Maybe Address
 addressFromBytes bytes =
-    Ledger.deserialiseAddr bytes
+    Ledger.Api.decodeAddr bytes
   <|>
+    -- TODO: This is probably redundant (now with decodeAddr and/or decodeAddrLenient
     -- NOTE: Since around Babbage / Conway, the ledger team decided to drop support for pointer
     -- addresses from new decoders. Yet, those addresses still exist on-chain (and forever will).
     --

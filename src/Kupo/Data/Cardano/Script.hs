@@ -27,7 +27,6 @@ import qualified Cardano.Ledger.Allegra.TxAuxData as Ledger.Allegra
 import qualified Cardano.Ledger.Alonzo as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.Scripts as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
-import qualified Cardano.Ledger.Conway.Scripts as Ledger.Conway
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Era as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
@@ -61,8 +60,7 @@ scriptFromAllegraAuxiliaryData liftScript (Ledger.Allegra.AllegraTxAuxData _ scr
 
 scriptFromAlonzoAuxiliaryData
     :: forall era.
-        ( Ledger.Era era
-        , Ledger.Core.Script era ~ Ledger.Alonzo.AlonzoScript era
+        ( Ledger.Core.Script era ~ Ledger.Alonzo.AlonzoScript era
         , Ledger.Alonzo.AlonzoEraScript era
         )
     => (Ledger.Core.Script era -> Script)
@@ -135,8 +133,8 @@ scriptToJson
 scriptToJson script = encodeObject
     [ ("script", encodeBytes (Ledger.originalBytes script))
     , ("language", case script of
-        Ledger.Alonzo.TimelockScript script -> Json.text "native"
-        Ledger.Alonzo.PlutusScript script -> case Ledger.Alonzo.plutusScriptLanguage script of
+        Ledger.Alonzo.TimelockScript _ -> Json.text "native"
+        Ledger.Alonzo.PlutusScript ps -> case Ledger.Alonzo.plutusScriptLanguage ps of
             Ledger.PlutusV1 -> Json.text "plutus:v1"
             Ledger.PlutusV2 -> Json.text "plutus:v2"
             Ledger.PlutusV3 -> Json.text "plutus:v3"
@@ -178,10 +176,10 @@ scriptFromBytes (toLazy -> bytes) =
             t -> Left (DecoderErrorUnknownTag "Script" t)
   where
     plutusScript lang s =
-        let bytes = Ledger.PlutusBinary $ toShort $ toStrict s
+        let bytes_ = Ledger.PlutusBinary $ toShort $ toStrict s
             script = maybeToRight
-                (Ledger.DecoderErrorCustom "Incompatible language and script" $ "(" <> show lang <> ", " <> show bytes <> ")")
-                (Ledger.Alonzo.mkBinaryPlutusScript @(ConwayEra StandardCrypto) lang bytes)
+                (Ledger.DecoderErrorCustom "Incompatible language and script" $ "(" <> show lang <> ", " <> show bytes_ <> ")")
+                (Ledger.Alonzo.mkBinaryPlutusScript @(ConwayEra StandardCrypto) lang bytes_)
          in Ledger.Alonzo.PlutusScript <$> script
 
 fromNativeScript
