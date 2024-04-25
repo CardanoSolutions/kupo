@@ -15,6 +15,11 @@ VERSION := $(shell cat package.yaml| grep "version:" | sed "s/[^0-9]*\([0-9]\)\(
 TAG := $(shell echo $(VERSION) | sed "s/^0$$/nightly/")
 CONFIG := $(shell pwd)/config/network/$(NETWORK)
 CACHEDIR := ${HOME}/.cache/kupo/${NETWORK}
+BIN_DIR_PATH := dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo
+
+ifeq ($(postgres), true)
+PG_FLAG := -f postgres
+endif
 
 all: $(OUT)/bin/kupo \
 		 $(OUT)/share/zsh/site-functions/_kupo \
@@ -46,10 +51,10 @@ $(OUT)/share/kupo/LICENSE:
 	@mkdir -p $(@D)
 	@cp LICENSE $@
 
-dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo/kupo:
-	@nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal build kupo:exe:kupo"
+$(BIN_DIR_PATH)/kupo:
+	@nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal build kupo:exe:kupo $(PG_FLAG)"
 
-$(OUT)/bin/kupo: dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo/kupo
+$(OUT)/bin/kupo: $(BIN_DIR_PATH)/kupo
 	@mkdir -p $(@D)
 	@echo "$^ → $(@D)/kupo"
 	@cp $^ $(@D)
@@ -67,7 +72,7 @@ ifeq ($(ARCH),x86_64)
 else
 	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cat /nix/store/hviyb5sciblcyr5fc3vsqcwmfh1nz69w-cabal.project.local >> cabal.project.local"
 endif
-	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal update && cabal freeze -f +production"
+	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal update && cabal freeze -f +production $(PG_FLAG)"
 
 archive: kupo-$(TAG)-$(ARCH)-$(OS).tar.gz # Package the application as a tarball
 
@@ -97,7 +102,10 @@ doc: # Serve the rendered documentation on \033[0;33m<http://localhost:8000>\033
 	@cd docs && python -m SimpleHTTPServer
 
 clean: # Remove build artifacts
-	(rm -r $(OUT) 2>/dev/null && echo "Build artifacts removed.") || echo "Nothing to remove."
+	rm -r $(OUT) 2>/dev/null && echo "Removed $(OUT)" || \
+		rm -r $(BIN_DIR_PATH) 2>/dev/null && echo "Removed $(BIN_DIR_PATH)" || \
+		rm cabal.project.freeze 2>/dev/null && echo "Removed cabal.project.freeze" || true
+	echo "Finished cleaning."
 
 clean-all: clean # Remove build artifacts & build cache
 	cabal clean
