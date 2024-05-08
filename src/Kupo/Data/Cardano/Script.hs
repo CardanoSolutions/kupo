@@ -145,13 +145,13 @@ scriptToBytes
     :: Script
     -> ByteString
 scriptToBytes =
-    let prependInt n s= BS.singleton n <> Ledger.originalBytes s
+    let withTag n s = BS.singleton n <> Ledger.originalBytes s
      in \case
-        Ledger.Alonzo.TimelockScript script -> prependInt 0 script
+        Ledger.Alonzo.TimelockScript script -> withTag 0 script
         Ledger.Alonzo.PlutusScript script -> case Ledger.Alonzo.plutusScriptLanguage script of
-            Ledger.PlutusV1 -> prependInt 1 script
-            Ledger.PlutusV2 -> prependInt 2 script
-            Ledger.PlutusV3 -> prependInt 3 script
+            Ledger.PlutusV1 -> withTag 1 script
+            Ledger.PlutusV2 -> withTag 2 script
+            Ledger.PlutusV3 -> withTag 3 script
 
 unsafeScriptFromBytes
     :: HasCallStack
