@@ -3,8 +3,8 @@
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module Kupo.App.Database
     ( -- * Database DSL
@@ -34,22 +34,13 @@ module Kupo.App.Database
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
-    , newDatabaseFile
-    , createShortLivedConnection
-    , withLongLivedConnection
-    , withShortLivedConnection
     , copyDatabase
-    , Connection
     , ConnectionType (..)
-    , DatabaseFile (..)
+    , DBPool (..)
 
       -- * Internal
     , installIndexes
     , installIndex
-
-      -- ** Lock
-    , DBLock
-    , newLock
 
       -- * Tracer
     , TraceDatabase (..)
@@ -59,4 +50,10 @@ module Kupo.App.Database
 import Kupo.App.Database.Postgres
 #else
 import Kupo.App.Database.SQLite
+import Kupo.App.Database.Types
+    ( ConnectionType (..)
+    , DBPool (..)
+    , DBTransaction
+    , Database (..)
+    )
 #endif

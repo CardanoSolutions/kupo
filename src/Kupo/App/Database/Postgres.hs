@@ -8,7 +8,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Kupo.App.Database.Postgres
+module Kupo.App.Database.SQLite
     ( -- * Database DSL
       Database (..)
     , DBTransaction
@@ -55,9 +55,10 @@ module Kupo.App.Database.Postgres
 
       -- * Tracer
     , TraceDatabase (..)
+    , mkDBPool
     ) where
 
--- import Kupo.Prelude
+import Kupo.Prelude
 
 import Control.Exception
     ( IOException
@@ -131,17 +132,13 @@ import Kupo.Control.MonadTime
     ( DiffTime
     )
 import Kupo.Data.Cardano
-    ( BinaryData
-    , DatumHash
-    , Point
-    , Script
-    , ScriptHash
-    , SlotNo (..)
+    ( SlotNo (..)
     , slotNoToText
     )
 import Kupo.Data.Configuration
     ( DeferIndexesInstallation (..)
     , LongestRollback (..)
+    , WorkDir
     , pruneInputsMaxIncrement
     )
 import Kupo.Data.Database
@@ -157,7 +154,6 @@ import Kupo.Data.Http.StatusFlag
     )
 import Kupo.Data.Pattern
     ( Pattern (..)
-    , Result
     , patternToText
     )
 import Numeric
@@ -179,125 +175,25 @@ import System.IO.Error
     ( isAlreadyExistsError
     )
 
+import Control.Concurrent
+    ( getNumCapabilities
+    )
 import qualified Data.Char as Char
+import Data.Pool
+    ( Pool
+    , defaultPoolConfig
+    , destroyAllResources
+    , newPool
+    , tryWithResource
+    , withResource
+    )
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as T
 import qualified Data.Text.Lazy.Builder as TL
 import qualified Database.SQLite.Simple as Sqlite
+import Kupo.App.Database.Types
 import qualified Kupo.Data.Configuration as Configuration
 import qualified Kupo.Data.Database as DB
-
-data Database (m :: Type -> Type) = Database
-    { insertInputs
-        :: [DB.Input]
-        -> DBTransaction m ()
-
-    , deleteInputs
-        :: Set Pattern
-        -> DBTransaction m Int
-
-    , markInputs
-        :: SlotNo
-        -> Set Pattern
-        -> DBTransaction m Int
-
-    , pruneInputs
-        :: DBTransaction m Int
-
-    , foldInputs
-        :: Pattern
-        -> Range SlotNo
-        -> StatusFlag
-        -> SortDirection
-        -> (Result -> m ())
-        -> DBTransaction m ()
-
-    , countInputs
-        :: Pattern
-        -> DBTransaction m Integer
-
-    , foldPolicies
-        :: Pattern
-        -> (DB.Policy -> m ())
-        -> DBTransaction m ()
-
-    , countPolicies
-        :: Pattern
-        -> DBTransaction m Integer
-
-    , insertPolicies
-        :: Set DB.Policy
-        -> DBTransaction m ()
-
-    , insertCheckpoints
-        :: [Point]
-        -> DBTransaction m ()
-
-    , listCheckpointsDesc
-        :: DBTransaction m [Point]
-
-    , listAncestorsDesc
-        :: SlotNo
-        -> Int64 -- Number of ancestors to retrieve
-        -> DBTransaction m [Point]
-
-    , insertPatterns
-        :: Set Pattern
-        -> DBTransaction m ()
-
-    , deletePattern
-        :: Pattern
-        -> DBTransaction m Int
-
-    , listPatterns
-        :: DBTransaction m (Set Pattern)
-
-    , insertBinaryData
-        :: [DB.BinaryData]
-        -> DBTransaction m ()
-
-    , getBinaryData
-        :: DatumHash
-        -> DBTransaction m (Maybe BinaryData)
-
-    , pruneBinaryData
-        :: DBTransaction m Int
-
-    , insertScripts
-        :: [DB.ScriptReference]
-        -> DBTransaction m ()
-
-    , getScript
-        :: ScriptHash
-        -> DBTransaction m (Maybe Script)
-
-    , rollbackTo
-        :: SlotNo
-        -> DBTransaction m (Maybe Point)
-
-    , optimize
-        :: DBTransaction  m ()
-
-    , runTransaction
-        :: forall a. ()
-        => DBTransaction m a
-        -> m a
-
-    , longestRollback
-        :: LongestRollback
-
-    , close
-        :: m ()
-    }
-
-type family DBTransaction (m :: Type -> Type) :: (Type -> Type) where
-    DBTransaction IO = ReaderT Connection IO
-
-data ConnectionType = ReadOnly | ReadWrite | WriteOnly
-    deriving (Generic, Eq, Show)
-
-instance ToJSON ConnectionType where
-    toEncoding = defaultGenericToEncoding
 
 data DatabaseFile = OnDisk !FilePath | InMemory !(Maybe FilePath)
     deriving (Generic, Eq, Show)
@@ -313,7 +209,6 @@ data FailedToCreateDatabaseFileReason
     | SpecifiedPathIsReadOnly { path :: !FilePath }
     | SomeUnexpectedErrorOccured { error :: !IOException }
     deriving (Show)
-
 
 -- | Create a new 'DatabaseFile' in the expected workding directory. Create the target
 -- directory (recursively) if it doesn't exist.
@@ -476,6 +371,47 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
             )
             (atomically $ writeTVar longLived False)
             (between conn)
+
+-- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
+mkDBPool :: Bool -> (Tracer IO TraceDatabase) -> WorkDir -> LongestRollback -> IO (DBPool IO)
+mkDBPool isReadOnly tr workDir longestRollback = do
+    dbFile <- newDatabaseFile tr workDir
+    
+    lock <- liftIO newLock
+    
+    (maxConcurrentWriters, maxConcurrentReaders) <- liftIO getNumCapabilities <&> \n -> (n, 5 * n)
+
+    readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
+        (createShortLivedConnection tr ReadOnly lock longestRollback dbFile)
+        (\Database{close} -> close)
+        600
+        maxConcurrentReaders
+
+    readWritePool <- liftIO $ newPool $ defaultPoolConfig
+        (createShortLivedConnection tr ReadWrite lock longestRollback dbFile)
+        (\Database{close} -> close)
+        30
+        maxConcurrentWriters
+
+    let
+      withDB :: forall a b. (Pool (Database IO) -> (Database IO -> IO a) -> IO b) -> ConnectionType -> (Database IO -> IO a) -> IO b
+      withDB withRes connType dbAction =
+            case connType of
+                ReadOnly -> withRes readOnlyPool dbAction
+                ReadWrite | isReadOnly -> fail "Cannot acquire a read/write connection on read-only replica"
+                ReadWrite -> withRes readWritePool dbAction
+                WriteOnly -> fail "Impossible: tried to acquire a WriteOnly database?"
+
+      withDatabaseExclusiveWriter :: DeferIndexesInstallation -> (Database IO -> IO a) -> (IO a)
+      withDatabaseExclusiveWriter =
+        withLongLivedConnection tr lock longestRollback dbFile
+
+      destroyResources = do
+        destroyAllResources readOnlyPool
+        destroyAllResources readWritePool
+
+    return DBPool { tryWithDatabase = withDB tryWithResource, withDatabase = withDB withResource, withDatabaseExclusiveWriter, destroyResources }
+
 
 -- It is therefore also the connection from which we check for and run database migrations when
 -- needed. Note that this bracket will also create the database if it doesn't exist.

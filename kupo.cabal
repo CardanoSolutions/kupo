@@ -57,6 +57,7 @@ library
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
       Kupo.App.Database
+      Kupo.App.Database.Types
       Kupo.App.FetchBlock.Node
       Kupo.App.FetchBlock.Ogmios
       Kupo.App.Health
@@ -218,6 +219,7 @@ library
     , ouroboros-network-api
     , ouroboros-network-framework
     , ouroboros-network-protocols
+    , postgresql-simple
     , prometheus
     , relude
     , resource-pool
