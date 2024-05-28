@@ -42,6 +42,7 @@ import Kupo.App.Configuration
     )
 import Kupo.App.Database
     ( TraceDatabase
+    , databaseLocationOptionParser
     )
 import Kupo.App.Http
     ( TraceHttpServer
@@ -65,9 +66,9 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
+    , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
-    , WorkDir (..)
     )
 import Kupo.Data.Pattern
     ( Pattern
@@ -125,7 +126,7 @@ parserInfo = info (helper <*> parser) $ mempty
         ( Run
             <$> ( Configuration
                     <$> chainProducerOption
-                    <*> workDirOption
+                    <*> databaseLocationOptionParser
                     <*> serverHostOption
                     <*> serverPortOption
                     <*> optional sinceOption
@@ -185,21 +186,6 @@ nodeConfigOption = option str $ mempty
     <> metavar "FILEPATH"
     <> help "Path to the node configuration file."
     <> completer (bashCompleter "file")
-
--- | --workdir=DIR | --in-memory
-workDirOption :: Parser WorkDir
-workDirOption =
-    dirOption <|> inMemoryFlag
-  where
-    dirOption = fmap Dir $ option str $ mempty
-        <> long "workdir"
-        <> metavar "DIRECTORY"
-        <> help "Path to a working directory, where the database is stored."
-        <> completer (bashCompleter "directory")
-
-    inMemoryFlag = flag' InMemory $ mempty
-        <> long "in-memory"
-        <> help "Run fully in-memory, data is short-lived and lost when the process exits."
 
 -- | [--host=IPv4], default: 127.0.0.1
 serverHostOption :: Parser String

@@ -82,9 +82,9 @@ import Kupo.Data.ChainSync
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
+    , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
-    , WorkDir (..)
     )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..)
@@ -217,7 +217,7 @@ spec :: Spec
 spec = skippableContext "End-to-end" $ do
     endToEnd "can connect" $ \(configure, runSpec, HttpClient{..}) -> do
         (_cfg, env) <- configure $ \defaultCfg -> defaultCfg
-            { workDir = InMemory
+            { databaseLocation = InMemory
             , since = Just GenesisPoint
             , patterns = fromList [MatchAny OnlyShelley]
             }
@@ -228,7 +228,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "in-memory" $ \(configure, runSpec, HttpClient{..}) -> do
         (cfg, env) <- configure $ \defaultCfg -> defaultCfg
-            { workDir = InMemory
+            { databaseLocation = InMemory
             , since = Just lastByronPoint
             , patterns = fromList [MatchAny IncludingBootstrap]
             , deferIndexes = SkipNonEssentialIndexes
@@ -419,7 +419,7 @@ spec = skippableContext "End-to-end" $ do
         (xs, ys) <- readIORef ref
         withSystemTempDirectory "kupo-end-to-end" $ \tmp' -> do
             (_, env') <- configure $ \defaultCfg -> defaultCfg
-                { workDir = Dir tmp'
+                { databaseLocation = OnDisk tmp'
                 , since = Just lastByronPoint
                 , patterns = fromList [MatchDelegation someOtherStakeKey]
                 }
@@ -572,7 +572,7 @@ skippableContext prefix skippableSpec = do
             manager <- runIO $ newManager defaultManagerSettings
             let defaultCfg = Configuration
                     { chainProducer = CardanoNode { nodeSocket, nodeConfig }
-                    , workDir = InMemory
+                    , databaseLocation = InMemory
                     , serverHost = "127.0.0.1"
                     , serverPort = 0
                     , since = Nothing
@@ -593,7 +593,7 @@ skippableContext prefix skippableSpec = do
                 defaultManagerSettings { managerResponseTimeout = responseTimeoutNone }
             let defaultCfg = Configuration
                     { chainProducer = Ogmios { ogmiosHost, ogmiosPort }
-                    , workDir = InMemory
+                    , databaseLocation = InMemory
                     , serverHost = "127.0.0.1"
                     , serverPort = 0
                     , since = Nothing
@@ -614,7 +614,7 @@ skippableContext prefix skippableSpec = do
                 defaultManagerSettings { managerResponseTimeout = responseTimeoutNone }
             let defaultCfg = Configuration
                     { chainProducer = Hydra {hydraHost, hydraPort}
-                    , workDir = InMemory
+                    , databaseLocation = InMemory
                     , serverHost = "127.0.0.1"
                     , serverPort = 0
                     , since = Nothing
@@ -642,7 +642,7 @@ skippableContext prefix skippableSpec = do
         withSystemTempDirectory "kupo-end-to-end" $ \dir -> do
             action
                 ( \mkConfig -> do
-                    let cfg = mkConfig (defaultCfg { serverPort, workDir = Dir dir })
+                    let cfg = mkConfig (defaultCfg { serverPort, databaseLocation = OnDisk dir })
                     (cfg,) <$> newEnvironmentWith throwIO cfg
                 , \env t test -> do
                         withTempFile dir "traces" $ \fp h -> do

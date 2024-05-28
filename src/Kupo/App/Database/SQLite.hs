@@ -43,6 +43,7 @@ module Kupo.App.Database.SQLite
 
       -- * Tracer
     , TraceDatabase (..)
+    , databaseLocationOptionParser
     ) where
 
 import Kupo.Prelude
@@ -125,7 +126,6 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( DeferIndexesInstallation (..)
     , LongestRollback (..)
-    , WorkDir
     , pruneInputsMaxIncrement
     )
 import Kupo.Data.Database
@@ -182,10 +182,39 @@ import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBPool (..)
     , Database (..)
+    , MakeDatabasePool
     )
 import qualified Kupo.Data.Configuration as Configuration
+    ( DatabaseLocation (..)
+    )
 import qualified Kupo.Data.Database as DB
+import Options.Applicative
+    ( Parser
+    , bashCompleter
+    , completer
+    , flag'
+    , help
+    , long
+    , metavar
+    , option
+    , str
+    )
 
+-- | --workdir=DIR | --in-memory
+databaseLocationOptionParser :: Parser Configuration.DatabaseLocation
+databaseLocationOptionParser =
+    dirOption <|> inMemoryFlag
+  where
+    dirOption = fmap Configuration.OnDisk $ option str $ mempty
+        <> long "workdir"
+        <> metavar "DIRECTORY"
+        <> help "Path to a working directory, where the database is stored."
+        <> completer (bashCompleter "directory")
+
+    inMemoryFlag = flag' Configuration.InMemory $ mempty
+        <> long "in-memory"
+        <> help "Run fully in-memory, data is short-lived and lost when the process exits."
+        
 data DatabaseFile = OnDisk !FilePath | InMemory !(Maybe FilePath)
     deriving (Generic, Eq, Show)
 
@@ -198,20 +227,19 @@ instance Exception NewDatabaseFileException
 data FailedToCreateDatabaseFileReason
     = SpecifiedPathIsAFile { path :: !FilePath }
     | SpecifiedPathIsReadOnly { path :: !FilePath }
+    | RemoteURLSpecified { url :: !String } -- // TODO: Change to URL
     | SomeUnexpectedErrorOccured { error :: !IOException }
     deriving (Show)
 
--- | Create a new 'DatabaseFile' in the expected workding directory. Create the target
+-- | Create a new database file in the expected workding directory. Create the target
 -- directory (recursively) if it doesn't exist.
-newDatabaseFile
-    :: (MonadIO m)
-    => Tracer IO TraceDatabase
-    -> Configuration.WorkDir
-    -> m DatabaseFile
+newDatabaseFile ::
+    Tracer IO TraceDatabase
+    -> Configuration.DatabaseLocation
+    -> IO DatabaseFile
 newDatabaseFile tr = \case
-    Configuration.InMemory -> do
-        return $ InMemory Nothing
-    Configuration.Dir dir ->
+    Configuration.InMemory -> return $ InMemory Nothing 
+    Configuration.OnDisk dir ->
         OnDisk <$> newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) dir
 
 newDatabaseOnDiskFile
@@ -365,9 +393,9 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
 -- This function creates a database file if it does not already exist.
-mkDBPool :: Bool -> (Tracer IO TraceDatabase) -> WorkDir -> LongestRollback -> IO (DBPool IO)
-mkDBPool isReadOnly tr workDir longestRollback = do
-    dbFile <- newDatabaseFile tr workDir
+mkDBPool :: MakeDatabasePool (Tracer IO TraceDatabase)
+mkDBPool isReadOnly tr dbLocation longestRollback = do
+    dbFile <- newDatabaseFile tr dbLocation
     
     lock <- liftIO newLock
     
@@ -1316,6 +1344,9 @@ data TraceDatabase where
     DatabaseDebug
         :: Text
         -> TraceDatabase
+    DatabaseMustBeLocal
+        :: Text
+        -> TraceDatabase
     deriving stock (Generic, Show)
 
 instance ToJSON TraceDatabase where
@@ -1341,6 +1372,7 @@ instance HasSeverityAnnotation TraceDatabase where
         DatabaseRemoveIncompleteCopy{} -> Notice
         DatabaseCopyFinalize{}         -> Notice
         DatabaseDebug{}                -> Warning
+        DatabaseMustBeLocal{}          -> Error
 
 data TraceConnection where
     ConnectionCreateShortLived

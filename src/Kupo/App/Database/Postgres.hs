@@ -8,14 +8,12 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Kupo.App.Database.SQLite
-    ( -- * Database DSL
-      Database (..)
-    , DBTransaction
+module Kupo.App.Database.Postgres
+    ( 
 
       -- ** Queries
       -- *** Inputs
-    , deleteInputsQry
+    deleteInputsQry
     , markInputsQry
     , pruneInputsQry
     , foldInputsQry
@@ -36,34 +34,22 @@ module Kupo.App.Database.SQLite
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
-    , newDatabaseFile
-    , createShortLivedConnection
-    , withLongLivedConnection
-    , withShortLivedConnection
+    , mkDBPool
     , copyDatabase
-    , Connection
-    , ConnectionType (..)
-    , DatabaseFile (..)
 
       -- * Internal
     , installIndexes
     , installIndex
 
-      -- ** Lock
-    , DBLock
-    , newLock
-
       -- * Tracer
     , TraceDatabase (..)
-    , mkDBPool
+    , databaseLocationOptionParser
     ) where
 
 import Kupo.Prelude
 
 import Control.Exception
-    ( IOException
-    , handle
-    , mask
+    ( mask
     , onException
     , throwIO
     )
@@ -74,16 +60,9 @@ import Control.Tracer
 import Data.FileEmbed
     ( embedFile
     )
-import Data.Scientific
-    ( scientific
-    )
 import Data.Severity
     ( HasSeverityAnnotation (..)
     , Severity (..)
-    )
-import Data.Text.Lazy.Builder.Scientific
-    ( FPFormat (Fixed)
-    , formatScientificBuilder
     )
 import Database.SQLite.Simple
     ( Connection
@@ -92,7 +71,6 @@ import Database.SQLite.Simple
     , Query (..)
     , SQLData (..)
     , SQLError (..)
-    , SQLOpenFlag (..)
     , ToRow (..)
     , changes
     , execute
@@ -101,15 +79,11 @@ import Database.SQLite.Simple
     , nextRow
     , query_
     , totalChanges
-    , withConnection'
     , withStatement
     )
 import GHC.TypeLits
     ( KnownSymbol
     , symbolVal
-    )
-import Kupo.Control.MonadAsync
-    ( concurrently_
     )
 import Kupo.Control.MonadCatch
     ( catch
@@ -119,14 +93,6 @@ import Kupo.Control.MonadDelay
     )
 import Kupo.Control.MonadLog
     ( TraceProgress (..)
-    , nullTracer
-    )
-import Kupo.Control.MonadSTM
-    ( MonadSTM (..)
-    )
-import Kupo.Control.MonadThrow
-    ( bracket
-    , bracket_
     )
 import Kupo.Control.MonadTime
     ( DiffTime
@@ -138,7 +104,6 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( DeferIndexesInstallation (..)
     , LongestRollback (..)
-    , WorkDir
     , pruneInputsMaxIncrement
     )
 import Kupo.Data.Database
@@ -159,281 +124,40 @@ import Kupo.Data.Pattern
 import Numeric
     ( Floating (..)
     )
-import System.Directory
-    ( Permissions (..)
-    , copyFile
-    , createDirectoryIfMissing
-    , doesFileExist
-    , getCurrentDirectory
-    , getPermissions
-    , removePathForcibly
-    )
-import System.FilePath
-    ( (</>)
-    )
-import System.IO.Error
-    ( isAlreadyExistsError
-    )
 
-import Control.Concurrent
-    ( getNumCapabilities
-    )
 import qualified Data.Char as Char
-import Data.Pool
-    ( Pool
-    , defaultPoolConfig
-    , destroyAllResources
-    , newPool
-    , tryWithResource
-    , withResource
-    )
 import qualified Data.Text as T
-import qualified Data.Text.Lazy.Builder as T
 import qualified Data.Text.Lazy.Builder as TL
 import qualified Database.SQLite.Simple as Sqlite
 import Kupo.App.Database.Types
+    ( ConnectionType (..)
+    , Database (..)
+    , MakeDatabasePool
+    )
 import qualified Kupo.Data.Configuration as Configuration
+    ( DatabaseLocation (..)
+    )
 import qualified Kupo.Data.Database as DB
+import Options.Applicative
+    ( Parser
+    , help
+    , long
+    , metavar
+    , option
+    , str
+    )
 
-data DatabaseFile = OnDisk !FilePath | InMemory !(Maybe FilePath)
-    deriving (Generic, Eq, Show)
-
-data NewDatabaseFileException
-    = FailedToAccessOrCreateDatabaseFile { reason :: FailedToCreateDatabaseFileReason }
-    deriving (Show)
-
-instance Exception NewDatabaseFileException
-
-data FailedToCreateDatabaseFileReason
-    = SpecifiedPathIsAFile { path :: !FilePath }
-    | SpecifiedPathIsReadOnly { path :: !FilePath }
-    | SomeUnexpectedErrorOccured { error :: !IOException }
-    deriving (Show)
-
--- | Create a new 'DatabaseFile' in the expected workding directory. Create the target
--- directory (recursively) if it doesn't exist.
-newDatabaseFile
-    :: (MonadIO m)
-    => Tracer IO TraceDatabase
-    -> Configuration.WorkDir
-    -> m DatabaseFile
-newDatabaseFile tr = \case
-    Configuration.InMemory -> do
-        return $ InMemory Nothing
-    Configuration.Dir dir ->
-        OnDisk <$> newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) dir
-
-newDatabaseOnDiskFile
-    :: (MonadIO m)
-    => Tracer IO TraceDatabase
-    -> (FilePath -> IO ())
-    -> FilePath
-    -> m FilePath
-newDatabaseOnDiskFile tr onFileMissing dir = liftIO $ do
-    absoluteDir <- (</> dir) <$> getCurrentDirectory
-    handle (onAlreadyExistsError absoluteDir) $ createDirectoryIfMissing True dir
-    permissions <- getPermissions absoluteDir
-    unless (writable permissions) $ bail (SpecifiedPathIsReadOnly absoluteDir)
-    let dbFile = absoluteDir </> "kupo.sqlite3"
-    unlessM (doesFileExist dbFile) $ onFileMissing dbFile
-    return dbFile
-  where
-    bail absoluteDir = do
-        traceWith tr $ DatabasePathMustBeDirectory
-            { hint = "The path you've specified as working directory is a file; you probably meant to \
-                     \point to the parent directory instead. Don't worry about the database file, \
-                     \I'll manage it myself."
-            }
-        throwIO (FailedToAccessOrCreateDatabaseFile absoluteDir)
-    onAlreadyExistsError absoluteDir e
-      | isAlreadyExistsError e = do
-          bail (SpecifiedPathIsAFile absoluteDir)
-      | otherwise =
-          bail (SomeUnexpectedErrorOccured e)
-
--- | Construct a connection string for the SQLite database. This utilizes (and assumes) the URI
--- recognition from SQLite to choose between read-only or read-write database. By default also, when
--- no filepath is provided, the database is created in-memory with a shared cache.
---
--- For testing purpose however, it is also possible to create a in-memory database in isolation by
--- simply passing `:memory:` as a filepath.
-mkConnectionString
-    :: DatabaseFile
-    -> ConnectionType
-    -> (String, [SQLOpenFlag])
-mkConnectionString filePath mode =
-    case filePath of
-        OnDisk fp ->
-            ("file:" <> fp, SQLOpenNoMutex : openFlags)
-        InMemory Nothing ->
-            ("file::kupo:?mode=memory&cache=shared", openFlags)
-        InMemory (Just fp) ->
-            (fp, SQLOpenMemory : openFlags)
-  where
-    openFlags = case mode of
-        ReadOnly  -> [SQLOpenReadOnly]
-        ReadWrite -> [SQLOpenReadWrite, SQLOpenCreate]
-        WriteOnly -> [SQLOpenReadWrite, SQLOpenCreate]
-
--- | A short-lived connection meant to be used in a resource-pool. These connections can be opened
--- either as read-only connection or read-write; depending on the client needs. Read-only connections
--- are non-blocking and can access data even when the database is being written concurrently.
-createShortLivedConnection
-    :: Tracer IO TraceDatabase
-    -> ConnectionType
-    -> DBLock IO
-    -> LongestRollback
-    -> DatabaseFile
-    -> IO (Database IO)
-createShortLivedConnection tr mode (DBLock shortLived longLived) k file = do
-    traceWith tr $ DatabaseConnection ConnectionCreateShortLived{mode}
-
-    let (str, flags) = mkConnectionString file mode
-
-    !conn <- Sqlite.open' str flags
-
-    forM_ ["PRAGMA cache_size = 1024"] $ \pragma ->
-        handle
-            (\(_ :: SomeException) -> traceWith trConn ConnectionFailedPragma{pragma})
-            (execute_ conn (Query pragma))
-
-    return $ mkDatabase trConn mode k (bracketConnection conn)
-  where
-    trConn :: Tracer IO TraceConnection
-    trConn = contramap DatabaseConnection tr
-
-    bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
-    bracketConnection conn between =
-        case mode of
-            WriteOnly ->
-                between conn
-            ReadOnly ->
-                between conn
-            ReadWrite ->
-                bracket_
-                    -- read-write connections only run when the longLived isn't busy working. Multiple
-                    -- short-lived read-write connections may still conflict with one another, but
-                    -- since they mostly are one-off requests, we simply retry them when busy/locked.
-                    (atomically $ do
-                        readTVar longLived >>= check . not
-                        modifyTVar' shortLived next
-                    )
-                    (atomically (modifyTVar' shortLived prev))
-                    (between conn)
-
-withShortLivedConnection
-    :: Tracer IO TraceDatabase
-    -> ConnectionType
-    -> DBLock IO
-    -> LongestRollback
-    -> DatabaseFile
-    -> (Database IO -> IO a)
-    -> IO a
-withShortLivedConnection tr mode lock k file action = do
-    bracket
-        (createShortLivedConnection tr mode lock k file)
-        (\Database{close} -> close)
-        action
-
--- | A resource acquisition bracket for a single long-lived connection. The system is assumed to use
--- with only once, at the application start-up and provide this connection to a privileged one which
--- takes priority over any other connections.
---
--- It is therefore also the connection from which we check for and run database migrations when
--- needed. Note that this bracket will also create the database if it doesn't exist.
-withLongLivedConnection
-    :: Tracer IO TraceDatabase
-    -> DBLock IO
-    -> LongestRollback
-    -> DatabaseFile
-    -> DeferIndexesInstallation
-    -> (Database IO -> IO a)
-    -> IO a
-withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes action = do
-    let (str, flags) = mkConnectionString file ReadWrite
-    withConnection' str flags $ \conn -> do
-        execute_ conn "PRAGMA page_size = 32768"
-        execute_ conn "PRAGMA cache_size = 1024"
-        execute_ conn "PRAGMA synchronous = NORMAL"
-        execute_ conn "PRAGMA journal_mode = WAL"
-        execute_ conn "PRAGMA optimize"
-        databaseVersion conn >>= runMigrations tr conn
-        installIndexes tr conn deferIndexes
-        execute_ conn "PRAGMA foreign_keys = ON"
-        action (mkDatabase (contramap DatabaseConnection tr) ReadWrite k (bracketConnection conn))
-  where
-    bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
-    bracketConnection conn between =
-        bracket_
-            (do
-                atomically (writeTVar longLived True) -- acquire
-                atomically (readTVar shortLived >>= check . (== 0)) -- wait for read-write short-lived
-            )
-            (atomically $ writeTVar longLived False)
-            (between conn)
+-- | --remote=URL
+databaseLocationOptionParser :: Parser Configuration.DatabaseLocation
+databaseLocationOptionParser = fmap Configuration.Remote $ option str $ mempty
+        <> long "remote"
+        <> metavar "URL"
+        <> help "URL of a PostgreSQL server, in the form [user[:password]@][netloc][:port][/dbname][?param1=value1&...]"
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
-mkDBPool :: Bool -> (Tracer IO TraceDatabase) -> WorkDir -> LongestRollback -> IO (DBPool IO)
-mkDBPool isReadOnly tr workDir longestRollback = do
-    dbFile <- newDatabaseFile tr workDir
-    
-    lock <- liftIO newLock
-    
-    (maxConcurrentWriters, maxConcurrentReaders) <- liftIO getNumCapabilities <&> \n -> (n, 5 * n)
-
-    readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
-        (createShortLivedConnection tr ReadOnly lock longestRollback dbFile)
-        (\Database{close} -> close)
-        600
-        maxConcurrentReaders
-
-    readWritePool <- liftIO $ newPool $ defaultPoolConfig
-        (createShortLivedConnection tr ReadWrite lock longestRollback dbFile)
-        (\Database{close} -> close)
-        30
-        maxConcurrentWriters
-
-    let
-      withDB :: forall a b. (Pool (Database IO) -> (Database IO -> IO a) -> IO b) -> ConnectionType -> (Database IO -> IO a) -> IO b
-      withDB withRes connType dbAction =
-            case connType of
-                ReadOnly -> withRes readOnlyPool dbAction
-                ReadWrite | isReadOnly -> fail "Cannot acquire a read/write connection on read-only replica"
-                ReadWrite -> withRes readWritePool dbAction
-                WriteOnly -> fail "Impossible: tried to acquire a WriteOnly database?"
-
-      withDatabaseExclusiveWriter :: DeferIndexesInstallation -> (Database IO -> IO a) -> (IO a)
-      withDatabaseExclusiveWriter =
-        withLongLivedConnection tr lock longestRollback dbFile
-
-      destroyResources = do
-        destroyAllResources readOnlyPool
-        destroyAllResources readWritePool
-
-    return DBPool { tryWithDatabase = withDB tryWithResource, withDatabase = withDB withResource, withDatabaseExclusiveWriter, destroyResources }
-
-
--- It is therefore also the connection from which we check for and run database migrations when
--- needed. Note that this bracket will also create the database if it doesn't exist.
-withWriteOnlyConnection
-    :: DatabaseFile
-    -> (Sqlite.Connection -> Database IO -> IO a)
-    -> IO a
-withWriteOnlyConnection file action = do
-    let (str, flags) = mkConnectionString file WriteOnly
-    withConnection' str flags $ \conn -> do
-        databaseVersion conn >>= runMigrations nullTracer conn
-        installIndexes nullTracer conn SkipNonEssentialIndexes
-        execute_ conn "PRAGMA synchronous = OFF"
-        execute_ conn "PRAGMA journal_mode = OFF"
-        execute_ conn "PRAGMA locking_mode = EXCLUSIVE"
-        action conn (mkDatabase nullTracer ReadWrite k (bracketConnection conn))
-  where
-    k = LongestRollback maxBound
-
-    bracketConnection :: Connection -> (forall a. ((Connection -> IO a) -> IO a))
-    bracketConnection conn between =
-        between conn
+-- This function creates a database file if it does not already exist.
+mkDBPool :: MakeDatabasePool (Tracer IO TraceDatabase)
+mkDBPool isReadOnly tr workDir longestRollback = undefined
 
 data CopyException
     = ErrCopyEmptyPatterns { hint :: Text }
@@ -456,108 +180,103 @@ copyDatabase
     -> FilePath
     -> Set Pattern
     -> IO ()
-copyDatabase (tr, progress) fromDir intoDir patterns = do
-    when (null patterns) $ do
-        throwIO ErrCopyEmptyPatterns
-            { hint = "No patterns provided for copy. At least one is required." }
+copyDatabase (tr, progress) fromDir intoDir patterns =
+  undefined
+  -- do
+  --   when (null patterns) $ do
+  --       throwIO ErrCopyEmptyPatterns
+  --           { hint = "No patterns provided for copy. At least one is required." }
 
-    fromFile <- newDatabaseOnDiskFile tr (throwIO . ErrMissingSourceDatabase) fromDir
-    intoFile <- newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) intoDir
+  --   fromFile <- newDatabaseOnDiskFile tr (throwIO . ErrMissingSourceDatabase) fromDir
+  --   intoFile <- newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) intoDir
 
-    cleanupFile <- newCleanupAction intoFile
+  --   cleanupFile <- newCleanupAction intoFile
 
-    handle cleanupFile $ do
-        traceWith tr DatabaseCloneSourceDatabase
-        copyFile fromFile intoFile
-        lock <- newLock
-        withShortLivedConnection tr ReadOnly lock longestRollback (OnDisk fromFile) $ \from -> do
-            withWriteOnlyConnection (OnDisk intoFile) $ \conn into -> do
-                execute_ conn "PRAGMA foreign_keys = OFF"
-                mapM_ (cleanup conn) ["inputs", "policies", "patterns"]
-                runTransaction into (insertPatterns into patterns)
-                forM_ patterns $ \pattern_ -> do
-                    traceWith tr $ DatabaseImportTable { table = "inputs", pattern = patternToText pattern_ }
-                    copyTable
-                        (runTransaction from $ countInputs from pattern_)
-                        (runTransaction from . foldInputs from pattern_ Whole NoStatusFlag Asc)
-                        (runTransaction into . insertInputs into)
-                        DB.resultToRow
-                    traceWith tr $ DatabaseImportTable { table = "policies", pattern = patternToText pattern_ }
-                    copyTable
-                        (runTransaction from $ countPolicies from pattern_)
-                        (runTransaction from . foldPolicies from pattern_)
-                        (runTransaction into . insertPolicies into . fromList)
-                        identity
-                traceWith tr DatabaseCopyFinalize
-                execute_ conn "VACUUM"
-                execute_ conn "PRAGMA optimize"
-  where
-    longestRollback :: LongestRollback
-    longestRollback =
-        LongestRollback maxBound
+  --   handle cleanupFile $ do
+  --       traceWith tr DatabaseCloneSourceDatabase
+  --       copyFile fromFile intoFile
+  --       lock <- newLock
+  --       withShortLivedConnection tr ReadOnly lock longestRollback (OnDisk fromFile) $ \from -> do
+  --           withWriteOnlyConnection (OnDisk intoFile) $ \conn into -> do
+  --               execute_ conn "PRAGMA foreign_keys = OFF"
+  --               mapM_ (cleanup conn) ["inputs", "policies", "patterns"]
+  --               runTransaction into (insertPatterns into patterns)
+  --               forM_ patterns $ \pattern_ -> do
+  --                   traceWith tr $ DatabaseImportTable { table = "inputs", pattern = patternToText pattern_ }
+  --                   copyTable
+  --                       (runTransaction from $ countInputs from pattern_)
+  --                       (runTransaction from . foldInputs from pattern_ Whole NoStatusFlag Asc)
+  --                       (runTransaction into . insertInputs into)
+  --                       DB.resultToRow
+  --                   traceWith tr $ DatabaseImportTable { table = "policies", pattern = patternToText pattern_ }
+  --                   copyTable
+  --                       (runTransaction from $ countPolicies from pattern_)
+  --                       (runTransaction from . foldPolicies from pattern_)
+  --                       (runTransaction into . insertPolicies into . fromList)
+  --                       identity
+  --               traceWith tr DatabaseCopyFinalize
+  --               execute_ conn "VACUUM"
+  --               execute_ conn "PRAGMA optimize"
+  -- where
+  --   longestRollback :: LongestRollback
+  --   longestRollback =
+  --       LongestRollback maxBound
 
-    cleanup :: Connection -> Text -> IO ()
-    cleanup conn table = do
-        traceWith tr $ DatabaseCleanupOldData { table }
-        execute_ conn $ Query $ "DELETE FROM " <> table
+  --   cleanup :: Connection -> Text -> IO ()
+  --   cleanup conn table = do
+  --       traceWith tr $ DatabaseCleanupOldData { table }
+  --       execute_ conn $ Query $ "DELETE FROM " <> table
 
-    newCleanupAction :: FilePath -> IO (SomeException -> IO a)
-    newCleanupAction filePath = do
-        whenM (doesFileExist filePath) (throwIO $ ErrTargetAlreadyExists { target = filePath })
-        return $ \(e :: SomeException) -> do
-            traceWith tr DatabaseRemoveIncompleteCopy { filePath }
-            removePathForcibly filePath
-            throwIO e
+  --   newCleanupAction :: FilePath -> IO (SomeException -> IO a)
+  --   newCleanupAction filePath = do
+  --       whenM (doesFileExist filePath) (throwIO $ ErrTargetAlreadyExists { target = filePath })
+  --       return $ \(e :: SomeException) -> do
+  --           traceWith tr DatabaseRemoveIncompleteCopy { filePath }
+  --           removePathForcibly filePath
+  --           throwIO e
 
-    copyTable
-        :: IO Integer
-        -> ((result -> IO ()) -> IO ())
-        -> ([row] -> IO ())
-        -> (result -> row)
-        -> IO ()
-    copyTable countTable foldTable insertTable mkRow = do
-        queue <- newTBQueueIO 10_000
-        done <- newTVarIO False
-        total <- countTable
-        concurrently_
-            (do
-                foldTable $ \result ->
-                    atomically $ writeTBQueue queue (mkRow result)
-                atomically $ writeTVar done True
-            )
-            ( let loop n = do
-                    results <- atomically $ do
-                        isDone <- readTVar done
-                        isEmpty <- isEmptyTBQueue queue
-                        check (not isEmpty || isDone)
-                        flushTBQueue queue
-                    insertTable results
-                    let len = toInteger (length results)
-                    unless (len == 0) $ do
-                        traceWith progress $ ProgressStep (mkProgress total (n + len))
-                        loop (n + len)
-               in loop 0 >> do
-                    traceWith progress ProgressDone
-                    traceWith tr $ DatabaseImported { rows = total }
-            )
+  --   copyTable
+  --       :: IO Integer
+  --       -> ((result -> IO ()) -> IO ())
+  --       -> ([row] -> IO ())
+  --       -> (result -> row)
+  --       -> IO ()
+  --   copyTable countTable foldTable insertTable mkRow = do
+  --       queue <- newTBQueueIO 10_000
+  --       done <- newTVarIO False
+  --       total <- countTable
+  --       concurrently_
+  --           (do
+  --               foldTable $ \result ->
+  --                   atomically $ writeTBQueue queue (mkRow result)
+  --               atomically $ writeTVar done True
+  --           )
+  --           ( let loop n = do
+  --                   results <- atomically $ do
+  --                       isDone <- readTVar done
+  --                       isEmpty <- isEmptyTBQueue queue
+  --                       check (not isEmpty || isDone)
+  --                       flushTBQueue queue
+  --                   insertTable results
+  --                   let len = toInteger (length results)
+  --                   unless (len == 0) $ do
+  --                       traceWith progress $ ProgressStep (mkProgress total (n + len))
+  --                       loop (n + len)
+  --              in loop 0 >> do
+  --                   traceWith progress ProgressDone
+  --                   traceWith tr $ DatabaseImported { rows = total }
+  --           )
 
-    mkProgress :: Integer -> Integer -> Text
-    mkProgress total n =
-        scientific (round (double (n * 10000) / double total)) (-2)
-        & formatScientificBuilder Fixed (Just 2)
-        & T.toLazyText
-        & toStrict
-        & (<> "%")
-      where
-        double :: Integer -> Double
-        double = fromIntegral
-
--- ** Lock
-
-data DBLock (m :: Type -> Type) = DBLock !(TVar m Word) !(TVar m Bool)
-
-newLock :: MonadSTM m => m (DBLock m)
-newLock = DBLock <$> newTVarIO 0 <*> newTVarIO True
+  --   mkProgress :: Integer -> Integer -> Text
+  --   mkProgress total n =
+  --       scientific (round (double (n * 10000) / double total)) (-2)
+  --       & formatScientificBuilder Fixed (Just 2)
+  --       & T.toLazyText
+  --       & toStrict
+  --       & (<> "%")
+  --     where
+  --       double :: Integer -> Double
+  --       double = fromIntegral
 
 --
 -- IO

@@ -9,6 +9,7 @@ module Kupo.App.Database.Types
     -- * Setup
     , ConnectionType (..)
     , DBPool (..)
+    , MakeDatabasePool
     )
     where
 
@@ -26,7 +27,8 @@ import Kupo.Data.Cardano
     , SlotNo (..)
     )
 import Kupo.Data.Configuration
-    ( DeferIndexesInstallation
+    ( DatabaseLocation
+    , DeferIndexesInstallation
     , LongestRollback (..)
     )
 import Kupo.Data.Database
@@ -169,3 +171,7 @@ data DBPool m = DBPool {
   , withDatabaseExclusiveWriter :: forall a. DeferIndexesInstallation -> (Database m -> m a) -> m a
   , destroyResources :: m ()
 }
+
+type MakeDatabasePool tr = IsReadOnlyReplica -> tr -> DatabaseLocation -> LongestRollback -> IO (DBPool IO)
+
+type IsReadOnlyReplica = Bool
