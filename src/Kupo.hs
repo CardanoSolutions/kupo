@@ -64,7 +64,6 @@ import Kupo.App.Database
     ( ConnectionType (..)
     , DBPool (..)
     , copyDatabase
-    , mkDBPool
     )
 import Kupo.App.Health
     ( connectionStatusToggle
@@ -133,6 +132,9 @@ import System.Exit
     ( ExitCode (..)
     )
 
+import Kupo.App.Database.SQLite
+    ( mkDBPool
+    )
 import qualified Kupo.Data.Health as Health
 
 --
@@ -188,7 +190,7 @@ kupoWith tr withProducer withFetchBlock =
         , configuration = config@Configuration
             { serverHost
             , serverPort
-            , databaseLocation
+            , workDir
             , inputManagement
             , longestRollback
             , deferIndexes
@@ -203,7 +205,7 @@ kupoWith tr withProducer withFetchBlock =
     --         , maxConcurrentWriters = if isReadOnlyReplica config then 0 else maxConcurrentWriters
     --         }
 
-    dbPool <- liftIO $ mkDBPool (isReadOnlyReplica config) (tracerDatabase tr) databaseLocation longestRollback
+    dbPool <- liftIO $ mkDBPool (isReadOnlyReplica config) (tracerDatabase tr) workDir longestRollback
 
     let run action
             | isReadOnlyReplica config =

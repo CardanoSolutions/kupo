@@ -111,10 +111,10 @@ import Kupo.Data.ChainSync
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
-    , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
     , LongestRollback (..)
+    , WorkDir (..)
     , mailboxCapacity
     )
 import Kupo.Data.FetchBlock
@@ -253,7 +253,7 @@ spec = do
                           { nodeSocket = "/dev/null"
                           , nodeConfig = "/dev/null"
                           }
-                      , databaseLocation = InMemory
+                      , workDir = InMemory
                       , serverHost
                       , serverPort
                       , since = Just GenesisPoint

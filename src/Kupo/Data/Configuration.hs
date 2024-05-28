@@ -2,7 +2,6 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -13,7 +12,7 @@ module Kupo.Data.Configuration
     (
     -- * Configuration
       Configuration (..)
-    , DatabaseLocation (..)
+    , WorkDir (..)
     , InputManagement (..)
     , ChainProducer (..)
     , LongestRollback (..)
@@ -81,7 +80,7 @@ data Configuration = Configuration
         -- This is slightly hacky, but the alternative would be to either split
         -- this type in two or to introduce some higher-kinded type parameter to
         -- the record. Both seems overly complicated given the benefits.
-    , databaseLocation :: !DatabaseLocation
+    , workDir :: !WorkDir
         -- ^ Where to store the data: in-memory vs specific location on-disk
     , serverHost :: !String
         -- ^ Hostname for the API HTTP server
@@ -139,16 +138,12 @@ data ChainProducer
         -- bounded by the CPU capabilities and the I/O read access.
     deriving (Generic, Eq, Show)
 
--- | Database location. For SQLite, 'in-memory' runs the database in hot memory,
+-- | Database working directory. 'in-memory' runs the database in hot memory,
 -- only suitable for non-permissive patterns or testing.
--- For PostgreSQL, a URL and DB name must be specified
-#if postgres
-data DatabaseLocation = Remote String
+data WorkDir
+    = Dir !FilePath
+    | InMemory
     deriving (Generic, Eq, Show)
-#else
-data DatabaseLocation = OnDisk !FilePath | InMemory
-    deriving (Generic, Eq, Show)
-#endif
 
 -- | What to do with inputs that are spent. There are two options:
 --
@@ -202,10 +197,10 @@ data UnableToFetchBlockFromReadOnlyReplicaException = UnableToFetchBlockFromRead
     deriving (Generic, Eq, Show)
 instance Exception UnableToFetchBlockFromReadOnlyReplicaException where
     displayException _ =
-        "An attempt to fetch a block from a read-only replica has occured likely \n" ++
-        "caused by a request to access transaction metadata. This is, unfortunately, \n" ++
-        "not a possible operation from a read-only replica. Only the master server \n" ++
-        "can do that."
+        "An attempt to fetch a block from a read-only replica has occured likely \
+        \caused by a request to access transaction metadata. This is, unfortunately, \
+        \not a possible operation from a read-only replica. Only the master server \
+        \can do that."
 
 -- Mailbox's capacity, or how many messages can be enqueued in the queue between
 -- the consumer and the producer workers. More means faster synchronization (up

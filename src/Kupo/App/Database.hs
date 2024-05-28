@@ -34,13 +34,9 @@ module Kupo.App.Database
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
+    , copyDatabase
     , ConnectionType (..)
     , DBPool (..)
-    , mkDBPool
-    , copyDatabase
-
-      -- ** Option Parser
-    , databaseLocationOptionParser
 
       -- * Internal
     , installIndexes
@@ -54,11 +50,10 @@ module Kupo.App.Database
 import Kupo.App.Database.Postgres
 #else
 import Kupo.App.Database.SQLite
-#endif
-
 import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBPool (..)
     , DBTransaction
     , Database (..)
     )
+#endif

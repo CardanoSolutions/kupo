@@ -29,8 +29,8 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
-    , DatabaseLocation (..)
     , InputManagement (..)
+    , WorkDir (..)
     )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
@@ -100,7 +100,7 @@ spec = parallel $ do
                 { nodeSocket = "./node.socket"
                 , nodeConfig = "./node.config"
                 }
-            , databaseLocation = InMemory
+            , workDir = InMemory
             }
           )
         , ( defaultArgs'
@@ -109,7 +109,7 @@ spec = parallel $ do
                 { ogmiosHost = "localhost"
                 , ogmiosPort = 1337
                 }
-            , databaseLocation = InMemory
+            , workDir = InMemory
             }
           )
         , ( defaultArgs''
@@ -118,14 +118,14 @@ spec = parallel $ do
                 { hydraHost = "localhost"
                 , hydraPort = 4001
                 }
-            , databaseLocation = InMemory
+            , workDir = InMemory
             }
           )
         , ( filter (/= "--in-memory") defaultArgs ++
             [ "--workdir", "./workdir"
             ]
           , shouldParseAppConfiguration $ defaultConfiguration
-            { databaseLocation = OnDisk "./workdir"
+            { workDir = Dir "./workdir"
             }
           )
         , ( defaultArgs ++ [ "--host", "0.0.0.0" ]
