@@ -1,7 +1,7 @@
 OUT := dist
 
 GHC := 9.6.3
-STYLISH_HASKELL_VERSION := 0.14.5.0
+STYLISH_HASKELL_VERSION := 0.13.0.0
 
 # Default network for snapshots.
 NETWORK := preview
@@ -15,7 +15,8 @@ VERSION := $(shell cat package.yaml| grep "version:" | sed "s/[^0-9]*\([0-9]\)\(
 TAG := $(shell echo $(VERSION) | sed "s/^0$$/nightly/")
 CONFIG := $(shell pwd)/config/network/$(NETWORK)
 CACHEDIR := ${HOME}/.cache/kupo/${NETWORK}
-BIN_DIR_PATH := dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo
+BUILD_DIR_PATH := dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)
+BIN_DIR_PATH := $(BUILD_DIR_PATH)/x/kupo/build/kupo
 
 ifeq ($(postgres), true)
 PG_FLAG := -f postgres
@@ -103,7 +104,7 @@ doc: # Serve the rendered documentation on \033[0;33m<http://localhost:8000>\033
 
 clean: # Remove build artifacts
 	rm -r $(OUT) 2>/dev/null && echo "Removed $(OUT)" || \
-		rm -r $(BIN_DIR_PATH) 2>/dev/null && echo "Removed $(BIN_DIR_PATH)" || \
+		rm -r $(BUILD_DIR_PATH) 2>/dev/null && echo "Removed $(BUILD_DIR_PATH)" || \
 		rm cabal.project.freeze 2>/dev/null && echo "Removed cabal.project.freeze" || true
 	echo "Finished cleaning."
 
