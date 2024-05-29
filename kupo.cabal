@@ -210,6 +210,7 @@ library
     , io-classes
     , lens
     , lens-aeson
+    , modern-uri
     , network-mux
     , optparse-applicative
     , ouroboros-consensus
@@ -219,7 +220,7 @@ library
     , ouroboros-network-api
     , ouroboros-network-framework
     , ouroboros-network-protocols
-    , postgresql-simple
+    -- , postgresql-simple
     , prometheus
     , relude
     , resource-pool

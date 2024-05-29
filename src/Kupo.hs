@@ -57,13 +57,17 @@ import Kupo.App.ChainSync
     ( withChainSyncExceptionHandler
     )
 import Kupo.App.Configuration
-    ( newPatternsCache
+    ( TraceConfiguration (..)
+    , newPatternsCache
     , startOrResume
     )
 import Kupo.App.Database
+    ( copyDatabase
+    , mkDBPool
+    )
+import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBPool (..)
-    , copyDatabase
     )
 import Kupo.App.Health
     ( connectionStatusToggle
@@ -132,9 +136,6 @@ import System.Exit
     ( ExitCode (..)
     )
 
-import Kupo.App.Database.SQLite
-    ( mkDBPool
-    )
 import qualified Kupo.Data.Health as Health
 
 --
@@ -190,22 +191,20 @@ kupoWith tr withProducer withFetchBlock =
         , configuration = config@Configuration
             { serverHost
             , serverPort
-            , workDir
+            , databaseLocation
             , inputManagement
             , longestRollback
             , deferIndexes
             }
         } <- ask
 
-    -- (maxConcurrentWriters, maxConcurrentReaders) <- liftIO getNumCapabilities <&> \n -> (n,  5 * n)
+    dbPool@DBPool { maxConcurrentReaders, maxConcurrentWriters } <- liftIO $ mkDBPool (isReadOnlyReplica config) (tracerDatabase tr) databaseLocation longestRollback
 
-    -- liftIO $ logWith (tracerConfiguration tr) $
-    --     ConfigurationMaxConcurrency
-    --         { maxConcurrentReaders
-    --         , maxConcurrentWriters = if isReadOnlyReplica config then 0 else maxConcurrentWriters
-    --         }
-
-    dbPool <- liftIO $ mkDBPool (isReadOnlyReplica config) (tracerDatabase tr) workDir longestRollback
+    liftIO $ logWith (tracerConfiguration tr) $
+      ConfigurationMaxConcurrency
+          { maxConcurrentReaders
+          , maxConcurrentWriters
+          }
 
     let run action
             | isReadOnlyReplica config =
@@ -213,13 +212,6 @@ kupoWith tr withProducer withFetchBlock =
                 -- writers but mostly readers'. However, in the 'ReadOnlyReplica' mode we only
                 -- ever allow read-only connections and never perform a single write.
                 (withDatabase dbPool) ReadOnly (action InstallIndexesIfNotExist)
-                -- withShortLivedConnection
-                --     (tracerDatabase tr)
-                --     ReadOnly
-                --     lock
-                --     longestRollback
-                --     dbFile
-                --     (action InstallIndexesIfNotExist)
             | otherwise =
                 handle
                     (\NodeTipHasBeenReached{distance} -> do
@@ -231,16 +223,6 @@ kupoWith tr withProducer withFetchBlock =
                 io indexMode =
                   (withDatabaseExclusiveWriter dbPool) indexMode (action indexMode)
                     `finally` destroyResources dbPool
-                    -- withLongLivedConnection
-                    --     (tracerDatabase tr)
-                    --     lock
-                    --     longestRollback
-                    --     dbFile
-                    --     indexMode
-                    --     (action indexMode)
-                    --   `finally` do
-                    --        destroyAllResources readOnlyPool
-                    --        destroyAllResources readWritePool
 
     liftIO $ handle (onUnknownException crashWith) $ run $ \indexMode db -> do
         patterns <- newPatternsCache (tracerConfiguration tr) config db

@@ -7,13 +7,10 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 
 module Kupo.App.Database
-    ( -- * Database DSL
-      Database (..)
-    , DBTransaction
-
+    (
       -- ** Queries
       -- *** Inputs
-    , deleteInputsQry
+    deleteInputsQry
     , markInputsQry
     , pruneInputsQry
     , foldInputsQry
@@ -35,8 +32,7 @@ module Kupo.App.Database
 
       -- * Setup
     , copyDatabase
-    , ConnectionType (..)
-    , DBPool (..)
+    , mkDBPool
 
       -- * Internal
     , installIndexes
@@ -50,10 +46,4 @@ module Kupo.App.Database
 import Kupo.App.Database.Postgres
 #else
 import Kupo.App.Database.SQLite
-import Kupo.App.Database.Types
-    ( ConnectionType (..)
-    , DBPool (..)
-    , DBTransaction
-    , Database (..)
-    )
 #endif

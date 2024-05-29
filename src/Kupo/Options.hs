@@ -29,9 +29,15 @@ import Kupo.Prelude hiding
 
 import Options.Applicative
 
+import Control.Monad.Trans.Except
+    ( Except
+    , except
+    )
 import Data.Char
     ( toUpper
     )
+import qualified Data.Text as T
+import qualified Data.Text.Read as T
 import Kupo.App
     ( TraceConsumer
     , TraceGardener
@@ -65,9 +71,9 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
+    , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
-    , WorkDir (..)
     )
 import Kupo.Data.Pattern
     ( Pattern
@@ -85,12 +91,16 @@ import Options.Applicative.Help.Pretty
     , softline
     , vsep
     )
+import Options.Applicative.Types
+    ( ReadM (..)
+    )
 import Safe
     ( readMay
     )
-
-import qualified Data.Text as T
-import qualified Data.Text.Read as T
+import qualified Text.URI as URI
+import Text.URI
+    ( URI
+    )
 
 data Command
     = Run !Configuration !(Tracers IO MinSeverities)
@@ -125,7 +135,7 @@ parserInfo = info (helper <*> parser) $ mempty
         ( Run
             <$> ( Configuration
                     <$> chainProducerOption
-                    <*> workDirOption
+                    <*> databaseLocationOption
                     <*> serverHostOption
                     <*> serverPortOption
                     <*> optional sinceOption
@@ -186,10 +196,10 @@ nodeConfigOption = option str $ mempty
     <> help "Path to the node configuration file."
     <> completer (bashCompleter "file")
 
--- | --workdir=DIR | --in-memory
-workDirOption :: Parser WorkDir
-workDirOption =
-    dirOption <|> inMemoryFlag
+-- | --workdir=DIR | --in-memory | --postgres-url=URL
+databaseLocationOption :: Parser DatabaseLocation
+databaseLocationOption =
+    dirOption <|> inMemoryFlag <|> remoteOption
   where
     dirOption = fmap Dir $ option str $ mempty
         <> long "workdir"
@@ -200,6 +210,20 @@ workDirOption =
     inMemoryFlag = flag' InMemory $ mempty
         <> long "in-memory"
         <> help "Run fully in-memory, data is short-lived and lost when the process exits."
+
+    remoteOption = fmap Remote $ option uriBuilder $ mempty
+      <> long "postgres-url"
+      <> metavar "URL"
+      <> help "fully qualified PostgreSQL URL in the form \
+        \postgresql://[user[:password]@][host][:port][/dbname][?param1=value1&...]"
+
+      where
+          uriBuilder :: ReadM URI
+          uriBuilder = ReadM $ do
+             lift . uriEither . fromString =<< ask
+
+          uriEither :: Text -> Except ParseError URI
+          uriEither input = except $ (ErrorMsg . displayException) `first` URI.mkURI input 
 
 -- | [--host=IPv4], default: 127.0.0.1
 serverHostOption :: Parser String

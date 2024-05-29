@@ -24,12 +24,7 @@ import Database.SQLite.Simple
     , withTransaction
     )
 import Kupo.App.Database
-    ( ConnectionType (..)
-    , DBLock
-    , Database (..)
-    , DatabaseFile (..)
-    , createShortLivedConnection
-    , deleteInputsQry
+    ( deleteInputsQry
     , foldInputsQry
     , foldPoliciesQry
     , getBinaryDataQry
@@ -38,14 +33,18 @@ import Kupo.App.Database
     , listAncestorQry
     , listCheckpointsQry
     , markInputsQry
-    , newLock
+    , mkDBPool
     , pruneBinaryDataQry
     , pruneInputsQry
     , rollbackQryDeleteCheckpoints
     , rollbackQryDeleteInputs
     , rollbackQryUpdateInputs
     , selectMaxCheckpointQry
-    , withLongLivedConnection
+    )
+import Kupo.App.Database.Types
+    ( ConnectionType (..)
+    , DBPool (..)
+    , Database (..)
     )
 import Kupo.Control.MonadAsync
     ( mapConcurrently_
@@ -83,8 +82,10 @@ import Kupo.Data.Cardano
     , slotNoToText
     )
 import Kupo.Data.Configuration
-    ( DeferIndexesInstallation (..)
+    ( DatabaseLocation (..)
+    , DeferIndexesInstallation (..)
     , LongestRollback (..)
+    , getLongestRollback
     )
 import Kupo.Data.Database
     ( SortDirection (..)
@@ -116,9 +117,6 @@ import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
     , Result (..)
-    )
-import System.FilePath
-    ( (</>)
     )
 import System.IO.Temp
     ( withSystemTempDirectory
@@ -328,28 +326,30 @@ spec = parallel $ do
                     monitor (.&&. pAsc .&&. pDesc)
 
     context "concurrent read / write" $ do
+        let k = LongestRollback { getLongestRollback = 42 }
         mapM_
-            (\(title, withDatabaseFile) -> do
+            (\(title, withDatabasePool) -> do
                 specify ("1 long-lived worker vs 2 short-lived workers (" <> title <> ")") $ do
-                    withDatabaseFile $ \file -> do
-                        lock <- newLock
+                    withDatabasePool $ \pool -> do
                         waitGroup <- newTVarIO False
                         let allow = atomically (writeTVar waitGroup True)
                         let await = atomically (readTVar waitGroup >>= check)
                         mapConcurrently_ identity
-                            [ longLivedWorker file lock allow
-                            , await >> shortLivedWorker file ReadOnly lock
-                            , await >> shortLivedWorker file ReadWrite lock
+                            [ longLivedWorker pool allow
+                            , await >> shortLivedWorker pool ReadOnly
+                            , await >> shortLivedWorker pool ReadWrite
                             ]
             )
             [ ( "in-memory"
-              , \test ->
-                    test (InMemory (Just "file::concurrent-read-write:?cache=shared&mode=memory"))
+              , \test -> do
+                  test =<< mkDBPool False nullTracer InMemory k
+                  -- // TODO: Previously this used a specific filepath for the in-memory DB. Will using the standard path ruin things?
+                  -- I think if there is a running instance of Kupo and someone runs this test 
               )
             , ( "on-disk"
-              , \test ->
-                    withSystemTempDirectory "kupo-database-concurrent" $ \dir ->
-                        test (OnDisk (dir </> "db.sqlite3"))
+            , \test ->
+                  withSystemTempDirectory "kupo-database-concurrent" $ \dir -> do
+                    test =<< mkDBPool False nullTracer (Dir dir) k
               )
             ]
 
@@ -1173,9 +1173,9 @@ loudly e = do
     print e
     throwIO e
 
-longLivedWorker :: DatabaseFile -> DBLock IO -> IO () -> IO ()
-longLivedWorker fp lock allow =
-    handle loudly $ withLongLivedConnection nullTracer lock 42 fp InstallIndexesIfNotExist $ \db -> do
+longLivedWorker :: DBPool IO -> IO () -> IO ()
+longLivedWorker dbPool allow =
+    handle loudly $ (withDatabaseExclusiveWriter dbPool) InstallIndexesIfNotExist $ \db -> do
         allow
         loop db 0
   where
@@ -1189,12 +1189,10 @@ longLivedWorker fp lock allow =
             threadDelay ms
             loop db (next n)
 
-shortLivedWorker :: DatabaseFile -> ConnectionType -> DBLock IO -> IO ()
-shortLivedWorker fp mode lock = do
-    handle loudly $ bracket
-        (createShortLivedConnection nullTracer mode lock 42 fp)
-        (\Database{close} -> close)
-        (`loop` 0)
+shortLivedWorker :: DBPool IO -> ConnectionType -> IO ()
+shortLivedWorker dbPool mode = do
+    handle loudly $
+        (withDatabase dbPool) mode (`loop` 0)
   where
     loop :: Database IO -> Int -> IO ()
     loop db@Database{..} = \case
@@ -1225,8 +1223,7 @@ shortLivedWorker fp mode lock = do
                             pure $ runTransaction $ insertPatterns (fromList [pattern_])
                           )
                         , (1, do
-                            pattern_ <- genPattern
-                            pure $ void $ runTransaction $ deletePattern pattern_
+                            void . runTransaction . deletePattern <$> genPattern
                           )
                         ]
             ms <- millisecondsToDiffTime <$> generate (choose (15, 50))
@@ -1363,6 +1360,7 @@ withInMemoryDatabase
 withInMemoryDatabase =
     withInMemoryDatabase' run InstallIndexesIfNotExist
 
+-- // TODO: Check this
 withInMemoryDatabase'
     :: forall (m :: Type -> Type) b. (Monad m)
     => (forall a. IO a -> m a)
@@ -1371,14 +1369,8 @@ withInMemoryDatabase'
     -> (Database IO -> IO b)
     -> m b
 withInMemoryDatabase' runInIO deferIndexes k action = do
-    lock <- runInIO newLock
-    runInIO $ withLongLivedConnection
-        nullTracer
-        lock
-        (LongestRollback k)
-        (InMemory (Just ":memory:"))
-        deferIndexes
-        action
+  pool <- runInIO $ mkDBPool False nullTracer InMemory (LongestRollback { getLongestRollback = k })
+  runInIO $ (withDatabaseExclusiveWriter pool) deferIndexes action
 
 forAllCheckpoints
     :: Testable prop

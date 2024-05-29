@@ -64,10 +64,6 @@ import Data.FileEmbed
 import Data.Scientific
     ( scientific
     )
-import Data.Severity
-    ( HasSeverityAnnotation (..)
-    , Severity (..)
-    )
 import Data.Text.Lazy.Builder.Scientific
     ( FPFormat (Fixed)
     , formatScientificBuilder
@@ -104,10 +100,6 @@ import Kupo.Control.MonadCatch
 import Kupo.Control.MonadDelay
     ( threadDelay
     )
-import Kupo.Control.MonadLog
-    ( TraceProgress (..)
-    , nullTracer
-    )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
@@ -125,7 +117,6 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( DeferIndexesInstallation (..)
     , LongestRollback (..)
-    , WorkDir
     , pruneInputsMaxIncrement
     )
 import Kupo.Data.Database
@@ -178,13 +169,23 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as T
 import qualified Data.Text.Lazy.Builder as TL
 import qualified Database.SQLite.Simple as Sqlite
+
 import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBPool (..)
     , Database (..)
+    , TraceConnection (..)
+    , TraceDatabase (..)
+    )
+import Kupo.Control.MonadLog
+    ( TraceProgress (..)
+    , nullTracer
     )
 import qualified Kupo.Data.Configuration as Configuration
 import qualified Kupo.Data.Database as DB
+import Text.URI
+    ( URI
+    )
 
 data DatabaseFile = OnDisk !FilePath | InMemory !(Maybe FilePath)
     deriving (Generic, Eq, Show)
@@ -198,6 +199,7 @@ instance Exception NewDatabaseFileException
 data FailedToCreateDatabaseFileReason
     = SpecifiedPathIsAFile { path :: !FilePath }
     | SpecifiedPathIsReadOnly { path :: !FilePath }
+    | RemoteURLSpecifiedForSQLite { url :: URI }
     | SomeUnexpectedErrorOccured { error :: !IOException }
     deriving (Show)
 
@@ -206,13 +208,20 @@ data FailedToCreateDatabaseFileReason
 newDatabaseFile
     :: (MonadIO m)
     => Tracer IO TraceDatabase
-    -> Configuration.WorkDir
+    -> Configuration.DatabaseLocation
     -> m DatabaseFile
 newDatabaseFile tr = \case
     Configuration.InMemory -> do
         return $ InMemory Nothing
     Configuration.Dir dir ->
         OnDisk <$> newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) dir
+    Configuration.Remote url -> liftIO $ do
+      traceWith tr $ DatabaseMustBeLocal
+        { errorMessage = "This binary was compiled to use SQLite. \
+                    \You must specify either a working directory or in-memory configuration. \
+                    \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
+        }
+      throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url) 
 
 newDatabaseOnDiskFile
     :: (MonadIO m)
@@ -365,13 +374,14 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
 -- This function creates a database file if it does not already exist.
-mkDBPool :: Bool -> (Tracer IO TraceDatabase) -> WorkDir -> LongestRollback -> IO (DBPool IO)
+mkDBPool :: Bool -> (Tracer IO TraceDatabase) -> Configuration.DatabaseLocation -> LongestRollback -> IO (DBPool IO)
 mkDBPool isReadOnly tr workDir longestRollback = do
     dbFile <- newDatabaseFile tr workDir
     
     lock <- liftIO newLock
     
-    (maxConcurrentWriters, maxConcurrentReaders) <- liftIO getNumCapabilities <&> \n -> (n, 5 * n)
+    (maxConcurrentWriters, maxConcurrentReaders) <-
+      liftIO getNumCapabilities <&> \n -> (if isReadOnly then 0 else n, 5 * n)
 
     readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
         (createShortLivedConnection tr ReadOnly lock longestRollback dbFile)
@@ -402,8 +412,7 @@ mkDBPool isReadOnly tr workDir longestRollback = do
         destroyAllResources readOnlyPool
         destroyAllResources readWritePool
 
-    return DBPool { tryWithDatabase = withDB tryWithResource, withDatabase = withDB withResource, withDatabaseExclusiveWriter, destroyResources }
-
+    return DBPool { tryWithDatabase = withDB tryWithResource, withDatabase = withDB withResource, withDatabaseExclusiveWriter, maxConcurrentReaders, maxConcurrentWriters, destroyResources }
 
 -- It is therefore also the connection from which we check for and run database migrations when
 -- needed. Note that this bracket will also create the database if it doesn't exist.
@@ -1263,150 +1272,6 @@ data UnexpectedRowException
     = UnexpectedRow !Text ![[SQLData]]
     deriving Show
 instance Exception UnexpectedRowException
-
---
--- Tracer
---
-
-data TraceDatabase where
-    DatabaseCreateNew
-        :: { filePath :: FilePath }
-        -> TraceDatabase
-    DatabaseConnection
-        :: { message :: TraceConnection }
-        -> TraceDatabase
-    DatabaseCurrentVersion
-        :: { currentVersion :: Int }
-        -> TraceDatabase
-    DatabaseNoMigrationNeeded
-        :: TraceDatabase
-    DatabaseRunningMigration
-        :: { from :: Int, to :: Int }
-        -> TraceDatabase
-    DatabaseCreateIndex
-        :: { newIndex :: Text }
-        -> TraceDatabase
-    DatabaseIndexAlreadyExists
-        :: { index :: Text }
-        -> TraceDatabase
-    DatabaseDeferIndexes
-        :: { warning :: Text }
-        -> TraceDatabase
-    DatabaseRunningInMemory
-        :: TraceDatabase
-    DatabasePathMustBeDirectory
-        :: { hint :: Text }
-        -> TraceDatabase
-    DatabaseCloneSourceDatabase
-        :: TraceDatabase
-    DatabaseCleanupOldData
-        :: { table :: Text }
-        -> TraceDatabase
-    DatabaseImportTable
-        :: { table :: Text, pattern :: Text }
-        -> TraceDatabase
-    DatabaseImported
-        :: { rows :: Integer }
-        -> TraceDatabase
-    DatabaseRemoveIncompleteCopy
-        :: { filePath :: FilePath }
-        -> TraceDatabase
-    DatabaseCopyFinalize
-        :: TraceDatabase
-    DatabaseDebug
-        :: Text
-        -> TraceDatabase
-    deriving stock (Generic, Show)
-
-instance ToJSON TraceDatabase where
-    toEncoding =
-        defaultGenericToEncoding
-
-instance HasSeverityAnnotation TraceDatabase where
-    getSeverityAnnotation = \case
-        DatabaseCreateNew{}            -> Notice
-        DatabaseConnection { message } -> getSeverityAnnotation message
-        DatabaseCurrentVersion{}       -> Info
-        DatabaseNoMigrationNeeded{}    -> Debug
-        DatabaseRunningMigration{}     -> Notice
-        DatabaseRunningInMemory{}      -> Warning
-        DatabaseCreateIndex{}          -> Notice
-        DatabaseIndexAlreadyExists{}   -> Debug
-        DatabasePathMustBeDirectory{}  -> Error
-        DatabaseDeferIndexes{}         -> Warning
-        DatabaseCloneSourceDatabase{}  -> Notice
-        DatabaseCleanupOldData{}       -> Info
-        DatabaseImportTable{}          -> Notice
-        DatabaseImported{}             -> Info
-        DatabaseRemoveIncompleteCopy{} -> Notice
-        DatabaseCopyFinalize{}         -> Notice
-        DatabaseDebug{}                -> Warning
-
-data TraceConnection where
-    ConnectionCreateShortLived
-        :: { mode :: ConnectionType }
-        -> TraceConnection
-    ConnectionDestroyShortLived
-        :: { mode :: ConnectionType }
-        -> TraceConnection
-    ConnectionLocked
-        :: { attempts :: Word, retryingIn :: DiffTime }
-        -> TraceConnection
-    ConnectionBusy
-        :: { attempts :: Word, retryingIn :: DiffTime }
-        -> TraceConnection
-    ConnectionBeginQuery
-        :: { beginQuery :: LText }
-        -> TraceConnection
-    ConnectionExitQuery
-        :: { exitQuery :: LText }
-        -> TraceConnection
-    ConnectionCreateTemporaryIndex
-        :: { newTemporaryIndex :: Text }
-        -> TraceConnection
-    ConnectionCreatedTemporaryIndex
-        :: { newTemporaryIndex :: Text }
-        -> TraceConnection
-    ConnectionRemoveTemporaryIndex
-        :: { indexName :: Text }
-        -> TraceConnection
-    ConnectionRemoveIndex
-        :: { indexName :: Text }
-        -> TraceConnection
-    ConnectionFailedPragma
-        :: { pragma :: Text }
-        -> TraceConnection
-    ConnectionFailedToOpenDatabase
-        :: { hint :: Text }
-        -> TraceConnection
-    deriving stock (Generic, Show)
-
-instance ToJSON TraceConnection where
-    toEncoding =
-        defaultGenericToEncoding
-
-instance HasSeverityAnnotation TraceConnection where
-    getSeverityAnnotation = \case
-        ConnectionCreateShortLived{} -> Debug
-        ConnectionDestroyShortLived{} -> Debug
-        ConnectionLocked{attempts, retryingIn}
-            | retryingIn * fromIntegral attempts > 60  -> Warning
-        ConnectionLocked{} -> Debug
-        ConnectionBusy{attempts, retryingIn}
-            | retryingIn * fromIntegral attempts > 60 -> Warning
-        ConnectionBusy{} -> Debug
-        ConnectionBeginQuery{beginQuery}
-            | beginQuery == "PRAGMA optimize" -> Notice
-        ConnectionBeginQuery{} -> Debug
-        ConnectionExitQuery{exitQuery}
-            | exitQuery == "PRAGMA optimize" -> Notice
-        ConnectionExitQuery{} -> Debug
-        ConnectionCreateTemporaryIndex{} -> Debug
-        ConnectionCreatedTemporaryIndex{} -> Debug
-        ConnectionRemoveTemporaryIndex{} -> Debug
-        ConnectionRemoveIndex{} -> Warning
-        ConnectionFailedPragma{} -> Warning
-        ConnectionFailedToOpenDatabase{} -> Error
 
 traceExecute
     :: ToRow q
