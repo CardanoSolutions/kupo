@@ -211,7 +211,7 @@ kupoWith tr withProducer withFetchBlock =
                 -- NOTE: 'ShortLived' is a bad name here. What it really means is 'occasional
                 -- writers but mostly readers'. However, in the 'ReadOnlyReplica' mode we only
                 -- ever allow read-only connections and never perform a single write.
-                (withDatabase dbPool) ReadOnly (action InstallIndexesIfNotExist)
+                (withDatabaseBlocking dbPool) ReadOnly (action InstallIndexesIfNotExist)
             | otherwise =
                 handle
                     (\NodeTipHasBeenReached{distance} -> do
@@ -268,7 +268,7 @@ kupoWith tr withProducer withFetchBlock =
                             (tracerGardener tr)
                             config
                             patterns
-                            (withDatabase dbPool ReadWrite)
+                            (withDatabaseBlocking dbPool ReadWrite)
                     )
 
                     -- Block producer, fetching blocks from the network

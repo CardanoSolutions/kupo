@@ -180,7 +180,7 @@ data Database (m :: Type -> Type) = Database
 -- on instantiation of the `DBPool`.
 data DBPool m = DBPool {
   tryWithDatabase :: forall res. ConnectionType -> (Database m -> m res) -> m (Maybe res)
-  , withDatabase :: forall res. ConnectionType -> (Database m -> m res) -> m res
+  , withDatabaseBlocking :: forall res. ConnectionType -> (Database m -> m res) -> m res
   , withDatabaseExclusiveWriter :: forall a. DeferIndexesInstallation -> (Database m -> m a) -> m a
   , maxConcurrentReaders :: Int
   , maxConcurrentWriters :: Int

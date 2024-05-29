@@ -412,7 +412,7 @@ mkDBPool isReadOnly tr workDir longestRollback = do
         destroyAllResources readOnlyPool
         destroyAllResources readWritePool
 
-    return DBPool { tryWithDatabase = withDB tryWithResource, withDatabase = withDB withResource, withDatabaseExclusiveWriter, maxConcurrentReaders, maxConcurrentWriters, destroyResources }
+    return DBPool { tryWithDatabase = withDB tryWithResource, withDatabaseBlocking = withDB withResource, withDatabaseExclusiveWriter, maxConcurrentReaders, maxConcurrentWriters, destroyResources }
 
 -- It is therefore also the connection from which we check for and run database migrations when
 -- needed. Note that this bracket will also create the database if it doesn't exist.

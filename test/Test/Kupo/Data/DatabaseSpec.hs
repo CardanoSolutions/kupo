@@ -1192,7 +1192,7 @@ longLivedWorker dbPool allow =
 shortLivedWorker :: DBPool IO -> ConnectionType -> IO ()
 shortLivedWorker dbPool mode = do
     handle loudly $
-        (withDatabase dbPool) mode (`loop` 0)
+        (withDatabaseBlocking dbPool) mode (`loop` 0)
   where
     loop :: Database IO -> Int -> IO ()
     loop db@Database{..} = \case
