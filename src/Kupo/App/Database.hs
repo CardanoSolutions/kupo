@@ -7,7 +7,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 
 module Kupo.App.Database
-    (
+    ( -- // TODO: Fix documentation headers
       -- ** Queries
       -- *** Inputs
     deleteInputsQry

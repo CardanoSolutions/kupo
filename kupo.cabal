@@ -164,74 +164,144 @@ library
       TypeSynonymInstances
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -fno-warn-unticked-promoted-constructors -fno-warn-partial-fields
-  build-depends:
-      aeson
-    , attoparsec-aeson
-    , base >=4.7 && <5
-    , base16
-    , base58-bytestring
-    , base64
-    , bech32
-    , bech32-th
-    , binary
-    , bytestring
-    , cardano-crypto-class
-    , cardano-crypto-wrapper
-    , cardano-ledger-allegra
-    , cardano-ledger-alonzo
-    , cardano-ledger-api
-    , cardano-ledger-babbage
-    , cardano-ledger-binary
-    , cardano-ledger-byron
-    , cardano-ledger-conway
-    , cardano-ledger-core
-    , cardano-ledger-mary
-    , cardano-ledger-shelley
-    , cardano-slotting
-    , cardano-strict-containers
-    , cborg
-    , containers
-    , contra-tracer
-    , contra-tracers
-    , directory
-    , fast-bech32
-    , file-embed
-    , filepath
-    , generic-lens
-    , http-client
-    , http-types
-    , io-classes
-    , lens
-    , lens-aeson
-    , modern-uri
-    , network-mux
-    , optparse-applicative
-    , ouroboros-consensus
-    , ouroboros-consensus-cardano
-    , ouroboros-consensus-diffusion
-    , ouroboros-network
-    , ouroboros-network-api
-    , ouroboros-network-framework
-    , ouroboros-network-protocols
-    , prometheus
-    , relude
-    , resource-pool
-    , safe
-    , safe-exceptions
-    , scientific
-    , sqlite-simple
-    , template-haskell
-    , text
-    , text-ansi
-    , time
-    , transformers
-    , typed-protocols
-    , unix
-    , wai
-    , warp
-    , websockets
-    , websockets-json
-    , yaml
+  if flag(postgres)
+    build-depends:
+        aeson
+      , attoparsec-aeson
+      , base >=4.7 && <5
+      , base16
+      , base58-bytestring
+      , base64
+      , bech32
+      , bech32-th
+      , binary
+      , bytestring
+      , cardano-crypto-class
+      , cardano-crypto-wrapper
+      , cardano-ledger-allegra
+      , cardano-ledger-alonzo
+      , cardano-ledger-api
+      , cardano-ledger-babbage
+      , cardano-ledger-binary
+      , cardano-ledger-byron
+      , cardano-ledger-conway
+      , cardano-ledger-core
+      , cardano-ledger-mary
+      , cardano-ledger-shelley
+      , cardano-slotting
+      , cardano-strict-containers
+      , cborg
+      , containers
+      , contra-tracer
+      , contra-tracers
+      , directory
+      , fast-bech32
+      , file-embed
+      , filepath
+      , generic-lens
+      , http-client
+      , http-types
+      , io-classes
+      , lens
+      , lens-aeson
+      , modern-uri
+      , network-mux
+      , optparse-applicative
+      , ouroboros-consensus
+      , ouroboros-consensus-cardano
+      , ouroboros-consensus-diffusion
+      , ouroboros-network
+      , ouroboros-network-api
+      , ouroboros-network-framework
+      , ouroboros-network-protocols
+      , postgresql-simple
+      , prometheus
+      , relude
+      , resource-pool
+      , safe
+      , safe-exceptions
+      , scientific
+      , template-haskell
+      , text
+      , text-ansi
+      , time
+      , transformers
+      , typed-protocols
+      , unix
+      , wai
+      , warp
+      , websockets
+      , websockets-json
+      , yaml
+    else
+      build-depends:
+        aeson
+      , attoparsec-aeson
+      , base >=4.7 && <5
+      , base16
+      , base58-bytestring
+      , base64
+      , bech32
+      , bech32-th
+      , binary
+      , bytestring
+      , cardano-crypto-class
+      , cardano-crypto-wrapper
+      , cardano-ledger-allegra
+      , cardano-ledger-alonzo
+      , cardano-ledger-api
+      , cardano-ledger-babbage
+      , cardano-ledger-binary
+      , cardano-ledger-byron
+      , cardano-ledger-conway
+      , cardano-ledger-core
+      , cardano-ledger-mary
+      , cardano-ledger-shelley
+      , cardano-slotting
+      , cardano-strict-containers
+      , cborg
+      , containers
+      , contra-tracer
+      , contra-tracers
+      , directory
+      , fast-bech32
+      , file-embed
+      , filepath
+      , generic-lens
+      , http-client
+      , http-types
+      , io-classes
+      , lens
+      , lens-aeson
+      , modern-uri
+      , network-mux
+      , optparse-applicative
+      , ouroboros-consensus
+      , ouroboros-consensus-cardano
+      , ouroboros-consensus-diffusion
+      , ouroboros-network
+      , ouroboros-network-api
+      , ouroboros-network-framework
+      , ouroboros-network-protocols
+      , prometheus
+      , relude
+      , resource-pool
+      , safe
+      , safe-exceptions
+      , scientific
+      , sqlite-simple
+      , template-haskell
+      , text
+      , text-ansi
+      , time
+      , transformers
+      , typed-protocols
+      , unix
+      , wai
+      , warp
+      , websockets
+      , websockets-json
+      , yaml
   default-language: Haskell2010
   if flag(postgres)
     other-modules:
@@ -362,6 +432,8 @@ test-suite unit
       TypeSynonymInstances
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -threaded -rtsopts -with-rtsopts=-N
+  if flag(postgres)
+    cpp-options: -Dpostgres
   build-tool-depends:
       hspec-discover:hspec-discover
   build-depends:

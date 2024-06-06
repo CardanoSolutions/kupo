@@ -2,6 +2,7 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Test.Kupo.Data.DatabaseSpec
@@ -126,7 +127,11 @@ import Test.Hspec
     , Spec
     , around
     , context
+    , describe
+    , hspec
+    , it
     , parallel
+    , pendingWith
     , shouldBe
     , specify
     )
@@ -190,6 +195,14 @@ import Test.QuickCheck.Property
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Prelude
+
+#if postgres
+spec :: Spec
+spec = describe "DatabaseSpec" $
+    it "Not yet implemented for Postgres" $
+    pendingWith $ "DB tests need to be split into DB-agnostic "
+                <> "and DB-specific tests and conditionally compiled"
+#else
 
 spec :: Spec
 spec = parallel $ do
@@ -1313,18 +1326,18 @@ explainQuery conn query = do
 withFixtureDatabase :: (Connection -> IO ()) -> IO ()
 withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
     withTransaction conn $ do
-        execute_ conn
-            "CREATE TABLE IF NOT EXISTS inputs (\
-            \  address TEXT NOT NULL,\
-            \  payment_credential TEXT NOT NULL GENERATED ALWAYS AS (substr(address, -56)) VIRTUAL,\
-            \  ext_output_reference BLOB NOT NULL,\
-            \  output_reference BLOB NOT NULL GENERATED ALWAYS AS (substr(ext_output_reference, 1, 34)) VIRTUAL\
-            \)"
-        execute_ conn
-            "CREATE TABLE IF NOT EXISTS policies (\
-            \  output_reference BLOB NOT NULL,\
-            \  policy_id BLOB NOT NULL\
-            \)"
+        execute_ conn $
+            "CREATE TABLE IF NOT EXISTS inputs ("
+            <> "  address TEXT NOT NULL,"
+            <> "  payment_credential TEXT NOT NULL GENERATED ALWAYS AS (substr(address, -56)) VIRTUAL,"
+            <> "  ext_output_reference BLOB NOT NULL,"
+            <> "  output_reference BLOB NOT NULL GENERATED ALWAYS AS (substr(ext_output_reference, 1, 34)) VIRTUAL"
+            <> ")"
+        execute_ conn $
+            "CREATE TABLE IF NOT EXISTS policies ("
+            <> "  output_reference BLOB NOT NULL,"
+            <> "  policy_id BLOB NOT NULL"
+            <> ")"
         executeMany conn "INSERT INTO inputs VALUES (?, ?)" $
             flip map matches $ \(outRef, out) ->
                 ( SQLText (addressToRow (getAddress out))
@@ -1383,3 +1396,5 @@ forAllCheckpoints k =
     forAllShow
         (genPointsBetween (0, SlotNo (10 * k)))
         (show . fmap getPointSlotNo)
+
+#endif

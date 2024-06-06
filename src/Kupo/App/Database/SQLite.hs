@@ -9,8 +9,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Kupo.App.Database.SQLite
-    (
-
+    ( -- // TODO: Fix documentation headers
       -- ** Queries
       -- *** Inputs
       deleteInputsQry
@@ -38,6 +37,7 @@ module Kupo.App.Database.SQLite
     , copyDatabase
 
       -- * Internal
+    , Connection
     , installIndexes
     , installIndex
 
@@ -216,13 +216,12 @@ newDatabaseFile tr = \case
     Configuration.Dir dir ->
         OnDisk <$> newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) dir
     Configuration.Remote url -> liftIO $ do
-        traceWith tr $ DatabaseMustBeLocal
-            { errorMessage =
-                "This binary was compiled to use SQLite. \
-                \You must specify either a working directory or in-memory configuration. \
-                \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
-            }
-        throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url)
+      traceWith tr $ DatabaseLocationInvalid
+        { errorMessage = "This binary was compiled to use SQLite. \
+                    \You must specify either a working directory or in-memory configuration. \
+                    \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
+        }
+      throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url) 
 
 newDatabaseOnDiskFile
     :: (MonadIO m)
@@ -629,11 +628,11 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             mapM_ (execute_ conn . deleteInputsQry) refs
 
     , markInputs = \(fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> do
-        withTotalChanges conn $
-            forM_ refs $ \ref -> do
-                execute conn (markInputsQry ref)
-                    [ SQLInteger slotNo
-                    ]
+          withTotalChanges conn $
+              forM_ refs $ \ref -> do
+                  execute conn (markInputsQry ref)
+                      [ SQLInteger slotNo
+                      ]
 
     , pruneInputs = ReaderT $ \conn -> do
         withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $ do
