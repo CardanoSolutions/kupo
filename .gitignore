@@ -1,3 +1,5 @@
+.direnv/
+
 ## Generated
 *.sqlite3
 kupo-synchronize-*
