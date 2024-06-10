@@ -1248,15 +1248,15 @@ migrations =
     [ mkMigration ix (decodeUtf8 migration)
     | (ix, migration) <- zip
         [1..]
-        [ $(embedFile "db/v1.0.0-beta/001.sql")
-        , $(embedFile "db/v1.0.0/001.sql")
-        , $(embedFile "db/v1.0.0/002.sql")
-        , $(embedFile "db/v1.0.1/001.sql")
-        , $(embedFile "db/v2.0.0-beta/001.sql")
-        , $(embedFile "db/v2.1.0/001.sql")
-        , $(embedFile "db/v2.1.0/002.sql")
-        , $(embedFile "db/v2.1.0/003.sql")
-        , $(embedFile "db/v2.2.0/001.sql")
+        [ $(embedFile "db/sqlite/v1.0.0-beta/001.sql")
+        , $(embedFile "db/sqlite/v1.0.0/001.sql")
+        , $(embedFile "db/sqlite/v1.0.0/002.sql")
+        , $(embedFile "db/sqlite/v1.0.1/001.sql")
+        , $(embedFile "db/sqlite/v2.0.0-beta/001.sql")
+        , $(embedFile "db/sqlite/v2.1.0/001.sql")
+        , $(embedFile "db/sqlite/v2.1.0/002.sql")
+        , $(embedFile "db/sqlite/v2.1.0/003.sql")
+        , $(embedFile "db/sqlite/v2.2.0/001.sql")
         ]
     ]
   where

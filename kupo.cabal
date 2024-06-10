@@ -233,8 +233,8 @@ library
       , websockets
       , websockets-json
       , yaml
-    else
-      build-depends:
+  else
+    build-depends:
         aeson
       , attoparsec-aeson
       , base >=4.7 && <5

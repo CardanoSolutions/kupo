@@ -6,6 +6,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Kupo.App.Database.Postgres
     (
@@ -46,9 +47,14 @@ module Kupo.App.Database.Postgres
 
 import Kupo.Prelude
 
+import Control.Concurrent
+    ( getNumCapabilities
+    )
 import Control.Exception
     ( IOException
     , handle
+    , mask
+    , onException
     , throwIO
     )
 import Control.Monad
@@ -59,9 +65,22 @@ import Control.Tracer
     , traceWith
     )
 import qualified Data.Char as Char
+import Data.FileEmbed
+    ( embedFile
+    )
+import Data.Pool
+    ( Pool
+    , defaultPoolConfig
+    , destroyAllResources
+    , newPool
+    , tryWithResource
+    , withResource
+    )
 import qualified Data.Set as Set
     ( map
     )
+import qualified Data.Text as T
+import qualified Data.Text.Lazy.Builder as TL
 import Database.PostgreSQL.Simple
     ( Connection
     , Only (..)
@@ -77,6 +96,19 @@ import GHC.TypeLits
     ( KnownSymbol
     , symbolVal
     )
+import Kupo.App.Database.Types
+    ( ConnectionType (..)
+    , DBPool (..)
+    , Database (..)
+    , TraceConnection (..)
+    , TraceDatabase (..)
+    )
+import Kupo.Control.MonadLog
+    ( TraceProgress (..)
+    )
+import Kupo.Control.MonadThrow
+    ( bracket
+    )
 import Kupo.Data.Cardano
     ( SlotNo (..)
     , slotNoToText
@@ -86,10 +118,12 @@ import Kupo.Data.Configuration
     , LongestRollback (..)
     , pruneInputsMaxIncrement
     )
+import qualified Kupo.Data.Configuration as Configuration
 import Kupo.Data.Database
     ( SortDirection (..)
     , patternToSql
     )
+import qualified Kupo.Data.Database as DB
 import Kupo.Data.Http.SlotRange
     ( Range (..)
     , RangeField (..)
@@ -104,32 +138,7 @@ import Kupo.Data.Pattern
 import Numeric
     ( Floating (..)
     )
-
-import Control.Concurrent
-    ( getNumCapabilities
-    )
-import Data.Pool
-    ( Pool
-    , defaultPoolConfig
-    , destroyAllResources
-    , newPool
-    , tryWithResource
-    , withResource
-    )
-import qualified Data.Text as T
-import qualified Data.Text.Lazy.Builder as TL
-import Kupo.App.Database.Types
-    ( ConnectionType (..)
-    , DBPool (..)
-    , Database (..)
-    , TraceConnection (..)
-    , TraceDatabase (..)
-    )
-import Kupo.Control.MonadLog
-    ( TraceProgress (..)
-    )
-import qualified Kupo.Data.Configuration as Configuration
-import qualified Kupo.Data.Database as DB
+import qualified Text.URI as URI
 
 data FailedToCreateConnection = FailedToCreateConnection { reason :: FailedToCreateConnectionReason }
   deriving (Show)
@@ -150,10 +159,13 @@ newDBPool tr isReadOnly dbLocation longestRollback = do
       (5*) <$> liftIO getNumCapabilities
 
     connectionPool <- liftIO $ newPool $ defaultPoolConfig
-        mkConnection
+        connectDb
         (\Database{close} -> close)
         600 -- // TODO: Review concurrency requirements
         maxConnections
+        
+    -- // TODO: Will running migrations here break things in a multi-client scenario?
+    bracket mkConnection PG.close $ runMigrations tr
 
     let
         withDB :: forall a b. (Pool (Database IO) -> (Database IO -> IO a) -> IO b) -> ConnectionType -> (Database IO -> IO a) -> IO b
@@ -172,25 +184,25 @@ newDBPool tr isReadOnly dbLocation longestRollback = do
     return DBPool { tryWithDatabase = withDB tryWithResource, withDatabaseBlocking = withDB withResource, withDatabaseExclusiveWriter, maxConcurrentReaders = 0, maxConcurrentWriters = maxConnections, destroyResources }
 
     where
-      mkConnection = case dbLocation of
-        Configuration.Remote uri -> do
-            traceWith tr $ DatabaseConnection ConnectionCreateGeneric
-            conn <- PG.connectPostgreSQL (encodeUtf8 $ render uri)
-            return $ mkDatabase trConn longestRollback (\dbAction -> dbAction conn)
-        Configuration.Dir dir -> liftIO $ do
-            traceLocationError
-            throwIO (FailedToCreateConnection $ SQLiteDirSpecified dir)
-        Configuration.InMemory path -> liftIO $ do
-            traceLocationError
-            throwIO (FailedToCreateConnection $ SQLiteInMemorySpecified path)
+        connectDb = mkConnection <&> \conn -> mkDatabase trConn longestRollback (\dbAction -> dbAction conn)
 
-        where
-          trConn :: Tracer IO TraceConnection
-          trConn = contramap DatabaseConnection tr
+        mkConnection = case dbLocation of
+            Configuration.Remote uri -> do
+                traceWith tr $ DatabaseConnection ConnectionCreateGeneric
+                PG.connectPostgreSQL . encodeUtf8 $ URI.render uri
+            Configuration.Dir dir -> liftIO $ do
+                traceLocationError
+                throwIO (FailedToCreateConnection $ SQLiteDirSpecified dir)
+            Configuration.InMemory path -> liftIO $ do
+                traceLocationError
+                throwIO (FailedToCreateConnection $ SQLiteInMemorySpecified path)
 
-          traceLocationError = traceWith tr $ DatabaseLocationInvalid
-              { errorMessage = "This binary was compiled to use PostgreSQL and requires a Postgres connection URI. \
-                                \Local file paths and in-memory configurations are only valid for binaries compiled for SQLite." }
+        trConn :: Tracer IO TraceConnection
+        trConn = contramap DatabaseConnection tr
+
+        traceLocationError = traceWith tr $ DatabaseLocationInvalid
+            { errorMessage = "This binary was compiled to use PostgreSQL and requires a Postgres connection URI. \
+                              \Local file paths and in-memory configurations are only valid for binaries compiled for SQLite." }
 
 
 -- Copy from an existing database into another, using the provided patterns
@@ -656,13 +668,13 @@ installIndexes tr conn = \case
     InstallIndexesIfNotExist -> do
         installIndex tr conn
             "inputsByAddress"
-            "inputs(address COLLATE NOCASE)"
+            "inputs(address)" -- // TODO: I deleted the collate nocase clause
         installIndex tr conn
             "inputsByDatumHash"
             "inputs(datum_hash)"
         installIndex tr conn
             "inputsByPaymentCredential"
-            "inputs(payment_credential COLLATE NOCASE)"
+            "inputs(payment_credential)" -- // TODO: I deleted the nocase clause
         installIndex tr conn
             "inputsByCreatedAt"
             "inputs(created_at)"
@@ -713,6 +725,77 @@ dropIndexIfExists tr conn indexName wasTemporary = do
     void $ execute conn "DROP INDEX IF EXISTS ?" [indexName]
 
 --
+-- Migrations
+--
+
+type MigrationRevision = Int
+
+type Migration = [Query]
+
+databaseVersion :: Connection -> IO MigrationRevision
+databaseVersion conn = do
+    _ <- execute_ conn createStatement
+    (throwIO . UnexpectedRow "databaseVersion") `handle`
+        query_ conn countStatement >>= \case
+            [(revision, _version :: String)] -> return revision
+            [] -> return 0
+            (length -> n) -> throwIO $ ExpectedSingletonResult "databaseVersion" n
+    where
+        createStatement =
+            "CREATE TABLE IF NOT EXISTS migrations \
+            \(\
+                \id INTEGER PRIMARY KEY, \
+                \version VARCHAR (50) \
+            \);"
+
+        countStatement =
+            "SELECT id, version FROM migrations ORDER BY id DESC LIMIT 1;"
+
+-- // TODO: Should there be a command line argument to determine whether or not to run migrations?
+-- How will running migrations affect a DB that supports multiple Kupo instances?
+runMigrations :: Tracer IO TraceDatabase -> Connection -> IO ()
+runMigrations tr conn = do
+    currentVersion <- databaseVersion conn
+    let missingMigrations = drop currentVersion migrations
+    traceWith tr (DatabaseCurrentVersion currentVersion)
+    if null missingMigrations then
+        traceWith tr DatabaseNoMigrationNeeded
+    else do
+        let targetVersion = currentVersion + length missingMigrations
+        traceWith tr $ DatabaseRunningMigration currentVersion targetVersion
+        executeMigrations missingMigrations
+  where
+    executeMigrations = \case
+        [] -> do
+            pure ()
+        (instructions):rest -> do
+            withTransaction conn $ mapM_ (execute_ conn) instructions
+            executeMigrations rest
+
+migrations :: [Migration]
+migrations =
+  map
+      (\(idx, (sql, fromString -> version)) -> mkMigration idx version $ decodeUtf8 sql)
+          $ zip [1..] files
+  where
+    mkMigration :: Int -> Query -> Text -> Migration
+    mkMigration idx version sql =
+        ("INSERT INTO migrations (id, version) VALUES (" <> show idx <> ",'" <> version <> "');")
+        : (map (fromString . T.unpack) . filter (not . T.null . T.strip) . T.splitOn ";") sql
+
+    files =
+        [ ($(embedFile "db/postgres/v1.0.0-beta/001.sql"), "v1.0.0.-beta/001.sql")
+        , ($(embedFile "db/postgres/v1.0.0/001.sql"), "v1.0.0/001.sql")
+        , ($(embedFile "db/postgres/v1.0.0/002.sql"), "v1.0.0/002.sql")
+        -- // TODO: Confirm this is ok to delete!, ($(embedFile "db/postgres/v1.0.1/001.sql"), "v1.0.1/001.sql")
+        , ($(embedFile "db/postgres/v2.0.0-beta/001.sql"), "v2.0.0-beta/001.sql")
+        , ($(embedFile "db/postgres/v2.1.0/001.sql"), "v2.1.0/001.sql")
+        , ($(embedFile "db/postgres/v2.1.0/002.sql"), "v2.1.0/002.sql")
+        , ($(embedFile "db/postgres/v2.1.0/003.sql"), "v2.1.0/003.sql")
+        , ($(embedFile "db/postgres/v2.2.0/001.sql"), "v2.2.0/001.sql")
+        ]
+
+--
 -- Helpers
 --
 
@@ -736,15 +819,17 @@ insertRows conn len rows =
     void $ executeMany conn (fromString qry) (toList rows)
     where
         qry =
-            "INSERT OR IGNORE INTO "
+            "INSERT INTO "
             <> symbolVal (Proxy @tableName)
             <> " VALUES "
             <> mkValuePlaceholders len
+            <> "ON CONFLICT DO NOTHING"
 
 mkValuePlaceholders :: Int -> String
 mkValuePlaceholders n =
     fromString $ "(" <> intercalate "," (replicate n "?") <> ")"
 {-# INLINABLE mkValuePlaceholders #-}
+
 
 -- See comments in `Kupo.App.Database.SQLite` to see why the
 -- postgresql-simple/sqlite-simple `withTransaction` is insufficient

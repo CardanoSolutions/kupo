@@ -1,0 +1,26 @@
+DROP TABLE inputs;
+
+CREATE TABLE IF NOT EXISTS inputs (
+  output_reference BLOB NOT NULL,
+  address TEXT NOT NULL,
+  value BLOB NOT NULL,
+  datum_hash BLOB,
+  script_hash BLOB,
+  created_at INTEGER NOT NULL,
+  spent_at INTEGER,
+  PRIMARY KEY (output_reference)
+);
+
+DELETE FROM checkpoints;
+
+CREATE TABLE IF NOT EXISTS binary_data (
+  binary_data_hash BLOB NOT NULL,
+  binary_data BLOB NOT NULL,
+  PRIMARY KEY (binary_data_hash)
+);
+
+CREATE TABLE IF NOT EXISTS scripts (
+  script_hash BLOB NOT NULL,
+  script BLOB NOT NULL,
+  PRIMARY KEY (script_hash)
+);
