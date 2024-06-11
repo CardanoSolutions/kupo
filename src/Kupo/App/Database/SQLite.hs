@@ -387,7 +387,7 @@ newDBPoolFromFile tr isReadOnly dbFile longestRollback = do
     lock <- liftIO newLock
 
     (maxConcurrentWriters, maxConcurrentReaders) <-
-      liftIO getNumCapabilities <&> \n -> (if isReadOnly then 0 else n, 5 * n)
+      liftIO getNumCapabilities <&> \n -> (n, 5 * n)
 
     readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
         (createShortLivedConnection tr ReadOnly lock longestRollback dbFile)
@@ -421,7 +421,8 @@ newDBPoolFromFile tr isReadOnly dbFile longestRollback = do
             destroyAllResources readOnlyPool
             destroyAllResources readWritePool
         , maxConcurrentReaders
-        , maxConcurrentWriters
+        , maxConcurrentWriters =
+            if isReadOnly then 0 else maxConcurrentWriters
         }
 
 -- It is therefore also the connection from which we check for and run database migrations when

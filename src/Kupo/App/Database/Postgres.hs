@@ -375,12 +375,17 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
 -- This function creates a database file if it does not already exist.
-newDBPoolFromFile :: Tracer IO TraceDatabase -> Bool -> DatabaseFile -> LongestRollback -> IO (DBPool IO)
+newDBPoolFromFile
+    :: (Tracer IO TraceDatabase)
+    -> Bool
+    -> DatabaseFile
+    -> LongestRollback
+    -> IO (DBPool IO)
 newDBPoolFromFile tr isReadOnly dbFile longestRollback = do
     lock <- liftIO newLock
 
     (maxConcurrentWriters, maxConcurrentReaders) <-
-      liftIO getNumCapabilities <&> \n -> (if isReadOnly then 0 else n, 5 * n)
+      liftIO getNumCapabilities <&> \n -> (n, 5 * n)
 
     readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
         (createShortLivedConnection tr ReadOnly lock longestRollback dbFile)
@@ -395,23 +400,28 @@ newDBPoolFromFile tr isReadOnly dbFile longestRollback = do
         maxConcurrentWriters
 
     let
-      withDB :: forall a b. (Pool (Database IO) -> (Database IO -> IO a) -> IO b) -> ConnectionType -> (Database IO -> IO a) -> IO b
-      withDB withRes connType dbAction =
+        withDB :: forall a b. (Pool (Database IO) -> (Database IO -> IO a) -> IO b) -> ConnectionType -> (Database IO -> IO a) -> IO b
+        withDB withRes connType dbAction =
             case connType of
                 ReadOnly -> withRes readOnlyPool dbAction
                 ReadWrite | isReadOnly -> fail "Cannot acquire a read/write connection on read-only replica"
                 ReadWrite -> withRes readWritePool dbAction
                 WriteOnly -> fail "Impossible: tried to acquire a WriteOnly database?"
 
-      withDatabaseExclusiveWriter :: DeferIndexesInstallation -> (Database IO -> IO a) -> (IO a)
-      withDatabaseExclusiveWriter =
-        withLongLivedConnection tr lock longestRollback dbFile
-
-      destroyResources = do
-        destroyAllResources readOnlyPool
-        destroyAllResources readWritePool
-
-    return DBPool { tryWithDatabase = withDB tryWithResource, withDatabaseBlocking = withDB withResource, withDatabaseExclusiveWriter, maxConcurrentReaders, maxConcurrentWriters, destroyResources }
+    return DBPool
+        { tryWithDatabase =
+            withDB tryWithResource
+        , withDatabaseBlocking =
+            withDB withResource
+        , withDatabaseExclusiveWriter =
+            withLongLivedConnection tr lock longestRollback dbFile
+        , destroyResources = do
+            destroyAllResources readOnlyPool
+            destroyAllResources readWritePool
+        , maxConcurrentReaders
+        , maxConcurrentWriters =
+            if isReadOnly then 0 else maxConcurrentWriters
+        }
 
 -- It is therefore also the connection from which we check for and run database migrations when
 -- needed. Note that this bracket will also create the database if it doesn't exist.
