@@ -16,18 +16,15 @@ Feel like tossing some coins for the project? Become a [sponsor](https://github.
 
 Make sure to first read the [user-manual 📖](https://cardanosolutions.github.io/kupo) if you're willing to hack a bit on Kupo. Then, `make help` should provide a good starting point.
 
-For development, [cabal](https://cabal.readthedocs.io/en/latest/) should work _out-of-the-box_<sup>TM</sup> provided
-that you have the right system dependencies. That is, you'd need the following:
+For development, [cabal](https://cabal.readthedocs.io/en/latest/) should work _out-of-the-box_<sup>TM</sup> provided that you have the right system dependencies. Refer to [Ogmios' user manual](https://ogmios.dev/getting-started/building/) for setting up those system dependencies, they are the same.
 
-- `libsodium-dev 1.0.*`
-- `libgmp-dev 6.1.*`
-- `libssl-dev 1.1.*`
-- `libpcre3-dev 2.8.*`
-- `libsystemd-dev`
-- `zlib1g-dev 1.2.*`
-- [bitcoin-core/secp256k1@ac83be33](https://github.com/bitcoin-core/secp256k1/tree/ac83be33d0956faf6b7f61a60ab524ef7d6a473)
+Alternatively, you can spin up a nix shell as follow:
 
-You can run tests using:
+```
+nix develop github:CardanoSolutions/devx#ghc96-iog-full --no-write-lock-file --refresh
+```
+
+Once you're all set, you can run tests using:
 
 ```console
 $ make check
@@ -63,7 +60,8 @@ Open a [Bug Ticket](https://github.com/cardanosolutions/kupo/issues/new?template
 
 Feel free to bring it as a [discussion [category: idea]](https://github.com/CardanoSolutions/kupo/discussions/new?category=ideas). Make sure to highlight your use case so we can understand the design space and agree on a solution.
 
-> **Note** Ideally, follow this simple template:
+> [!NOTE]
+> Ideally, follow this simple template:
 >
 > - What is your idea? Describe it in simple words. Provide a use case.
 > - Why is it a good idea?
@@ -73,5 +71,5 @@ Feel free to bring it as a [discussion [category: idea]](https://github.com/Card
 
 Create a [Q&A Discussion](https://github.com/CardanoSolutions/kupo/discussions/new?category=q-a)
 
-> **Warning**
+> [!WARNING]
 > Make sure to mark your question as _Answered_ once resolved!
