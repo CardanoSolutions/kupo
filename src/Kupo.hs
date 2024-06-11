@@ -198,7 +198,11 @@ kupoWith tr withProducer withFetchBlock =
             }
         } <- ask
 
-    dbPool@DBPool { maxConcurrentReaders, maxConcurrentWriters } <- liftIO $ mkDBPool (isReadOnlyReplica config) (tracerDatabase tr) databaseLocation longestRollback
+    dbPool@DBPool { maxConcurrentReaders, maxConcurrentWriters } <- liftIO $ mkDBPool
+        (isReadOnlyReplica config)
+        (tracerDatabase tr)
+        databaseLocation
+        longestRollback
 
     liftIO $ logWith (tracerConfiguration tr) $
       ConfigurationMaxConcurrency

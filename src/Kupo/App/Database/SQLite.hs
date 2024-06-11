@@ -9,11 +9,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Kupo.App.Database.SQLite
-    ( 
+    (
 
       -- ** Queries
       -- *** Inputs
-    deleteInputsQry
+      deleteInputsQry
     , markInputsQry
     , pruneInputsQry
     , foldInputsQry
@@ -165,11 +165,6 @@ import Data.Pool
     , tryWithResource
     , withResource
     )
-import qualified Data.Text as T
-import qualified Data.Text.Lazy.Builder as T
-import qualified Data.Text.Lazy.Builder as TL
-import qualified Database.SQLite.Simple as Sqlite
-
 import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBPool (..)
@@ -181,11 +176,16 @@ import Kupo.Control.MonadLog
     ( TraceProgress (..)
     , nullTracer
     )
-import qualified Kupo.Data.Configuration as Configuration
-import qualified Kupo.Data.Database as DB
 import Text.URI
     ( URI
     )
+
+import qualified Data.Text as T
+import qualified Data.Text.Lazy.Builder as T
+import qualified Data.Text.Lazy.Builder as TL
+import qualified Database.SQLite.Simple as Sqlite
+import qualified Kupo.Data.Configuration as Configuration
+import qualified Kupo.Data.Database as DB
 
 data DatabaseFile = OnDisk !FilePath | InMemory !(Maybe FilePath)
     deriving (Generic, Eq, Show)
@@ -221,7 +221,7 @@ newDatabaseFile tr = \case
                     \You must specify either a working directory or in-memory configuration. \
                     \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
         }
-      throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url) 
+      throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url)
 
 newDatabaseOnDiskFile
     :: (MonadIO m)
@@ -374,12 +374,17 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
 -- This function creates a database file if it does not already exist.
-mkDBPool :: Bool -> (Tracer IO TraceDatabase) -> Configuration.DatabaseLocation -> LongestRollback -> IO (DBPool IO)
+mkDBPool
+    :: Bool
+    -> (Tracer IO TraceDatabase)
+    -> Configuration.DatabaseLocation
+    -> LongestRollback
+    -> IO (DBPool IO)
 mkDBPool isReadOnly tr workDir longestRollback = do
     dbFile <- newDatabaseFile tr workDir
-    
+
     lock <- liftIO newLock
-    
+
     (maxConcurrentWriters, maxConcurrentReaders) <-
       liftIO getNumCapabilities <&> \n -> (if isReadOnly then 0 else n, 5 * n)
 
@@ -396,23 +401,27 @@ mkDBPool isReadOnly tr workDir longestRollback = do
         maxConcurrentWriters
 
     let
-      withDB :: forall a b. (Pool (Database IO) -> (Database IO -> IO a) -> IO b) -> ConnectionType -> (Database IO -> IO a) -> IO b
-      withDB withRes connType dbAction =
+        withDB :: forall a b. (Pool (Database IO) -> (Database IO -> IO a) -> IO b) -> ConnectionType -> (Database IO -> IO a) -> IO b
+        withDB withRes connType dbAction =
             case connType of
                 ReadOnly -> withRes readOnlyPool dbAction
                 ReadWrite | isReadOnly -> fail "Cannot acquire a read/write connection on read-only replica"
                 ReadWrite -> withRes readWritePool dbAction
                 WriteOnly -> fail "Impossible: tried to acquire a WriteOnly database?"
 
-      withDatabaseExclusiveWriter :: DeferIndexesInstallation -> (Database IO -> IO a) -> (IO a)
-      withDatabaseExclusiveWriter =
-        withLongLivedConnection tr lock longestRollback dbFile
-
-      destroyResources = do
-        destroyAllResources readOnlyPool
-        destroyAllResources readWritePool
-
-    return DBPool { tryWithDatabase = withDB tryWithResource, withDatabaseBlocking = withDB withResource, withDatabaseExclusiveWriter, maxConcurrentReaders, maxConcurrentWriters, destroyResources }
+    return DBPool
+        { tryWithDatabase =
+            withDB tryWithResource
+        , withDatabaseBlocking =
+            withDB withResource
+        , withDatabaseExclusiveWriter =
+            withLongLivedConnection tr lock longestRollback dbFile
+        , destroyResources = do
+            destroyAllResources readOnlyPool
+            destroyAllResources readWritePool
+        , maxConcurrentReaders
+        , maxConcurrentWriters
+        }
 
 -- It is therefore also the connection from which we check for and run database migrations when
 -- needed. Note that this bracket will also create the database if it doesn't exist.

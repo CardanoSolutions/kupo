@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 
-module Kupo.App.Database.Types 
+module Kupo.App.Database.Types
   (
     -- * Database DSL
       Database (..)
@@ -17,10 +17,21 @@ module Kupo.App.Database.Types
     )
     where
 
-import Control.Monad.Fail
-    ()
+
+import Kupo.Prelude
+
+import Data.Severity
+    ( HasSeverityAnnotation
+    , Severity (..)
+    )
 import Database.SQLite.Simple
     ( Connection
+    )
+import Kupo.Control.MonadLog
+    ( HasSeverityAnnotation (..)
+    )
+import Kupo.Control.MonadTime
+    ( DiffTime
     )
 import Kupo.Data.Cardano
     ( BinaryData
@@ -48,18 +59,9 @@ import Kupo.Data.Pattern
     , Result
     )
 
-import Kupo.Prelude
+import Control.Monad.Fail
+    ()
 
-import Data.Severity
-    ( HasSeverityAnnotation
-    , Severity (..)
-    )
-import Kupo.Control.MonadLog
-    ( HasSeverityAnnotation (..)
-    )
-import Kupo.Control.MonadTime
-    ( DiffTime
-    )
 import qualified Kupo.Data.Database as DB
 
 data ConnectionType = ReadOnly | ReadWrite | WriteOnly
@@ -178,14 +180,34 @@ data Database (m :: Type -> Type) = Database
 -- Creating this abstraction allows SQLite and PostgreSQL pools to be implemented differently.
 -- A `DBPool` should ensure, on its creation, that any necessary DB setup (e.g., creation of a DB file) is completed
 -- on instantiation of the `DBPool`.
-data DBPool m = DBPool {
-  tryWithDatabase :: forall res. ConnectionType -> (Database m -> m res) -> m (Maybe res)
-  , withDatabaseBlocking :: forall res. ConnectionType -> (Database m -> m res) -> m res
-  , withDatabaseExclusiveWriter :: forall a. DeferIndexesInstallation -> (Database m -> m a) -> m a
-  , maxConcurrentReaders :: Int
-  , maxConcurrentWriters :: Int
-  , destroyResources :: m ()
-}
+data DBPool m = DBPool
+    { tryWithDatabase
+        :: forall res. ()
+        => ConnectionType
+        -> (Database m -> m res)
+        -> m (Maybe res)
+
+    , withDatabaseBlocking
+        :: forall res. ()
+        => ConnectionType
+        -> (Database m -> m res)
+        -> m res
+
+    , withDatabaseExclusiveWriter
+        :: forall a. ()
+        => DeferIndexesInstallation
+        -> (Database m -> m a)
+        -> m a
+
+    , maxConcurrentReaders
+        :: Int
+
+    , maxConcurrentWriters
+        :: Int
+
+    , destroyResources
+        :: m ()
+    }
 
 
 --
