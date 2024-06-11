@@ -24,6 +24,18 @@ Alternatively, you can spin up a nix shell as follow:
 nix develop github:CardanoSolutions/devx#ghc96-iog-full --no-write-lock-file --refresh
 ```
 
+If using the Nix shell, you'll likely want to create a `cabal.project.local` file:
+
+```cabal
+package digest
+  extra-lib-dirs: /nix/store/y08crgb0j7bniwwpcsfwn0dikpcim948-zlib-1.3/lib /nix/store/sk54pr3wx1jbfv8pd0fizkvdsb38j5ga-pcre-8.45-bin/lib
+
+constraints:
+  HsOpenSSL +use-pkg-config,
+  zlib +pkg-config,
+  pcre-lite +pkg-config
+```
+
 Once you're all set, you can run tests using:
 
 ```console

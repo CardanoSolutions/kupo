@@ -11,9 +11,9 @@ import Data.ByteString.Bech32
     )
 
 import qualified Cardano.Ledger.Address as Ledger
+import qualified Cardano.Ledger.Api as Ledger.Api
 import qualified Cardano.Ledger.BaseTypes as Ledger
 import qualified Cardano.Ledger.Credential as Ledger
-import qualified Cardano.Ledger.Api as Ledger.Api
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 
@@ -48,24 +48,7 @@ unsafeAddressFromBytes =
 
 addressFromBytes :: ByteString -> Maybe Address
 addressFromBytes bytes =
-    Ledger.Api.decodeAddr bytes
-  <|>
-    -- TODO: This is probably redundant (now with decodeAddr and/or decodeAddrLenient
-    -- NOTE: Since around Babbage / Conway, the ledger team decided to drop support for pointer
-    -- addresses from new decoders. Yet, those addresses still exist on-chain (and forever will).
-    --
-    -- See also: https://github.com/input-output-hk/cardano-ledger/issues/3898 for details.
-    --
-    -- In principle, the left side of the following alternative is sufficient given that there hasn't
-    -- been any new type of addresses since the launch of Shelley. The Alonzo decoder is just more
-    -- lenient than the more recent ones. The right side of the alternative thus exist as a safety net
-    -- in case new types of addresses gets added. There's a high chance that I'll just forget to
-    -- update that function here if that happens.
-    eitherToMaybe (decodeCbor @AlonzoEra "Address" Ledger.fromCborAddr (toLazy (serializeCbor @AlonzoEra encCBOR bytes)))
-  <|>
-    eitherToMaybe (decodeCborLatest "Address" Ledger.fromCborAddr (toLazy (serializeCborLatest encCBOR bytes)))
-  where
-    eitherToMaybe = either (const Nothing) pure
+    Ledger.Api.decodeAddrLenient bytes
 {-# INLINABLE addressFromBytes #-}
 
 isBootstrap :: Address -> Bool

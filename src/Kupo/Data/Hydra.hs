@@ -20,12 +20,6 @@ import Cardano.Ledger.Api
     , scriptTxWitsL
     , witsTxL
     )
-import Cardano.Ledger.Binary
-    ( decodeFullAnnotator
-    )
-import Cardano.Ledger.Block
-    ( txid
-    )
 import Cardano.Ledger.SafeHash
     ( unsafeMakeSafeHash
     )
@@ -73,7 +67,7 @@ import Kupo.Data.PartialBlock
     , PartialTransaction (..)
     )
 
-import qualified Cardano.Ledger.Core as Ledger
+import qualified Cardano.Ledger.Api as Ledger
 import qualified Codec.CBOR.Decoding as Cbor
 import qualified Codec.CBOR.Read as Cbor
 import qualified Data.Aeson.Key as Key
@@ -126,10 +120,14 @@ decodeHydraMessage =
     Json.withObject "HydraMessage" $ \o -> do
         tag <- o .: "tag"
         case tag of
-            ("HeadIsOpen" :: Text) -> HeadIsOpen <$> decodeHeadIsOpen o
-            ("TxValid" :: Text) -> TxValid <$> (o .: "transaction" >>= decodePartialTransaction)
-            ("SnapshotConfirmed" :: Text) -> SnapshotConfirmed <$> decodeSnapshotConfirmed o
-            _ -> pure SomethingElse
+            ("HeadIsOpen" :: Text) ->
+                HeadIsOpen <$> decodeHeadIsOpen o
+            ("TxValid" :: Text) ->
+                TxValid <$> (o .: "transaction" >>= decodePartialTransaction)
+            ("SnapshotConfirmed" :: Text) ->
+                SnapshotConfirmed <$> decodeSnapshotConfirmed o
+            _ ->
+                pure SomethingElse
 
 -- | Decode a 'HeadIsOpen' as a multiple "genesis" transactions producing the
 -- UTxO as initially available.
@@ -176,11 +174,11 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
 
     bytes <- decodeBase16' hexText
 
-    tx <- case decodeFullAnnotator (Ledger.eraProtVerLow @(BabbageEra StandardCrypto)) "PartialTransaction" decCBOR (fromStrict bytes) of
+    tx <- case decodeCborAnn @BabbageEra "PartialTransaction" decCBOR (fromStrict bytes) of
       Left e -> fail $ show e
       Right tx -> pure tx
 
-    -- TODO
+    -- NOTE
     -- This is 'acceptable' for now because:
     --
     -- (1) This is only truly required when fetching metadata from a data-source. Kupo does not
@@ -191,7 +189,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     -- / API for it.
 
     let body' = tx ^. bodyTxL
-    let id = txid body'
+    let id = Ledger.txIdTxBody body'
     let wits' = tx ^. witsTxL
     let outputs' = map fromBabbageOutput $ toList (body' ^. outputsTxBodyL)
 

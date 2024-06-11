@@ -52,6 +52,7 @@ library:
     - cardano-crypto-wrapper
     - cardano-ledger-allegra
     - cardano-ledger-alonzo
+    - cardano-ledger-api
     - cardano-ledger-babbage
     - cardano-ledger-binary
     - cardano-ledger-byron
@@ -80,7 +81,6 @@ library:
     - ouroboros-consensus
     - ouroboros-consensus-cardano
     - ouroboros-consensus-diffusion
-    - ouroboros-consensus-protocol
     - ouroboros-network
     - ouroboros-network-api
     - ouroboros-network-framework
@@ -99,11 +99,11 @@ library:
     - transformers
     - typed-protocols
     - unix
-    - yaml
     - wai
     - warp
     - websockets
     - websockets-json
+    - yaml
 
 tests:
   unit:

@@ -24,8 +24,6 @@ import Ouroboros.Network.Block
 
 import Ouroboros.Consensus.Cardano
     ()
-import Ouroboros.Consensus.Protocol.Praos.Translate
-    ()
 import Ouroboros.Consensus.Shelley.Ledger.SupportsProtocol
     ()
 

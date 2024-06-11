@@ -31,5 +31,5 @@ assetNameFromText (encodeUtf8 -> bytes) = do
 
 assetNameToText :: AssetName -> Text
 assetNameToText =
-    encodeBase16 . fromShort . Ledger.assetName
+    encodeBase16 . fromShort . Ledger.assetNameBytes
 {-# INLINABLE assetNameToText #-}

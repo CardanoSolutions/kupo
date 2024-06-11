@@ -91,8 +91,6 @@ import Ouroboros.Network.Snocket
     ( Snocket (..)
     )
 
-import Ouroboros.Consensus.Protocol.Praos.Translate
-    ()
 import Ouroboros.Consensus.Shelley.Ledger.SupportsProtocol
     ()
 

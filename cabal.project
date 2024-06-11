@@ -11,7 +11,7 @@ repository cardano-haskell-packages
 
 index-state:
   , hackage.haskell.org 2024-03-26T06:28:59Z
-  , cardano-haskell-packages 2024-04-11T09:29:53Z
+  , cardano-haskell-packages 2024-05-14T16:00:00Z
 
 packages:
   ./
@@ -46,17 +46,17 @@ package direct-sqlite
   flags: +nomutex
 
 constraints:
-  , any.base == 4.18.1.0
-  , any.cardano-node == 8.10.1
-
-  -- following cardano-node
-  , any.ouroboros-consensus ^>= 0.17.0.0
-  , any.ouroboros-consensus-cardano ^>= 0.15
-
-  -- bump to allow ouroboros-consensus
-  , quickcheck-state-machine ^>= 0.9
-
-  , any.cardano-ledger-conway >= 1.11.0.0
+  , any.cardano-node == 8.11.0
+  , any.cardano-ledger-core == 1.12.0.0
+  , any.cardano-ledger-conway == 1.14.0.0
+  , any.ouroboros-consensus == 0.18.0.0
+  , any.ouroboros-consensus-cardano == 0.16.0.0
+  , any.ouroboros-consensus-diffusion == 0.16.0.0
+  , any.ouroboros-network == 0.16.0.0
+  , any.plutus-core == 1.27.0.0
+  , any.plutus-ledger-api == 1.27.0.0
+  , any.io-classes-mtl < 0.1.2.0
+  , any.wai-extra < 3.1.15
   , any.formatting == 7.2.0
   , any.text source
   , direct-sqlite == 2.3.29.1
@@ -68,8 +68,15 @@ allow-newer:
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/ogmios
-  tag: 83065af5d370389c09e901c64628781ac0898a03
-  --sha256: OJiU/qLCslSrRbIGARUCbFNUNNWGHC8/0S5gWWSE2PA=
+  tag: 0316c754794477629dddfbffa55c2e743cb993ba
+  -- NOTE
+  -- I still don't know how to generate those. 'nix-prefetch-url' yields
+  -- a different output on each invocation. I spent 15 minutes fiddling with
+  -- nix commands in my terminal and it's been the worse part of my day so
+  -- far. So if someone needs this, feel free to make a PR. And I'd
+  -- welcome any *reproducible* command I can run to re-generate those in
+  -- the future.
+  --sha256: 0000000000000000000000000000000000000000000000000000
   subdir:
     server/modules/fast-bech32
 

@@ -1,7 +1,7 @@
 OUT := dist
 
 GHC := 9.6.3
-STYLISH_HASKELL_VERSION := 0.13.0.0
+STYLISH_HASKELL_VERSION := 0.14.5.0
 
 # Default network for snapshots.
 NETWORK := preview
@@ -47,7 +47,7 @@ $(OUT)/share/kupo/LICENSE:
 	@cp LICENSE $@
 
 dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo/kupo:
-	@nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal build --enable-executable-static kupo:exe:kupo"
+	@nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal build kupo:exe:kupo"
 
 $(OUT)/bin/kupo: dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)/x/kupo/build/kupo/kupo
 	@mkdir -p $(@D)

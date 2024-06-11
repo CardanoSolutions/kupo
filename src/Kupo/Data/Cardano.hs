@@ -393,9 +393,9 @@ instance IsBlock Block where
                     (scriptFromAllegraAuxiliaryData fromMaryScript)
                     (tx ^. Ledger.auxDataTxL)
         TransactionAlonzo tx ->
-            ( unsafeFromAlonzoScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)
+            ( fromAlonzoScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)
             ) & strictMaybe identity
-                    (scriptFromAlonzoAuxiliaryData @(AlonzoEra StandardCrypto) unsafeFromAlonzoScript)
+                    (scriptFromAlonzoAuxiliaryData @(AlonzoEra StandardCrypto) fromAlonzoScript)
                     (tx ^. Ledger.auxDataTxL)
         TransactionBabbage tx ->
             ( fromBabbageScript <$> (tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL)
