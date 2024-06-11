@@ -34,7 +34,9 @@ module Kupo.App.Database.SQLite
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
-    , mkDBPool
+    , DatabaseFile (..)
+    , newDBPoolFromFile
+    , newDatabaseFile
     , copyDatabase
 
       -- * Internal
@@ -156,7 +158,6 @@ import System.IO.Error
 import Control.Concurrent
     ( getNumCapabilities
     )
-import qualified Data.Char as Char
 import Data.Pool
     ( Pool
     , defaultPoolConfig
@@ -180,6 +181,7 @@ import Text.URI
     ( URI
     )
 
+import qualified Data.Char as Char
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as T
 import qualified Data.Text.Lazy.Builder as TL
@@ -216,12 +218,13 @@ newDatabaseFile tr = \case
     Configuration.Dir dir ->
         OnDisk <$> newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) dir
     Configuration.Remote url -> liftIO $ do
-      traceWith tr $ DatabaseMustBeLocal
-        { errorMessage = "This binary was compiled to use SQLite. \
-                    \You must specify either a working directory or in-memory configuration. \
-                    \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
-        }
-      throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url)
+        traceWith tr $ DatabaseMustBeLocal
+            { errorMessage =
+                "This binary was compiled to use SQLite. \
+                \You must specify either a working directory or in-memory configuration. \
+                \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
+            }
+        throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url)
 
 newDatabaseOnDiskFile
     :: (MonadIO m)
@@ -374,15 +377,13 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
 -- This function creates a database file if it does not already exist.
-mkDBPool
-    :: Bool
-    -> (Tracer IO TraceDatabase)
-    -> Configuration.DatabaseLocation
+newDBPoolFromFile
+    :: (Tracer IO TraceDatabase)
+    -> Bool
+    -> DatabaseFile
     -> LongestRollback
     -> IO (DBPool IO)
-mkDBPool isReadOnly tr workDir longestRollback = do
-    dbFile <- newDatabaseFile tr workDir
-
+newDBPoolFromFile tr isReadOnly dbFile longestRollback = do
     lock <- liftIO newLock
 
     (maxConcurrentWriters, maxConcurrentReaders) <-

@@ -9,7 +9,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Kupo.App.Database.Postgres
-    ( 
+    (
 
       -- ** Queries
       -- *** Inputs
@@ -34,7 +34,9 @@ module Kupo.App.Database.Postgres
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
-    , mkDBPool
+    , DatabaseFile (..)
+    , newDBPoolFromFile
+    , newDatabaseFile
     , copyDatabase
 
       -- * Internal
@@ -47,6 +49,9 @@ module Kupo.App.Database.Postgres
 
 import Kupo.Prelude
 
+import Control.Concurrent
+    ( getNumCapabilities
+    )
 import Control.Exception
     ( IOException
     , handle
@@ -60,6 +65,14 @@ import Control.Tracer
     )
 import Data.FileEmbed
     ( embedFile
+    )
+import Data.Pool
+    ( Pool
+    , defaultPoolConfig
+    , destroyAllResources
+    , newPool
+    , tryWithResource
+    , withResource
     )
 import Data.Scientific
     ( scientific
@@ -91,6 +104,13 @@ import GHC.TypeLits
     ( KnownSymbol
     , symbolVal
     )
+import Kupo.App.Database.Types
+    ( ConnectionType (..)
+    , DBPool (..)
+    , Database (..)
+    , TraceConnection (..)
+    , TraceDatabase (..)
+    )
 import Kupo.Control.MonadAsync
     ( concurrently_
     )
@@ -99,6 +119,10 @@ import Kupo.Control.MonadCatch
     )
 import Kupo.Control.MonadDelay
     ( threadDelay
+    )
+import Kupo.Control.MonadLog
+    ( TraceProgress (..)
+    , nullTracer
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
@@ -115,8 +139,7 @@ import Kupo.Data.Cardano
     , slotNoToText
     )
 import Kupo.Data.Configuration
-    ( DatabaseLocation
-    , DeferIndexesInstallation (..)
+    ( DeferIndexesInstallation (..)
     , LongestRollback (..)
     , pruneInputsMaxIncrement
     )
@@ -153,39 +176,17 @@ import System.FilePath
 import System.IO.Error
     ( isAlreadyExistsError
     )
+import Text.URI
+    ( URI
+    )
 
-import Control.Concurrent
-    ( getNumCapabilities
-    )
 import qualified Data.Char as Char
-import Data.Pool
-    ( Pool
-    , defaultPoolConfig
-    , destroyAllResources
-    , newPool
-    , tryWithResource
-    , withResource
-    )
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as T
 import qualified Data.Text.Lazy.Builder as TL
 import qualified Database.SQLite.Simple as Sqlite
-import Kupo.App.Database.Types
-    ( ConnectionType (..)
-    , DBPool (..)
-    , Database (..)
-    , TraceConnection (..)
-    , TraceDatabase (..)
-    )
-import Kupo.Control.MonadLog
-    ( TraceProgress (..)
-    , nullTracer
-    )
 import qualified Kupo.Data.Configuration as Configuration
 import qualified Kupo.Data.Database as DB
-import Text.URI
-    ( URI
-    )
 
 data DatabaseFile = OnDisk !FilePath | InMemory !(Maybe FilePath)
     deriving (Generic, Eq, Show)
@@ -221,7 +222,7 @@ newDatabaseFile tr = \case
                     \You must specify either a working directory or in-memory configuration. \
                     \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
         }
-      throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url) 
+      throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url)
 
 newDatabaseOnDiskFile
     :: (MonadIO m)
@@ -374,12 +375,10 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
 -- This function creates a database file if it does not already exist.
-mkDBPool :: Bool -> (Tracer IO TraceDatabase) -> DatabaseLocation -> LongestRollback -> IO (DBPool IO)
-mkDBPool isReadOnly tr workDir longestRollback = do
-    dbFile <- newDatabaseFile tr workDir
-    
+newDBPoolFromFile :: Tracer IO TraceDatabase -> Bool -> DatabaseFile -> LongestRollback -> IO (DBPool IO)
+newDBPoolFromFile tr isReadOnly dbFile longestRollback = do
     lock <- liftIO newLock
-    
+
     (maxConcurrentWriters, maxConcurrentReaders) <-
       liftIO getNumCapabilities <&> \n -> (if isReadOnly then 0 else n, 5 * n)
 

@@ -24,7 +24,8 @@ import Database.SQLite.Simple
     , withTransaction
     )
 import Kupo.App.Database
-    ( deleteInputsQry
+    ( DatabaseFile (..)
+    , deleteInputsQry
     , foldInputsQry
     , foldPoliciesQry
     , getBinaryDataQry
@@ -33,7 +34,7 @@ import Kupo.App.Database
     , listAncestorQry
     , listCheckpointsQry
     , markInputsQry
-    , mkDBPool
+    , newDBPoolFromFile
     , pruneBinaryDataQry
     , pruneInputsQry
     , rollbackQryDeleteCheckpoints
@@ -82,8 +83,7 @@ import Kupo.Data.Cardano
     , slotNoToText
     )
 import Kupo.Data.Configuration
-    ( DatabaseLocation (..)
-    , DeferIndexesInstallation (..)
+    ( DeferIndexesInstallation (..)
     , LongestRollback (..)
     , getLongestRollback
     )
@@ -117,6 +117,9 @@ import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
     , Result (..)
+    )
+import System.FilePath
+    ( (</>)
     )
 import System.IO.Temp
     ( withSystemTempDirectory
@@ -342,14 +345,14 @@ spec = parallel $ do
             )
             [ ( "in-memory"
               , \test -> do
-                  test =<< mkDBPool False nullTracer InMemory k
-                  -- // TODO: Previously this used a specific filepath for the in-memory DB. Will using the standard path ruin things?
-                  -- I think if there is a running instance of Kupo and someone runs this test 
+                  test =<< newDBPoolFromFile nullTracer False
+                    (InMemory (Just "file::concurrent-read-write:?cache=shared&mode=memory"))
+                    k
               )
             , ( "on-disk"
             , \test ->
                   withSystemTempDirectory "kupo-database-concurrent" $ \dir -> do
-                    test =<< mkDBPool False nullTracer (Dir dir) k
+                    test =<< newDBPoolFromFile nullTracer False (OnDisk $ dir </> "kupo.sqlite") k
               )
             ]
 
@@ -1360,7 +1363,6 @@ withInMemoryDatabase
 withInMemoryDatabase =
     withInMemoryDatabase' run InstallIndexesIfNotExist
 
--- // TODO: Check this
 withInMemoryDatabase'
     :: forall (m :: Type -> Type) b. (Monad m)
     => (forall a. IO a -> m a)
@@ -1369,7 +1371,10 @@ withInMemoryDatabase'
     -> (Database IO -> IO b)
     -> m b
 withInMemoryDatabase' runInIO deferIndexes k action = do
-  pool <- runInIO $ mkDBPool False nullTracer InMemory (LongestRollback { getLongestRollback = k })
+  pool <- runInIO $ newDBPoolFromFile nullTracer
+    False
+    (InMemory (Just ":memory:"))
+    (LongestRollback { getLongestRollback = k })
   runInIO $ (withDatabaseExclusiveWriter pool) deferIndexes action
 
 forAllCheckpoints

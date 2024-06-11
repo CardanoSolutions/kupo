@@ -63,7 +63,7 @@ import Kupo.App.Configuration
     )
 import Kupo.App.Database
     ( copyDatabase
-    , mkDBPool
+    , newDBPool
     )
 import Kupo.App.Database.Types
     ( ConnectionType (..)
@@ -198,9 +198,9 @@ kupoWith tr withProducer withFetchBlock =
             }
         } <- ask
 
-    dbPool@DBPool { maxConcurrentReaders, maxConcurrentWriters } <- liftIO $ mkDBPool
-        (isReadOnlyReplica config)
+    dbPool@DBPool { maxConcurrentReaders, maxConcurrentWriters } <- liftIO $ newDBPool
         (tracerDatabase tr)
+        (isReadOnlyReplica config)
         databaseLocation
         longestRollback
 
