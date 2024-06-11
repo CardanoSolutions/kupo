@@ -224,7 +224,8 @@ spec = parallel $ do
 
     context "patternToSql" $ around withFixtureDatabase $ do
         forM_ patterns $ \(_, p, ms) -> do
-            let (whereClause, fromMaybe "" -> additionalJoin) = patternToSql p
+            let blobLiteral bytes = "x'" <> encodeBase16 bytes <> "'"
+            let (whereClause, fromMaybe "" -> additionalJoin) = patternToSql blobLiteral p
             let results = sort $ (\(_, out) -> getAddress out) <$> ms
             specify (toString whereClause) $ \conn -> do
                 rows <- query_ conn $ Query $ unwords

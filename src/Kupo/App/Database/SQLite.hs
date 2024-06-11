@@ -47,6 +47,9 @@ module Kupo.App.Database.SQLite
 
 import Kupo.Prelude
 
+import Control.Concurrent
+    ( getNumCapabilities
+    )
 import Control.Exception
     ( IOException
     , handle
@@ -58,8 +61,17 @@ import Control.Tracer
     ( Tracer
     , traceWith
     )
+import qualified Data.Char as Char
 import Data.FileEmbed
     ( embedFile
+    )
+import Data.Pool
+    ( Pool
+    , defaultPoolConfig
+    , destroyAllResources
+    , newPool
+    , tryWithResource
+    , withResource
     )
 import Data.Scientific
     ( scientific
@@ -87,9 +99,17 @@ import Database.SQLite.Simple
     , withConnection'
     , withStatement
     )
+import qualified Database.SQLite.Simple as Sqlite
 import GHC.TypeLits
     ( KnownSymbol
     , symbolVal
+    )
+import Kupo.App.Database.Types
+    ( ConnectionType (..)
+    , DBPool (..)
+    , Database (..)
+    , TraceConnection (..)
+    , TraceDatabase (..)
     )
 import Kupo.Control.MonadAsync
     ( concurrently_
@@ -99,6 +119,10 @@ import Kupo.Control.MonadCatch
     )
 import Kupo.Control.MonadDelay
     ( threadDelay
+    )
+import Kupo.Control.MonadLog
+    ( TraceProgress (..)
+    , nullTracer
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
@@ -119,10 +143,12 @@ import Kupo.Data.Configuration
     , LongestRollback (..)
     , pruneInputsMaxIncrement
     )
+import qualified Kupo.Data.Configuration as Configuration
 import Kupo.Data.Database
     ( SortDirection (..)
     , patternToSql
     )
+import qualified Kupo.Data.Database as DB
 import Kupo.Data.Http.SlotRange
     ( Range (..)
     , RangeField (..)
@@ -833,7 +859,8 @@ deleteInputsQry pattern_ =
         , whereClause
         ]
   where
-    (whereClause, fromMaybe "" -> additionalJoin) = patternToSql pattern_
+    (whereClause, fromMaybe "" -> additionalJoin) =
+        patternToSql mkBlobLiteral pattern_
 
 markInputsQry :: Pattern -> Query
 markInputsQry pattern_ =
@@ -844,7 +871,8 @@ markInputsQry pattern_ =
         , whereClause
         ]
   where
-      (whereClause, fromMaybe "" -> additionalJoin) = patternToSql pattern_
+      (whereClause, fromMaybe "" -> additionalJoin) =
+          patternToSql mkBlobLiteral pattern_
 
 -- NOTE: This query only prune down a certain number of inputs at a time to keep his time bounded. The
 -- query in itself is quite expensive, and on large indexes, may takes several minutes.
@@ -873,7 +901,7 @@ countPoliciesQry pattern_ = Query $
     <> patternWhereClause
   where
     (patternWhereClause, _) =
-        patternToSql pattern_
+        patternToSql mkBlobLiteral pattern_
 
 foldPoliciesQry :: Pattern -> Query
 foldPoliciesQry pattern_ = Query $
@@ -885,7 +913,7 @@ foldPoliciesQry pattern_ = Query $
     <> patternWhereClause
   where
     (patternWhereClause, _) =
-        patternToSql pattern_
+        patternToSql mkBlobLiteral pattern_
 
 countInputsQry :: Pattern -> Query
 countInputsQry pattern_ = Query $
@@ -895,7 +923,7 @@ countInputsQry pattern_ = Query $
     <> patternWhereClause
   where
     (patternWhereClause, fromMaybe "" -> additionalJoin) =
-        patternToSql pattern_
+        patternToSql mkBlobLiteral pattern_
 
 foldInputsQry
     :: Pattern
@@ -933,7 +961,7 @@ foldInputsQry pattern_ slotRange statusFlag sortDirection =
            \inputs.created_at " <> ordering
 
     (patternWhereClause, fromMaybe "" -> additionalJoin) =
-        patternToSql pattern_
+        patternToSql mkBlobLiteral pattern_
 
     ordering = case sortDirection of
         Asc -> "ASC"
@@ -1114,6 +1142,9 @@ matchMaybeWord64 = \case
     SQLInteger (fromIntegral -> wrd) -> Just wrd
     _notSQLInteger -> Nothing
 {-# INLINABLE matchMaybeWord64 #-}
+
+mkBlobLiteral :: ByteString -> Text
+mkBlobLiteral bytes = "x'" <> encodeBase16 bytes <> "'"
 
 --
 -- Indexes

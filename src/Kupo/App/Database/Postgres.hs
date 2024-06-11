@@ -4,6 +4,7 @@
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -82,9 +83,11 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as TL
 import Database.PostgreSQL.Simple
-    ( Connection
+    ( Binary (..)
+    , Connection
     , Only (..)
     , Query
+    , SqlError (..)
     , execute
     , executeMany
     , execute_
@@ -92,6 +95,9 @@ import Database.PostgreSQL.Simple
     , query_
     )
 import qualified Database.PostgreSQL.Simple as PG
+import Database.PostgreSQL.Simple.Types
+    ( Identifier (..)
+    )
 import GHC.TypeLits
     ( KnownSymbol
     , symbolVal
@@ -99,6 +105,7 @@ import GHC.TypeLits
 import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBPool (..)
+    , DBTransaction
     , Database (..)
     , TraceConnection (..)
     , TraceDatabase (..)
@@ -163,7 +170,7 @@ newDBPool tr isReadOnly dbLocation longestRollback = do
         (\Database{close} -> close)
         600 -- // TODO: Review concurrency requirements
         maxConnections
-        
+
     -- // TODO: Will running migrations here break things in a multi-client scenario?
     bracket mkConnection PG.close $ runMigrations tr
 
@@ -176,7 +183,7 @@ newDBPool tr isReadOnly dbLocation longestRollback = do
                 _ -> withRes connectionPool dbAction
 
       -- // TODO: Acutally do something with defer indexes! And possibly actually provide a preferred connection?
-        withDatabaseExclusiveWriter :: DeferIndexesInstallation -> (Database IO -> IO a) -> (IO a)
+        withDatabaseExclusiveWriter :: DeferIndexesInstallation -> (Database IO -> IO a) -> IO a
 
         destroyResources = destroyAllResources connectionPool
         withDatabaseExclusiveWriter _deferIndexes = withResource connectionPool
@@ -230,47 +237,55 @@ mkDatabase
     -> (forall a. (Connection -> IO a) -> IO a)
     -> Database IO
 mkDatabase tr longestRollback bracketConnection = Database
-    { insertInputs = \inputs -> ReaderT $ \conn -> do
-        mapM_ (\DB.Input{..} -> do
-            insertRow @"inputs" conn 7
-                ( extendedOutputReference
-                , address
-                , value
-                , datumInfo
-                , refScriptHash
-                , (fromIntegral createdAtSlotNo :: Int64)
-                , spentAtSlotNo
+    { insertInputs = \inputs -> ReaderT $ \conn ->
+        handle (throwIO . DatabaseException "insertInptus" ) $ do
+            mapM_ (\DB.Input{..} -> do
+                insertRow @"inputs" conn 7
+                    ( extendedOutputReference
+                    , address
+                    , value
+                    , datumInfo
+                    , refScriptHash
+                    , (fromIntegral createdAtSlotNo :: Int64)
+                    , spentAtSlotNo
+                    )
+                case datum of
+                    Nothing ->
+                        pure ()
+                    Just DB.BinaryData{..} ->
+                        insertRow @"binary_data" conn 2
+                            ( binaryDataHash
+                            , binaryData
+                            )
+                case refScript of
+                    Nothing ->
+                        pure ()
+                    Just DB.ScriptReference{..} ->
+                        insertRow @"scripts" conn 2
+                            ( scriptHash
+                            , script
+                            )
                 )
-            case datum of
-                Nothing ->
-                    pure ()
-                Just DB.BinaryData{..} ->
-                    insertRow @"binary_data" conn 2
-                        ( binaryDataHash
-                        , binaryData
-                        )
-            case refScript of
-                Nothing ->
-                    pure ()
-                Just DB.ScriptReference{..} ->
-                    insertRow @"scripts" conn 2
-                        ( scriptHash
-                        , script
-                        )
-            )
-            inputs
+                inputs
 
-    , deleteInputs = \refs -> ReaderT $ \conn -> do
-          withTotalChanges (\pattern -> execute_ conn (deleteInputsQry pattern)) refs
+    , deleteInputs = \refs -> ReaderT $ \conn ->
+        (throwIO . DatabaseException "deleteInputs") `handle` do
+            withTotalChanges
+                (\pattern -> do
+                    execute_ conn (markInputsQry pattern))
+                refs
+            -- ^// TODO: Try to convert this to an `executeMany` call
+    
+    , markInputs = \(fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> 
+        (throwIO . DatabaseException "markInputs") `handle` do
+            withTotalChanges (\pattern -> do
+              execute conn (markInputsQry pattern) $ Only (slotNo :: Int64))
+              refs
 
-    , markInputs = \(fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> do
-          withTotalChanges (\ref ->
-            execute conn (markInputsQry ref) (Only (slotNo :: Int64)))
-            refs
-
-    , pruneInputs = ReaderT $ \conn -> do
-        withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $ do
-            traceExecute tr conn pruneInputsQry [ fromIntegral longestRollback :: Int64 ]
+    , pruneInputs = ReaderT $ \conn -> 
+        (throwIO . DatabaseException "pruneInputs") `handle` do
+            withTemporaryIndex tr conn "inputsBySpentAt" "inputs" "spent_at" $ do
+                traceExecute tr conn pruneInputsQry [ fromIntegral longestRollback :: Int64 ]
 
     , foldInputs = \pattern_ slotRange statusFlag sortDirection yield -> ReaderT $ \conn -> do
         -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
@@ -279,27 +294,27 @@ mkDatabase tr longestRollback bracketConnection = Database
         let (datum, refScript) = (Nothing, Nothing)
         (throwIO . UnexpectedRow "foldInputs") `handle`
             PG.forEach_ conn (foldInputsQry pattern_ slotRange statusFlag sortDirection)
-                (\(extendedOutputReference
+                (\(Binary extendedOutputReference
                   , address
-                  , value
-                  , datumInfo
-                  , refScriptHash
+                  , Binary value
+                  , fmap fromBinary -> datumInfo
+                  , fmap fromBinary -> refScriptHash
                   , ((fromIntegral :: Int64 -> Word64) -> createdAtSlotNo)
-                  ,  createdAtHeaderHash
+                  ,  Binary createdAtHeaderHash
                   , (fmap (fromIntegral :: Int64 -> Word64) -> spentAtSlotNo)
-                  , spentAtHeaderHash
+                  , fmap fromBinary -> spentAtHeaderHash
                   ) ->
                     yield (DB.resultFromRow DB.Input{..}))
 
 
     , countInputs = \pattern_ -> ReaderT $ \conn -> do
-      handle (throwIO . UnexpectedRow "countInputs") $
+        (throwIO . UnexpectedRow "countInputs") `handle`
           query_ conn (countInputsQry pattern_) >>= \case
               [Only n] -> pure n
               (length -> n) -> throwIO $ ExpectedSingletonResult "countInputs" n
 
     , countPolicies = \pattern_ -> ReaderT $ \conn -> do
-        handle (throwIO . UnexpectedRow "countPolicies") $
+        (throwIO . UnexpectedRow "countPolicies") `handle`
             query_ conn (countPoliciesQry pattern_) >>= \case
                 [Only n] -> pure n
                 (length -> n) -> throwIO $ ExpectedSingletonResult "countPolicies" n
@@ -310,17 +325,19 @@ mkDatabase tr longestRollback bracketConnection = Database
             PG.forEach_ conn (foldPoliciesQry pattern_) $
                 \(outputReference, policyId) -> yield DB.Policy{..}
 
-    , insertPolicies = \policies -> ReaderT $ \conn -> do
-        let
-            rows = flip Set.map policies $ \DB.Policy{..} ->
-                (outputReference, policyId)
-        insertRows @"policies" conn 2 rows
+    , insertPolicies = \policies -> ReaderT $ \conn ->
+        (throwIO . DatabaseException "insertPolicies") `handle` do
+            let
+                rows = flip Set.map policies $ \DB.Policy{..} ->
+                    (outputReference, policyId)
+            insertRows @"policies" conn 2 rows
 
-    , insertCheckpoints = \cps -> ReaderT $ \conn -> do
-        let
-            rows = cps <&> \(DB.pointToRow -> DB.Checkpoint{..}) ->
-                (checkpointHeaderHash, ((fromIntegral :: Word64 -> Int64) checkpointSlotNo))
-        insertRows @"checkpoints" conn 2 rows
+    , insertCheckpoints = \cps -> ReaderT $ \conn ->
+        (throwIO . DatabaseException "insertCheckpoints") `handle` do
+            let
+                rows = cps <&> \(DB.pointToRow -> DB.Checkpoint{..}) ->
+                    (Binary checkpointHeaderHash, ((fromIntegral :: Word64 -> Int64) checkpointSlotNo))
+            insertRows @"checkpoints" conn 2 rows
 
     , listCheckpointsDesc = ReaderT $ \conn -> do
         let
@@ -332,34 +349,39 @@ mkDatabase tr longestRollback bracketConnection = Database
               where
                 n = ceiling (log (fromIntegral @_ @Double k))
         fmap (fmap DB.pointFromRow . nubOn DB.checkpointSlotNo . mconcat) $ forM points $ \pt ->
-            PG.fold conn listCheckpointsQry [pt :: Int64] [] $
-                \xs (checkpointHeaderHash, (fromIntegral :: Int64 -> Word64) -> checkpointSlotNo) ->
-                    pure (DB.Checkpoint{..} : xs)
+            handle (throwIO . UnexpectedRow "listCheckpointsDesc") $
+                PG.fold conn listCheckpointsQry [pt :: Int64] [] $
+                    \xs (checkpointHeaderHash, (fromIntegral :: Int64 -> Word64) -> checkpointSlotNo) ->
+                        pure (DB.Checkpoint{..} : xs)
 
     , listAncestorsDesc = \(SlotNo slotNo) n -> ReaderT $ \conn -> do
-        fmap reverse $
-            PG.fold conn listAncestorQry ((fromIntegral :: Word64 -> Int32) slotNo, n) [] $
-                \xs (checkpointHeaderHash, (fromIntegral :: Int32 -> Word64) -> checkpointSlotNo) ->
-                    pure ((DB.pointFromRow DB.Checkpoint{..}) : xs)
+        handle (throwIO . DatabaseException "listAncestorsDesc") $
+            fmap reverse $
+                PG.fold conn listAncestorQry ((fromIntegral :: Word64 -> Int32) slotNo, n) [] $
+                    \xs (checkpointHeaderHash, (fromIntegral :: Int32 -> Word64) -> checkpointSlotNo) ->
+                        pure ((DB.pointFromRow DB.Checkpoint{..}) : xs)
 
-    , insertPatterns = \patterns -> ReaderT $ \conn -> do
-          insertRows @"patterns" conn 1 $ Set.map (Only . patternToText) patterns
+    , insertPatterns = \patterns -> ReaderT $ \conn ->
+          handle (throwIO . DatabaseException "insertPatterns") $
+              insertRows @"patterns" conn 1 $ Set.map (Only . patternToText) patterns
 
     , deletePattern = \pattern_-> ReaderT $ \conn -> do
           fromIntegral <$>
               execute conn "DELETE FROM patterns WHERE pattern = ?"
                   (Only $ DB.patternToRow pattern_)
 
-    , listPatterns = ReaderT $ \conn -> do
-        fmap fromList
-            $ PG.fold_ conn "SELECT * FROM patterns" []
-            $ \xs (Only x) -> pure (DB.patternFromRow x:xs)
+    , listPatterns = ReaderT $ \conn ->
+        handle (throwIO . DatabaseException "listPatterns") $ do
+            fmap fromList
+                $ PG.fold_ conn "SELECT * FROM patterns" []
+                $ \xs (Only x) -> pure (DB.patternFromRow x:xs)
 
-    , insertBinaryData = \bin -> ReaderT $ \conn -> do
-        let
-            rows = bin <&> \DB.BinaryData{..} ->
-                (binaryDataHash, binaryData)
-        insertRows @"binary_data" conn 2 rows
+    , insertBinaryData = \bin -> ReaderT $ \conn ->
+        handle (throwIO . DatabaseException "insertBinaryData") $ do
+            let
+                rows = bin <&> \DB.BinaryData{..} ->
+                    (binaryDataHash, binaryData)
+            insertRows @"binary_data" conn 2 rows
 
     , getBinaryData = \(DB.datumHashToRow -> binaryDataHash) -> ReaderT $ \conn -> do
         handle (throwIO . UnexpectedRow "getBinaryData") $
@@ -367,50 +389,55 @@ mkDatabase tr longestRollback bracketConnection = Database
                 [Only binaryData] ->
                     pure $ Just (DB.binaryDataFromRow DB.BinaryData{..})
                 [] ->
-                    pure $ Nothing
+                    pure Nothing
                 (length -> n) ->
                     throwIO $ ExpectedSingletonResult "getBinaryData" n
 
-    , pruneBinaryData = ReaderT $ \conn -> do
-        traceExecute_ tr conn pruneBinaryDataQry
+    , pruneBinaryData = ReaderT $ \conn ->
+        handle (throwIO . DatabaseException "pruneBinaryData") $ do
+            traceExecute_ tr conn pruneBinaryDataQry
 
-    , insertScripts = \scripts -> ReaderT $ \conn -> do
-        let
-            rows = scripts <&> \DB.ScriptReference{..} ->
-                (scriptHash, script)
-        insertRows @"scripts" conn 2 rows
+    , insertScripts = \scripts -> ReaderT $ \conn ->
+        handle (throwIO . DatabaseException "insertScripts") $ do
+            let
+                rows = scripts <&> \DB.ScriptReference{..} ->
+                    (scriptHash, script)
+            insertRows @"scripts" conn 2 rows
 
-    , getScript = \(DB.scriptHashToRow -> scriptHash)-> ReaderT $ \conn -> do
+    , getScript = \(DB.scriptHashToRow -> scriptHash)-> ReaderT $ \conn ->
         handle (throwIO . UnexpectedRow "getScript") $
             query conn getScriptQry (Only scriptHash) >>= \case
                 [Only script] ->
                     pure $ Just (DB.scriptFromRow DB.ScriptReference{..})
                 [] ->
-                    pure $ Nothing
+                    pure Nothing
                 (length -> n) ->
                     throwIO $ ExpectedSingletonResult "getScript" n
 
     , rollbackTo = \(fromIntegral . unSlotNo -> minSlotNo) -> ReaderT $ \conn -> do
-        query_ conn selectMaxCheckpointQry >>= \case
-            -- NOTE: Rolling back takes quite a bit of time and, when restarting
-            -- the application, we'll always be asked to rollback to the
-            -- _current tip_. In this case, there's nothing to delete or update,
-            -- so we can safely skip it.
-            [(currentSlotNo, _ :: ByteString)] | currentSlotNo == minSlotNo -> do
-                pure ()
-            _otherwise -> do
-                withTemporaryIndex tr conn "inputsByCreatedAt" "inputs(created_at)" $ do
-                    withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $ void $ do
-                        deleteInputsIncrementally tr conn minSlotNo
-                        _ <- traceExecute tr conn rollbackQryUpdateInputs [ minSlotNo ]
-                        traceExecute tr conn rollbackQryDeleteCheckpoints [ minSlotNo ]
+        handle (throwIO . DatabaseException "rollbackTo") $
+            query_ conn selectMaxCheckpointQry >>= \case
+                -- NOTE: Rolling back takes quite a bit of time and, when restarting
+                -- the application, we'll always be asked to rollback to the
+                -- _current tip_. In this case, there's nothing to delete or update,
+                -- so we can safely skip it.
+                [(currentSlotNo, _ :: ByteString)] | currentSlotNo == minSlotNo -> do
+                    pure ()
+                _otherwise -> do
+                    withTemporaryIndex tr conn "inputsByCreatedAt" "inputs" "created_at" $ do
+                        withTemporaryIndex tr conn "inputsBySpentAt" "inputs" "spent_at" $ void $ do
+                            deleteInputsIncrementally tr conn minSlotNo
+                            _ <- traceExecute tr conn rollbackQryUpdateInputs [ minSlotNo ]
+                            traceExecute tr conn rollbackQryDeleteCheckpoints [ minSlotNo ]
         handle (throwIO . UnexpectedRow (show selectMaxCheckpointQry)) $
             query_ conn selectMaxCheckpointQry >>= \case
-                [(fmap (fromIntegral :: Int64 -> Word64) -> Just checkpointSlotNo, Just checkpointHeaderHash)] ->
+                [((fromIntegral :: Int64 -> Word64) -> checkpointSlotNo, checkpointHeaderHash)] ->
                     return $ Just (DB.pointFromRow DB.Checkpoint{..})
-                [(Nothing, Nothing)] ->
+                [] ->
                     return Nothing
                 res -> throwIO $ ExpectedSingletonResult (show selectMaxCheckpointQry) (length res)
+            -- ^ // TODO: In SQLite, the pattern matches check for null values. I've changed the query, and
+            -- I think it should work without checking for null values, but let's check this.
 
     , optimize = return () -- // TODO: Review if optimize needs to happen with Postgres. Also determine if this can be hidden within the `Database` implementation.
 
@@ -432,20 +459,22 @@ mkDatabase tr longestRollback bracketConnection = Database
 deleteInputsQry :: Pattern -> Query
 deleteInputsQry pattern_ =
     "DELETE FROM inputs"
-    <>  additionalJoin
-    <> "WHERE"
-    <>  whereClause
-  where
-    (fromText -> whereClause, fromText . fromMaybe "" -> additionalJoin) = patternToSql pattern_
+        <>  additionalJoin
+        <> "WHERE"
+        <>  whereClause
+    where
+        (fromText -> whereClause, fromText . fromMaybe "" -> additionalJoin) =
+            patternToSql mkByteaLiteral pattern_
 
 markInputsQry :: Pattern -> Query
 markInputsQry pattern_ =
-    "UPDATE inputs SET spent_at = ?"
-    <> additionalJoin
-    <> "WHERE"
-    <> whereClause
-  where
-    (fromText -> whereClause, fromText . fromMaybe "" -> additionalJoin) = patternToSql pattern_
+    "UPDATE inputs SET spent_at = ? "
+        <> additionalJoin
+        <> " WHERE "
+        <> whereClause
+    where
+        (fromText -> whereClause, fromText . fromMaybe "" -> additionalJoin) =
+            patternToSql mkByteaLiteral pattern_
 
 -- NOTE: This query only prune down a certain number of inputs at a time to keep his time bounded. The
 -- query in itself is quite expensive, and on large indexes, may takes several minutes.
@@ -500,7 +529,7 @@ foldInputsQry pattern_ slotRange statusFlag sortDirection = fromText $
            \inputs.created_at " <> ordering
 
     (patternWhereClause, fromMaybe "" -> additionalJoin) =
-        patternToSql pattern_
+        patternToSql mkByteaLiteral pattern_
 
     ordering = case sortDirection of
         Asc -> "ASC"
@@ -543,8 +572,8 @@ countInputsQry pattern_ = fromText $
     <> " WHERE "
     <> patternWhereClause
   where
-    (patternWhereClause, fromMaybe "" -> additionalJoin) =
-        patternToSql pattern_
+      (patternWhereClause, fromMaybe "" -> additionalJoin) =
+          patternToSql mkByteaLiteral pattern_
 
 countPoliciesQry :: Pattern -> Query
 countPoliciesQry pattern_ =
@@ -556,7 +585,7 @@ countPoliciesQry pattern_ =
     <> patternWhereClause
   where
     (fromText -> patternWhereClause, _) =
-        patternToSql pattern_
+        patternToSql mkByteaLiteral pattern_
 
 foldPoliciesQry :: Pattern -> Query
 foldPoliciesQry pattern_ =
@@ -566,9 +595,9 @@ foldPoliciesQry pattern_ =
     \ON inputs.output_reference = policies.output_reference \
     \WHERE "
     <> patternWhereClause
-  where
-    (fromText -> patternWhereClause, _) =
-        patternToSql pattern_
+    where
+        (fromText -> patternWhereClause, _) =
+            patternToSql mkByteaLiteral pattern_
 
 listCheckpointsQry :: Query
 listCheckpointsQry =
@@ -617,7 +646,7 @@ getScriptQry =
 
 selectMaxCheckpointQry :: Query
 selectMaxCheckpointQry =
-    "SELECT MAX(slot_no),header_hash FROM checkpoints"
+    "SELECT slot_no,header_hash FROM checkpoints ORDER BY slot_no DESC LIMIT 1"
 
 deleteInputsIncrementally :: Tracer IO TraceConnection -> Connection -> Int64 -> IO ()
 deleteInputsIncrementally tr conn minSlotNo = do
@@ -626,8 +655,8 @@ deleteInputsIncrementally tr conn minSlotNo = do
 
 rollbackQryDeleteInputs :: Query
 rollbackQryDeleteInputs =
-    "DELETE FROM inputs WHERE rowid IN \
-    \(SELECT rowid FROM inputs WHERE created_at > ? LIMIT "
+    "DELETE FROM inputs WHERE output_reference IN \
+    \(SELECT output_reference FROM inputs WHERE created_at > ? LIMIT "
     <> show pruneInputsMaxIncrement <> ")"
 
 rollbackQryUpdateInputs :: Query
@@ -695,11 +724,11 @@ installIndex tr conn name definition = do
         True ->
             traceWith tr (DatabaseIndexAlreadyExists name)
 
-withTemporaryIndex :: Tracer IO TraceConnection -> Connection -> Text -> Text -> IO a -> IO a
-withTemporaryIndex tr conn name definition action = do
+withTemporaryIndex :: Tracer IO TraceConnection -> Connection -> Text -> Text -> Text -> IO a -> IO a
+withTemporaryIndex tr conn name table column action = do
     exists <- indexDoesExist conn name
     unless exists $ traceWith tr (ConnectionCreateTemporaryIndex name)
-    _ <- execute conn "CREATE INDEX IF NOT EXISTS ? ON ?" (name, definition)
+    _ <- execute conn "CREATE INDEX IF NOT EXISTS ? ON ? ( ? )" (Identifier name, Identifier table, Identifier column)
     unless exists $ traceWith tr (ConnectionCreatedTemporaryIndex name)
     a <- action
     unless exists (dropIndexIfExists tr conn name True)
@@ -711,18 +740,18 @@ withTemporaryIndex tr conn name definition action = do
 -- // TODO: Validate that this works
 indexDoesExist :: Connection -> Text -> IO Bool
 indexDoesExist conn name = do
-    query conn qry [name] <&> \case
+    query conn qry (Only name) <&> \case
         [Only n] | n > (0 :: Int64) -> True
         _doesNotExist -> False
     where
-        qry = "SELECT COUNT(*) FROM pg_indexes WHERE indexname = ?;"
+        qry = "SELECT COUNT(*) FROM pg_indexes WHERE indexname = ?"
 
 dropIndexIfExists :: Tracer IO TraceConnection -> Connection -> Text -> Bool -> IO ()
 dropIndexIfExists tr conn indexName wasTemporary = do
     whenM (indexDoesExist conn indexName) $ traceWith tr $ if wasTemporary
         then ConnectionRemoveTemporaryIndex{indexName}
         else ConnectionRemoveIndex{indexName}
-    void $ execute conn "DROP INDEX IF EXISTS ?" [indexName]
+    void $ execute conn "DROP INDEX IF EXISTS ?" $ Only $ Identifier indexName
 
 --
 -- Migrations
@@ -774,26 +803,27 @@ runMigrations tr conn = do
 
 migrations :: [Migration]
 migrations =
-  map
-      (\(idx, (sql, fromString -> version)) -> mkMigration idx version $ decodeUtf8 sql)
-          $ zip [1..] files
-  where
-    mkMigration :: Int -> Query -> Text -> Migration
-    mkMigration idx version sql =
-        ("INSERT INTO migrations (id, version) VALUES (" <> show idx <> ",'" <> version <> "');")
-        : (map (fromString . T.unpack) . filter (not . T.null . T.strip) . T.splitOn ";") sql
+    zipWith
+        ((\idx (sql, version) -> mkMigration idx (fromString version) $ decodeUtf8 sql))
+        [1..]
+        files
+    where
+      mkMigration :: Int -> Query -> Text -> Migration
+      mkMigration idx version sql =
+          ("INSERT INTO migrations (id, version) VALUES (" <> show idx <> ",'" <> version <> "');")
+          : (map (fromString . T.unpack) . filter (not . T.null . T.strip) . T.splitOn ";") sql
 
-    files =
-        [ ($(embedFile "db/postgres/v1.0.0-beta/001.sql"), "v1.0.0.-beta/001.sql")
-        , ($(embedFile "db/postgres/v1.0.0/001.sql"), "v1.0.0/001.sql")
-        , ($(embedFile "db/postgres/v1.0.0/002.sql"), "v1.0.0/002.sql")
-        -- // TODO: Confirm this is ok to delete!, ($(embedFile "db/postgres/v1.0.1/001.sql"), "v1.0.1/001.sql")
-        , ($(embedFile "db/postgres/v2.0.0-beta/001.sql"), "v2.0.0-beta/001.sql")
-        , ($(embedFile "db/postgres/v2.1.0/001.sql"), "v2.1.0/001.sql")
-        , ($(embedFile "db/postgres/v2.1.0/002.sql"), "v2.1.0/002.sql")
-        , ($(embedFile "db/postgres/v2.1.0/003.sql"), "v2.1.0/003.sql")
-        , ($(embedFile "db/postgres/v2.2.0/001.sql"), "v2.2.0/001.sql")
-        ]
+      files =
+          [ ($(embedFile "db/postgres/v1.0.0-beta/001.sql"), "v1.0.0.-beta/001.sql")
+          , ($(embedFile "db/postgres/v1.0.0/001.sql"), "v1.0.0/001.sql")
+          , ($(embedFile "db/postgres/v1.0.0/002.sql"), "v1.0.0/002.sql")
+          -- // TODO: Confirm this is ok to delete!, ($(embedFile "db/postgres/v1.0.1/001.sql"), "v1.0.1/001.sql")
+          , ($(embedFile "db/postgres/v2.0.0-beta/001.sql"), "v2.0.0-beta/001.sql")
+          , ($(embedFile "db/postgres/v2.1.0/001.sql"), "v2.1.0/001.sql")
+          , ($(embedFile "db/postgres/v2.1.0/002.sql"), "v2.1.0/002.sql")
+          , ($(embedFile "db/postgres/v2.1.0/003.sql"), "v2.1.0/003.sql")
+          , ($(embedFile "db/postgres/v2.2.0/001.sql"), "v2.2.0/001.sql")
+          ]
 
 --
 -- Helpers
@@ -823,7 +853,7 @@ insertRows conn len rows =
             <> symbolVal (Proxy @tableName)
             <> " VALUES "
             <> mkValuePlaceholders len
-            <> "ON CONFLICT DO NOTHING"
+            <> " ON CONFLICT DO NOTHING"
 
 mkValuePlaceholders :: Int -> String
 mkValuePlaceholders n =
@@ -846,6 +876,9 @@ withTransaction conn action =
 
 fromText :: Text -> Query
 fromText = fromString . T.unpack
+
+mkByteaLiteral :: ByteString -> Text
+mkByteaLiteral bytes = "'\\x" <> encodeBase16 bytes <> "'"
 
 --
 -- Exceptions & Tracing
@@ -908,3 +941,10 @@ data ExpectedSingletonResultException
         , received :: !Int
         } deriving Show
 instance Exception ExpectedSingletonResultException
+
+data DatabaseException
+    = DatabaseException
+        { context :: !Text
+        , causedBy :: !SqlError
+        } deriving Show
+instance Exception DatabaseException
