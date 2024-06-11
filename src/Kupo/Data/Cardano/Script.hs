@@ -30,6 +30,7 @@ import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
 import qualified Cardano.Ledger.Core as Ledger.Core
 import qualified Cardano.Ledger.Era as Ledger
 import qualified Cardano.Ledger.SafeHash as Ledger
+import qualified Cardano.Ledger.Binary.Plain as Ledger
 
 import qualified Codec.CBOR.Decoding as Cbor
 import qualified Codec.CBOR.Read as Cbor
@@ -59,8 +60,8 @@ scriptFromAllegraAuxiliaryData liftScript (Ledger.Allegra.AllegraTxAuxData _ scr
 
 scriptFromAlonzoAuxiliaryData
     :: forall era.
-        ( Ledger.Era era
-        , Ledger.Core.Script era ~ Ledger.Alonzo.AlonzoScript era
+        ( Ledger.Core.Script era ~ Ledger.Alonzo.AlonzoScript era
+        , Ledger.Alonzo.AlonzoEraScript era
         )
     => (Ledger.Core.Script era -> Script)
     -> Ledger.Alonzo.AlonzoTxAuxData era
@@ -87,14 +88,30 @@ fromMaryScript =
     Ledger.Alonzo.TimelockScript . Ledger.Allegra.translateTimelock
 {-# INLINABLE fromMaryScript  #-}
 
-fromAlonzoScript
-    :: Ledger.Alonzo.Script (AlonzoEra StandardCrypto)
+-- TODO Remove unneeded unsafe upgrade from AlonzoEra to ConwayEra
+--  I could not find any evidence that we should upgrade
+--  from AlonzoEra to ConwayEra but to avoid introducing
+--  breaking changes I'm keeping current design through
+--  this unsafe function
+unsafeFromAlonzoScript
+    :: HasCallStack
+    => Ledger.Alonzo.Script (AlonzoEra StandardCrypto)
     -> Script
-fromAlonzoScript = \case
-    Ledger.Alonzo.TimelockScript script ->
-        Ledger.Alonzo.TimelockScript (Ledger.Allegra.translateTimelock script)
-    Ledger.Alonzo.PlutusScript plutus ->
-        Ledger.Alonzo.PlutusScript plutus
+unsafeFromAlonzoScript script =
+    fromMaybe (error "unsafeFromAlonzoScript") $  case script of
+        Ledger.Alonzo.TimelockScript tl
+            -> Just 
+             $ Ledger.Alonzo.TimelockScript
+             $ Ledger.Allegra.translateTimelock
+                @(AlonzoEra StandardCrypto) 
+                @(ConwayEra StandardCrypto) 
+                tl
+        Ledger.Alonzo.PlutusScript ps
+            -> Ledger.Alonzo.withPlutusScript 
+                ps 
+                (\pl -> Ledger.Alonzo.PlutusScript 
+                    <$> Ledger.Alonzo.mkPlutusScript pl
+                )
 
 fromBabbageScript
     :: Ledger.Alonzo.Script (BabbageEra StandardCrypto)
@@ -116,29 +133,25 @@ scriptToJson
 scriptToJson script = encodeObject
     [ ("script", encodeBytes (Ledger.originalBytes script))
     , ("language", case script of
-        Ledger.Alonzo.TimelockScript{} ->
-          Json.text "native"
-        Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV1 _) ->
-          Json.text "plutus:v1"
-        Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV2 _) ->
-          Json.text "plutus:v2"
-        Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV3 _) ->
-          Json.text "plutus:v3"
+        Ledger.Alonzo.TimelockScript _ -> Json.text "native"
+        Ledger.Alonzo.PlutusScript ps -> case Ledger.Alonzo.plutusScriptLanguage ps of
+            Ledger.PlutusV1 -> Json.text "plutus:v1"
+            Ledger.PlutusV2 -> Json.text "plutus:v2"
+            Ledger.PlutusV3 -> Json.text "plutus:v3"
       )
     ]
 
 scriptToBytes
     :: Script
     -> ByteString
-scriptToBytes = \case
-    script@Ledger.Alonzo.TimelockScript{} ->
-        BS.singleton 0 <> Ledger.originalBytes script
-    script@(Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV1 _)) ->
-        BS.singleton 1 <> Ledger.originalBytes script
-    script@(Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV2 _)) ->
-        BS.singleton 2 <> Ledger.originalBytes script
-    script@(Ledger.Alonzo.PlutusScript (Ledger.Plutus Ledger.PlutusV3 _)) ->
-        BS.singleton 3 <> Ledger.originalBytes script
+scriptToBytes =
+    let withTag n s = BS.singleton n <> Ledger.originalBytes s
+     in \case
+        Ledger.Alonzo.TimelockScript script -> withTag 0 script
+        Ledger.Alonzo.PlutusScript script -> case Ledger.Alonzo.plutusScriptLanguage script of
+            Ledger.PlutusV1 -> withTag 1 script
+            Ledger.PlutusV2 -> withTag 2 script
+            Ledger.PlutusV3 -> withTag 3 script
 
 unsafeScriptFromBytes
     :: HasCallStack
@@ -157,13 +170,17 @@ scriptFromBytes (toLazy -> bytes) =
             Cbor.deserialiseFromBytes Cbor.decodeWord8 bytes
         case tag of
             0 -> Ledger.Alonzo.TimelockScript <$> decodeCborAnn @BabbageEra "Timelock" decCBOR script
-            1 -> pure $ plutusScript Ledger.PlutusV1 script
-            2 -> pure $ plutusScript Ledger.PlutusV2 script
-            3 -> pure $ plutusScript Ledger.PlutusV3 script
+            1 -> plutusScript Ledger.PlutusV1 script
+            2 -> plutusScript Ledger.PlutusV2 script
+            3 -> plutusScript Ledger.PlutusV3 script
             t -> Left (DecoderErrorUnknownTag "Script" t)
   where
-    plutusScript lang =
-        Ledger.Alonzo.PlutusScript . Ledger.Plutus lang . Ledger.BinaryPlutus . toShort . toStrict
+    plutusScript lang s =
+        let bytes_ = Ledger.PlutusBinary $ toShort $ toStrict s
+            script = maybeToRight
+                (Ledger.DecoderErrorCustom "Incompatible language and script" $ "(" <> show lang <> ", " <> show bytes_ <> ")")
+                (Ledger.Alonzo.mkBinaryPlutusScript @(ConwayEra StandardCrypto) lang bytes_)
+         in Ledger.Alonzo.PlutusScript <$> script
 
 fromNativeScript
     :: NativeScript

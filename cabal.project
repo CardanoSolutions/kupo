@@ -10,8 +10,8 @@ repository cardano-haskell-packages
     d4a35cd3121aa00d18544bb0ac01c3e1691d618f462c46129271bccf39f7e8ee
 
 index-state:
-  , hackage.haskell.org 2023-12-06T23:59:59Z
-  , cardano-haskell-packages 2023-12-06T23:59:59Z
+  , hackage.haskell.org 2024-03-26T06:28:59Z
+  , cardano-haskell-packages 2024-04-11T09:29:53Z
 
 packages:
   ./
@@ -47,12 +47,17 @@ package direct-sqlite
 
 constraints:
   , any.base == 4.18.1.0
-  , any.cardano-node == 8.7.2
-  , any.cardano-ledger-conway == 1.11.0.0
-  , any.ouroboros-consensus == 0.14.0.0
-  , any.ouroboros-consensus-cardano == 0.12.1.0
+  , any.cardano-node == 8.10.1
+
+  -- following cardano-node
+  , any.ouroboros-consensus ^>= 0.17.0.0
+  , any.ouroboros-consensus-cardano ^>= 0.15
+
+  -- bump to allow ouroboros-consensus
+  , quickcheck-state-machine ^>= 0.9
+
+  , any.cardano-ledger-conway >= 1.11.0.0
   , any.formatting == 7.2.0
-  , quickcheck-state-machine ^>= 0.7
   , any.text source
   , direct-sqlite == 2.3.29.1
   , sqlite-simple == 0.4.19.0.1
@@ -63,8 +68,8 @@ allow-newer:
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/ogmios
-  tag: 01f7787216e7ceb8e39c8c6807f7ae53fc14ab9e
-  --sha256: 16mdvv3qws92fins673jb2qiw7b9vd0pwzwvq9zvi6zkhhhkfdfm
+  tag: 83065af5d370389c09e901c64628781ac0898a03
+  --sha256: OJiU/qLCslSrRbIGARUCbFNUNNWGHC8/0S5gWWSE2PA=
   subdir:
     server/modules/fast-bech32
 

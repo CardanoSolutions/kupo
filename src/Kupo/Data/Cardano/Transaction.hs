@@ -9,7 +9,7 @@ import Kupo.Data.Cardano.TransactionId
 
 import qualified Cardano.Chain.UTxO as Ledger.Byron
 import qualified Cardano.Ledger.Alonzo.Tx as Ledger.Alonzo
-import qualified Cardano.Ledger.Block as Ledger
+import qualified Cardano.Ledger.Core as Ledger
 import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
 
 
@@ -40,19 +40,19 @@ instance HasTransactionId Transaction StandardCrypto where
             transactionIdFromByron i
         TransactionShelley tx ->
             let body = Ledger.Shelley.body tx
-             in Ledger.txid @(ShelleyEra StandardCrypto) body
+             in Ledger.txIdTxBody @(ShelleyEra StandardCrypto) body
         TransactionAllegra tx ->
             let body = Ledger.Shelley.body tx
-             in Ledger.txid @(AllegraEra StandardCrypto) body
+             in Ledger.txIdTxBody @(AllegraEra StandardCrypto) body
         TransactionMary tx ->
             let body = Ledger.Shelley.body tx
-             in Ledger.txid @(MaryEra StandardCrypto) body
+             in Ledger.txIdTxBody @(MaryEra StandardCrypto) body
         TransactionAlonzo tx ->
             let body = Ledger.Alonzo.body tx
-             in Ledger.txid @(AlonzoEra StandardCrypto) body
+             in Ledger.txIdTxBody @(AlonzoEra StandardCrypto) body
         TransactionBabbage tx ->
             let body = Ledger.Alonzo.body tx
-             in Ledger.txid @(BabbageEra StandardCrypto) body
+             in Ledger.txIdTxBody @(BabbageEra StandardCrypto) body
         TransactionConway tx ->
             let body = Ledger.Alonzo.body tx
-             in Ledger.txid @(ConwayEra StandardCrypto) body
+             in Ledger.txIdTxBody @(ConwayEra StandardCrypto) body

@@ -104,7 +104,7 @@ mkChainSyncClient var0 mailbox pts =
     clientStIdle var d n = do
         atomically (tryTakeTMVar var) >>= \case
             Nothing -> do
-                pure $ SendMsgRequestNextPipelined $ CollectResponse
+                pure $ SendMsgRequestNextPipelined (pure ()) $ CollectResponse
                     (guard (succ (natToInteger n) < maxInFlight d) $> clientStIdle var d (Succ n))
                     (clientStNext var n)
             Just (pt, handler) -> do

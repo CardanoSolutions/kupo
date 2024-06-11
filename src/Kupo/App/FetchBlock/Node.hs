@@ -78,8 +78,7 @@ newFetchBlockClient = do
     clientStIntersect reply =
         ClientPipelinedStIntersect
         { recvMsgIntersectFound = \_point _tip ->
-            let st = clientStNextRollback reply
-             in pure $ SendMsgRequestNext st (pure st)
+            pure $ SendMsgRequestNext (pure ()) $ clientStNextRollback reply
         , recvMsgIntersectNotFound = \_tip ->
             reply Nothing
         }
@@ -93,8 +92,7 @@ newFetchBlockClient = do
             error "clientStNextRollback.recvMsgRollForward: absurd; \
                   \After a successful intersection, the node always sends a 'RollBackward' message."
         , recvMsgRollBackward = \_point _tip ->
-            let st = clientStNextRollForward reply
-             in pure $ SendMsgRequestNext st (pure st)
+            pure $ SendMsgRequestNext (pure ()) $ clientStNextRollForward reply
         }
 
     clientStNextRollForward
