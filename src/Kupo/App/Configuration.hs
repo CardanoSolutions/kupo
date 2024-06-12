@@ -54,6 +54,7 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( Configuration (..)
     , NetworkParameters (..)
+    , Since (..)
     )
 import Kupo.Data.Pattern
     ( Pattern (..)
@@ -121,7 +122,8 @@ startOrResume tr configuration Database{..} = do
         (Nothing, []) -> do
             logWith tr (ConfigurationInvalidOrMissingOption errNoStartingPoint)
             throwIO (NoStartingPointException errNoStartingPoint)
-        (Just point, mostRecentCheckpoint:_) -> do
+
+        (Just (SincePoint point), mostRecentCheckpoint:_) -> do
             if getPointSlotNo point > getPointSlotNo mostRecentCheckpoint then do
                 logWith tr (ConfigurationInvalidOrMissingOption errConflictingSinceOptions)
                 throwIO (ConflictingOptionsException errConflictingSinceOptions)
@@ -130,10 +132,18 @@ startOrResume tr configuration Database{..} = do
                     ( Just mostRecentCheckpoint
                     , sortOn (Down . getPointSlotNo) (point : checkpoints)
                     )
+
         (Nothing, pts@(mostRecentCheckpoint:_)) -> do
             pure (Just mostRecentCheckpoint, pts)
-        (Just pt, []) ->
+
+        (Just (SincePoint pt), []) ->
             pure (Nothing, [pt])
+
+        (Just SinceTip, []) -> do
+            error "TODO: need to fetch tip"
+
+        (Just SinceTip, pts@(mostRecentCheckpoint:_)) -> do
+            pure (Just mostRecentCheckpoint, pts)
   where
     Configuration{since} = configuration
 

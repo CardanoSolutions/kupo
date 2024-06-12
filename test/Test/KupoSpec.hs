@@ -184,6 +184,9 @@ import System.IO
 import qualified Data.Aeson as Json
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as Builder
+import Kupo.Data.Configuration
+    ( Since (..)
+    )
 import qualified Prelude
 
 varCardanoNodeSocket :: String
@@ -218,7 +221,7 @@ spec = skippableContext "End-to-end" $ do
     endToEnd "can connect" $ \(configure, runSpec, HttpClient{..}) -> do
         (_cfg, env) <- configure $ \defaultCfg -> defaultCfg
             { databaseLocation = InMemory Nothing
-            , since = Just GenesisPoint
+            , since = Just (SincePoint GenesisPoint)
             , patterns = fromList [MatchAny OnlyShelley]
             }
         runSpec env 5 $ do
@@ -229,7 +232,7 @@ spec = skippableContext "End-to-end" $ do
     endToEnd "in-memory" $ \(configure, runSpec, HttpClient{..}) -> do
         (cfg, env) <- configure $ \defaultCfg -> defaultCfg
             { databaseLocation = InMemory Nothing
-            , since = Just lastByronPoint
+            , since = Just (SincePoint lastByronPoint)
             , patterns = fromList [MatchAny IncludingBootstrap]
             , deferIndexes = SkipNonEssentialIndexes
             }
@@ -240,7 +243,7 @@ spec = skippableContext "End-to-end" $ do
     forM_ eraBoundaries $ \(era, point) ->
         endToEnd ("quick sync through " <> era) $ \(configure, runSpec, HttpClient{..}) -> do
             (cfg, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just point
+                { since = Just (SincePoint point)
                 , patterns = fromList [MatchAny IncludingBootstrap]
                 , deferIndexes = SkipNonEssentialIndexes
                 }
@@ -252,14 +255,14 @@ spec = skippableContext "End-to-end" $ do
     endToEnd "start → restart(s)" $ \(configure, runSpec, HttpClient{..}) -> do
         do -- Can start the server on a fresh new db
             (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just somePoint
+                { since = Just (SincePoint somePoint)
                 , patterns = fromList [MatchAny OnlyShelley]
                 }
             runSpec env 5 $ waitSlot (> (getPointSlotNo somePoint))
 
         do -- Can restart the server
             (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just somePoint
+                { since = Just (SincePoint somePoint)
                 , patterns = fromList [MatchAny OnlyShelley]
                 }
             runSpec env 5 $ do
@@ -268,14 +271,14 @@ spec = skippableContext "End-to-end" $ do
 
         do -- Can't restart with different, too recent, --since target on same db
             (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just someOtherPoint
+                { since = Just (SincePoint someOtherPoint)
                 , patterns = fromList [MatchAny OnlyShelley]
                 }
             shouldThrowTimeout @ConflictingOptionsException 1 (runSpec env)
 
         do -- Can't restart with different, non-empty, patterns
             (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just somePoint
+                { since = Just (SincePoint somePoint)
                 , patterns = fromList [MatchAny IncludingBootstrap]
                 }
             shouldThrowTimeout @ConflictingOptionsException 1 (runSpec env)
@@ -289,7 +292,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Retry and wait when chain producer isn't available" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just GenesisPoint
+            { since = Just (SincePoint GenesisPoint)
             , patterns = fromList [MatchAny OnlyShelley]
             , chainProducer =
                 case chainProducer defaultCfg of
@@ -319,21 +322,21 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Crashes when no intersection is found" $ \(configure, runSpec, _) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just someNonExistingPoint
+            { since = Just (SincePoint someNonExistingPoint)
             , patterns = fromList [MatchAny OnlyShelley]
             }
         shouldThrowTimeout @IntersectionNotFoundException 1 (runSpec env)
 
     endToEnd "Crashes when no patterns are defined" $ \(configure, runSpec, _) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just somePoint
+            { since = Just (SincePoint somePoint)
             , patterns = fromList []
             }
         shouldThrowTimeout @ConflictingOptionsException 1 (runSpec env)
 
     endToEnd "Can prune utxo on-the-fly" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just somePoint
+            { since = Just (SincePoint somePoint)
             , patterns = fromList [MatchAny OnlyShelley]
             , inputManagement = RemoveSpentInputs
             }
@@ -344,7 +347,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Retrieve checkpoints and ancestors" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just somePointAncestor
+            { since = Just (SincePoint somePointAncestor)
             , patterns = fromList [MatchAny OnlyShelley]
             , inputManagement = RemoveSpentInputs
             }
@@ -364,7 +367,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Retrieve datums associated with datum hashes" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just lastAlonzoPoint
+            { since = Just (SincePoint lastAlonzoPoint)
             , patterns = fromList [MatchAny OnlyShelley]
             }
         runSpec env 20 $ do
@@ -375,7 +378,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Retrieve scripts associated with script hashes" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just somePointNearScripts
+            { since = Just (SincePoint somePointNearScripts)
             , patterns = fromList [MatchAny OnlyShelley]
             }
         runSpec env 20 $ do
@@ -388,7 +391,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Dynamically add pattern and restart to a past point when syncing" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just lastByronPoint
+            { since = Just (SincePoint lastByronPoint)
             , patterns = fromList [MatchDelegation someStakeKey]
             }
         -- NOTE: maxSlot must be high enough after the rollback point to have a chance to observe the
@@ -420,7 +423,7 @@ spec = skippableContext "End-to-end" $ do
         withSystemTempDirectory "kupo-end-to-end" $ \tmp' -> do
             (_, env') <- configure $ \defaultCfg -> defaultCfg
                 { databaseLocation = Dir tmp'
-                , since = Just lastByronPoint
+                , since = Just (SincePoint lastByronPoint)
                 , patterns = fromList [MatchDelegation someOtherStakeKey]
                 }
             runSpec env' 10 $ do
@@ -430,7 +433,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(configure, runSpec, HttpClient{..})  -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just lastByronPoint
+            { since = Just (SincePoint lastByronPoint)
             , patterns = fromList [MatchAny OnlyShelley]
             }
         runSpec env 10 $ do
@@ -445,7 +448,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Failing to insert patterns (non-existing point) doesn't disturb normal operations" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just lastByronPoint
+            { since = Just (SincePoint lastByronPoint)
             , patterns = fromList [MatchAny OnlyShelley]
             }
         runSpec env 5 $ do
@@ -462,7 +465,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Match by transaction id / output reference" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just lastAlonzoPoint
+            { since = Just (SincePoint lastAlonzoPoint)
             , patterns = fromList
                 [ MatchTransactionId someTransactionId
                 , MatchOutputReference (mkOutputReference someThirdTransactionId 0)
@@ -477,7 +480,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Match by policy id" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just lastAlonzoPoint
+            { since = Just (SincePoint lastAlonzoPoint)
             , patterns = fromList [MatchPolicyId somePolicyId]
             }
         runSpec env 10 $ waitUntilM $ do
@@ -486,7 +489,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Fetch metadata by slot" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just lastAlonzoPoint
+            { since = Just (SincePoint lastAlonzoPoint)
             , patterns = fromList [MatchAny OnlyShelley]
             }
         runSpec env 10 $ do
@@ -498,7 +501,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Index collateral return from failed transactions" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just somePointNearPhase2Failure
+            { since = Just (SincePoint somePointNearPhase2Failure)
             , patterns = fromList [MatchTransactionId somePhase2FailedTransactionIdWithReturn]
             }
         runSpec env 10 $ do
@@ -513,7 +516,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "Read-only replica eventually synchronize" $ \(configure, runSpec, httpClient) -> do
         (cfg, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just lastAlonzoPoint
+                { since = Just (SincePoint lastAlonzoPoint)
                 , patterns = fromList [MatchAny OnlyShelley]
                 }
         runSpec env 5 $ do
@@ -528,7 +531,7 @@ spec = skippableContext "End-to-end" $ do
     endToEnd "Dynamically add pattern and restart to a past point when at the tip" $ \(configure, runSpec, HttpClient{..}) -> do
         tip <- currentNetworkTip
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just tip
+            { since = Just (SincePoint tip)
             , patterns = fromList [MatchAny IncludingBootstrap]
             }
         runSpec env 120 $ do
@@ -539,7 +542,7 @@ spec = skippableContext "End-to-end" $ do
     endToEnd "Auto-magically restart when reaching the tip (--defer-db-indexes enabled)" $ \(configure, runSpec, HttpClient{..}) -> do
         tip <- currentNetworkTip
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just tip
+            { since = Just (SincePoint tip)
             , patterns = fromList [MatchAny IncludingBootstrap]
             , deferIndexes = SkipNonEssentialIndexes
             }
