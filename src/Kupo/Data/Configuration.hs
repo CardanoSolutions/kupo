@@ -13,6 +13,7 @@ module Kupo.Data.Configuration
     -- * Configuration
       Configuration (..)
     , DatabaseLocation (..)
+    , Since (..)
     , InputManagement (..)
     , ChainProducer (..)
     , LongestRollback (..)
@@ -89,7 +90,7 @@ data Configuration = Configuration
         -- ^ Hostname for the API HTTP server
     , serverPort :: !Int
         -- ^ Port for the API HTTP Server
-    , since :: !(Maybe Point)
+    , since :: !(Maybe Since)
         -- ^ Point from when a *new* synchronization should start
     , patterns :: !(Set Pattern)
         -- ^ List of address patterns to look for when synchronizing
@@ -140,6 +141,12 @@ data ChainProducer
         -- file-system supports it. Ultimately, the work that can be done on a single database file is
         -- bounded by the CPU capabilities and the I/O read access.
     deriving (Generic, Eq, Show)
+
+-- | Captures the starting point of the indexer when the is no known checkpoint.
+data Since = SinceTip | SincePoint Point
+    deriving (Generic, Eq, Show)
+
+
 
 -- | Database working directory. 'in-memory' runs the database in hot memory,
 -- only suitable for non-permissive patterns or testing.

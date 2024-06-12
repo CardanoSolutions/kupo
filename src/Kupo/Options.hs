@@ -66,8 +66,7 @@ import Kupo.Control.MonadTime
     , secondsToDiffTime
     )
 import Kupo.Data.Cardano
-    ( Point
-    , pointFromText
+    ( pointFromText
     )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
@@ -75,6 +74,7 @@ import Kupo.Data.Configuration
     , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
+    , Since (..)
     )
 import Kupo.Data.Pattern
     ( Pattern
@@ -235,7 +235,7 @@ databaseLocationOption =
              lift . uriEither . fromString =<< ask
 
           uriEither :: Text -> Except ParseError URI
-          uriEither input = except $ (ErrorMsg . displayException) `first` URI.mkURI input 
+          uriEither input = except $ (ErrorMsg . displayException) `first` URI.mkURI input
 
 -- | [--host=IPv4], default: 127.0.0.1
 serverHostOption :: Parser String
@@ -287,7 +287,7 @@ hydraPortOption = option auto $ mempty
     <> help "Hydra-node port to connect to."
 
 -- | [--since=POINT]
-sinceOption :: Parser Point
+sinceOption :: Parser Since
 sinceOption = option (maybeReader rdr) $ mempty
     <> long "since"
     <> metavar "POINT"
@@ -297,13 +297,15 @@ sinceOption = option (maybeReader rdr) $ mempty
         , "Expects either:"
         , hardline
         , vsep
-            [ align $ indent 2 "- \"origin\""
+            [ align $ indent 2 "- \"origin\" synchronise from the beginning of the network."
+            , align $ indent 2 "- \"tip\" synchronise from wherever the node is at."
             , align $ indent 2 $ longline "- A dot-separated integer (slot number) and base16-encoded digest (block header hash)."
             ]
         ])
   where
-    rdr :: String -> Maybe Point
-    rdr = pointFromText . toText
+    rdr :: String -> Maybe Since
+    rdr "tip" = pure SinceTip
+    rdr s = fmap SincePoint (pointFromText $ toText s)
 
 -- | [--match=PATTERN]
 patternOption :: Parser Pattern
@@ -331,7 +333,7 @@ garbageCollectionIntervalOption = option diffTime $ mempty
 deferIndexesOption :: Parser DeferIndexesInstallation
 deferIndexesOption = flag InstallIndexesIfNotExist SkipNonEssentialIndexes $ mempty
     <> long "defer-db-indexes"
-    <> help 
+    <> help
         ( "When enabled, defer the creation of database indexes to the next start. "
           <> "This is useful to make the first-ever synchronization faster but will make certain "
           <> "queries considerably slower."
