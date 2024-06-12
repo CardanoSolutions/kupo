@@ -542,7 +542,7 @@ spec = skippableContext "End-to-end" $ do
     endToEnd "Auto-magically restart when reaching the tip (--defer-db-indexes enabled)" $ \(configure, runSpec, HttpClient{..}) -> do
         tip <- currentNetworkTip
         (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just (SincePoint tip)
+            { since = Just SinceTip
             , patterns = fromList [MatchAny IncludingBootstrap]
             , deferIndexes = SkipNonEssentialIndexes
             }

@@ -49,6 +49,7 @@ import Kupo.App
     , gardener
     , idle
     , mkNotifyTip
+    , newFetchTipClient
     , newProducer
     , readOnlyConsumer
     , withFetchBlockClient
@@ -195,6 +196,7 @@ kupoWith tr withProducer withFetchBlock =
             , inputManagement
             , longestRollback
             , deferIndexes
+            , chainProducer
             }
         } <- ask
 
@@ -280,8 +282,14 @@ kupoWith tr withProducer withFetchBlock =
                         toggleConnected statusToggle *> idle
                       else
                         withChainSyncExceptionHandler (tracerChainSync tr) statusToggle $ do
-                            (mostRecentCheckpoint, checkpoints) <- startOrResume (tracerConfiguration tr) config db
+                            (mostRecentCheckpoint, checkpoints) <- startOrResume
+                                (tracerConfiguration tr)
+                                config
+                                db
+                                (newFetchTipClient chainProducer)
+
                             initializeHealth health mostRecentCheckpoint
+
                             producer
                                 (tracerChainSync tr)
                                 checkpoints
