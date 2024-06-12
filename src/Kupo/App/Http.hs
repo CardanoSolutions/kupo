@@ -23,7 +23,7 @@ import Kupo.Prelude
 import Data.Aeson
     ( (.:)
     )
-import Kupo.App.Database
+import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBTransaction
     , Database (..)

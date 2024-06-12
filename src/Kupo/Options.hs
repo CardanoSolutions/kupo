@@ -2,6 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Kupo.Options
@@ -29,9 +30,15 @@ import Kupo.Prelude hiding
 
 import Options.Applicative
 
+import Control.Monad.Trans.Except
+    ( Except
+    , except
+    )
 import Data.Char
     ( toUpper
     )
+import qualified Data.Text as T
+import qualified Data.Text.Read as T
 import Kupo.App
     ( TraceConsumer
     , TraceGardener
@@ -65,9 +72,9 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
+    , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
-    , WorkDir (..)
     )
 import Kupo.Data.Pattern
     ( Pattern
@@ -85,12 +92,16 @@ import Options.Applicative.Help.Pretty
     , softline
     , vsep
     )
+import Options.Applicative.Types
+    ( ReadM (..)
+    )
 import Safe
     ( readMay
     )
-
-import qualified Data.Text as T
-import qualified Data.Text.Read as T
+import qualified Text.URI as URI
+import Text.URI
+    ( URI
+    )
 
 data Command
     = Run !Configuration !(Tracers IO MinSeverities)
@@ -125,7 +136,7 @@ parserInfo = info (helper <*> parser) $ mempty
         ( Run
             <$> ( Configuration
                     <$> chainProducerOption
-                    <*> workDirOption
+                    <*> databaseLocationOption
                     <*> serverHostOption
                     <*> serverPortOption
                     <*> optional sinceOption
@@ -186,20 +197,45 @@ nodeConfigOption = option str $ mempty
     <> help "Path to the node configuration file."
     <> completer (bashCompleter "file")
 
--- | --workdir=DIR | --in-memory
-workDirOption :: Parser WorkDir
-workDirOption =
-    dirOption <|> inMemoryFlag
+-- | --workdir=DIR | --in-memory | --postgres-url=URL
+databaseLocationOption :: Parser DatabaseLocation
+databaseLocationOption =
+    dirOption <|> inMemoryFlag <|> remoteOption
   where
     dirOption = fmap Dir $ option str $ mempty
         <> long "workdir"
         <> metavar "DIRECTORY"
         <> help "Path to a working directory, where the database is stored."
         <> completer (bashCompleter "directory")
+#if postgres
+        <> internal
+#endif
 
-    inMemoryFlag = flag' InMemory $ mempty
+    inMemoryFlag = flag' (InMemory Nothing) $ mempty
         <> long "in-memory"
         <> help "Run fully in-memory, data is short-lived and lost when the process exits."
+#if postgres
+        <> internal
+#endif
+
+    remoteOption = fmap Remote $ option uriBuilder $ mempty
+      <> long "postgres-url"
+      <> metavar "URL"
+      <> help
+          ( "fully qualified PostgreSQL URL in the form"
+            <> " postgresql://[user[:password]@][host][:port][/dbname][?param1=value1&...]"
+          )
+#if !postgres
+      <> internal
+#endif
+
+      where
+          uriBuilder :: ReadM URI
+          uriBuilder = ReadM $ do
+             lift . uriEither . fromString =<< ask
+
+          uriEither :: Text -> Except ParseError URI
+          uriEither input = except $ (ErrorMsg . displayException) `first` URI.mkURI input 
 
 -- | [--host=IPv4], default: 127.0.0.1
 serverHostOption :: Parser String
@@ -295,17 +331,21 @@ garbageCollectionIntervalOption = option diffTime $ mempty
 deferIndexesOption :: Parser DeferIndexesInstallation
 deferIndexesOption = flag InstallIndexesIfNotExist SkipNonEssentialIndexes $ mempty
     <> long "defer-db-indexes"
-    <> help "When enabled, defer the creation of database indexes to the next start. \
-            \This is useful to make the first-ever synchronization faster but will make certain \
-            \queries considerably slower."
+    <> help 
+        ( "When enabled, defer the creation of database indexes to the next start. "
+          <> "This is useful to make the first-ever synchronization faster but will make certain "
+          <> "queries considerably slower."
+        )
 
 -- | [--read-only]
 readOnlyReplicaFlag :: Parser ChainProducer
 readOnlyReplicaFlag = flag' ReadOnlyReplica $ mempty
     <> long "read-only"
-    <> help "Start this Kupo instance as a read-only replica. It will only read from the database. \
-            \Requires a master write server to keep it synchronized. Note: replicas cannot access \
-            \transactions metadata."
+    <> help
+        ( "Start this Kupo instance as a read-only replica. It will only read from the database. "
+          <> "Requires a master write server to keep it synchronized. Note: replicas cannot access "
+          <> "transactions metadata."
+        )
 
 -- | [--log-level-{COMPONENT}=SEVERITY], default: Info
 logLevelOption :: Text -> Parser (Maybe Severity)
@@ -387,9 +427,11 @@ copyCommand :: Parser Command
 copyCommand =
     subparser $ command "copy" $ info (helper <*> parser) $ mempty
         <> progDesc "Copy from a source database into another, while applying the provided pattern filters."
-        <> header ("This is useful to rapidly bootstrap new database from existing ones. Note that \
-                   \it implies that the source database pattern configuration is a superset of the \
-                   \target; results may otherwise be missing.")
+        <> header
+            ( "This is useful to rapidly bootstrap new database from existing ones. Note that "
+              <> "it implies that the source database pattern configuration is a superset of the "
+              <> "target; results may otherwise be missing."
+            )
   where
     parser = Copy
         <$> copyFilePathOption "from"

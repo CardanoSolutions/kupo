@@ -38,7 +38,7 @@ import Kupo.App.Configuration
     ( TraceConfiguration (..)
     , parseNetworkParameters
     )
-import Kupo.App.Database
+import Kupo.App.Database.Types
     ( DBTransaction
     , Database (..)
     )

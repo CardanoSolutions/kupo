@@ -12,7 +12,7 @@ module Kupo.Data.Configuration
     (
     -- * Configuration
       Configuration (..)
-    , WorkDir (..)
+    , DatabaseLocation (..)
     , InputManagement (..)
     , ChainProducer (..)
     , LongestRollback (..)
@@ -63,6 +63,9 @@ import Kupo.Data.Pattern
 import Ouroboros.Consensus.BlockchainTime.WallClock.Types
     ( SystemStart (..)
     )
+import Text.URI
+    ( URI
+    )
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
@@ -80,8 +83,8 @@ data Configuration = Configuration
         -- This is slightly hacky, but the alternative would be to either split
         -- this type in two or to introduce some higher-kinded type parameter to
         -- the record. Both seems overly complicated given the benefits.
-    , workDir :: !WorkDir
-        -- ^ Where to store the data: in-memory vs specific location on-disk
+    , databaseLocation :: !DatabaseLocation
+        -- ^ Where to store the data: in-memory vs specific location on-disk vs. remote URL for Postgres
     , serverHost :: !String
         -- ^ Hostname for the API HTTP server
     , serverPort :: !Int
@@ -140,9 +143,10 @@ data ChainProducer
 
 -- | Database working directory. 'in-memory' runs the database in hot memory,
 -- only suitable for non-permissive patterns or testing.
-data WorkDir
+data DatabaseLocation
     = Dir !FilePath
-    | InMemory
+    | InMemory !(Maybe FilePath)
+    | Remote !URI
     deriving (Generic, Eq, Show)
 
 -- | What to do with inputs that are spent. There are two options:

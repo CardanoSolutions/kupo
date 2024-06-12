@@ -41,16 +41,6 @@ import Kupo.Prelude
 import Control.Exception.Safe
     ( isAsyncException
     )
-import Data.Pool
-    ( defaultPoolConfig
-    , destroyAllResources
-    , newPool
-    , tryWithResource
-    , withResource
-    )
-import GHC.Conc
-    ( getNumCapabilities
-    )
 import Kupo.App
     ( ChainSyncClient
     , TraceConsumer (..)
@@ -72,14 +62,12 @@ import Kupo.App.Configuration
     , startOrResume
     )
 import Kupo.App.Database
+    ( copyDatabase
+    , newDBPool
+    )
+import Kupo.App.Database.Types
     ( ConnectionType (..)
-    , Database (..)
-    , copyDatabase
-    , createShortLivedConnection
-    , newDatabaseFile
-    , newLock
-    , withLongLivedConnection
-    , withShortLivedConnection
+    , DBPool (..)
     )
 import Kupo.App.Health
     ( connectionStatusToggle
@@ -203,49 +191,31 @@ kupoWith tr withProducer withFetchBlock =
         , configuration = config@Configuration
             { serverHost
             , serverPort
-            , workDir
+            , databaseLocation
             , inputManagement
             , longestRollback
             , deferIndexes
             }
         } <- ask
 
-    (maxConcurrentWriters, maxConcurrentReaders) <- liftIO getNumCapabilities <&> \n -> (n,  5 * n)
+    dbPool@DBPool { maxConcurrentReaders, maxConcurrentWriters } <- liftIO $ newDBPool
+        (tracerDatabase tr)
+        (isReadOnlyReplica config)
+        databaseLocation
+        longestRollback
 
     liftIO $ logWith (tracerConfiguration tr) $
-        ConfigurationMaxConcurrency
-            { maxConcurrentReaders
-            , maxConcurrentWriters = if isReadOnlyReplica config then 0 else maxConcurrentWriters
-            }
-
-    dbFile <- newDatabaseFile (tracerDatabase tr) workDir
-
-    lock <- liftIO newLock
-
-    readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
-        (createShortLivedConnection (tracerDatabase tr) ReadOnly lock longestRollback dbFile)
-        (\Database{close} -> close)
-        600
-        maxConcurrentReaders
-
-    readWritePool <- liftIO $ newPool $ defaultPoolConfig
-        (createShortLivedConnection (tracerDatabase tr) ReadWrite lock longestRollback dbFile)
-        (\Database{close} -> close)
-        30
-        maxConcurrentWriters
+      ConfigurationMaxConcurrency
+          { maxConcurrentReaders
+          , maxConcurrentWriters
+          }
 
     let run action
             | isReadOnlyReplica config =
                 -- NOTE: 'ShortLived' is a bad name here. What it really means is 'occasional
                 -- writers but mostly readers'. However, in the 'ReadOnlyReplica' mode we only
                 -- ever allow read-only connections and never perform a single write.
-                withShortLivedConnection
-                    (tracerDatabase tr)
-                    ReadOnly
-                    lock
-                    longestRollback
-                    dbFile
-                    (action InstallIndexesIfNotExist)
+                (withDatabaseBlocking dbPool) ReadOnly (action InstallIndexesIfNotExist)
             | otherwise =
                 handle
                     (\NodeTipHasBeenReached{distance} -> do
@@ -255,16 +225,8 @@ kupoWith tr withProducer withFetchBlock =
                     (io deferIndexes)
               where
                 io indexMode =
-                    withLongLivedConnection
-                        (tracerDatabase tr)
-                        lock
-                        longestRollback
-                        dbFile
-                        indexMode
-                        (action indexMode)
-                      `finally` do
-                           destroyAllResources readOnlyPool
-                           destroyAllResources readWritePool
+                  (withDatabaseExclusiveWriter dbPool) indexMode (action indexMode)
+                    `finally` destroyResources dbPool
 
     liftIO $ handle (onUnknownException crashWith) $ run $ \indexMode db -> do
         patterns <- newPatternsCache (tracerConfiguration tr) config db
@@ -278,16 +240,7 @@ kupoWith tr withProducer withFetchBlock =
                     -- HTTP Server
                     ( httpServer
                         (tracerHttp tr)
-                        (\case
-                            ReadOnly  ->
-                                tryWithResource readOnlyPool
-                            ReadWrite | isReadOnlyReplica config ->
-                                const (fail "cannot acquire read/write connection on read-only replica.")
-                            ReadWrite ->
-                                tryWithResource readWritePool
-                            WriteOnly ->
-                                const (fail "impossible: tried to acquire WriteOnly database?")
-                        )
+                        (tryWithDatabase dbPool)
                         forceRollback
                         fetchBlock
                         patterns
@@ -319,7 +272,7 @@ kupoWith tr withProducer withFetchBlock =
                             (tracerGardener tr)
                             config
                             patterns
-                            (withResource readWritePool)
+                            (withDatabaseBlocking dbPool ReadWrite)
                     )
 
                     -- Block producer, fetching blocks from the network
