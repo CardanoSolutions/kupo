@@ -37,13 +37,13 @@ source-repository head
   type: git
   location: https://github.com/cardanosolutions/kupo
 
-flag production
-  description: Compile executables for production.
+flag postgres
+  description: Compile for use with a PostgresSQL DB instead of sqlite
   manual: True
   default: False
 
-flag postgres
-  description: Compile for use with a PostgresSQL DB instead of sqlite
+flag production
+  description: Compile executables for production.
   manual: True
   default: False
 
@@ -122,15 +122,8 @@ library
       Kupo.Prelude
       Kupo.Version
       Kupo.Version.TH
-  if flag(postgres)
-    other-modules:
+  other-modules:
       Paths_kupo
-      Kupo.App.Database.Postgres
-  else
-    other-modules:
-      Paths_kupo
-      Kupo.App.Database.SQLite
-
   hs-source-dirs:
       src
   default-extensions:
@@ -220,7 +213,6 @@ library
     , ouroboros-network-api
     , ouroboros-network-framework
     , ouroboros-network-protocols
-    -- , postgresql-simple
     , prometheus
     , relude
     , resource-pool
@@ -241,11 +233,15 @@ library
     , websockets-json
     , yaml
   default-language: Haskell2010
+  if flag(postgres)
+    other-modules:
+        Kupo.App.Database.Postgres
+    cpp-options: -Dpostgres
+  else
+    other-modules:
+        Kupo.App.Database.SQLite
   if flag(production)
     ghc-options: -Wunused-packages -Werror -O2
-  if flag(postgres)
-    cpp-options: -Dpostgres
-
 
 executable kupo
   main-is: Main.hs

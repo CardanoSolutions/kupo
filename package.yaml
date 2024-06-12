@@ -29,15 +29,28 @@ flags:
     default: False
     manual: True
 
+  postgres:
+    description: Compile for use with a PostgresSQL DB instead of sqlite
+    manual: True
+    default: False
+
 library:
   source-dirs: src
   ghc-options: *ghc-options-lib
   when:
-    condition: flag(production)
-    ghc-options:
-    - -Wunused-packages
-    - -Werror
-    - -O2
+    - condition: flag(postgres)
+      then:
+        cpp-options: -Dpostgres
+        other-modules:
+          - Kupo.App.Database.Postgres
+      else:
+        other-modules:
+          - Kupo.App.Database.SQLite
+    - condition: flag(production)
+      ghc-options:
+      - -Wunused-packages
+      - -Werror
+      - -O2
   dependencies:
     - aeson
     - attoparsec-aeson
@@ -76,6 +89,7 @@ library:
     - io-classes
     - lens
     - lens-aeson
+    - modern-uri
     - network-mux
     - optparse-applicative
     - ouroboros-consensus
@@ -149,11 +163,13 @@ executables:
     source-dirs: app
     ghc-options: *ghc-options-executable
     when:
-      condition: flag(production)
-      ghc-options:
-      - -O2
-      - -Wunused-packages
-      - -Werror
-      - '"-with-rtsopts=-N -A16m -qb -qg"'
+      - condition: flag(production)
+        ghc-options:
+        - -O2
+        - -Wunused-packages
+        - -Werror
+        - '"-with-rtsopts=-N -A16m -qb -qg"'
+      - condition: flag(postgres)
+        cpp-options: -Dpostgres
     dependencies:
     - kupo
