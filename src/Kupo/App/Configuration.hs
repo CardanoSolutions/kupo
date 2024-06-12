@@ -49,7 +49,7 @@ import Kupo.Control.MonadThrow
 import Kupo.Data.Cardano
     ( Point
     , SlotNo (..)
-    , getPointSlotNo
+    , getPointSlotNo, pointFromTip
     )
 import Kupo.Data.Configuration
     ( Configuration (..)
@@ -70,6 +70,7 @@ import System.FilePath.Posix
 import qualified Data.Aeson as Json
 import qualified Data.Set as Set
 import qualified Data.Yaml as Yaml
+import Kupo.Data.FetchTip (FetchTipClient)
 
 parseNetworkParameters :: FilePath -> IO NetworkParameters
 parseNetworkParameters configFile = runOrDie $ do
@@ -111,8 +112,9 @@ startOrResume
     => Tracer IO TraceConfiguration
     -> Configuration
     -> Database m
+    -> FetchTipClient m
     -> m (Maybe Point, [Point])
-startOrResume tr configuration Database{..} = do
+startOrResume tr configuration Database{..} fetchTip = do
     checkpoints <- runTransaction listCheckpointsDesc
 
     let slots = unSlotNo . getPointSlotNo <$> checkpoints
@@ -140,7 +142,8 @@ startOrResume tr configuration Database{..} = do
             pure (Nothing, [pt])
 
         (Just SinceTip, []) -> do
-            error "TODO: need to fetch tip"
+            tip <- pointFromTip <$> fetchTip
+            pure (Just tip, [tip])
 
         (Just SinceTip, pts@(mostRecentCheckpoint:_)) -> do
             pure (Just mostRecentCheckpoint, pts)

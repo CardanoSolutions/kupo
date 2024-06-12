@@ -37,6 +37,11 @@ import Ouroboros.Network.Block
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Text as T
 import qualified Ouroboros.Network.Block as Ouroboros
+import Kupo.Data.Cardano.Tip
+    ( Tip
+    , pattern GenesisTip
+    , pattern Tip
+    )
 
 type Point = Ouroboros.Point Block
 
@@ -75,6 +80,11 @@ pointToText = \case
             , "."
             , headerHashToText h
             ]
+
+pointFromTip :: Tip -> Point
+pointFromTip = \case
+    GenesisTip -> GenesisPoint
+    Tip slotNo headerHash _blockNo -> BlockPoint slotNo headerHash
 
 getPointSlotNo :: Point -> SlotNo
 getPointSlotNo pt =

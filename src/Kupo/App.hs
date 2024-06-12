@@ -10,6 +10,7 @@ module Kupo.App
       ChainSyncClient
     , newProducer
     , withFetchBlockClient
+    , newFetchTipClient
 
       -- * Consumer
     , consumer
@@ -114,6 +115,11 @@ import Kupo.Data.Database
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
     )
+import Kupo.Data.FetchTip
+    ( FetchTipClient
+    , UnableToFetchTipFromHydraException (..)
+    , UnableToFetchTipFromReadOnlyReplicaException (..)
+    )
 import Kupo.Data.Health
     ( Health
     )
@@ -136,6 +142,7 @@ import qualified Kupo.App.ChainSync.Node as Node
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 import qualified Kupo.App.FetchBlock.Node as Node
 import qualified Kupo.App.FetchBlock.Ogmios as Ogmios
+import qualified Kupo.App.FetchTip.Ogmios as Ogmios
 
 --
 -- Producer
@@ -287,6 +294,19 @@ withFetchBlockClient chainProducer callback = do
                         nodeSocket
                         chainSyncClient
                 )
+
+newFetchTipClient
+    :: ChainProducer
+    -> FetchTipClient IO
+newFetchTipClient = \case
+    ReadOnlyReplica ->
+        throwIO UnableToFetchTipFromReadOnlyReplica
+    Hydra{} ->
+        throwIO UnableToFetchTipFromHydra
+    Ogmios{ogmiosHost, ogmiosPort} ->
+        Ogmios.newFetchTipClient ogmiosHost ogmiosPort
+    CardanoNode{} ->
+        error "TODO: newFetchTipClient for CardanoNode"
 
 -- | Consumer process that is reading messages from the 'Mailbox'. Messages are
 -- enqueued by another process (the producer).
