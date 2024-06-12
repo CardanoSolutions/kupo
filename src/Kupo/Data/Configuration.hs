@@ -145,8 +145,8 @@ data ChainProducer
 -- only suitable for non-permissive patterns or testing.
 data DatabaseLocation
     = Dir !FilePath
-    | InMemory
-    | Remote URI
+    | InMemory !(Maybe FilePath)
+    | Remote !URI
     deriving (Generic, Eq, Show)
 
 -- | What to do with inputs that are spent. There are two options:

@@ -24,8 +24,7 @@ import Database.SQLite.Simple
     , withTransaction
     )
 import Kupo.App.Database
-    ( DatabaseFile (..)
-    , deleteInputsQry
+    ( deleteInputsQry
     , foldInputsQry
     , foldPoliciesQry
     , getBinaryDataQry
@@ -34,7 +33,7 @@ import Kupo.App.Database
     , listAncestorQry
     , listCheckpointsQry
     , markInputsQry
-    , newDBPoolFromFile
+    , newDBPool
     , pruneBinaryDataQry
     , pruneInputsQry
     , rollbackQryDeleteCheckpoints
@@ -83,7 +82,8 @@ import Kupo.Data.Cardano
     , slotNoToText
     )
 import Kupo.Data.Configuration
-    ( DeferIndexesInstallation (..)
+    ( DatabaseLocation (..)
+    , DeferIndexesInstallation (..)
     , LongestRollback (..)
     , getLongestRollback
     )
@@ -117,9 +117,6 @@ import Kupo.Data.Pattern
     ( MatchBootstrap (..)
     , Pattern (..)
     , Result (..)
-    )
-import System.FilePath
-    ( (</>)
     )
 import System.IO.Temp
     ( withSystemTempDirectory
@@ -345,14 +342,14 @@ spec = parallel $ do
             )
             [ ( "in-memory"
               , \test -> do
-                  test =<< newDBPoolFromFile nullTracer False
+                  test =<< newDBPool nullTracer False
                     (InMemory (Just "file::concurrent-read-write:?cache=shared&mode=memory"))
                     k
               )
             , ( "on-disk"
             , \test ->
                   withSystemTempDirectory "kupo-database-concurrent" $ \dir -> do
-                    test =<< newDBPoolFromFile nullTracer False (OnDisk $ dir </> "kupo.sqlite") k
+                    test =<< newDBPool nullTracer False (Dir dir) k
               )
             ]
 
@@ -1371,7 +1368,7 @@ withInMemoryDatabase'
     -> (Database IO -> IO b)
     -> m b
 withInMemoryDatabase' runInIO deferIndexes k action = do
-  pool <- runInIO $ newDBPoolFromFile nullTracer
+  pool <- runInIO $ newDBPool nullTracer
     False
     (InMemory (Just ":memory:"))
     (LongestRollback { getLongestRollback = k })

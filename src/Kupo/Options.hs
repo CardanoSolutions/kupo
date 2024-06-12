@@ -207,7 +207,7 @@ databaseLocationOption =
         <> help "Path to a working directory, where the database is stored."
         <> completer (bashCompleter "directory")
 
-    inMemoryFlag = flag' InMemory $ mempty
+    inMemoryFlag = flag' (InMemory Nothing) $ mempty
         <> long "in-memory"
         <> help "Run fully in-memory, data is short-lived and lost when the process exits."
 

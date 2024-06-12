@@ -31,10 +31,8 @@ module Kupo.App.Database
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
-    , DatabaseFile (..)
     , copyDatabase
     , newDBPool
-    , newDBPoolFromFile
 
       -- * Internal
     , installIndexes
@@ -44,31 +42,8 @@ module Kupo.App.Database
     , TraceDatabase (..)
     ) where
 
-import Kupo.Prelude
-
-import Kupo.App.Database.Types
-    ( DBPool
-    )
-import Kupo.Control.MonadLog
-    ( Tracer
-    )
-import Kupo.Data.Configuration
-    ( DatabaseLocation
-    , LongestRollback
-    )
-
 #if postgres
 import Kupo.App.Database.Postgres
 #else
 import Kupo.App.Database.SQLite
 #endif
-
-newDBPool
-    :: (Tracer IO TraceDatabase)
-    -> Bool
-    -> DatabaseLocation
-    -> LongestRollback
-    -> IO (DBPool IO)
-newDBPool tr isReadOnly cfg longestRollback = do
-    dbFile <- newDatabaseFile tr cfg
-    newDBPoolFromFile tr isReadOnly dbFile longestRollback

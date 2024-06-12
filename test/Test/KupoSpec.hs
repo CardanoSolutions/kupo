@@ -217,7 +217,7 @@ spec :: Spec
 spec = skippableContext "End-to-end" $ do
     endToEnd "can connect" $ \(configure, runSpec, HttpClient{..}) -> do
         (_cfg, env) <- configure $ \defaultCfg -> defaultCfg
-            { databaseLocation = InMemory
+            { databaseLocation = InMemory Nothing
             , since = Just GenesisPoint
             , patterns = fromList [MatchAny OnlyShelley]
             }
@@ -228,7 +228,7 @@ spec = skippableContext "End-to-end" $ do
 
     endToEnd "in-memory" $ \(configure, runSpec, HttpClient{..}) -> do
         (cfg, env) <- configure $ \defaultCfg -> defaultCfg
-            { databaseLocation = InMemory
+            { databaseLocation = InMemory Nothing
             , since = Just lastByronPoint
             , patterns = fromList [MatchAny IncludingBootstrap]
             , deferIndexes = SkipNonEssentialIndexes
@@ -572,7 +572,7 @@ skippableContext prefix skippableSpec = do
             manager <- runIO $ newManager defaultManagerSettings
             let defaultCfg = Configuration
                     { chainProducer = CardanoNode { nodeSocket, nodeConfig }
-                    , databaseLocation = InMemory
+                    , databaseLocation = InMemory Nothing
                     , serverHost = "127.0.0.1"
                     , serverPort = 0
                     , since = Nothing
@@ -593,7 +593,7 @@ skippableContext prefix skippableSpec = do
                 defaultManagerSettings { managerResponseTimeout = responseTimeoutNone }
             let defaultCfg = Configuration
                     { chainProducer = Ogmios { ogmiosHost, ogmiosPort }
-                    , databaseLocation = InMemory
+                    , databaseLocation = InMemory Nothing
                     , serverHost = "127.0.0.1"
                     , serverPort = 0
                     , since = Nothing
@@ -614,7 +614,7 @@ skippableContext prefix skippableSpec = do
                 defaultManagerSettings { managerResponseTimeout = responseTimeoutNone }
             let defaultCfg = Configuration
                     { chainProducer = Hydra {hydraHost, hydraPort}
-                    , databaseLocation = InMemory
+                    , databaseLocation = InMemory Nothing
                     , serverHost = "127.0.0.1"
                     , serverPort = 0
                     , since = Nothing

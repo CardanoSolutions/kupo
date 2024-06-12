@@ -100,7 +100,7 @@ spec = parallel $ do
                 { nodeSocket = "./node.socket"
                 , nodeConfig = "./node.config"
                 }
-            , databaseLocation = InMemory
+            , databaseLocation = InMemory Nothing
             }
           )
         , ( defaultArgs'
@@ -109,7 +109,7 @@ spec = parallel $ do
                 { ogmiosHost = "localhost"
                 , ogmiosPort = 1337
                 }
-            , databaseLocation = InMemory
+            , databaseLocation = InMemory Nothing
             }
           )
         , ( defaultArgs''
@@ -118,7 +118,7 @@ spec = parallel $ do
                 { hydraHost = "localhost"
                 , hydraPort = 4001
                 }
-            , databaseLocation = InMemory
+            , databaseLocation = InMemory Nothing
             }
           )
         , ( filter (/= "--in-memory") defaultArgs ++

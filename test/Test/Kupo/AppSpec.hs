@@ -253,7 +253,7 @@ spec = do
                           { nodeSocket = "/dev/null"
                           , nodeConfig = "/dev/null"
                           }
-                      , databaseLocation = InMemory
+                      , databaseLocation = InMemory Nothing
                       , serverHost
                       , serverPort
                       , since = Just GenesisPoint

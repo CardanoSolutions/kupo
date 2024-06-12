@@ -34,9 +34,7 @@ module Kupo.App.Database.SQLite
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
-    , DatabaseFile (..)
-    , newDBPoolFromFile
-    , newDatabaseFile
+    , newDBPool
     , copyDatabase
 
       -- * Internal
@@ -213,8 +211,8 @@ newDatabaseFile
     -> Configuration.DatabaseLocation
     -> m DatabaseFile
 newDatabaseFile tr = \case
-    Configuration.InMemory -> do
-        return $ InMemory Nothing
+    Configuration.InMemory path -> do
+        return $ InMemory path
     Configuration.Dir dir ->
         OnDisk <$> newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) dir
     Configuration.Remote url -> liftIO $ do
@@ -377,13 +375,14 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
 -- This function creates a database file if it does not already exist.
-newDBPoolFromFile
+newDBPool
     :: (Tracer IO TraceDatabase)
     -> Bool
-    -> DatabaseFile
+    -> Configuration.DatabaseLocation
     -> LongestRollback
     -> IO (DBPool IO)
-newDBPoolFromFile tr isReadOnly dbFile longestRollback = do
+newDBPool tr isReadOnly dbLocation longestRollback = do
+    dbFile <- newDatabaseFile tr dbLocation
     lock <- liftIO newLock
 
     (maxConcurrentWriters, maxConcurrentReaders) <-

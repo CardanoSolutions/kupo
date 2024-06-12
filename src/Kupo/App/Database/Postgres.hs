@@ -13,7 +13,7 @@ module Kupo.App.Database.Postgres
 
       -- ** Queries
       -- *** Inputs
-    deleteInputsQry
+      deleteInputsQry
     , markInputsQry
     , pruneInputsQry
     , foldInputsQry
@@ -34,9 +34,7 @@ module Kupo.App.Database.Postgres
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
-    , DatabaseFile (..)
-    , newDBPoolFromFile
-    , newDatabaseFile
+    , newDBPool
     , copyDatabase
 
       -- * Internal
@@ -49,9 +47,6 @@ module Kupo.App.Database.Postgres
 
 import Kupo.Prelude
 
-import Control.Concurrent
-    ( getNumCapabilities
-    )
 import Control.Exception
     ( IOException
     , handle
@@ -65,14 +60,6 @@ import Control.Tracer
     )
 import Data.FileEmbed
     ( embedFile
-    )
-import Data.Pool
-    ( Pool
-    , defaultPoolConfig
-    , destroyAllResources
-    , newPool
-    , tryWithResource
-    , withResource
     )
 import Data.Scientific
     ( scientific
@@ -104,13 +91,6 @@ import GHC.TypeLits
     ( KnownSymbol
     , symbolVal
     )
-import Kupo.App.Database.Types
-    ( ConnectionType (..)
-    , DBPool (..)
-    , Database (..)
-    , TraceConnection (..)
-    , TraceDatabase (..)
-    )
 import Kupo.Control.MonadAsync
     ( concurrently_
     )
@@ -119,10 +99,6 @@ import Kupo.Control.MonadCatch
     )
 import Kupo.Control.MonadDelay
     ( threadDelay
-    )
-import Kupo.Control.MonadLog
-    ( TraceProgress (..)
-    , nullTracer
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
@@ -176,6 +152,29 @@ import System.FilePath
 import System.IO.Error
     ( isAlreadyExistsError
     )
+
+import Control.Concurrent
+    ( getNumCapabilities
+    )
+import Data.Pool
+    ( Pool
+    , defaultPoolConfig
+    , destroyAllResources
+    , newPool
+    , tryWithResource
+    , withResource
+    )
+import Kupo.App.Database.Types
+    ( ConnectionType (..)
+    , DBPool (..)
+    , Database (..)
+    , TraceConnection (..)
+    , TraceDatabase (..)
+    )
+import Kupo.Control.MonadLog
+    ( TraceProgress (..)
+    , nullTracer
+    )
 import Text.URI
     ( URI
     )
@@ -212,17 +211,18 @@ newDatabaseFile
     -> Configuration.DatabaseLocation
     -> m DatabaseFile
 newDatabaseFile tr = \case
-    Configuration.InMemory -> do
-        return $ InMemory Nothing
+    Configuration.InMemory path -> do
+        return $ InMemory path
     Configuration.Dir dir ->
         OnDisk <$> newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) dir
     Configuration.Remote url -> liftIO $ do
-      traceWith tr $ DatabaseMustBeLocal
-        { errorMessage = "This binary was compiled to use SQLite. \
-                    \You must specify either a working directory or in-memory configuration. \
-                    \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
-        }
-      throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url)
+        traceWith tr $ DatabaseMustBeLocal
+            { errorMessage =
+                "This binary was compiled to use SQLite. \
+                \You must specify either a working directory or in-memory configuration. \
+                \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
+            }
+        throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url)
 
 newDatabaseOnDiskFile
     :: (MonadIO m)
@@ -375,13 +375,14 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
 -- This function creates a database file if it does not already exist.
-newDBPoolFromFile
+newDBPool
     :: (Tracer IO TraceDatabase)
     -> Bool
-    -> DatabaseFile
+    -> Configuration.DatabaseLocation
     -> LongestRollback
     -> IO (DBPool IO)
-newDBPoolFromFile tr isReadOnly dbFile longestRollback = do
+newDBPool tr isReadOnly dbLocation longestRollback = do
+    dbFile <- newDatabaseFile tr dbLocation
     lock <- liftIO newLock
 
     (maxConcurrentWriters, maxConcurrentReaders) <-
