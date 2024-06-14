@@ -49,7 +49,8 @@ import Kupo.Control.MonadThrow
 import Kupo.Data.Cardano
     ( Point
     , SlotNo (..)
-    , getPointSlotNo, pointFromTip
+    , getPointSlotNo
+    , pointFromTip
     )
 import Kupo.Data.Configuration
     ( Configuration (..)
@@ -59,6 +60,9 @@ import Kupo.Data.Configuration
 import Kupo.Data.Pattern
     ( Pattern (..)
     , patternToText
+    )
+import Kupo.Data.FetchTip
+    ( FetchTipClient
     )
 import System.Directory
     ( doesFileExist
@@ -70,7 +74,6 @@ import System.FilePath.Posix
 import qualified Data.Aeson as Json
 import qualified Data.Set as Set
 import qualified Data.Yaml as Yaml
-import Kupo.Data.FetchTip (FetchTipClient)
 
 parseNetworkParameters :: FilePath -> IO NetworkParameters
 parseNetworkParameters configFile = runOrDie $ do

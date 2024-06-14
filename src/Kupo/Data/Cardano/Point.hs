@@ -27,6 +27,11 @@ import Kupo.Data.Cardano.SlotNo
     , slotNoToJson
     , slotNoToText
     )
+import Kupo.Data.Cardano.Tip
+    ( Tip
+    , pattern GenesisTip
+    , pattern Tip
+    )
 import Ouroboros.Network.Block
     ( HeaderHash
     , pattern BlockPoint
@@ -37,11 +42,6 @@ import Ouroboros.Network.Block
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Text as T
 import qualified Ouroboros.Network.Block as Ouroboros
-import Kupo.Data.Cardano.Tip
-    ( Tip
-    , pattern GenesisTip
-    , pattern Tip
-    )
 
 type Point = Ouroboros.Point Block
 

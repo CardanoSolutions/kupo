@@ -146,8 +146,6 @@ data ChainProducer
 data Since = SinceTip | SincePoint Point
     deriving (Generic, Eq, Show)
 
-
-
 -- | Database working directory. 'in-memory' runs the database in hot memory,
 -- only suitable for non-permissive patterns or testing.
 data DatabaseLocation

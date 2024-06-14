@@ -548,6 +548,8 @@ spec = skippableContext "End-to-end" $ do
             }
         runSpec env 120 $ do
             waitSlot (>= getPointSlotNo tip)
+            points <- listCheckpoints
+            forM_ points $ \point -> getPointSlotNo point `shouldSatisfy` (>= getPointSlotNo tip)
             Health{configuration} <- getHealth
             configuration `shouldBe` (Just InstallIndexesIfNotExist)
 
