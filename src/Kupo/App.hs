@@ -142,6 +142,7 @@ import qualified Kupo.App.ChainSync.Node as Node
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 import qualified Kupo.App.FetchBlock.Node as Node
 import qualified Kupo.App.FetchBlock.Ogmios as Ogmios
+import qualified Kupo.App.FetchTip.Node as Node
 import qualified Kupo.App.FetchTip.Ogmios as Ogmios
 
 --
@@ -305,8 +306,20 @@ newFetchTipClient = \case
         throwIO UnableToFetchTipFromHydra
     Ogmios{ogmiosHost, ogmiosPort} ->
         Ogmios.newFetchTipClient ogmiosHost ogmiosPort
-    CardanoNode{} ->
-        error "TODO: newFetchTipClient for CardanoNode"
+    CardanoNode{nodeSocket, nodeConfig} -> do
+        NetworkParameters
+            { networkMagic
+            , slotsPerEpoch
+            } <- liftIO (parseNetworkParameters nodeConfig)
+        response <- newEmptyTMVarIO
+        withChainSyncServer
+            noConnectionStatusToggle
+            [ NodeToClientV_9 .. maxBound ]
+            networkMagic
+            slotsPerEpoch
+            nodeSocket
+            (Node.newFetchTipClient response)
+        atomically $ takeTMVar response
 
 -- | Consumer process that is reading messages from the 'Mailbox'. Messages are
 -- enqueued by another process (the producer).

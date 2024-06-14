@@ -60,6 +60,7 @@ library
       Kupo.App.Database.Types
       Kupo.App.FetchBlock.Node
       Kupo.App.FetchBlock.Ogmios
+      Kupo.App.FetchTip.Node
       Kupo.App.FetchTip.Ogmios
       Kupo.App.Health
       Kupo.App.Http
