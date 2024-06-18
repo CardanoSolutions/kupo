@@ -9,6 +9,23 @@ module Test.Kupo.Data.DatabaseSpec
     ( spec
     ) where
 
+#if postgres
+import Kupo.Prelude
+import Test.Hspec
+  ( Spec
+  , describe
+  , it
+  , pendingWith
+  )
+
+spec :: Spec
+spec = describe "DatabaseSpec" $
+    it "Not yet implemented for Postgres" $
+    pendingWith $ "DB tests need to be split into DB-agnostic "
+                <> "and DB-specific tests and conditionally compiled"
+
+#else
+
 import Kupo.Prelude
 
 import Data.List
@@ -25,7 +42,10 @@ import Database.SQLite.Simple
     , withTransaction
     )
 import Kupo.App.Database
-    ( deleteInputsQry
+    ( ConnectionType (..)
+    , DBPool (..)
+    , Database (..)
+    , deleteInputsQry
     , foldInputsQry
     , foldPoliciesQry
     , getBinaryDataQry
@@ -34,18 +54,13 @@ import Kupo.App.Database
     , listAncestorQry
     , listCheckpointsQry
     , markInputsQry
-    , newDBPool
     , pruneBinaryDataQry
     , pruneInputsQry
     , rollbackQryDeleteCheckpoints
     , rollbackQryDeleteInputs
     , rollbackQryUpdateInputs
     , selectMaxCheckpointQry
-    )
-import Kupo.App.Database.Types
-    ( ConnectionType (..)
-    , DBPool (..)
-    , Database (..)
+    , withDBPool
     )
 import Kupo.Control.MonadAsync
     ( mapConcurrently_
@@ -195,14 +210,6 @@ import Test.QuickCheck.Property
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Prelude
-
-#if postgres
-spec :: Spec
-spec = describe "DatabaseSpec" $
-    it "Not yet implemented for Postgres" $
-    pendingWith $ "DB tests need to be split into DB-agnostic "
-                <> "and DB-specific tests and conditionally compiled"
-#else
 
 spec :: Spec
 spec = parallel $ do
@@ -356,14 +363,17 @@ spec = parallel $ do
             )
             [ ( "in-memory"
               , \test -> do
-                  test =<< newDBPool nullTracer False
+                  withDBPool
+                    nullTracer
+                    False
                     (InMemory (Just "file::concurrent-read-write:?cache=shared&mode=memory"))
                     k
+                    test
               )
             , ( "on-disk"
             , \test ->
                   withSystemTempDirectory "kupo-database-concurrent" $ \dir -> do
-                    test =<< newDBPool nullTracer False (Dir dir) k
+                    withDBPool nullTracer False (Dir dir) k test
               )
             ]
 
@@ -1375,18 +1385,19 @@ withInMemoryDatabase =
     withInMemoryDatabase' run InstallIndexesIfNotExist
 
 withInMemoryDatabase'
-    :: forall (m :: Type -> Type) b. (Monad m)
-    => (forall a. IO a -> m a)
+    :: forall (m :: Type -> Type) b.
+       (forall a. IO a -> m a)
     -> DeferIndexesInstallation
     -> Word64
     -> (Database IO -> IO b)
     -> m b
 withInMemoryDatabase' runInIO deferIndexes k action = do
-  pool <- runInIO $ newDBPool nullTracer
-    False
-    (InMemory (Just ":memory:"))
-    (LongestRollback { getLongestRollback = k })
-  runInIO $ (withDatabaseExclusiveWriter pool) deferIndexes action
+    runInIO $ withDBPool
+        nullTracer
+        False
+        (InMemory (Just ":memory:"))
+        (LongestRollback { getLongestRollback = k })
+        $ \DBPool {..} -> withDatabaseExclusiveWriter deferIndexes action
 
 forAllCheckpoints
     :: Testable prop

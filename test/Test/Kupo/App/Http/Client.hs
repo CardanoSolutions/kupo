@@ -259,7 +259,7 @@ newHttpClientWith manager (serverHost, serverPort) log =
                 fail (show e)
             Right Json.Null -> do
                 pure Nothing
-            Right val -> maybe (fail "failed to decode Datum.") (pure . Just) $ do
+            Right val -> maybe (fail $ "failed to decode Datum: " <> show body) (pure . Just) $ do
                 bytes <- val ^? key "datum" . _String
                 binaryDataFromBytes (unsafeDecodeBase16 bytes)
 

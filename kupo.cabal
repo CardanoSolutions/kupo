@@ -57,7 +57,6 @@ library
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
       Kupo.App.Database
-      Kupo.App.Database.Types
       Kupo.App.FetchBlock.Node
       Kupo.App.FetchBlock.Ogmios
       Kupo.App.Health
@@ -124,6 +123,14 @@ library
       Kupo.Version.TH
   other-modules:
       Paths_kupo
+      Kupo.App.Database.Postgres
+      Kupo.App.Database.Types
+  else
+    other-modules:
+      Paths_kupo
+      Kupo.App.Database.SQLite
+      Kupo.App.Database.Types
+
   hs-source-dirs:
       src
   default-extensions:

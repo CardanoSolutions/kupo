@@ -33,7 +33,7 @@ module Kupo.App.Database.SQLite
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
-    , newDBPool
+    , withDBPool
     , copyDatabase
 
       -- * Internal
@@ -43,6 +43,9 @@ module Kupo.App.Database.SQLite
 
       -- * Tracer
     , TraceDatabase (..)
+
+    -- * Test Helpers
+    , withTestDatabase
     ) where
 
 import Kupo.Prelude
@@ -400,54 +403,62 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
 -- This function creates a database file if it does not already exist.
-newDBPool
+withDBPool
     :: (Tracer IO TraceDatabase)
     -> Bool
     -> Configuration.DatabaseLocation
     -> LongestRollback
-    -> IO (DBPool IO)
-newDBPool tr isReadOnly dbLocation longestRollback = do
-    dbFile <- newDatabaseFile tr dbLocation
-    lock <- liftIO newLock
+    -> (DBPool IO -> IO a)
+    -> IO a
+withDBPool tr isReadOnly dbLocation longestRollback action = do
+    bracket mkPool destroy action
+    where
+        mkPool = do
+            dbFile <- newDatabaseFile tr dbLocation
+            lock <- liftIO newLock
 
-    (maxConcurrentWriters, maxConcurrentReaders) <-
-      liftIO getNumCapabilities <&> \n -> (n, 5 * n)
+            (maxConcurrentWriters, maxConcurrentReaders) <-
+              liftIO getNumCapabilities <&> \n -> (n, 5 * n)
 
-    readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
-        (createShortLivedConnection tr ReadOnly lock longestRollback dbFile)
-        (\Database{close} -> close)
-        600
-        maxConcurrentReaders
+            readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
+                (createShortLivedConnection tr ReadOnly lock longestRollback dbFile)
+                (\Database{close} -> close)
+                600
+                maxConcurrentReaders
 
-    readWritePool <- liftIO $ newPool $ defaultPoolConfig
-        (createShortLivedConnection tr ReadWrite lock longestRollback dbFile)
-        (\Database{close} -> close)
-        30
-        maxConcurrentWriters
+            readWritePool <- liftIO $ newPool $ defaultPoolConfig
+                (createShortLivedConnection tr ReadWrite lock longestRollback dbFile)
+                (\Database{close} -> close)
+                30
+                maxConcurrentWriters
 
-    let
-        withDB :: forall a b. (Pool (Database IO) -> (Database IO -> IO a) -> IO b) -> ConnectionType -> (Database IO -> IO a) -> IO b
-        withDB withRes connType dbAction =
+            return DBPool
+                { tryWithDatabase =
+                    withDB tryWithResource
+                , withDatabaseBlocking =
+                    withDB withResource
+                , withDatabaseExclusiveWriter =
+                    withLongLivedConnection tr lock longestRollback dbFile
+                , maxConcurrentReaders
+                , maxConcurrentWriters =
+                    if isReadOnly then 0 else maxConcurrentWriters
+                , destroy = do
+                      destroyAllResources readOnlyPool
+                      destroyAllResources readWritePool
+                }
+
+        withDB
+            :: Pool (Database IO)
+            -> (Pool (Database IO) -> (Database IO -> IO a) -> IO b)
+            -> ConnectionType
+            -> (Database IO -> IO a)
+            -> IO b
+        withDB pool withRes connType dbAction =
             case connType of
                 ReadOnly -> withRes readOnlyPool dbAction
                 ReadWrite | isReadOnly -> fail "Cannot acquire a read/write connection on read-only replica"
                 ReadWrite -> withRes readWritePool dbAction
                 WriteOnly -> fail "Impossible: tried to acquire a WriteOnly database?"
-
-    return DBPool
-        { tryWithDatabase =
-            withDB tryWithResource
-        , withDatabaseBlocking =
-            withDB withResource
-        , withDatabaseExclusiveWriter =
-            withLongLivedConnection tr lock longestRollback dbFile
-        , destroyResources = do
-            destroyAllResources readOnlyPool
-            destroyAllResources readWritePool
-        , maxConcurrentReaders
-        , maxConcurrentWriters =
-            if isReadOnly then 0 else maxConcurrentWriters
-        }
 
 -- It is therefore also the connection from which we check for and run database migrations when
 -- needed. Note that this bracket will also create the database if it doesn't exist.
@@ -1145,6 +1156,12 @@ matchMaybeWord64 = \case
 
 mkBlobLiteral :: ByteString -> Text
 mkBlobLiteral bytes = "x'" <> encodeBase16 bytes <> "'"
+
+withTestDatabase :: String -> (Configuration.DatabaseLocation -> IO a) -> IO a
+withTestDatabase _dbName action = do
+    action $ Configuration.InMemory Nothing
+-- ^// TODO: Create the proper connection string
+
 
 --
 -- Indexes

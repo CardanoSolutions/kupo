@@ -209,8 +209,8 @@ data DBPool m = DBPool
 
     , maxConcurrentWriters
         :: Int
-
-    , destroyResources
+    
+    , destroy
         :: m ()
     }
 
