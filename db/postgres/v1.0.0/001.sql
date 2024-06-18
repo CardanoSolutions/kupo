@@ -1,3 +1,5 @@
+SET client_min_messages TO WARNING;
+
 DROP TABLE inputs;
 
 CREATE TABLE IF NOT EXISTS inputs (

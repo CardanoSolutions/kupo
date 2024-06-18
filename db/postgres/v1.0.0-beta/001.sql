@@ -1,3 +1,5 @@
+SET client_min_messages TO WARNING;
+
 CREATE TABLE IF NOT EXISTS inputs (
   output_reference BYTEA NOT NULL,
   address TEXT NOT NULL,

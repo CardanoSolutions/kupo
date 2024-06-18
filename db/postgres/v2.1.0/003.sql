@@ -1,3 +1,5 @@
+SET client_min_messages TO WARNING;
+
 ALTER TABLE inputs RENAME COLUMN output_reference TO ext_output_reference;
 
 ALTER TABLE inputs ADD COLUMN output_reference  BYTEA NOT NULL GENERATED ALWAYS AS (substr(ext_output_reference, 1, 34)) STORED;

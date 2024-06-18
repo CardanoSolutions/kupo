@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.0.
+-- This file has been generated from package.yaml by hpack version 0.36.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -19,15 +19,24 @@ license:        MPL-2.0
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
-    db/v1.0.0-beta/001.sql
-    db/v1.0.0/001.sql
-    db/v1.0.0/002.sql
-    db/v1.0.1/001.sql
-    db/v2.0.0-beta/001.sql
-    db/v2.1.0/001.sql
-    db/v2.1.0/002.sql
-    db/v2.1.0/003.sql
-    db/v2.2.0/001.sql
+    db/postgres/v1.0.0-beta/001.sql
+    db/postgres/v1.0.0/001.sql
+    db/postgres/v1.0.0/002.sql
+    db/postgres/v1.0.1/001.sql
+    db/postgres/v2.0.0-beta/001.sql
+    db/postgres/v2.1.0/001.sql
+    db/postgres/v2.1.0/002.sql
+    db/postgres/v2.1.0/003.sql
+    db/postgres/v2.2.0/001.sql
+    db/sqlite/v1.0.0-beta/001.sql
+    db/sqlite/v1.0.0/001.sql
+    db/sqlite/v1.0.0/002.sql
+    db/sqlite/v1.0.1/001.sql
+    db/sqlite/v2.0.0-beta/001.sql
+    db/sqlite/v2.1.0/001.sql
+    db/sqlite/v2.1.0/002.sql
+    db/sqlite/v2.1.0/003.sql
+    db/sqlite/v2.2.0/001.sql
 data-files:
     docs/api/latest.yaml
     docs/api/v2.7.2.yaml
@@ -123,14 +132,6 @@ library
       Kupo.Version.TH
   other-modules:
       Paths_kupo
-      Kupo.App.Database.Postgres
-      Kupo.App.Database.Types
-  else
-    other-modules:
-      Paths_kupo
-      Kupo.App.Database.SQLite
-      Kupo.App.Database.Types
-
   hs-source-dirs:
       src
   default-extensions:
@@ -171,11 +172,24 @@ library
       TypeSynonymInstances
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -fno-warn-unticked-promoted-constructors -fno-warn-partial-fields
+  build-depends:
+      base >=4.7 && <5
+  default-language: Haskell2010
+  if flag(postgres)
+    other-modules:
+        Kupo.App.Database.Postgres
+        Kupo.App.Database.Types
+    cpp-options: -Dpostgres
+  else
+    other-modules:
+        Kupo.App.Database.SQLite
+        Kupo.App.Database.Types
+  if flag(production)
+    ghc-options: -Wunused-packages -Werror -O2
   if flag(postgres)
     build-depends:
         aeson
       , attoparsec-aeson
-      , base >=4.7 && <5
       , base16
       , base58-bytestring
       , base64
@@ -244,7 +258,6 @@ library
     build-depends:
         aeson
       , attoparsec-aeson
-      , base >=4.7 && <5
       , base16
       , base58-bytestring
       , base64
@@ -290,6 +303,7 @@ library
       , ouroboros-network-api
       , ouroboros-network-framework
       , ouroboros-network-protocols
+      , postgresql-simple
       , prometheus
       , relude
       , resource-pool
@@ -309,16 +323,6 @@ library
       , websockets
       , websockets-json
       , yaml
-  default-language: Haskell2010
-  if flag(postgres)
-    other-modules:
-        Kupo.App.Database.Postgres
-    cpp-options: -Dpostgres
-  else
-    other-modules:
-        Kupo.App.Database.SQLite
-  if flag(production)
-    ghc-options: -Wunused-packages -Werror -O2
 
 executable kupo
   main-is: Main.hs
@@ -439,8 +443,6 @@ test-suite unit
       TypeSynonymInstances
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -threaded -rtsopts -with-rtsopts=-N
-  if flag(postgres)
-    cpp-options: -Dpostgres
   build-tool-depends:
       hspec-discover:hspec-discover
   build-depends:
@@ -474,3 +476,5 @@ test-suite unit
     , websockets
     , yaml
   default-language: Haskell2010
+  if flag(postgres)
+    cpp-options: -Dpostgres

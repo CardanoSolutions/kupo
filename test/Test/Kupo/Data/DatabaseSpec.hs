@@ -10,6 +10,7 @@ module Test.Kupo.Data.DatabaseSpec
     ) where
 
 #if postgres
+
 import Kupo.Prelude
 import Test.Hspec
   ( Spec
@@ -142,11 +143,7 @@ import Test.Hspec
     , Spec
     , around
     , context
-    , describe
-    , hspec
-    , it
     , parallel
-    , pendingWith
     , shouldBe
     , specify
     )

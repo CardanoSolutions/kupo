@@ -1,3 +1,5 @@
+SET client_min_messages TO WARNING;
+
 DELETE FROM checkpoints;
 DELETE FROM policies;
 DELETE FROM inputs;
