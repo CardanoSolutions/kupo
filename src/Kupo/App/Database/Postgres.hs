@@ -725,32 +725,23 @@ installIndexes tr conn = \case
         dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsBySpentAt" False
         dropIndexIfExists (contramap DatabaseConnection tr) conn "policiesByPolicyId" False
     InstallIndexesIfNotExist -> do
-        installIndex tr conn
-            "inputsByAddress"
-            "inputs(address)" -- TODO: Find a substitute for SQLite's nocase clause.
-        installIndex tr conn
-            "inputsByDatumHash"
-            "inputs(datum_hash)"
-        installIndex tr conn
-            "inputsByPaymentCredential"
-            "inputs(payment_credential)" -- TODO: Find a substitute for SQLite's nocase clause.
-        installIndex tr conn
-            "inputsByCreatedAt"
-            "inputs(created_at)"
-        installIndex tr conn
-            "inputsBySpentAt"
-            "inputs(spent_at)"
-        installIndex tr conn
-            "policiesByPolicyId"
-            "policies(policy_id)"
+        installIndex tr conn "inputsByAddress" "inputs" "address"
+        -- ^ TODO: Find a substitute for SQLite's nocase clause.
+        installIndex tr conn "inputsByDatumHash" "inputs" "datum_hash"
+        installIndex tr conn "inputsByPaymentCredential" "inputs" "payment_credential"
+        -- ^ TODO: Find a substitute for SQLite's nocase clause.
+        installIndex tr conn "inputsByCreatedAt" "inputs" "created_at"
+        installIndex tr conn "inputsBySpentAt" "inputs" "spent_at"
+        installIndex tr conn "policiesByPolicyId" "policies" "policy_id"
 
 -- Create the given index with some extra logging around it.
-installIndex :: Tracer IO TraceDatabase -> Connection -> Text -> Text -> IO ()
-installIndex tr conn name definition = do
+installIndex :: Tracer IO TraceDatabase -> Connection -> Text -> Text -> Text -> IO ()
+installIndex tr conn name table column = do
     indexDoesExist conn name >>= \case
         False -> do
             traceWith tr (DatabaseCreateIndex name)
-            void $ execute conn "CREATE INDEX IF NOT EXISTS ? ON ?" (Identifier name, Identifier definition)
+            void $ execute conn "CREATE INDEX IF NOT EXISTS ? ON ? ( ? )"
+                (Identifier name, Identifier table, Identifier column)
         True ->
             traceWith tr (DatabaseIndexAlreadyExists name)
 
