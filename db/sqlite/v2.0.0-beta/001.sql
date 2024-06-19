@@ -2,7 +2,7 @@ DROP TABLE inputs;
 
 CREATE TABLE IF NOT EXISTS inputs (
   output_reference BLOB NOT NULL,
-  address TEXT COLLATE NOCASE NOT NULL,
+  address TEXT NOT NULL,
   value BLOB NOT NULL,
   datum_hash BLOB,
   script_hash BLOB,

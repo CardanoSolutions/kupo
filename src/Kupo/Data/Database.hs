@@ -668,9 +668,10 @@ getWord7s = do
 -- Invariant: cannot be called with 'MatchMetadataTag'; this pattern is only for indexing.
 patternToSql
     :: HasCallStack
-    => App.Pattern
+    => (ByteString -> Text)
+    -> App.Pattern
     -> (Text, Maybe Text)
-patternToSql = \case
+patternToSql fromBinary = \case
     App.MatchAny App.IncludingBootstrap ->
         ( "address LIKE '%'"
         , Nothing
@@ -696,7 +697,7 @@ patternToSql = \case
         , Nothing
         )
     App.MatchOutputReference ref ->
-        ( "inputs.output_reference = x'" <> x (outputReferenceToRow ref) <> "'"
+        ( "inputs.output_reference = " <> fromBinary (outputReferenceToRow ref)
         , Nothing
         )
     App.MatchTransactionId txId ->
@@ -705,17 +706,17 @@ patternToSql = \case
             upperBound = outputReferenceToRow (mkOutputReference txId maxBound)
         in
         ( "inputs.output_reference BETWEEN "
-            <> "x'" <> x lowerBound <> "'"
-            <> " AND "
-            <> "x'" <> x upperBound <> "'"
+        <> fromBinary lowerBound
+        <> " AND "
+        <> fromBinary upperBound
         , Nothing
         )
     App.MatchPolicyId pid ->
-        ( "policies.output_reference >= 0 AND policy_id = x'" <> x (App.policyIdToBytes pid) <> "'"
+        ( "policies.output_reference >= 0 AND policy_id = " <> fromBinary (App.policyIdToBytes pid)
         , Just "JOIN policies ON inputs.output_reference = policies.output_reference"
         )
     App.MatchAssetId (pid, _) ->
-        patternToSql (App.MatchPolicyId pid)
+        patternToSql fromBinary (App.MatchPolicyId pid)
     App.MatchMetadataTag{} ->
         error "patternToSql: called for 'MatchMetadataTag'"
   where

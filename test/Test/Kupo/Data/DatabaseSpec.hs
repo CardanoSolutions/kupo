@@ -2,11 +2,30 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Test.Kupo.Data.DatabaseSpec
     ( spec
     ) where
+
+#if postgres
+
+import Kupo.Prelude
+import Test.Hspec
+  ( Spec
+  , describe
+  , it
+  , pendingWith
+  )
+
+spec :: Spec
+spec = describe "DatabaseSpec" $
+    it "Not yet implemented for Postgres" $
+    pendingWith $ "DB tests need to be split into DB-agnostic "
+                <> "and DB-specific tests and conditionally compiled"
+
+#else
 
 import Kupo.Prelude
 
@@ -24,7 +43,10 @@ import Database.SQLite.Simple
     , withTransaction
     )
 import Kupo.App.Database
-    ( deleteInputsQry
+    ( ConnectionType (..)
+    , DBPool (..)
+    , Database (..)
+    , deleteInputsQry
     , foldInputsQry
     , foldPoliciesQry
     , getBinaryDataQry
@@ -33,18 +55,13 @@ import Kupo.App.Database
     , listAncestorQry
     , listCheckpointsQry
     , markInputsQry
-    , newDBPool
     , pruneBinaryDataQry
     , pruneInputsQry
     , rollbackQryDeleteCheckpoints
     , rollbackQryDeleteInputs
     , rollbackQryUpdateInputs
     , selectMaxCheckpointQry
-    )
-import Kupo.App.Database.Types
-    ( ConnectionType (..)
-    , DBPool (..)
-    , Database (..)
+    , withDBPool
     )
 import Kupo.Control.MonadAsync
     ( mapConcurrently_
@@ -211,7 +228,8 @@ spec = parallel $ do
 
     context "patternToSql" $ around withFixtureDatabase $ do
         forM_ patterns $ \(_, p, ms) -> do
-            let (whereClause, fromMaybe "" -> additionalJoin) = patternToSql p
+            let blobLiteral bytes = "x'" <> encodeBase16 bytes <> "'"
+            let (whereClause, fromMaybe "" -> additionalJoin) = patternToSql blobLiteral p
             let results = sort $ (\(_, out) -> getAddress out) <$> ms
             specify (toString whereClause) $ \conn -> do
                 rows <- query_ conn $ Query $ unwords
@@ -342,14 +360,17 @@ spec = parallel $ do
             )
             [ ( "in-memory"
               , \test -> do
-                  test =<< newDBPool nullTracer False
+                  withDBPool
+                    nullTracer
+                    False
                     (InMemory (Just "file::concurrent-read-write:?cache=shared&mode=memory"))
                     k
+                    test
               )
             , ( "on-disk"
             , \test ->
                   withSystemTempDirectory "kupo-database-concurrent" $ \dir -> do
-                    test =<< newDBPool nullTracer False (Dir dir) k
+                    withDBPool nullTracer False (Dir dir) k test
               )
             ]
 
@@ -1313,18 +1334,18 @@ explainQuery conn query = do
 withFixtureDatabase :: (Connection -> IO ()) -> IO ()
 withFixtureDatabase action = withConnection ":memory:" $ \conn -> do
     withTransaction conn $ do
-        execute_ conn
-            "CREATE TABLE IF NOT EXISTS inputs (\
-            \  address TEXT NOT NULL,\
-            \  payment_credential TEXT NOT NULL GENERATED ALWAYS AS (substr(address, -56)) VIRTUAL,\
-            \  ext_output_reference BLOB NOT NULL,\
-            \  output_reference BLOB NOT NULL GENERATED ALWAYS AS (substr(ext_output_reference, 1, 34)) VIRTUAL\
-            \)"
-        execute_ conn
-            "CREATE TABLE IF NOT EXISTS policies (\
-            \  output_reference BLOB NOT NULL,\
-            \  policy_id BLOB NOT NULL\
-            \)"
+        execute_ conn $
+            "CREATE TABLE IF NOT EXISTS inputs ("
+            <> "  address TEXT NOT NULL,"
+            <> "  payment_credential TEXT NOT NULL GENERATED ALWAYS AS (substr(address, -56)) VIRTUAL,"
+            <> "  ext_output_reference BLOB NOT NULL,"
+            <> "  output_reference BLOB NOT NULL GENERATED ALWAYS AS (substr(ext_output_reference, 1, 34)) VIRTUAL"
+            <> ")"
+        execute_ conn $
+            "CREATE TABLE IF NOT EXISTS policies ("
+            <> "  output_reference BLOB NOT NULL,"
+            <> "  policy_id BLOB NOT NULL"
+            <> ")"
         executeMany conn "INSERT INTO inputs VALUES (?, ?)" $
             flip map matches $ \(outRef, out) ->
                 ( SQLText (addressToRow (getAddress out))
@@ -1361,18 +1382,19 @@ withInMemoryDatabase =
     withInMemoryDatabase' run InstallIndexesIfNotExist
 
 withInMemoryDatabase'
-    :: forall (m :: Type -> Type) b. (Monad m)
-    => (forall a. IO a -> m a)
+    :: forall (m :: Type -> Type) b.
+       (forall a. IO a -> m a)
     -> DeferIndexesInstallation
     -> Word64
     -> (Database IO -> IO b)
     -> m b
 withInMemoryDatabase' runInIO deferIndexes k action = do
-  pool <- runInIO $ newDBPool nullTracer
-    False
-    (InMemory (Just ":memory:"))
-    (LongestRollback { getLongestRollback = k })
-  runInIO $ (withDatabaseExclusiveWriter pool) deferIndexes action
+    runInIO $ withDBPool
+        nullTracer
+        False
+        (InMemory (Just ":memory:"))
+        (LongestRollback { getLongestRollback = k })
+        $ \DBPool {..} -> withDatabaseExclusiveWriter deferIndexes action
 
 forAllCheckpoints
     :: Testable prop
@@ -1383,3 +1405,5 @@ forAllCheckpoints k =
     forAllShow
         (genPointsBetween (0, SlotNo (10 * k)))
         (show . fmap getPointSlotNo)
+
+#endif

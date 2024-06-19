@@ -23,7 +23,7 @@ import Kupo.Prelude
 import Data.Aeson
     ( (.:)
     )
-import Kupo.App.Database.Types
+import Kupo.App.Database
     ( ConnectionType (..)
     , DBTransaction
     , Database (..)
@@ -223,6 +223,7 @@ httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host 
 
         onServerError (hint :: SomeException) = do
             logWith tr $ HttpUnexpectedError (toText $ displayException hint)
+            putStrLn $ displayException hint
             Just <$> send Errors.serverError
 
         retrying attempts retryingIn io = io >>= \case

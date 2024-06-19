@@ -29,9 +29,6 @@ import Control.Concurrent.STM.TVar
     , readTVar
     , writeTVar
     )
-import Control.Monad.Class.MonadAsync
-    ( link
-    )
 import GHC.Generics
     ( Generic1
     )
@@ -42,6 +39,9 @@ import Kupo
     )
 import Kupo.App
     ( ChainSyncClient
+    )
+import Kupo.App.Database
+    ( withTestDatabase
     )
 import Kupo.App.Mailbox
     ( Mailbox
@@ -111,12 +111,12 @@ import Kupo.Data.ChainSync
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
-    , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
     , LongestRollback (..)
     , mailboxCapacity
     )
+import qualified Kupo.Data.Configuration as Configuration
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
     )
@@ -145,6 +145,7 @@ import Network.HTTP.Client
 import Network.WebSockets
     ( ConnectionException (..)
     )
+import qualified Prelude
 import Test.Hspec
     ( Spec
     , runIO
@@ -212,12 +213,13 @@ import Test.StateMachine.Types
     , runGenSym
     )
 
+import Control.Monad.Class.MonadAsync
+    ( link
+    )
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified GHC.Show as Show
-import qualified Prelude
 import qualified Test.StateMachine.Types.Rank2 as Rank2
 
 varStateMachineIterations :: String
@@ -232,64 +234,75 @@ spec = do
     maxSuccess <- maybe 30 Prelude.read
         <$> runIO (lookupEnv varStateMachineIterations)
 
+    dbNum <- runIO $ newIORef (0 :: Int)
+    let mkDbName = do
+            n <- readIORef dbNum
+            modifyIORef' dbNum (+1)
+            return $ "kupotest" <> show n
+
     prop "State-Machine" $ withMaxSuccess maxSuccess $
       forAll genInputManagement $ \inputManagement -> do
         forAll genServerPort $ \serverPort -> do
-           let httpClient = newHttpClientWith manager (serverHost, serverPort) (\_ -> pure ())
-           let stateMachine = StateMachine
-                initModel
-                transition
-                (precondition longestRollback)
-                postcondition
-                Nothing
-                (generator inputManagement)
-                shrinker
-                (semantics garbageCollectionInterval httpClient chan)
-                mock
-                (cleanup chan)
-           forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
-              let config = Configuration
-                      { chainProducer = CardanoNode -- NOTE: unused, but must be different than ReadOnlyReplica
-                          { nodeSocket = "/dev/null"
-                          , nodeConfig = "/dev/null"
-                          }
-                      , databaseLocation = InMemory Nothing
-                      , serverHost
-                      , serverPort
-                      , since = Just GenesisPoint
-                      , patterns = fromList [MatchAny IncludingBootstrap]
-                      , inputManagement
-                      , longestRollback
-                      , garbageCollectionInterval
-                      , deferIndexes
-                      }
-              env <- run (newEnvironment config)
-              producer <- run (newMockProducer httpClient <$> atomically (dupTChan chan))
-              fetchBlock <- run (newMockFetchBlock <$> atomically (dupTChan chan))
-              let kupo = kupoWith tracers producer fetchBlock `runWith` env
-              asyncId <- run (async kupo)
-              run $ link asyncId
-              (_hist, model, res) <- runCommands stateMachine cmds
-              run $ cancel asyncId
+            let httpClient = newHttpClientWith manager (serverHost, serverPort) (\_ -> pure ())
+            let stateMachine = StateMachine
+                    initModel
+                    transition
+                    (precondition longestRollback)
+                    postcondition
+                    Nothing
+                    (generator inputManagement)
+                    shrinker
+                    (semantics garbageCollectionInterval httpClient chan)
+                    mock
+                    (cleanup chan)
+            forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
+                    let
+                        runKupo :: Configuration.DatabaseLocation -> IO ()
+                        runKupo dbLocation = do
+                            let config = Configuration
+                                    { chainProducer = CardanoNode -- NOTE: unused, but must be different than ReadOnlyReplica
+                                        { nodeSocket = "/dev/null"
+                                        , nodeConfig = "/dev/null"
+                                        }
+                                    , databaseLocation = dbLocation
+                                    , serverHost
+                                    , serverPort
+                                    , since = Just GenesisPoint
+                                    , patterns = fromList [MatchAny IncludingBootstrap]
+                                    , inputManagement
+                                    , longestRollback
+                                    , garbageCollectionInterval
+                                    , deferIndexes
+                                }
+                            env <- newEnvironment config
+                            producer <- newMockProducer httpClient <$> atomically (dupTChan chan)
+                            fetchBlock <- newMockFetchBlock <$> atomically (dupTChan chan)
+                            kupoWith tracers producer fetchBlock `runWith` env
 
-              -- TODO: Check coverage using the history and label some interesting
-              -- test scenarios that are relevant to cover.
+                    dbName <- run mkDbName
+                    asyncId <- run . async $ withTestDatabase dbName runKupo
+                    run $ link asyncId
+                    (_hist, model, res) <- runCommands stateMachine cmds
+                    run $ cancel asyncId
 
-              monitor (label (show inputManagement))
-              monitor (checkCommandNames cmds)
-              monitor $ counterexample $ toString $ unlines
-                [ T.intercalate "\n -"
-                   ("== Commands =="
-                   : (show . getCommand <$> unCommands cmds)
-                   )
-                , ""
-                , "== Model =="
-                , show model
-                , ""
-                , "== Assertion =="
-                , show res
-                ]
-              assert (res == Ok)
+                    -- TODO: Check coverage using the history and label some interesting
+                    -- test scenarios that are relevant to cover.
+
+                    monitor (label (show inputManagement))
+                    monitor (checkCommandNames cmds)
+                    monitor $ counterexample $ toString $ unlines
+                      [ T.intercalate "\n -"
+                        ("== Commands =="
+                        : (show . getCommand <$> unCommands cmds)
+                        )
+                      , ""
+                      , "== Model =="
+                      , show model
+                      , ""
+                      , "== Assertion =="
+                      , show res
+                      ]
+                    assert (res == Ok)
   where
     serverHost = "127.0.0.1"
     longestRollback = 10
@@ -299,7 +312,7 @@ spec = do
     genServerPort = sized $ \n -> do
         i <- arbitrary
         pure (1024 + n + i)
-
+        
 --------------------------------------------------------------------------------
 ---- Events / Respone
 --

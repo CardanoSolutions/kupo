@@ -38,7 +38,7 @@ import Data.OpenApi
     , schemas
     , validateJSON
     )
-import Kupo.App.Database.Types
+import Kupo.App.Database
     ( Database (..)
     )
 import Kupo.App.Http

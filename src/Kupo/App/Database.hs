@@ -7,10 +7,23 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 
 module Kupo.App.Database
-    (
+    ( -- * Database DSL
+    Database (..)
+    , DBPool
+        ( DBPool
+        , tryWithDatabase
+        , withDatabaseBlocking
+        , withDatabaseExclusiveWriter
+        , maxConcurrentReaders
+        , maxConcurrentWriters
+        )
+    , withDBPool
+    , DBTransaction
+    , ConnectionType (..)
+    
       -- ** Queries
       -- *** Inputs
-    deleteInputsQry
+    , deleteInputsQry
     , markInputsQry
     , pruneInputsQry
     , foldInputsQry
@@ -32,7 +45,6 @@ module Kupo.App.Database
 
       -- * Setup
     , copyDatabase
-    , newDBPool
 
       -- * Internal
     , installIndexes
@@ -40,7 +52,12 @@ module Kupo.App.Database
 
       -- * Tracer
     , TraceDatabase (..)
+
+      -- * Test helpers
+    , withTestDatabase
     ) where
+
+import Kupo.App.Database.Types
 
 #if postgres
 import Kupo.App.Database.Postgres

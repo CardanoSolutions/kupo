@@ -20,13 +20,21 @@ module Kupo.App.Database.Types
 
 import Kupo.Prelude
 
+import Control.Monad.Fail
+    ()
 import Data.Severity
     ( HasSeverityAnnotation
     , Severity (..)
     )
+#if postgres
+import Database.PostgreSQL.Simple
+    ( Connection
+    )
+#else
 import Database.SQLite.Simple
     ( Connection
     )
+#endif
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..)
     )
@@ -58,9 +66,6 @@ import Kupo.Data.Pattern
     ( Pattern (..)
     , Result
     )
-
-import Control.Monad.Fail
-    ()
 
 import qualified Kupo.Data.Database as DB
 
@@ -162,7 +167,7 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m (Maybe Point)
 
     , optimize
-        :: DBTransaction  m ()
+        :: DBTransaction m ()
 
     , runTransaction
         :: forall a. ()
@@ -204,8 +209,8 @@ data DBPool m = DBPool
 
     , maxConcurrentWriters
         :: Int
-
-    , destroyResources
+    
+    , destroy
         :: m ()
     }
 
@@ -243,7 +248,7 @@ data TraceDatabase where
     DatabasePathMustBeDirectory
         :: { hint :: Text }
         -> TraceDatabase
-    DatabaseMustBeLocal
+    DatabaseLocationInvalid
         :: { errorMessage :: Text }
         -> TraceDatabase
     DatabaseCloneSourceDatabase
@@ -282,7 +287,7 @@ instance HasSeverityAnnotation TraceDatabase where
         DatabaseCreateIndex{}          -> Notice
         DatabaseIndexAlreadyExists{}   -> Debug
         DatabasePathMustBeDirectory{}  -> Error
-        DatabaseMustBeLocal{}          -> Error
+        DatabaseLocationInvalid{}      -> Error
         DatabaseDeferIndexes{}         -> Warning
         DatabaseCloneSourceDatabase{}  -> Notice
         DatabaseCleanupOldData{}       -> Info
@@ -299,6 +304,10 @@ data TraceConnection where
     ConnectionDestroyShortLived
         :: { mode :: ConnectionType }
         -> TraceConnection
+    ConnectionCreateGeneric
+        :: TraceConnection
+    ConnectionDestroyGeneric
+        :: TraceConnection
     ConnectionLocked
         :: { attempts :: Word, retryingIn :: DiffTime }
         -> TraceConnection
@@ -339,6 +348,8 @@ instance HasSeverityAnnotation TraceConnection where
     getSeverityAnnotation = \case
         ConnectionCreateShortLived{} -> Debug
         ConnectionDestroyShortLived{} -> Debug
+        ConnectionCreateGeneric{} -> Debug
+        ConnectionDestroyGeneric{} -> Debug
         ConnectionLocked{attempts, retryingIn}
             | retryingIn * fromIntegral attempts > 60  -> Warning
         ConnectionLocked{} -> Debug

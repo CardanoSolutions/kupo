@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.35.0.
+-- This file has been generated from package.yaml by hpack version 0.36.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -19,15 +19,24 @@ license:        MPL-2.0
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
-    db/v1.0.0-beta/001.sql
-    db/v1.0.0/001.sql
-    db/v1.0.0/002.sql
-    db/v1.0.1/001.sql
-    db/v2.0.0-beta/001.sql
-    db/v2.1.0/001.sql
-    db/v2.1.0/002.sql
-    db/v2.1.0/003.sql
-    db/v2.2.0/001.sql
+    db/postgres/v1.0.0-beta/001.sql
+    db/postgres/v1.0.0/001.sql
+    db/postgres/v1.0.0/002.sql
+    db/postgres/v1.0.1/001.sql
+    db/postgres/v2.0.0-beta/001.sql
+    db/postgres/v2.1.0/001.sql
+    db/postgres/v2.1.0/002.sql
+    db/postgres/v2.1.0/003.sql
+    db/postgres/v2.2.0/001.sql
+    db/sqlite/v1.0.0-beta/001.sql
+    db/sqlite/v1.0.0/001.sql
+    db/sqlite/v1.0.0/002.sql
+    db/sqlite/v1.0.1/001.sql
+    db/sqlite/v2.0.0-beta/001.sql
+    db/sqlite/v2.1.0/001.sql
+    db/sqlite/v2.1.0/002.sql
+    db/sqlite/v2.1.0/003.sql
+    db/sqlite/v2.2.0/001.sql
 data-files:
     docs/api/latest.yaml
     docs/api/v2.7.2.yaml
@@ -57,7 +66,6 @@ library
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
       Kupo.App.Database
-      Kupo.App.Database.Types
       Kupo.App.FetchBlock.Node
       Kupo.App.FetchBlock.Ogmios
       Kupo.App.Health
@@ -165,83 +173,155 @@ library
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -fno-warn-unticked-promoted-constructors -fno-warn-partial-fields
   build-depends:
-      aeson
-    , attoparsec-aeson
-    , base >=4.7 && <5
-    , base16
-    , base58-bytestring
-    , base64
-    , bech32
-    , bech32-th
-    , binary
-    , bytestring
-    , cardano-crypto-class
-    , cardano-crypto-wrapper
-    , cardano-ledger-allegra
-    , cardano-ledger-alonzo
-    , cardano-ledger-api
-    , cardano-ledger-babbage
-    , cardano-ledger-binary
-    , cardano-ledger-byron
-    , cardano-ledger-conway
-    , cardano-ledger-core
-    , cardano-ledger-mary
-    , cardano-ledger-shelley
-    , cardano-slotting
-    , cardano-strict-containers
-    , cborg
-    , containers
-    , contra-tracer
-    , contra-tracers
-    , directory
-    , fast-bech32
-    , file-embed
-    , filepath
-    , generic-lens
-    , http-client
-    , http-types
-    , io-classes
-    , lens
-    , lens-aeson
-    , modern-uri
-    , network-mux
-    , optparse-applicative
-    , ouroboros-consensus
-    , ouroboros-consensus-cardano
-    , ouroboros-consensus-diffusion
-    , ouroboros-network
-    , ouroboros-network-api
-    , ouroboros-network-framework
-    , ouroboros-network-protocols
-    , prometheus
-    , relude
-    , resource-pool
-    , safe
-    , safe-exceptions
-    , scientific
-    , sqlite-simple
-    , template-haskell
-    , text
-    , text-ansi
-    , time
-    , transformers
-    , typed-protocols
-    , unix
-    , wai
-    , warp
-    , websockets
-    , websockets-json
-    , yaml
+      base >=4.7 && <5
   default-language: Haskell2010
   if flag(postgres)
     other-modules:
         Kupo.App.Database.Postgres
+        Kupo.App.Database.Types
     cpp-options: -Dpostgres
   else
     other-modules:
         Kupo.App.Database.SQLite
+        Kupo.App.Database.Types
   if flag(production)
     ghc-options: -Wunused-packages -Werror -O2
+  if flag(postgres)
+    build-depends:
+        aeson
+      , attoparsec-aeson
+      , base16
+      , base58-bytestring
+      , base64
+      , bech32
+      , bech32-th
+      , binary
+      , bytestring
+      , cardano-crypto-class
+      , cardano-crypto-wrapper
+      , cardano-ledger-allegra
+      , cardano-ledger-alonzo
+      , cardano-ledger-api
+      , cardano-ledger-babbage
+      , cardano-ledger-binary
+      , cardano-ledger-byron
+      , cardano-ledger-conway
+      , cardano-ledger-core
+      , cardano-ledger-mary
+      , cardano-ledger-shelley
+      , cardano-slotting
+      , cardano-strict-containers
+      , cborg
+      , containers
+      , contra-tracer
+      , contra-tracers
+      , directory
+      , fast-bech32
+      , file-embed
+      , filepath
+      , generic-lens
+      , http-client
+      , http-types
+      , io-classes
+      , lens
+      , lens-aeson
+      , modern-uri
+      , network-mux
+      , optparse-applicative
+      , ouroboros-consensus
+      , ouroboros-consensus-cardano
+      , ouroboros-consensus-diffusion
+      , ouroboros-network
+      , ouroboros-network-api
+      , ouroboros-network-framework
+      , ouroboros-network-protocols
+      , postgresql-simple
+      , prometheus
+      , relude
+      , resource-pool
+      , safe
+      , safe-exceptions
+      , scientific
+      , template-haskell
+      , text
+      , text-ansi
+      , time
+      , transformers
+      , typed-protocols
+      , unix
+      , wai
+      , warp
+      , websockets
+      , websockets-json
+      , yaml
+  else
+    build-depends:
+        aeson
+      , attoparsec-aeson
+      , base16
+      , base58-bytestring
+      , base64
+      , bech32
+      , bech32-th
+      , binary
+      , bytestring
+      , cardano-crypto-class
+      , cardano-crypto-wrapper
+      , cardano-ledger-allegra
+      , cardano-ledger-alonzo
+      , cardano-ledger-api
+      , cardano-ledger-babbage
+      , cardano-ledger-binary
+      , cardano-ledger-byron
+      , cardano-ledger-conway
+      , cardano-ledger-core
+      , cardano-ledger-mary
+      , cardano-ledger-shelley
+      , cardano-slotting
+      , cardano-strict-containers
+      , cborg
+      , containers
+      , contra-tracer
+      , contra-tracers
+      , directory
+      , fast-bech32
+      , file-embed
+      , filepath
+      , generic-lens
+      , http-client
+      , http-types
+      , io-classes
+      , lens
+      , lens-aeson
+      , modern-uri
+      , network-mux
+      , optparse-applicative
+      , ouroboros-consensus
+      , ouroboros-consensus-cardano
+      , ouroboros-consensus-diffusion
+      , ouroboros-network
+      , ouroboros-network-api
+      , ouroboros-network-framework
+      , ouroboros-network-protocols
+      , prometheus
+      , relude
+      , resource-pool
+      , safe
+      , safe-exceptions
+      , scientific
+      , sqlite-simple
+      , template-haskell
+      , text
+      , text-ansi
+      , time
+      , transformers
+      , typed-protocols
+      , unix
+      , wai
+      , warp
+      , websockets
+      , websockets-json
+      , yaml
 
 executable kupo
   main-is: Main.hs
@@ -395,3 +475,5 @@ test-suite unit
     , websockets
     , yaml
   default-language: Haskell2010
+  if flag(postgres)
+    cpp-options: -Dpostgres

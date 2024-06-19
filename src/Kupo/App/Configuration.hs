@@ -28,7 +28,7 @@ import Data.Aeson.Lens
     ( _String
     , key
     )
-import Kupo.App.Database.Types
+import Kupo.App.Database
     ( Database (..)
     )
 import Kupo.Control.MonadCatch

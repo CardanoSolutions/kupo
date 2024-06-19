@@ -43,87 +43,162 @@ library:
         cpp-options: -Dpostgres
         other-modules:
           - Kupo.App.Database.Postgres
+          - Kupo.App.Database.Types
       else:
         other-modules:
           - Kupo.App.Database.SQLite
+          - Kupo.App.Database.Types
     - condition: flag(production)
       ghc-options:
       - -Wunused-packages
       - -Werror
       - -O2
-  dependencies:
-    - aeson
-    - attoparsec-aeson
-    - base16
-    - base58-bytestring
-    - base64
-    - bech32
-    - bech32-th
-    - binary
-    - bytestring
-    - cardano-crypto-class
-    - cardano-crypto-wrapper
-    - cardano-ledger-allegra
-    - cardano-ledger-alonzo
-    - cardano-ledger-api
-    - cardano-ledger-babbage
-    - cardano-ledger-binary
-    - cardano-ledger-byron
-    - cardano-ledger-conway
-    - cardano-ledger-core
-    - cardano-ledger-mary
-    - cardano-ledger-shelley
-    - cardano-slotting
-    - cardano-strict-containers
-    - cborg
-    - containers
-    - contra-tracer
-    - contra-tracers
-    - directory
-    - fast-bech32
-    - file-embed
-    - filepath
-    - generic-lens
-    - http-client
-    - http-types
-    - io-classes
-    - lens
-    - lens-aeson
-    - modern-uri
-    - network-mux
-    - optparse-applicative
-    - ouroboros-consensus
-    - ouroboros-consensus-cardano
-    - ouroboros-consensus-diffusion
-    - ouroboros-network
-    - ouroboros-network-api
-    - ouroboros-network-framework
-    - ouroboros-network-protocols
-    - prometheus
-    - relude
-    - resource-pool
-    - safe
-    - safe-exceptions
-    - scientific
-    - sqlite-simple
-    - template-haskell
-    - text
-    - text-ansi
-    - time
-    - transformers
-    - typed-protocols
-    - unix
-    - wai
-    - warp
-    - websockets
-    - websockets-json
-    - yaml
+    - condition: flag(postgres)
+      then:
+        dependencies:
+          - aeson
+          - attoparsec-aeson
+          - base16
+          - base58-bytestring
+          - base64
+          - bech32
+          - bech32-th
+          - binary
+          - bytestring
+          - cardano-crypto-class
+          - cardano-crypto-wrapper
+          - cardano-ledger-allegra
+          - cardano-ledger-alonzo
+          - cardano-ledger-api
+          - cardano-ledger-babbage
+          - cardano-ledger-binary
+          - cardano-ledger-byron
+          - cardano-ledger-conway
+          - cardano-ledger-core
+          - cardano-ledger-mary
+          - cardano-ledger-shelley
+          - cardano-slotting
+          - cardano-strict-containers
+          - cborg
+          - containers
+          - contra-tracer
+          - contra-tracers
+          - directory
+          - fast-bech32
+          - file-embed
+          - filepath
+          - generic-lens
+          - http-client
+          - http-types
+          - io-classes
+          - lens
+          - lens-aeson
+          - modern-uri
+          - network-mux
+          - optparse-applicative
+          - ouroboros-consensus
+          - ouroboros-consensus-cardano
+          - ouroboros-consensus-diffusion
+          - ouroboros-network
+          - ouroboros-network-api
+          - ouroboros-network-framework
+          - ouroboros-network-protocols
+          - postgresql-simple
+          - prometheus
+          - relude
+          - resource-pool
+          - safe
+          - safe-exceptions
+          - scientific
+          - template-haskell
+          - text
+          - text-ansi
+          - time
+          - transformers
+          - typed-protocols
+          - unix
+          - wai
+          - warp
+          - websockets
+          - websockets-json
+          - yaml       
+      else:
+        dependencies:
+          - aeson
+          - attoparsec-aeson
+          - base16
+          - base58-bytestring
+          - base64
+          - bech32
+          - bech32-th
+          - binary
+          - bytestring
+          - cardano-crypto-class
+          - cardano-crypto-wrapper
+          - cardano-ledger-allegra
+          - cardano-ledger-alonzo
+          - cardano-ledger-api
+          - cardano-ledger-babbage
+          - cardano-ledger-binary
+          - cardano-ledger-byron
+          - cardano-ledger-conway
+          - cardano-ledger-core
+          - cardano-ledger-mary
+          - cardano-ledger-shelley
+          - cardano-slotting
+          - cardano-strict-containers
+          - cborg
+          - containers
+          - contra-tracer
+          - contra-tracers
+          - directory
+          - fast-bech32
+          - file-embed
+          - filepath
+          - generic-lens
+          - http-client
+          - http-types
+          - io-classes
+          - lens
+          - lens-aeson
+          - modern-uri
+          - network-mux
+          - optparse-applicative
+          - ouroboros-consensus
+          - ouroboros-consensus-cardano
+          - ouroboros-consensus-diffusion
+          - ouroboros-network
+          - ouroboros-network-api
+          - ouroboros-network-framework
+          - ouroboros-network-protocols
+          - prometheus
+          - relude
+          - resource-pool
+          - safe
+          - safe-exceptions
+          - scientific
+          - sqlite-simple
+          - template-haskell
+          - text
+          - text-ansi
+          - time
+          - transformers
+          - typed-protocols
+          - unix
+          - wai
+          - warp
+          - websockets
+          - websockets-json
+          - yaml       
 
 tests:
   unit:
     main: Spec.hs
     source-dirs: test
     ghc-options: *ghc-options-test
+    when:
+    - condition: flag(postgres)
+      cpp-options: -Dpostgres
     dependencies:
     - aeson
     - base

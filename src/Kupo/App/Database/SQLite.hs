@@ -9,9 +9,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Kupo.App.Database.SQLite
-    (
-
-      -- ** Queries
+    ( -- ** Queries
       -- *** Inputs
       deleteInputsQry
     , markInputsQry
@@ -34,19 +32,26 @@ module Kupo.App.Database.SQLite
     , rollbackQryDeleteCheckpoints
 
       -- * Setup
-    , newDBPool
+    , withDBPool
     , copyDatabase
 
       -- * Internal
+    , Connection
     , installIndexes
     , installIndex
 
       -- * Tracer
     , TraceDatabase (..)
+
+    -- * Test Helpers
+    , withTestDatabase
     ) where
 
 import Kupo.Prelude
 
+import Control.Concurrent
+    ( getNumCapabilities
+    )
 import Control.Exception
     ( IOException
     , handle
@@ -58,8 +63,17 @@ import Control.Tracer
     ( Tracer
     , traceWith
     )
+import qualified Data.Char as Char
 import Data.FileEmbed
     ( embedFile
+    )
+import Data.Pool
+    ( Pool
+    , defaultPoolConfig
+    , destroyAllResources
+    , newPool
+    , tryWithResource
+    , withResource
     )
 import Data.Scientific
     ( scientific
@@ -87,9 +101,17 @@ import Database.SQLite.Simple
     , withConnection'
     , withStatement
     )
+import qualified Database.SQLite.Simple as Sqlite
 import GHC.TypeLits
     ( KnownSymbol
     , symbolVal
+    )
+import Kupo.App.Database.Types
+    ( ConnectionType (..)
+    , DBPool (..)
+    , Database (..)
+    , TraceConnection (..)
+    , TraceDatabase (..)
     )
 import Kupo.Control.MonadAsync
     ( concurrently_
@@ -99,6 +121,10 @@ import Kupo.Control.MonadCatch
     )
 import Kupo.Control.MonadDelay
     ( threadDelay
+    )
+import Kupo.Control.MonadLog
+    ( TraceProgress (..)
+    , nullTracer
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
@@ -119,10 +145,12 @@ import Kupo.Data.Configuration
     , LongestRollback (..)
     , pruneInputsMaxIncrement
     )
+import qualified Kupo.Data.Configuration as Configuration
 import Kupo.Data.Database
     ( SortDirection (..)
     , patternToSql
     )
+import qualified Kupo.Data.Database as DB
 import Kupo.Data.Http.SlotRange
     ( Range (..)
     , RangeField (..)
@@ -152,40 +180,13 @@ import System.FilePath
 import System.IO.Error
     ( isAlreadyExistsError
     )
-
-import Control.Concurrent
-    ( getNumCapabilities
-    )
-import Data.Pool
-    ( Pool
-    , defaultPoolConfig
-    , destroyAllResources
-    , newPool
-    , tryWithResource
-    , withResource
-    )
-import Kupo.App.Database.Types
-    ( ConnectionType (..)
-    , DBPool (..)
-    , Database (..)
-    , TraceConnection (..)
-    , TraceDatabase (..)
-    )
-import Kupo.Control.MonadLog
-    ( TraceProgress (..)
-    , nullTracer
-    )
 import Text.URI
     ( URI
     )
 
-import qualified Data.Char as Char
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as T
 import qualified Data.Text.Lazy.Builder as TL
-import qualified Database.SQLite.Simple as Sqlite
-import qualified Kupo.Data.Configuration as Configuration
-import qualified Kupo.Data.Database as DB
 
 data DatabaseFile = OnDisk !FilePath | InMemory !(Maybe FilePath)
     deriving (Generic, Eq, Show)
@@ -216,13 +217,12 @@ newDatabaseFile tr = \case
     Configuration.Dir dir ->
         OnDisk <$> newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) dir
     Configuration.Remote url -> liftIO $ do
-        traceWith tr $ DatabaseMustBeLocal
-            { errorMessage =
-                "This binary was compiled to use SQLite. \
-                \You must specify either a working directory or in-memory configuration. \
-                \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
-            }
-        throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url)
+      traceWith tr $ DatabaseLocationInvalid
+        { errorMessage = "This binary was compiled to use SQLite. \
+                    \You must specify either a working directory or in-memory configuration. \
+                    \Using a remote URL is only allowed on binaries compiled to use PostgreSQL."
+        }
+      throwIO (FailedToAccessOrCreateDatabaseFile $ RemoteURLSpecifiedForSQLite url)
 
 newDatabaseOnDiskFile
     :: (MonadIO m)
@@ -375,54 +375,62 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
 
 -- | Create a Database pool that uses separate pools for `ReadOnly` and `ReadWrite` connections.
 -- This function creates a database file if it does not already exist.
-newDBPool
+withDBPool
     :: (Tracer IO TraceDatabase)
     -> Bool
     -> Configuration.DatabaseLocation
     -> LongestRollback
-    -> IO (DBPool IO)
-newDBPool tr isReadOnly dbLocation longestRollback = do
-    dbFile <- newDatabaseFile tr dbLocation
-    lock <- liftIO newLock
+    -> (DBPool IO -> IO a)
+    -> IO a
+withDBPool tr isReadOnly dbLocation longestRollback action = do
+    bracket mkPool destroy action
+    where
+        mkPool = do
+            dbFile <- newDatabaseFile tr dbLocation
+            lock <- liftIO newLock
 
-    (maxConcurrentWriters, maxConcurrentReaders) <-
-      liftIO getNumCapabilities <&> \n -> (n, 5 * n)
+            (maxConcurrentWriters, maxConcurrentReaders) <-
+              liftIO getNumCapabilities <&> \n -> (n, 5 * n)
 
-    readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
-        (createShortLivedConnection tr ReadOnly lock longestRollback dbFile)
-        (\Database{close} -> close)
-        600
-        maxConcurrentReaders
+            readOnlyPool <- liftIO $ newPool $ defaultPoolConfig
+                (createShortLivedConnection tr ReadOnly lock longestRollback dbFile)
+                (\Database{close} -> close)
+                600
+                maxConcurrentReaders
 
-    readWritePool <- liftIO $ newPool $ defaultPoolConfig
-        (createShortLivedConnection tr ReadWrite lock longestRollback dbFile)
-        (\Database{close} -> close)
-        30
-        maxConcurrentWriters
+            readWritePool <- liftIO $ newPool $ defaultPoolConfig
+                (createShortLivedConnection tr ReadWrite lock longestRollback dbFile)
+                (\Database{close} -> close)
+                30
+                maxConcurrentWriters
 
-    let
-        withDB :: forall a b. (Pool (Database IO) -> (Database IO -> IO a) -> IO b) -> ConnectionType -> (Database IO -> IO a) -> IO b
-        withDB withRes connType dbAction =
-            case connType of
-                ReadOnly -> withRes readOnlyPool dbAction
-                ReadWrite | isReadOnly -> fail "Cannot acquire a read/write connection on read-only replica"
-                ReadWrite -> withRes readWritePool dbAction
-                WriteOnly -> fail "Impossible: tried to acquire a WriteOnly database?"
+            let
+                withDB
+                    :: (Pool (Database IO) -> (Database IO -> IO a) -> IO b)
+                    -> ConnectionType
+                    -> (Database IO -> IO a)
+                    -> IO b
+                withDB withRes connType dbAction =
+                    case connType of
+                        ReadOnly -> withRes readOnlyPool dbAction
+                        ReadWrite | isReadOnly -> fail "Cannot acquire a read/write connection on read-only replica"
+                        ReadWrite -> withRes readWritePool dbAction
+                        WriteOnly -> fail "Impossible: tried to acquire a WriteOnly database?"
 
-    return DBPool
-        { tryWithDatabase =
-            withDB tryWithResource
-        , withDatabaseBlocking =
-            withDB withResource
-        , withDatabaseExclusiveWriter =
-            withLongLivedConnection tr lock longestRollback dbFile
-        , destroyResources = do
-            destroyAllResources readOnlyPool
-            destroyAllResources readWritePool
-        , maxConcurrentReaders
-        , maxConcurrentWriters =
-            if isReadOnly then 0 else maxConcurrentWriters
-        }
+            return DBPool
+                { tryWithDatabase =
+                    withDB tryWithResource
+                , withDatabaseBlocking =
+                    withDB withResource
+                , withDatabaseExclusiveWriter =
+                    withLongLivedConnection tr lock longestRollback dbFile
+                , maxConcurrentReaders
+                , maxConcurrentWriters =
+                    if isReadOnly then 0 else maxConcurrentWriters
+                , destroy = do
+                      destroyAllResources readOnlyPool
+                      destroyAllResources readWritePool
+                }
 
 -- It is therefore also the connection from which we check for and run database migrations when
 -- needed. Note that this bracket will also create the database if it doesn't exist.
@@ -629,11 +637,11 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             mapM_ (execute_ conn . deleteInputsQry) refs
 
     , markInputs = \(fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> do
-        withTotalChanges conn $
-            forM_ refs $ \ref -> do
-                execute conn (markInputsQry ref)
-                    [ SQLInteger slotNo
-                    ]
+          withTotalChanges conn $
+              forM_ refs $ \ref -> do
+                  execute conn (markInputsQry ref)
+                      [ SQLInteger slotNo
+                      ]
 
     , pruneInputs = ReaderT $ \conn -> do
         withTemporaryIndex tr conn "inputsBySpentAt" "inputs(spent_at)" $ do
@@ -834,7 +842,8 @@ deleteInputsQry pattern_ =
         , whereClause
         ]
   where
-    (whereClause, fromMaybe "" -> additionalJoin) = patternToSql pattern_
+    (whereClause, fromMaybe "" -> additionalJoin) =
+        patternToSql mkBlobLiteral pattern_
 
 markInputsQry :: Pattern -> Query
 markInputsQry pattern_ =
@@ -845,7 +854,8 @@ markInputsQry pattern_ =
         , whereClause
         ]
   where
-      (whereClause, fromMaybe "" -> additionalJoin) = patternToSql pattern_
+      (whereClause, fromMaybe "" -> additionalJoin) =
+          patternToSql mkBlobLiteral pattern_
 
 -- NOTE: This query only prune down a certain number of inputs at a time to keep his time bounded. The
 -- query in itself is quite expensive, and on large indexes, may takes several minutes.
@@ -874,7 +884,7 @@ countPoliciesQry pattern_ = Query $
     <> patternWhereClause
   where
     (patternWhereClause, _) =
-        patternToSql pattern_
+        patternToSql mkBlobLiteral pattern_
 
 foldPoliciesQry :: Pattern -> Query
 foldPoliciesQry pattern_ = Query $
@@ -886,7 +896,7 @@ foldPoliciesQry pattern_ = Query $
     <> patternWhereClause
   where
     (patternWhereClause, _) =
-        patternToSql pattern_
+        patternToSql mkBlobLiteral pattern_
 
 countInputsQry :: Pattern -> Query
 countInputsQry pattern_ = Query $
@@ -896,7 +906,7 @@ countInputsQry pattern_ = Query $
     <> patternWhereClause
   where
     (patternWhereClause, fromMaybe "" -> additionalJoin) =
-        patternToSql pattern_
+        patternToSql mkBlobLiteral pattern_
 
 foldInputsQry
     :: Pattern
@@ -934,7 +944,7 @@ foldInputsQry pattern_ slotRange statusFlag sortDirection =
            \inputs.created_at " <> ordering
 
     (patternWhereClause, fromMaybe "" -> additionalJoin) =
-        patternToSql pattern_
+        patternToSql mkBlobLiteral pattern_
 
     ordering = case sortDirection of
         Asc -> "ASC"
@@ -1116,6 +1126,13 @@ matchMaybeWord64 = \case
     _notSQLInteger -> Nothing
 {-# INLINABLE matchMaybeWord64 #-}
 
+mkBlobLiteral :: ByteString -> Text
+mkBlobLiteral bytes = "x'" <> encodeBase16 bytes <> "'"
+
+withTestDatabase :: String -> (Configuration.DatabaseLocation -> IO a) -> IO a
+withTestDatabase _dbName action = do
+    action $ Configuration.InMemory Nothing
+
 --
 -- Indexes
 --
@@ -1249,15 +1266,15 @@ migrations =
     [ mkMigration ix (decodeUtf8 migration)
     | (ix, migration) <- zip
         [1..]
-        [ $(embedFile "db/v1.0.0-beta/001.sql")
-        , $(embedFile "db/v1.0.0/001.sql")
-        , $(embedFile "db/v1.0.0/002.sql")
-        , $(embedFile "db/v1.0.1/001.sql")
-        , $(embedFile "db/v2.0.0-beta/001.sql")
-        , $(embedFile "db/v2.1.0/001.sql")
-        , $(embedFile "db/v2.1.0/002.sql")
-        , $(embedFile "db/v2.1.0/003.sql")
-        , $(embedFile "db/v2.2.0/001.sql")
+        [ $(embedFile "db/sqlite/v1.0.0-beta/001.sql")
+        , $(embedFile "db/sqlite/v1.0.0/001.sql")
+        , $(embedFile "db/sqlite/v1.0.0/002.sql")
+        , $(embedFile "db/sqlite/v1.0.1/001.sql")
+        , $(embedFile "db/sqlite/v2.0.0-beta/001.sql")
+        , $(embedFile "db/sqlite/v2.1.0/001.sql")
+        , $(embedFile "db/sqlite/v2.1.0/002.sql")
+        , $(embedFile "db/sqlite/v2.1.0/003.sql")
+        , $(embedFile "db/sqlite/v2.2.0/001.sql")
         ]
     ]
   where
