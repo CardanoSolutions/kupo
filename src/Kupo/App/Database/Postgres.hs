@@ -267,7 +267,7 @@ mkDatabase tr longestRollback bracketConnection = Database
             mapM_ (\DB.Input{..} -> do
                 insertRow @"inputs" conn 7
                     ( Binary extendedOutputReference
-                    , address
+                    , T.toLower address
                     , Binary value
                     , Binary <$> datumInfo
                     , Binary <$> refScriptHash
