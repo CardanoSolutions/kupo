@@ -9,8 +9,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Kupo.App.Database.SQLite
-    ( -- // TODO: Fix documentation headers
-      -- ** Queries
+    ( -- ** Queries
       -- *** Inputs
       deleteInputsQry
     , markInputsQry
@@ -1133,8 +1132,6 @@ mkBlobLiteral bytes = "x'" <> encodeBase16 bytes <> "'"
 withTestDatabase :: String -> (Configuration.DatabaseLocation -> IO a) -> IO a
 withTestDatabase _dbName action = do
     action $ Configuration.InMemory Nothing
--- ^// TODO: Create the proper connection string
-
 
 --
 -- Indexes

@@ -7,7 +7,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 
 module Kupo.App.Database
-    ( -- // TODO: Fix documentation headers
+    ( -- * Database DSL
     Database (..)
     , DBPool
         ( DBPool
@@ -18,8 +18,8 @@ module Kupo.App.Database
         , maxConcurrentWriters
         )
     , withDBPool
-    , ConnectionType (..)
     , DBTransaction
+    , ConnectionType (..)
     
       -- ** Queries
       -- *** Inputs

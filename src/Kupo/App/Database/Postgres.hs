@@ -10,9 +10,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Kupo.App.Database.Postgres
-    (
-      -- // TODO: Fix documentation headers
-      -- ** Queries
+    ( -- ** Queries
       -- *** Inputs
     deleteInputsQry
     , markInputsQry
@@ -183,7 +181,7 @@ withDBPool tr isReadOnly dbLocation longestRollback action = do
             pool <- liftIO . newPool $ defaultPoolConfig
                 connectDb
                 (\Database{close} -> close)
-                600 -- // TODO: Review concurrency requirements
+                600 -- TODO: Review concurrency requirements
                 maxConnections
 
             return DBPool
@@ -207,13 +205,16 @@ withDBPool tr isReadOnly dbLocation longestRollback action = do
                 WriteOnly -> fail "Impossible: tried to acquire a WriteOnly database?"
                 _ -> withRes pool dbAction
 
-        -- // TODO: Acutally do something with defer indexes! And possibly actually provide a preferred connection?
         withDatabaseExclusiveWriter
             :: Pool (Database IO)
             -> DeferIndexesInstallation
             -> (Database IO -> IO a)
             -> IO a
-        withDatabaseExclusiveWriter pool _deferIndexes = withResource pool
+        withDatabaseExclusiveWriter pool deferIndexes exclusiveWriterAction = do
+            bracket mkConnection PG.close $ \conn -> installIndexes tr conn deferIndexes
+            withResource pool exclusiveWriterAction
+            -- ^ TODO: Review if any of the PRAGMAs in the SQLite `withLongLivedConnection`
+            -- need equivalents here
 
         connectDb = mkConnection <&> \conn -> mkDatabase trConn longestRollback (\dbAction -> dbAction conn)
 
@@ -249,7 +250,7 @@ copyDatabase
     -> FilePath
     -> Set Pattern
     -> IO ()
-copyDatabase = undefined -- // TODO: Implement copyDatabase
+copyDatabase = undefined -- TODO: Implement copyDatabase
 
 --
 -- IO
@@ -299,6 +300,9 @@ mkDatabase tr longestRollback bracketConnection = Database
                     execute_ conn (markInputsQry pattern))
                 refs
                 -- ^ TODO: Try to convert this to an `executeMany` call
+                -- Since `markInputsQry` creates a few different queries
+                -- we may have to group the queries into those with equivalent
+                -- forms
 
     , markInputs = \(fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn ->
         handle (throwIO . DatabaseException "markInputs") $ do
@@ -306,6 +310,9 @@ mkDatabase tr longestRollback bracketConnection = Database
               execute conn (markInputsQry pattern) $ Only (slotNo :: Int64))
               refs
               -- ^ TODO: Try to convert this to an `executeMany` call
+              -- Since `markInputsQry` creates a few different queries
+              -- we may have to group the queries into those with equivalent
+              -- forms
 
 
     , pruneInputs = ReaderT $ \conn ->
@@ -464,12 +471,11 @@ mkDatabase tr longestRollback bracketConnection = Database
                 [] ->
                     return Nothing
                 res -> throwIO $ ExpectedSingletonResult (show selectMaxCheckpointQry) (length res)
-            -- ^ TODO: In SQLite, the pattern matches check for null values. I've changed the query, and
-            -- I think it should work without checking for null values, but let's check this.
 
     , optimize = return ()
     -- ^ TODO: Review if optimize needs to happen with Postgres.
-    -- ^ Also determine if this can be hidden within the `Database` implementation.
+    -- Also determine if this can be hidden within the `Database` implementation.
+    -- Perhaps this could be done with an async task that runs at regular intervals?
 
     , runTransaction = \r -> bracketConnection $ \conn ->
           withTransaction conn (runReaderT r conn)
@@ -649,13 +655,13 @@ getBinaryDataQry =
     \WHERE binary_data_hash = ? \
     \LIMIT 1"
 
--- // TODO: Investigate if the 'ORDER BY' clause is necessary in PostgreSQL
 -- NOTE: This removes all binary_data that aren't associted with any
 -- known input. The 'ORDER BY' at the end may seem pointless but is
 -- actually CRUCIAL for the query performance as it forces SQLite to use
 -- the availables indexes of both tables on 'data_hash' and
 -- 'binary_data_hash'. Without that, this query may take 1h+ on a large
 -- database (e.g. mainnet matching '*').
+-- TODO: Investigate if the 'ORDER BY' clause is necessary in PostgreSQL
 pruneBinaryDataQry :: Query
 pruneBinaryDataQry =
     " DELETE FROM binary_data \
@@ -765,7 +771,6 @@ withTemporaryIndex tr conn name table column action = do
 -- | Check whether an index exists in the database. Handy to customize the behavior (e.g. logging)
 -- depending on whether or not indexes are already there since 'CREATE INDEX IF NOT EXISTS' will not
 -- tell whether or not it has indeed created something.
--- // TODO: I don't think this works
 indexDoesExist :: Connection -> Text -> IO Bool
 indexDoesExist conn indexName = do
     query conn qry (Only indexName) <&> \case
@@ -809,8 +814,7 @@ databaseVersion conn = do
         countStatement =
             "SELECT id, version FROM migrations ORDER BY id DESC LIMIT 1;"
 
--- // TODO: Should there be a command line argument to determine whether or not to run migrations?
--- How will running migrations affect a DB that supports multiple Kupo instances?
+-- TODO: How will running migrations affect a DB that supports multiple Kupo instances?
 runMigrations :: Tracer IO TraceDatabase -> Connection -> IO ()
 runMigrations tr conn = do
     currentVersion <- databaseVersion conn
