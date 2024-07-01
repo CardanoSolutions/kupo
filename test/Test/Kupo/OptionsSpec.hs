@@ -6,6 +6,8 @@
 -- because it's test code and, having it fail would be instantly caught.
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
+{-# LANGUAGE PatternSynonyms #-}
+
 module Test.Kupo.OptionsSpec
     ( spec
     ) where
@@ -22,6 +24,7 @@ import Kupo.Control.MonadLog
     )
 import Kupo.Data.Cardano
     ( mkOutputReference
+    , pattern GenesisPoint
     , unsafeAssetNameFromBytes
     , unsafePolicyIdFromBytes
     , unsafeTransactionIdFromBytes
@@ -31,6 +34,7 @@ import Kupo.Data.Configuration
     , Configuration (..)
     , DatabaseLocation (..)
     , InputManagement (..)
+    , Since (..)
     )
 import Kupo.Data.Pattern
     ( MatchBootstrap (..)
@@ -146,7 +150,15 @@ spec = parallel $ do
           )
         , ( defaultArgs ++ [ "--since", "11017324.195908564a66d713bd2b71a9b1f290be6853cb31085fe7371276a35a2f8f7e62" ]
           , shouldParseAppConfiguration $ defaultConfiguration
-            { since = Just somePoint }
+            { since = Just (SincePoint somePoint) }
+          )
+        , ( defaultArgs ++ [ "--since", "origin" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { since = Just (SincePoint GenesisPoint) }
+          )
+        , ( defaultArgs ++ [ "--since", "tip" ]
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { since = Just SinceTip }
           )
         , ( defaultArgs ++ [ "--since", "#" ]
           , shouldFail

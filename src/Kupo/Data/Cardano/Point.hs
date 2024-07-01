@@ -27,6 +27,11 @@ import Kupo.Data.Cardano.SlotNo
     , slotNoToJson
     , slotNoToText
     )
+import Kupo.Data.Cardano.Tip
+    ( Tip
+    , pattern GenesisTip
+    , pattern Tip
+    )
 import Ouroboros.Network.Block
     ( HeaderHash
     , pattern BlockPoint
@@ -75,6 +80,11 @@ pointToText = \case
             , "."
             , headerHashToText h
             ]
+
+pointFromTip :: Tip -> Point
+pointFromTip = \case
+    GenesisTip -> GenesisPoint
+    Tip slotNo headerHash _blockNo -> BlockPoint slotNo headerHash
 
 getPointSlotNo :: Point -> SlotNo
 getPointSlotNo pt =

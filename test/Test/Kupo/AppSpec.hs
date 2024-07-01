@@ -115,6 +115,7 @@ import Kupo.Data.Configuration
     , DeferIndexesInstallation (..)
     , InputManagement (..)
     , LongestRollback (..)
+    , Since (..)
     , mailboxCapacity
     )
 import Kupo.Data.FetchBlock
@@ -256,7 +257,7 @@ spec = do
                       , databaseLocation = InMemory Nothing
                       , serverHost
                       , serverPort
-                      , since = Just GenesisPoint
+                      , since = Just (SincePoint GenesisPoint)
                       , patterns = fromList [MatchAny IncludingBootstrap]
                       , inputManagement
                       , longestRollback

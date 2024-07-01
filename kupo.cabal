@@ -60,6 +60,8 @@ library
       Kupo.App.Database.Types
       Kupo.App.FetchBlock.Node
       Kupo.App.FetchBlock.Ogmios
+      Kupo.App.FetchTip.Node
+      Kupo.App.FetchTip.Ogmios
       Kupo.App.Health
       Kupo.App.Http
       Kupo.App.Http.HealthCheck
@@ -103,6 +105,7 @@ library
       Kupo.Data.Configuration
       Kupo.Data.Database
       Kupo.Data.FetchBlock
+      Kupo.Data.FetchTip
       Kupo.Data.Health
       Kupo.Data.Http.Default
       Kupo.Data.Http.Error
