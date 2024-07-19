@@ -2,9 +2,9 @@
   <img src="./docs/kupo.png" width="240" /> <img src=".github/preview.gif" width="480" />
 </p>
 
----
+<p>
+  <img align="left" src=".github/installation.png" width="300" alt="installation instructions" />
 
-<p align="center">
   <a href="https://cardanosolutions.github.io/kupo">📖 User Manual</a>
   |
   <a href="CONTRIBUTING.md">🤝 Contributing</a>
@@ -18,12 +18,6 @@
 
 **Kupo** is fast, lightweight and configurable **chain-index** for the Cardano blockchain. It synchronizes data from the blockchain according to **patterns** matching addresses present in transaction outputs and builds a **lookup table** from matches to their associated **output references**, **values**, **datums** and **scripts**.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/architecture-diagram-dark.png">
-    <img alt="kupo: components diagram" src="./docs/architecture-diagram-light.png" width="550">
-  </picture>
-</p>
 
 # Roadmap
 
@@ -31,7 +25,8 @@
 
 The project keeps a [changelog 💾](./CHANGELOG.md) in which all _recent-but-not-yet-released_ changes can be seen. Changes in the changelog have been implemented and are available in latest builds from the `master` branch.
 
-> **Warning** Work available on the `master` branch shall be considered _unstable_ in the sense that interfaces may slightly change and database migrations may not work from a previous `master` commit. Keeping stability between unreleased commits is only a best-effort.
+> [!WARNING]
+> Work available on the `master` branch shall be considered _unstable_ in the sense that interfaces may slightly change and database migrations may not work from a previous `master` commit. Keeping stability between unreleased commits is only a best-effort.
 
 ### Planned work
 

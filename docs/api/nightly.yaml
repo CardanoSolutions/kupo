@@ -28,11 +28,18 @@ info:
 
     # Installation
 
-    ## From pre-compiled executables
+    ## Via Homebrew
+
+    ```console
+    $ brew tap CardanoSolutions/kupo
+    $ brew install kupo
+    ```
+
+    ## Manually
 
     Pre-compiled static binaries can be downloaded as build artifacts from
     [latest releases](https://github.com/CardanoSolutions/kupo/releases) or the
-    continuous [`Nix` Github workflow](https://github.com/CardanoSolutions/kupo/actions).
+    continuous [`Build` Github workflow](https://github.com/CardanoSolutions/kupo/actions/workflow/build.yaml).
 
     ```
     kupo-{x.y.z}-{arch}-{os}.tar.gz
@@ -71,10 +78,14 @@ info:
 
     ### Pre-requisite
 
-    On Linux, make sure to have [nix](https://nixos.org/download.html#nix-install-linux) and [cachix](https://www.cachix.org/) installed.
-    Configure cachix to use `kupo.cachix.org-1:RzYQ8KVjRJdPNt/Bhq/UqdyGYWFM8ShjEMNG8wzHBQ4=` (`cachix use kupo`).
+  Make sure to have [nix](https://nixos.org/download.html#nix-install-linux) installed with a cache:
 
-    On MacOS, you'll need `cabal` as well as a few system dependencies. Follow the [instructions to install `cardano-node` on the developer portal](https://developers.cardano.org/docs/get-started/installing-cardano-node#macos) since Kupo share a similar set of dependencies.
+    ```
+    trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= loony-tools:pr9m4BkM/5/eSTZlkQyRt57Jz7OMBxNSUiMC4FkcNfk=
+    substituters = https://cache.zw3rk.com/ https://cache.nixos.org/
+    ```
+
+    On MacOS, you'll need to install `libffi` and `bzip2` if they aren't already installed.
 
     ### Building
 
