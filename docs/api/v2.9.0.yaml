@@ -5,7 +5,7 @@ servers:
 
 info:
   title: Kupo
-  version: v2.7.2
+  version: v2.9.0
   license:
     name: MPL-2.0
     url: https://raw.githubusercontent.com/cardanosolutions/kupo/master/LICENSE
@@ -158,6 +158,10 @@ info:
     block **following the given point**. In case you need them, see the section
     [#era-boundaries] which references points at which era ends for mainnet and
     testnet; useful to start syncing from a specific era.
+
+    > <sup><strong>TIP</strong></sup> <br/>
+    > If you just want to start synchronize from _now_, you can pass simply
+    > pass <code>tip</code> as a value (i.e. `--since tip`).
 
     ## --match {pattern}
 
@@ -1277,6 +1281,7 @@ components:
         - connection_status
         - most_recent_checkpoint
         - most_recent_node_tip
+        - configuration
         - version
       properties:
         connection_status:
@@ -1297,9 +1302,45 @@ components:
               description: Absolute slot number of the current tip of the node.
             - type: "null"
               description: Absolute slot number of the current tip of the node.
+        configuration:
+          type: object
+          description: A summary of hand-picked configuration parameters.
+          additionalProperties: false
+          required:
+            - indexes
+          properties:
+            indexes:
+              type: string
+              description: Behaviour surrounding the database query indexes.
+              enum:
+                - deferred
+                - installed
         version:
           type: string
           description: Current software version.
+
+    HealthPrometheus:
+      type: string
+      description: |
+        A key-value export compatible with Prometheus.
+
+        - `connected` and `disconnected` (from `connection_status`) are encoded as `1.0` and `0.0` respectively.
+        - `installed` and `deferred` (from `configuration.indexes`) are encoded as `1.0` and `0.0` respectively.
+        - `version` is not present in the Prometheus metrics.
+      examples:
+        response:
+          value: |
+            # TYPE kupo_connection_status gauge
+            kupo_connection_status  1.0
+
+            # TYPE kupo_most_recent_checkpoint counter
+            kupo_most_recent_checkpoint  294998
+
+            # TYPE kupo_most_recent_node_tip counter
+            kupo_most_recent_node_tip  71753381
+
+            # TYPE kupo_configuration_indexes gauge
+            kupo_configuration_indexes  1.0
 
   parameters:
     asset-name:
@@ -2082,9 +2123,14 @@ paths:
         Retrieve Kupo's application health status. Note that this call is cheap and does not halt the various concurrent tasks performed by the Kupo.
 
         This endpoint has two possible content-types: `application/json` or `text/plain`. The latter returns health in a format suitable for [Prometheus](https://prometheus.io/docs/introduction/overview/). The server defaults to `application/json`, but you can control this behavior by passing a corresponding `Accept` header.
+
+        In addition, the server may return any of the following response codes:
+        - 200: when healthy
+        - 202: when connected to a chain producer but still syncing
+        - 503: when disconnected from a chain producer
       responses:
         200:
-          description: OK
+          description: Healthy
           headers: *default-headers
           content:
             "application/json;charset=utf-8":
@@ -2093,20 +2139,28 @@ paths:
 
             "text/plain;charset=utf-8":
               schema:
-                type: string
-                description: |
-                  A key-value export compatible with Prometheus.
+                $ref: "#/components/schemas/HealthPrometheus"
 
-                  - `connected` and `disconnected` are encoded as `1.0` and `0.0` respectively.
-                  - `version` is not present in the Prometheus metrics.
-              examples:
-                response:
-                  value: |
-                    # TYPE kupo_connection_status gauge
-                    kupo_connection_status  1.0
+        202:
+          description: Syncing
+          headers: *default-headers
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                $ref: "#/components/schemas/Health"
 
-                    # TYPE kupo_most_recent_checkpoint counter
-                    kupo_most_recent_checkpoint  294998
+            "text/plain;charset=utf-8":
+              schema:
+                $ref: "#/components/schemas/HealthPrometheus"
 
-                    # TYPE kupo_most_recent_node_tip counter
-                    kupo_most_recent_node_tip  71753381
+        503:
+          description: Unavailable
+          headers: *default-headers
+          content:
+            "application/json;charset=utf-8":
+              schema:
+                $ref: "#/components/schemas/Health"
+
+            "text/plain;charset=utf-8":
+              schema:
+                $ref: "#/components/schemas/HealthPrometheus"

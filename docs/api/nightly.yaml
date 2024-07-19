@@ -159,6 +159,10 @@ info:
     [#era-boundaries] which references points at which era ends for mainnet and
     testnet; useful to start syncing from a specific era.
 
+    > <sup><strong>TIP</strong></sup> <br/>
+    > If you just want to start synchronize from _now_, you can pass simply
+    > pass <code>tip</code> as a value (i.e. `--since tip`).
+
     ## --match {pattern}
 
     Kupo can accept one or more matching patterns using the `--match` option.
