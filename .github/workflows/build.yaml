@@ -17,6 +17,9 @@ jobs:
         os: [ linux, osx ]
         arch: [ x86_64, aarch64 ]
         compiler: [ ghc948 ]
+        exclude:
+          - os: osx
+            arch: x86_64
 
     runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-latest' || (matrix.os == 'linux' && 'buildjet-4vcpu-ubuntu-2204-arm' || 'macos-latest') }}
     steps:
