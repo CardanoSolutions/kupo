@@ -26,12 +26,6 @@ jobs:
       with:
         submodules: true
 
-    - name: 🧰 Install dependencies
-      shell: sh
-      run: |
-        sudo apt update
-        sudo apt install -y pandoc
-
     - name: ❄️ Install Nix
       uses: cachix/install-nix-action@v22
       with:

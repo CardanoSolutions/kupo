@@ -26,8 +26,7 @@ all: $(OUT)/bin/kupo \
 		 $(OUT)/share/zsh/site-functions/_kupo \
 		 $(OUT)/share/bash-completion/completions/kupo \
 		 $(OUT)/share/kupo/api.yaml \
-		 $(OUT)/share/kupo/LICENSE \
-		 $(OUT)/share/man/man1/kupo.1
+		 $(OUT)/share/kupo/LICENSE
 
 kupo-$(TAG)-$(ARCH)-$(OS).tar.gz: all
 	tar czf $@ --cd dist .
