@@ -2,10 +2,10 @@
 
 module Kupo.Data.Cardano.NativeScript
     ( NativeScript
-    , pattern Ledger.Allegra.RequireSignature
-    , pattern Ledger.Allegra.RequireAllOf
-    , pattern Ledger.Allegra.RequireAnyOf
-    , pattern Ledger.Allegra.RequireMOf
+    , pattern Ledger.Shelley.RequireSignature
+    , pattern Ledger.Shelley.RequireAllOf
+    , pattern Ledger.Shelley.RequireAnyOf
+    , pattern Ledger.Shelley.RequireMOf
     , pattern Ledger.Allegra.RequireTimeExpire
     , pattern Ledger.Allegra.RequireTimeStart
     , KeyHash(..)
@@ -17,6 +17,7 @@ import Cardano.Ledger.Keys
     ( KeyHash (..)
     )
 
+import qualified Cardano.Ledger.Shelley.Scripts as Ledger.Shelley
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
 
 type NativeScript = Ledger.Allegra.Timelock (ConwayEra StandardCrypto)
