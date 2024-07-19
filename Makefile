@@ -1,6 +1,6 @@
 OUT := dist
 
-GHC := 9.6.3
+GHC := 9.4.8
 STYLISH_HASKELL_VERSION := 0.14.5.0
 
 # Default network for snapshots.
@@ -54,6 +54,9 @@ $(OUT)/share/kupo/LICENSE:
 
 $(BIN_DIR_PATH)/kupo:
 	@nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal build kupo:exe:kupo $(PG_FLAG)"
+ifeq ($(OS),osx)
+	@scripts/patch-nix-deps.sh $@
+endif
 
 $(OUT)/bin/kupo: $(BIN_DIR_PATH)/kupo
 	@mkdir -p $(@D)
@@ -68,10 +71,14 @@ $(OUT)/lib:
 .SILENT: doc clean clean-all
 
 configure: # Freeze projet dependencies and update package index
+ifeq ($(OS),osx)
+	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cat /nix/store/l0np941gvmpqcgxankbgb7zpl4mj332v-cabal.project.local >> cabal.project.local"
+else
 ifeq ($(ARCH),x86_64)
 	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cat /nix/store/vd865r55pdbndjwh994h90m35qq77x44-cabal.project.local >> cabal.project.local"
 else
 	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cat /nix/store/hviyb5sciblcyr5fc3vsqcwmfh1nz69w-cabal.project.local >> cabal.project.local"
+endif
 endif
 	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal update && cabal freeze -f +production $(PG_FLAG)"
 

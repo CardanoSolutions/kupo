@@ -14,11 +14,11 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ linux ]
+        os: [ linux, osx ]
         arch: [ x86_64, aarch64 ]
-        compiler: [ ghc963 ]
+        compiler: [ ghc948 ]
 
-    runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-latest' || 'buildjet-4vcpu-ubuntu-2204-arm' }}
+    runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-latest' || (matrix.os == 'linux' && 'buildjet-4vcpu-ubuntu-2204-arm' || 'macos-latest') }}
     steps:
 
     - name: 📥 Checkout repository
