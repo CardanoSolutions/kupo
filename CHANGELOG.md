@@ -2,15 +2,13 @@
 
 #### Added
 
-- Integrate with `cardano-node==9.0.0`.
-
-- Compatibility with hydra-node 0.16.0.
-
 - `tip` is now supported as a value for the `--since` option. When provided, the indexing process will start wherever the blockchain source (node, ogmios, ...) is at.
 
 #### Changed
 
-N/A
+- Integrate with `cardano-node==9.0.0`.
+
+- Integrate with `hydra-node==0.16.0`.
 
 #### Removed
 
