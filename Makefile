@@ -45,7 +45,7 @@ $(OUT)/share/bash-completion/completions/kupo: $(OUT)/bin/kupo
 
 $(OUT)/share/kupo/api.yaml:
 	@mkdir -p $(@D)
-	@cp docs/api/latest.yaml $@
+	@cp docs/api/nightly.yaml $@
 
 $(OUT)/share/kupo/LICENSE:
 	@mkdir -p $(@D)
