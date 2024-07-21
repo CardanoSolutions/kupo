@@ -6,7 +6,7 @@ STYLISH_HASKELL_VERSION := 0.14.5.0
 # Default network for snapshots.
 NETWORK := preview
 
-OS := $(shell uname -s | sed 's/Linux/linux/' | sed 's/Darwin/osx/')
+OS := $(shell uname -s | sed 's/Linux/linux/' | sed 's/Darwin/macos/')
 ARCH := $(shell uname -m | sed 's/X86/x86_64/' | sed 's/arm64/aarch64/')
 NIX_GHC := $(shell echo $(GHC) | sed 's/^\([0-9]\)\.\([0-9]\)\..*/\1\2/')
 NIX_SHELL := github:CardanoSolutions/devx\#ghc$(NIX_GHC)-static-minimal-iog
@@ -53,7 +53,7 @@ $(OUT)/share/kupo/LICENSE:
 
 $(BIN_DIR_PATH)/kupo:
 	@nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal build kupo:exe:kupo $(PG_FLAG)"
-ifeq ($(OS),osx)
+ifeq ($(OS),macos)
 	@scripts/patch-nix-deps.sh $@
 endif
 
@@ -70,7 +70,7 @@ $(OUT)/lib:
 .SILENT: doc clean clean-all
 
 configure: # Freeze projet dependencies and update package index
-ifeq ($(OS),osx)
+ifeq ($(OS),macos)
 	nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cat /nix/store/l0np941gvmpqcgxankbgb7zpl4mj332v-cabal.project.local >> cabal.project.local"
 else
 ifeq ($(ARCH),x86_64)
