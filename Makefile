@@ -7,6 +7,7 @@ STYLISH_HASKELL_VERSION := 0.14.5.0
 NETWORK := preview
 
 OS := $(shell uname -s | sed 's/Linux/linux/' | sed 's/Darwin/macos/')
+GHC_OS := $(shell uname -s | sed 's/Linux/linux/' | sed 's/Darwin/osx/')
 ARCH := $(shell uname -m | sed 's/X86/x86_64/' | sed 's/arm64/aarch64/')
 NIX_GHC := $(shell echo $(GHC) | sed 's/^\([0-9]\)\.\([0-9]\)\..*/\1\2/')
 NIX_SHELL := github:CardanoSolutions/devx\#ghc$(NIX_GHC)-static-minimal-iog
@@ -15,7 +16,7 @@ VERSION := $(shell cat package.yaml| grep "version:" | sed "s/[^0-9]*\([0-9]\)\(
 TAG := $(shell echo $(VERSION) | sed "s/^0$$/nightly/")
 CONFIG := $(shell pwd)/config/network/$(NETWORK)
 CACHEDIR := ${HOME}/.cache/kupo/${NETWORK}
-BUILD_DIR_PATH := dist-newstyle/build/$(ARCH)-$(OS)/ghc-$(GHC)/kupo-$(VERSION)
+BUILD_DIR_PATH := dist-newstyle/build/$(ARCH)-$(GHC_OS)/ghc-$(GHC)/kupo-$(VERSION)
 BIN_DIR_PATH := $(BUILD_DIR_PATH)/x/kupo/build/kupo
 
 ifeq ($(postgres), true)
