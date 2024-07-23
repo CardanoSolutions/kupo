@@ -31,8 +31,15 @@ jobs:
 
     - name: Tag build artifacts
       id: tag
-      run:
-        echo "value=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+      shell: bash
+      run: |
+        if [ "${GITHUB_REF/refs\/tags\//}" -eq "refs/head/master"  ]; then
+          echo "value=$GIT_SHA" >> $GITHUB_OUTPUT
+        else
+          echo "value=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+        fi
+      env:
+        GIT_SHA: ${{ github.sha }}
 
     - name: ❄️ Install Nix
       uses: cachix/install-nix-action@v22
