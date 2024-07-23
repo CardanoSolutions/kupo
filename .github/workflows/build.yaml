@@ -33,7 +33,7 @@ jobs:
       id: tag
       shell: bash
       run: |
-        if [ "${GITHUB_REF/refs\/tags\//}" == "refs/head/master"  ]; then
+        if [ "${GITHUB_REF/refs\/tags\//}" == "refs/heads/master"  ]; then
           echo "value=$GIT_SHA" >> $GITHUB_OUTPUT
         else
           echo "value=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
