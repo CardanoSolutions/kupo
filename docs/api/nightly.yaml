@@ -31,7 +31,7 @@ info:
     ## Via Homebrew
 
     ```console
-    $ brew tap CardanoSolutions/kupo
+    $ brew tap CardanoSolutions/formulas
     $ brew install kupo
     ```
 
@@ -78,7 +78,7 @@ info:
 
     ### Pre-requisite
 
-  Make sure to have [nix](https://nixos.org/download.html#nix-install-linux) installed with a cache:
+    Make sure to have [nix](https://nixos.org/download.html#nix-install-linux) installed with a cache:
 
     ```
     trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= loony-tools:pr9m4BkM/5/eSTZlkQyRt57Jz7OMBxNSUiMC4FkcNfk=
