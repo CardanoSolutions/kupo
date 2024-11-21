@@ -76,7 +76,7 @@ library
     , attoparsec-aeson
     , base >=4.7 && <5
     , bytestring
-    , connection
+    , crypton-connection
     , exceptions
     , io-classes
     , websockets
