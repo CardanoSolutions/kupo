@@ -21,7 +21,7 @@ jobs:
           - os: macos
             arch: x86_64
 
-    runs-on: ${{ matrix.arch == 'x86_64' && 'buildjet-4vcpu-ubuntu-2204' || (matrix.os == 'linux' && 'buildjet-4vcpu-ubuntu-2204-arm' || 'macos-latest') }}
+    runs-on: ${{ matrix.arch == 'x86_64' && 'buildjet-4vcpu-ubuntu-2204' || (matrix.os == 'linux' && 'buildjet-16vcpu-ubuntu-2204-arm' || 'macos-latest') }}
     steps:
 
     - name: 📥 Checkout repository
