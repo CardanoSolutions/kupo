@@ -14,6 +14,7 @@ import Kupo.Data.Cardano
     , DatumHash
     , HasTransactionId (..)
     , Input
+    , InputIndex
     , IsBlock (..)
     , Metadata
     , MetadataHash
@@ -27,6 +28,7 @@ import Kupo.Data.Cardano
     )
 
 import qualified Data.Set as Set
+import qualified Data.Map.Strict as Map
 
 -- | A partial representation of a Cardano Block. This only contains bits that
 -- are relevant to kupo. Rest isn't indexed.
@@ -42,6 +44,7 @@ data PartialTransaction = PartialTransaction
     , inputs :: ![Input]
     , outputs :: ![(OutputReference, Output)]
     , datums :: !(Map DatumHash BinaryData)
+    , spendRedeemers :: !(Map InputIndex BinaryData)
     , scripts :: !(Map ScriptHash Script)
     , metadata :: !(Maybe (MetadataHash, Metadata))
     } deriving (Eq, Show)
@@ -73,3 +76,6 @@ instance IsBlock PartialBlock where
 
     userDefinedMetadata =
         metadata
+
+    spendRedeemer PartialTransaction{spendRedeemers} ix =
+        Map.lookup ix spendRedeemers

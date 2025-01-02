@@ -93,6 +93,7 @@ library
       Kupo.Data.Cardano.OutputReference
       Kupo.Data.Cardano.Point
       Kupo.Data.Cardano.PolicyId
+      Kupo.Data.Cardano.Redeemers
       Kupo.Data.Cardano.Script
       Kupo.Data.Cardano.ScriptHash
       Kupo.Data.Cardano.ScriptReference

@@ -9,14 +9,20 @@ import Cardano.Crypto.Hash
     , hashToBytes
     , hashWith
     )
+import Cardano.Ledger.Alonzo.Scripts
+    ( AlonzoPlutusPurpose (..)
+    , AsIx (..)
+    )
 import Cardano.Ledger.Alonzo.TxWits
-    ( unTxDats
+    ( unRedeemers
+    , unTxDats
     )
 import Cardano.Ledger.Api
     ( bodyTxL
     , datsTxWitsL
     , inputsTxBodyL
     , outputsTxBodyL
+    , rdmrsTxWitsL
     , scriptTxWitsL
     , witsTxL
     )
@@ -163,6 +169,7 @@ decodeGenesisTxForUTxO id indexOutputs = do
         { id
         , inputs = []
         , outputs
+        , spendRedeemers = mempty
         , datums = mempty
         , scripts = mempty
         , metadata = Nothing
@@ -198,6 +205,15 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
         , inputs = toList (body' ^. inputsTxBodyL)
         , outputs = withReferences 0 id outputs'
         , datums = Map.map fromBabbageData $ unTxDats (wits' ^. datsTxWitsL)
+        , spendRedeemers =
+            Map.foldrWithKey
+                (\purpose (redeemer, _) ->
+                    case purpose of
+                      AlonzoSpending (AsIx ix) -> Map.insert (fromIntegral ix) (fromBabbageData redeemer)
+                      _ -> identity
+                )
+                mempty
+                (unRedeemers $ wits' ^. rdmrsTxWitsL)
         , scripts = Map.map fromBabbageScript (wits' ^. scriptTxWitsL)
         , metadata = Nothing
         }

@@ -1,4 +1,5 @@
 module Kupo.Data.Cardano.Datum where
+
 import Kupo.Prelude
 
 import Kupo.Data.Cardano.BinaryData

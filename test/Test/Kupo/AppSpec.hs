@@ -756,10 +756,11 @@ genPartialTransaction = do
         replicateM nScripts (lift genScript)
         & fmap (foldMap (\v -> Map.singleton (hashScript v) v))
     metadata <- lift $ oneof [pure Nothing, Just <$> genMetadata]
-    pure PartialTransaction { id, inputs, outputs, datums, scripts, metadata }
+    pure PartialTransaction { id, inputs, outputs, datums, spendRedeemers, scripts, metadata }
   where
     maxNumberOfInputs = 3
     maxNumberOfOutputs = 3
+    spendRedeemers = mempty
 
 -- | Generate an arbitrary datum hash (for which we expect no associated binary
 -- data to be known) or a known datum.

@@ -27,6 +27,7 @@ module Kupo.Data.Cardano
     , module Kupo.Data.Cardano.OutputIndex
     , module Kupo.Data.Cardano.Point
     , module Kupo.Data.Cardano.PolicyId
+    , module Kupo.Data.Cardano.Redeemers
     , module Kupo.Data.Cardano.Script
     , module Kupo.Data.Cardano.ScriptHash
     , module Kupo.Data.Cardano.ScriptReference
@@ -85,6 +86,7 @@ import Kupo.Data.Cardano.OutputIndex
 import Kupo.Data.Cardano.OutputReference
 import Kupo.Data.Cardano.Point
 import Kupo.Data.Cardano.PolicyId
+import Kupo.Data.Cardano.Redeemers
 import Kupo.Data.Cardano.Script
 import Kupo.Data.Cardano.ScriptHash
 import Kupo.Data.Cardano.ScriptReference
@@ -139,6 +141,11 @@ class HasTransactionId (BlockBody block) StandardCrypto => IsBlock (block :: Typ
         :: BlockBody block
         -> Maybe (MetadataHash, Metadata)
 
+    spendRedeemer
+        :: BlockBody block
+        -> InputIndex
+        -> Maybe BinaryData
+
 -- Block
 
 instance IsBlock Void where
@@ -150,6 +157,7 @@ instance IsBlock Void where
     witnessedDatums = absurd
     witnessedScripts = absurd
     userDefinedMetadata = absurd
+    spendRedeemer = absurd
 
 instance IsBlock Block where
     type BlockBody Block = Transaction
@@ -460,3 +468,24 @@ instance IsBlock Block where
                 SJust auxData ->
                     let meta = fromConwayMetadata auxData
                      in Just (hashMetadata meta, meta)
+
+    spendRedeemer
+        :: Transaction
+        -> InputIndex
+        -> Maybe BinaryData
+    spendRedeemer txInEra ix =
+        lookupSpendRedeemer ix =<< case txInEra of
+            TransactionByron{} ->
+                Nothing
+            TransactionShelley{} ->
+                Nothing
+            TransactionAllegra{} ->
+                Nothing
+            TransactionMary{} ->
+                Nothing
+            TransactionAlonzo tx ->
+                Just (RedeemersAlonzo (tx ^. Ledger.witsTxL . Ledger.rdmrsTxWitsL))
+            TransactionBabbage tx ->
+                Just (RedeemersBabbage (tx ^. Ledger.witsTxL . Ledger.rdmrsTxWitsL))
+            TransactionConway tx ->
+                Just (RedeemersConway (tx ^. Ledger.witsTxL . Ledger.rdmrsTxWitsL))

@@ -1,3 +1,20 @@
+### [2.10.0] - UNRELEASED
+
+#### Added
+
+- Kupo now keeps track of the transaction id and input index that is spending a TxO, as well as the redeemer if any. These now optionally appear under the `spent_at` field for matches. The redeemer is provided as a base16-encoded CBOR Plutus Data, akin to how datums are already provided.
+
+  > [!WARNING]
+  > This changes requires an (automatic) database migration which will set columns values for existing rows to `NULL`. To maintain backward compatibility, this is handled gracefully by the server which will also provide `null` JSON values for the relevant fields. However, this means that to get access to these new pieces of information for already synchronized TxO, a re-sync since the beginning of the Alonzo era is needed.
+
+#### Changed
+
+- Integrate with `cardano-node==10.1.3`.
+
+#### Removed
+
+N/A
+
 ### [2.9.0] - 2024-07-19
 
 #### Added

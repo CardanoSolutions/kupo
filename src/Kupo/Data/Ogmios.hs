@@ -41,6 +41,7 @@ import Kupo.Data.Cardano
     , Datum (..)
     , DatumHash
     , Input
+    , InputIndex
     , KeyHash (..)
     , Metadata
     , MetadataHash
@@ -111,6 +112,16 @@ data NextBlockResponse
     = RollBackward !Tip !Point
     | RollForward  !Tip !PartialBlock
 
+-- ScriptPurpose
+
+data ScriptPurpose
+    = Mint
+    | Spend
+    | Publish
+    | Withdraw
+    | Vote
+    | Propose
+    deriving (Eq)
 
 -- Encoders
 
@@ -203,6 +214,8 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
 
     datums <- o .:? "datums" .!= Json.Object mempty >>= decodeDatums
 
+    spendRedeemers <- o .:? "redeemers" .!= [] >>= decodeSpendRedeemers
+
     scripts <- o .:? "scripts" .!= Json.Object mempty >>= decodeScripts
 
     outputs <- case Key.toText inputSource of
@@ -221,6 +234,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
         , inputs
         , outputs
         , datums
+        , spendRedeemers
         , scripts
         , metadata
         }
@@ -354,6 +368,41 @@ decodeDatums = Json.withObject "Datums" $
             <*> accum
         )
         (pure mempty)
+
+decodeSpendRedeemers
+    :: [Json.Object]
+    -> Json.Parser (Map InputIndex BinaryData)
+decodeSpendRedeemers = foldr
+    (\el step -> do
+        redeemers <- step
+        (purpose, index) <- el .: "validator" >>= decodeValidatorReference
+        if purpose == Spend then do
+            redeemer <- el .: "redeemer" >>= decodeBinaryData
+            pure $ Map.insert index redeemer redeemers
+        else
+            pure redeemers
+    )
+    (pure mempty)
+
+decodeValidatorReference
+    :: Json.Value
+    -> Json.Parser (ScriptPurpose, Word16)
+decodeValidatorReference = Json.withObject "ValidatorReference" $ \o -> do
+    purpose <- o .: "purpose" >>= decodeScriptPurpose
+    index <- o .: "index"
+    pure (purpose, index)
+
+decodeScriptPurpose
+    :: Text
+    -> Json.Parser ScriptPurpose
+decodeScriptPurpose = \case
+    "mint" -> pure Mint
+    "spend" -> pure Spend
+    "publish" -> pure Publish
+    "withdraw" -> pure Withdraw
+    "vote" -> pure Vote
+    "propose" -> pure Propose
+    purpose -> fail $ "unknown script purpose: " ++ toString purpose
 
 decodeDatumHash
     :: Json.Key

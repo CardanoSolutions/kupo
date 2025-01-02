@@ -506,6 +506,7 @@ newStubbedApplication defaultPatterns = do
                             , outputs = mempty
                             , scripts = mempty
                             , datums = mempty
+                            , spendRedeemers = mempty
                             , metadata
                             }
                     pure $ PartialBlock { blockPoint, blockBody }
