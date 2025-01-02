@@ -41,6 +41,8 @@ module Kupo.Data.Database
     , datumHashToRow
     , binaryDataToRow
     , binaryDataFromRow
+    , redeemerToRow
+    , redeemerFromRow
 
       -- * Script / ScriptReference
     , ScriptReference (..)
@@ -392,6 +394,20 @@ binaryDataFromRow
 binaryDataFromRow =
     App.unsafeBinaryDataFromBytes . binaryData
 {-# INLINABLE binaryDataFromRow #-}
+
+redeemerToRow
+    :: App.BinaryData
+    -> ByteString
+redeemerToRow =
+    originalBytes . Ledger.binaryDataToData
+{-# INLINABLE redeemerToRow #-}
+
+redeemerFromRow
+    :: ByteString
+    -> App.BinaryData
+redeemerFromRow =
+    App.unsafeBinaryDataFromBytes
+{-# INLINABLE redeemerFromRow #-}
 
 --
 -- Script / ScriptHash

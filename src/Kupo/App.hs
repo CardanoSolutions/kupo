@@ -80,10 +80,13 @@ import Kupo.Control.MonadThrow
     ( MonadThrow (..)
     )
 import Kupo.Data.Cardano
-    ( IsBlock
+    ( BinaryData
+    , InputIndex
+    , IsBlock
     , Point
     , SlotNo (..)
     , Tip
+    , TransactionId
     , distanceToTip
     , getPoint
     , getPointSlotNo
@@ -396,7 +399,7 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
     onSpentInputs
         :: Tip
         -> SlotNo
-        -> Map SlotNo (Set Pattern)
+        -> Map (TransactionId, SlotNo) [(Pattern, InputIndex, Maybe BinaryData)]
         -> DBTransaction m Int
     onSpentInputs = case inputManagement of
         MarkSpentInputs ->
@@ -407,7 +410,7 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
                 -- Otherwise, mark as 'spent' and leave the pruning to the
                 -- periodic 'gardener' / garbage-collector.
                 if distanceToTip lastKnownTip lastKnownSlot > unstableWindow then
-                    fmap sum . traverse deleteInputs
+                    fmap sum . traverse (deleteInputs . fmap (\(a, _, _) -> a))
                 else
                     fmap sum . Map.traverseWithKey markInputs
       where

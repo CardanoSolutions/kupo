@@ -167,7 +167,7 @@ import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
-import qualified Data.List as List
+import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified GHC.Clock
@@ -422,7 +422,7 @@ cacheOr readHealth req send handler = do
     health <- readHealth
     let mostRecentHeaderHash =
             (encodeUtf8 . headerHashToText) <$> (mostRecentCheckpoint health >>= getPointHeaderHash)
-    case List.lookup "if-none-match" (requestHeaders req) of
+    case L.lookup "if-none-match" (requestHeaders req) of
         Just etag | Just etag == mostRecentHeaderHash ->
             send $ responseLBS status304 (addCacheHeaders Default.headers health) ""
         _etagMismatchOrNotPresent ->
@@ -619,9 +619,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
                         \result -> (getTransactionId . fst . outputReference) result == transactionId
          in
             \yield result ->
-                if predicateA result && predicateB result
-                then yield result
-                else pure ()
+                when (predicateA result && predicateB result) (yield result)
 
 handleDeleteMatches
     :: [Http.Header]
@@ -637,7 +635,7 @@ handleDeleteMatches headers patternsVar query Database{..} = do
         Just p | p `overlaps` patterns -> do
             pure Errors.stillActivePattern
         Just p -> do
-            n <- runTransaction $ deleteInputs (Set.singleton p)
+            n <- runTransaction $ deleteInputs [p]
             pure $ responseJsonEncoding status200 headers $
                 Json.pairs $ mconcat
                     [ Json.pair "deleted" (Json.int n)

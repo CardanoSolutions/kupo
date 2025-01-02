@@ -112,6 +112,7 @@ import Kupo.Control.MonadTime
     )
 import Kupo.Data.Cardano
     ( SlotNo (..)
+    , mkOutputReference
     , slotNoToText
     )
 import Kupo.Data.Configuration
@@ -121,7 +122,9 @@ import Kupo.Data.Configuration
     )
 import Kupo.Data.Database
     ( SortDirection (..)
+    , outputReferenceToRow
     , patternToSql
+    , redeemerToRow
     )
 import Kupo.Data.Http.SlotRange
     ( Range (..)
@@ -604,6 +607,8 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                     , maybe SQLNull SQLBlob refScriptHash
                     , SQLInteger (fromIntegral createdAtSlotNo)
                     , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
+                    , SQLNull
+                    , SQLNull
                     ]
                 case datum of
                     Nothing ->
@@ -628,11 +633,13 @@ mkDatabase tr mode longestRollback bracketConnection = Database
         withTotalChanges conn $
             mapM_ (execute_ conn . deleteInputsQry) refs
 
-    , markInputs = \(fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> do
+    , markInputs = \(parentRef, fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> do
         withTotalChanges conn $
-            forM_ refs $ \ref -> do
+            forM_ refs $ \(ref, ix, redeemer)  -> do
                 execute conn (markInputsQry ref)
                     [ SQLInteger slotNo
+                    , SQLBlob (outputReferenceToRow $ mkOutputReference parentRef ix)
+                    , maybe SQLNull (SQLBlob . redeemerToRow) redeemer
                     ]
 
     , pruneInputs = ReaderT $ \conn -> do
@@ -839,7 +846,7 @@ deleteInputsQry pattern_ =
 markInputsQry :: Pattern -> Query
 markInputsQry pattern_ =
     Query $ unwords
-        [ "UPDATE inputs SET spent_at = ?"
+        [ "UPDATE inputs SET spent_at = ?, spent_by = ?, spent_with = ?"
         , additionalJoin
         , "WHERE"
         , whereClause
@@ -1258,6 +1265,7 @@ migrations =
         , $(embedFile "db/v2.1.0/002.sql")
         , $(embedFile "db/v2.1.0/003.sql")
         , $(embedFile "db/v2.2.0/001.sql")
+        , $(embedFile "db/v2.10.0/001.sql")
         ]
     ]
   where

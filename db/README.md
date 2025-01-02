@@ -19,6 +19,8 @@ CREATE TABLE `inputs` (
   `script_hash` BLOB,
   `created_at` INTEGER NOT NULL,
   `spent_at` INTEGER,
+  `spent_by` BLOB,
+  `spent_with` BLOB,
 
   `output_reference` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, 1, 34)) VIRTUAL,
   `output_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -4, 2)) VIRTUAL,
@@ -68,6 +70,13 @@ CREATE TABLE `patterns` (
 </details>
 
 ## Changelog
+
+<p align="right"><code>v2.10.0</code></p>
+<hr/>
+
+### Migration to `version=10`
+
+- Add `spent_by` and `spent_with` columns to `inputs` to track redeemers and transaction spending a particular UTxO.
 
 <p align="right"><code>v2.5.0</code></p>
 <hr/>

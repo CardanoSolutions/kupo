@@ -9,6 +9,8 @@ import qualified Data.Text.Read as T
 
 type OutputIndex = Word16
 
+type InputIndex = OutputIndex
+
 outputIndexToJson :: OutputIndex -> Json.Encoding
 outputIndexToJson =
     Json.integer . toInteger

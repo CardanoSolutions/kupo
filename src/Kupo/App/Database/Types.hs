@@ -36,10 +36,12 @@ import Kupo.Control.MonadTime
 import Kupo.Data.Cardano
     ( BinaryData
     , DatumHash
+    , InputIndex
     , Point
     , Script
     , ScriptHash
     , SlotNo (..)
+    , TransactionId
     )
 import Kupo.Data.Configuration
     ( DeferIndexesInstallation
@@ -79,12 +81,12 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m ()
 
     , deleteInputs
-        :: Set Pattern
+        :: [Pattern]
         -> DBTransaction m Int
 
     , markInputs
-        :: SlotNo
-        -> Set Pattern
+        :: (TransactionId, SlotNo)
+        -> [(Pattern, InputIndex, Maybe BinaryData)]
         -> DBTransaction m Int
 
     , pruneInputs

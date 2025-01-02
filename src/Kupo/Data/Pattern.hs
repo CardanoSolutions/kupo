@@ -42,6 +42,7 @@ import Kupo.Data.Cardano
     , Datum (..)
     , DatumHash
     , ExtendedOutputReference
+    , InputIndex
     , IsBlock (..)
     , Metadata
     , Output
@@ -491,7 +492,7 @@ data Codecs result bin script policy = Codecs
 
 -- | A higher-level record to represent the aggregation of matched results.
 data Match result bin script policy = Match
-    { consumed :: !(Map SlotNo (Set Pattern))
+    { consumed :: !(Map (TransactionId, SlotNo) [(Pattern, InputIndex, Maybe BinaryData)])
     , produced :: ![result]
     , datums :: ![bin]
     , scripts :: ![script]
@@ -537,12 +538,13 @@ matchBlock Codecs{..} patterns blk =
         -> Match result bin script policy
     fn pt ix tx Match{consumed, produced, datums, scripts, policies} = Match
         { consumed = Map.alter
-            (\st -> Just $ Set.foldr
-                (Set.insert . MatchOutputReference)
-                (fromMaybe mempty st)
+            (\st -> Just $ fst $ foldr
+                -- FIXME: Replace 'Nothing' here with redeemer pulled from the transaction
+                (\ref (refs, i) -> ((MatchOutputReference ref, i, Nothing):refs, i + 1))
+                (fromMaybe mempty st, 0)
                 (spentInputs @block tx)
             )
-            (getPointSlotNo pt)
+            (getTransactionId tx, getPointSlotNo pt)
             consumed
 
         , produced =

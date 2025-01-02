@@ -1216,7 +1216,7 @@ shortLivedWorker dbPool mode = do
                     ReadWrite ->
                         [ (1, do
                             pattern_ <- genQueryablePattern
-                            pure $ void $ runTransaction $ deleteInputs (Set.singleton pattern_)
+                            pure $ void $ runTransaction $ deleteInputs [pattern_]
                           )
                         , (1, do
                             pattern_ <- genPattern
