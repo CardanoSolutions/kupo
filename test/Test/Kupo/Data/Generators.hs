@@ -277,6 +277,8 @@ genResultWith genPoint = Result
     <*> genScriptReference
     <*> genPoint
     <*> frequency [(1, pure Nothing), (5, Just <$> genPoint)]
+    <*> frequency [(1, pure Nothing), (5, Just <$> genOutputReference)]
+    <*> frequency [(1, pure Nothing), (5, Just <$> genBinaryData)]
 
 genOutput :: Gen Output
 genOutput = mkOutput

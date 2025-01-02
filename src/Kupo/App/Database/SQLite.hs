@@ -662,6 +662,8 @@ mkDatabase tr mode longestRollback bracketConnection = Database
              , SQLBlob createdAtHeaderHash
              , matchMaybeWord64 -> spentAtSlotNo
              , matchMaybeBytes -> spentAtHeaderHash
+             , matchMaybeBytes -> spentBy
+             , matchMaybeBytes -> spentWith
              ] ->
                 yield (DB.resultFromRow DB.Input{..})
             (xs :: [SQLData]) ->
@@ -916,7 +918,8 @@ foldInputsQry pattern_ slotRange statusFlag sortDirection =
       \inputs.ext_output_reference, inputs.address, inputs.value, \
       \inputs.datum_info, inputs.script_hash, \
       \inputs.created_at, createdAt.header_hash, \
-      \inputs.spent_at, spentAt.header_hash \
+      \inputs.spent_at, spentAt.header_hash, \
+      \inputs.spent_by, inputs.spent_with \
     \FROM (" <> inputs <> ") inputs \
     \JOIN checkpoints AS createdAt ON createdAt.slot_no = inputs.created_at \
     \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = inputs.spent_at"

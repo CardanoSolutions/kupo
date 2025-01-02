@@ -61,6 +61,7 @@ import Kupo.Data.Cardano
     , addressToJson
     , assetNameFromText
     , assetNameToText
+    , binaryDataToJson
     , datumHashToJson
     , foldrValue
     , getAddress
@@ -432,6 +433,8 @@ data Result = Result
     , scriptReference :: !ScriptReference
     , createdAt :: !Point
     , spentAt :: !(Maybe Point)
+    , spentBy :: !(Maybe OutputReference)
+    , spentWith :: !(Maybe BinaryData)
     } deriving (Show, Eq)
 
 resultToJson
@@ -476,6 +479,12 @@ resultToJson Result{..} = Json.pairs $ mconcat
                         (slotNoToJson (getPointSlotNo point))
                     , Json.pair "header_hash"
                         (headerHashToJson (unsafeGetPointHeaderHash point))
+                    , Json.pair "transaction_id"
+                        (maybe Json.null_ (transactionIdToJson . getTransactionId) spentBy)
+                    , Json.pair "input_index"
+                        (maybe Json.null_ (outputIndexToJson . getOutputIndex) spentBy)
+                    , Json.pair "redeemer"
+                        (maybe Json.null_ binaryDataToJson spentWith)
                     ]
         )
     ]
@@ -592,6 +601,8 @@ matchBlock Codecs{..} patterns blk =
                 , scriptReference = mkScriptReference (getScript output)
                 , createdAt = pt
                 , spentAt = Nothing
+                , spentBy = Nothing
+                , spentWith = Nothing
                 }
             , foldrValue
                 (\policy _ -> Set.insert (toPolicy outRef policy))

@@ -25,6 +25,7 @@ module Kupo.Data.Database
 
       -- * ExtendedOutputReference / OutputReference
     , outputReferenceToRow
+    , outputReferenceFromRow
     , extendedOutputReferenceToRow
     , extendedOutputReferenceFromRow
 
@@ -152,6 +153,8 @@ data Input = Input
     , createdAtHeaderHash :: !ByteString
     , spentAtSlotNo :: !(Maybe Word64)
     , spentAtHeaderHash :: !(Maybe ByteString)
+    , spentBy :: !(Maybe ByteString)
+    , spentWith :: !(Maybe ByteString)
     } deriving (Show)
 
 resultFromRow
@@ -172,6 +175,10 @@ resultFromRow row = App.Result
         pointFromRow (Checkpoint (createdAtHeaderHash row) (createdAtSlotNo row))
     , App.spentAt =
         pointFromRow <$> (Checkpoint <$> spentAtHeaderHash row <*> spentAtSlotNo row)
+    , App.spentBy =
+        outputReferenceFromRow <$> spentBy row
+    , App.spentWith =
+        redeemerFromRow <$> spentWith row
     }
 
 resultToRow
@@ -202,6 +209,12 @@ resultToRow x =
     (spentAtSlotNo, spentAtHeaderHash) =
         let row = pointToRow <$> (App.spentAt x)
          in (checkpointSlotNo <$> row, checkpointHeaderHash <$> row)
+
+    spentBy =
+        outputReferenceToRow <$> App.spentBy x
+
+    spentWith =
+        redeemerToRow <$> App.spentWith x
 
 --
 -- Policy
@@ -245,6 +258,21 @@ outputReferenceToRow (Ledger.TxIn txId (Ledger.TxIx outIx)) =
         B.putByteString (transactionIdToBytes txId)
         B.putWord16be (fromIntegral outIx)
 
+outputReferenceFromRow :: ByteString -> App.OutputReference
+outputReferenceFromRow bytes =
+    case B.runGetOrFail parser (BL.fromStrict bytes) of
+        Left (_remaining, _offset, hint) ->
+            error (toText hint)
+        Right (remaining, _offset, result) ->
+            if BL.null remaining
+            then result
+            else error "outputReferenceFromRow: non-empty remaining bytes"
+  where
+    parser = do
+        txId <- unsafeTransactionIdFromBytes <$> B.getByteString (digestSize @Blake2b_256)
+        outIx <- Ledger.TxIx . fromIntegral <$> B.getWord16be
+        pure (Ledger.TxIn txId outIx)
+
 extendedOutputReferenceFromRow :: ByteString -> App.ExtendedOutputReference
 extendedOutputReferenceFromRow bytes =
     case B.runGetOrFail parser (BL.fromStrict bytes) of
@@ -253,7 +281,7 @@ extendedOutputReferenceFromRow bytes =
         Right (remaining, _offset, result) ->
             if BL.null remaining
             then result
-            else error "outputReferenceFromRow: non-empty remaining bytes"
+            else error "extendedOutputReferenceFromRow: non-empty remaining bytes"
   where
     parser = do
         txId <- unsafeTransactionIdFromBytes <$> B.getByteString (digestSize @Blake2b_256)

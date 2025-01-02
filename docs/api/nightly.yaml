@@ -539,9 +539,6 @@ info:
       <input type="radio" checked name="tab" id="tab-mainnet">
       <label for="tab-mainnet">Mainnet</label>
 
-      <input type="radio" name="tab" id="tab-testnet">
-      <label for="tab-testnet">Testnet</label>
-
       <input type="radio" name="tab" id="tab-preview">
       <label for="tab-preview">Preview</label>
 
@@ -550,14 +547,15 @@ info:
 
       <div class="tab">
 
-      | Era Bound          | SlotNo   | Block Header Hash                                                |
-      | ---                | ---      | ---                                                              |
-      | Last Byron block   | 4492799  | f8084c61b6a238acec985b59310b6ecec49c0ab8352249afd7268da5cff2a457 |
-      | Last Shelley block | 16588737 | 4e9bbbb67e3ae262133d94c3da5bffce7b1127fc436e7433b87668dba34c354a |
-      | Last Allegra block | 23068793 | 69c44ac1dda2ec74646e4223bc804d9126f719b1c245dadc2ad65e8de1b276d7 |
-      | Last Mary block    | 39916796 | e72579ff89dc9ed325b723a33624b596c08141c7bd573ecfff56a1f7229e4d09 |
-      | Last Alonzo block  | 72316796 | c58a24ba8203e7629422a24d9dc68ce2ed495420bf40d9dab124373655161a20 |
-      | Last Babbage block | N/A      | N/A                                                              |
+      | Era Bound          | SlotNo    | Block Header Hash                                                |
+      | ---                | ---       | ---                                                              |
+      | Last Byron block   | 4492799   | f8084c61b6a238acec985b59310b6ecec49c0ab8352249afd7268da5cff2a457 |
+      | Last Shelley block | 16588737  | 4e9bbbb67e3ae262133d94c3da5bffce7b1127fc436e7433b87668dba34c354a |
+      | Last Allegra block | 23068793  | 69c44ac1dda2ec74646e4223bc804d9126f719b1c245dadc2ad65e8de1b276d7 |
+      | Last Mary block    | 39916796  | e72579ff89dc9ed325b723a33624b596c08141c7bd573ecfff56a1f7229e4d09 |
+      | Last Alonzo block  | 72316796  | c58a24ba8203e7629422a24d9dc68ce2ed495420bf40d9dab124373655161a20 |
+      | Last Babbage block | 133660799 | e757d57eb8dc9500a61c60a39fadb63d9be6973ba96ae337fd24453d4d15c343 |
+      | Last Conway block  | N/A       | N/A                                                              |
 
       See <a target="_blank" href="https://github.com/input-output-hk/cardano-configurations/tree/master/network/mainnet">configuration files for <strong>Mainnet</strong></a>.
       </div>
@@ -566,44 +564,28 @@ info:
 
       | Era Bound          | SlotNo   | Block Header Hash                                                |
       | ---                | ---      | ---                                                              |
-      | Last Byron block   | 1598399  | 7e16781b40ebf8b6da18f7b5e8ade855d6738095ef2f1c58c77e88b6e45997a4 |
-      | Last Shelley block | 13694363 | b596f9739b647ab5af901c8fc6f75791e262b0aeba81994a1d622543459734f2 |
-      | Last Allegra block | 18014387 | 9914c8da22a833a777d8fc1f735d2dbba70b99f15d765b6c6ee45fe322d92d93 |
-      | Last Mary block    | 36158304 | 2b95ce628d36c3f8f37a32c2942b48e4f9295ccfe8190bcbc1f012e1e97c79eb |
-      | Last Alonzo block  | 62510369 | d931221f9bc4cae34de422d9f4281a2b0344e86aac6b31eb54e2ee90f44a09b9 |
-      | Last Babbage block | N/A      | N/A                                                              |
-
-      > <sup><strong>WARNING</strong></sup> <br/>
-      >
-      > The testnet network is now deprecated and may be retired at any time. Use `Preview` or `Preprod` instead.
-
-      See <a target="_blank" href="https://github.com/input-output-hk/cardano-configurations/tree/master/network/testnet">configuration files for <strong>Testnet</strong></a>.
-      </div>
-
-      <div class="tab">
-
-      | Era Bound          | SlotNo | Block Header Hash                                                |
-      | ---                | ---    | ---                                                              |
-      | Last Byron block   | N/A    | N/A                                                              |
-      | Last Shelley block | N/A    | N/A                                                              |
-      | Last Allegra block | N/A    | N/A                                                              |
-      | Last Mary block    | N/A    | N/A                                                              |
-      | Last Alonzo block  | 259180 | 0ad91d3bbe350b1cfa05b13dba5263c47c5eca4f97b3a3105eba96416785a487 |
-      | Last Babbage block | N/A    | N/A                                                              |
+      | Last Byron block   | N/A      | N/A                                                              |
+      | Last Shelley block | N/A      | N/A                                                              |
+      | Last Allegra block | N/A      | N/A                                                              |
+      | Last Mary block    | N/A      | N/A                                                              |
+      | Last Alonzo block  | 259180   | 0ad91d3bbe350b1cfa05b13dba5263c47c5eca4f97b3a3105eba96416785a487 |
+      | Last Conway block  | 55814394 | bdd4baa2c81d0500a695f836332193ea06c2ce364e585057142220fc0782144c |
+      | Last Conway block  | N/A      | N/A                                                              |
 
       See <a target="_blank" href="https://github.com/input-output-hk/cardano-configurations/tree/master/network/preview">configuration files for <strong>Preview</strong></a>.
       </div>
 
       <div class="tab">
 
-      | Era Bound          | SlotNo  | Block Header Hash                                                |
-      | ---                | ---     | ---                                                              |
-      | Last Byron block   | 84242   | 45899e8002b27df291e09188bfe3aeb5397ac03546a7d0ead93aa2500860f1af |
-      | Last Shelley block | 518360  | f9d8b6c77fedd60c3caf5de0ce63a0aeb9d1753269c9c07503d9aa09d5144481 |
-      | Last Allegra block | 950340  | 74c03af754bcde9cd242c5a168689edcab1756a3f7ae4d5dca1a31d86839c7b1 |
-      | Last Mary block    | 1382348 | af5fddc7d16a349e1a2af8ba89f4f5d3273955a13095b3709ef6e3db576a0b33 |
-      | Last Alonzo block  | 3542390 | f93e682d5b91a94d8660e748aef229c19cb285bfb9830db48941d6a78183d81f |
-      | Last Babbage block | N/A     | N/A                                                              |
+      | Era Bound          | SlotNo   | Block Header Hash                                                |
+      | ---                | ---      | ---                                                              |
+      | Last Byron block   | 84242    | 45899e8002b27df291e09188bfe3aeb5397ac03546a7d0ead93aa2500860f1af |
+      | Last Shelley block | 518360   | f9d8b6c77fedd60c3caf5de0ce63a0aeb9d1753269c9c07503d9aa09d5144481 |
+      | Last Allegra block | 950340   | 74c03af754bcde9cd242c5a168689edcab1756a3f7ae4d5dca1a31d86839c7b1 |
+      | Last Mary block    | 1382348  | af5fddc7d16a349e1a2af8ba89f4f5d3273955a13095b3709ef6e3db576a0b33 |
+      | Last Alonzo block  | 3542390  | f93e682d5b91a94d8660e748aef229c19cb285bfb9830db48941d6a78183d81f |
+      | Last Babbage block | 68774372 | 36f5b4a370c22fd4a5c870248f26ac72c0ac0ecc34a42e28ced1a4e15136efa4 |
+      | Last Conway block  | N/A      | N/A                                                              |
 
       See <a target="_blank" href="https://github.com/input-output-hk/cardano-configurations/tree/master/network/preprod">configuration files for <strong>Preprod</strong></a>.
       </div>
@@ -779,6 +761,12 @@ components:
           type: string
           description: Some hint about what went wrong.
 
+    BinaryData:
+      type: string
+      description: A serialized Plutus' Data (datum or redeemer).
+      contentEncoding: base16
+      example: d87980
+
     Datum:
       title: Datum
       type: object
@@ -787,10 +775,7 @@ components:
       additionalProperties: false
       properties:
         datum:
-          type: string
-          description: A serialized Plutus' datum.
-          contentEncoding: base16
-          example: d87980
+          $ref: "#/components/schemas/BinaryData"
 
     DatumHash:
       description: A blake2b-256 hash digest of a Plutus' datum, if any.
@@ -898,6 +883,12 @@ components:
       example: 9d09...31bf
       minLength: 64
       maxLength: 64
+
+    InputIndex:
+      type: integer
+      description: The index of the input within the transaction carrying it.
+      minimum: 0
+      example: 1
 
     Metadata:
       type: object
@@ -1201,6 +1192,34 @@ components:
       minimum: 0
       example: 51540727
 
+    SpentAt:
+      title: SpentAt
+      type: object
+      additionalProperties: false
+      required:
+        - slot_no
+        - header_hash
+        - transaction_id
+        - input_index
+        - redeemer
+      properties:
+        slot_no:
+          $ref: "#/components/schemas/SlotNo"
+        header_hash:
+          $ref: "#/components/schemas/HeaderHash"
+        transaction_id:
+          oneOf:
+            - $ref: "#/components/schemas/TransactionId"
+            - type: "null"
+        input_index:
+          oneOf:
+            - $ref: "#/components/schemas/InputIndex"
+            - type: "null"
+        redeemer:
+          oneOf:
+            - $ref: "#/components/schemas/BinaryData"
+            - type: "null"
+
     TransactionId:
       type: string
       description: A blake2b-256 hash digest of a transaction body.
@@ -1281,7 +1300,7 @@ components:
         spent_at:
           description: Block reference at which this transaction input was spent, if any.
           oneOf:
-            - $ref: "#/components/schemas/Point"
+            - $ref: "#/components/schemas/SpentAt"
             - type: "null"
 
     Health:

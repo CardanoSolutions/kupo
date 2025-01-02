@@ -35,6 +35,7 @@ import Kupo.Data.Cardano
     , ExtendedOutputReference
     , Metadata
     , MetadataHash
+    , OutputReference
     , Point
     , Script
     , ScriptHash
@@ -427,6 +428,19 @@ decodePoint =
             Nothing -> fail "decodePoint"
             Just pt -> pure pt
 
+decodeRedeemer :: Json.Value -> Json.Parser BinaryData
+decodeRedeemer =
+    Json.withObject "Redeemer" $ \o -> do
+        bytes <- o .: "redeemer"
+        maybe (fail "failed to decode Redeemer") pure
+            (binaryDataFromBytes $ unsafeDecodeBase16 bytes)
+
+decodeInputReference :: Json.KeyMap Json.Value -> Json.Parser OutputReference
+decodeInputReference o = do
+    mkOutputReference
+        <$> (o .: "transaction_id" >>= decodeTransactionId)
+        <*> o .: "input_index"
+
 decodeAddress
     :: Text
     -> Json.Parser Address
@@ -541,3 +555,5 @@ decodeResult = Json.withObject "Result" $ \o -> Result
     <*> (decodeScriptReference =<< (o .:? "script_hash"))
     <*> (decodePoint =<< (o .: "created_at"))
     <*> (traverse decodePoint =<< (o .:? "spent_at"))
+    <*> (traverse decodeInputReference =<< (o .:? "spent_at"))
+    <*> (traverse decodeRedeemer =<< (o .:? "spent_at"))
