@@ -10,8 +10,8 @@ repository cardano-haskell-packages
     d4a35cd3121aa00d18544bb0ac01c3e1691d618f462c46129271bccf39f7e8ee
 
 index-state:
-  , hackage.haskell.org 2024-06-23T23:01:13Z
-  , cardano-haskell-packages 2024-07-03T01:26:49Z
+  , hackage.haskell.org 2024-10-10T00:52:24Z
+  , cardano-haskell-packages 2024-11-26T16:00:26Z
 
 packages:
   ./
@@ -46,19 +46,22 @@ package direct-sqlite
   flags: +nomutex
 
 constraints:
-  , any.cardano-node == 9.0.0
-  , any.cardano-ledger-core == 1.13.2.0
-  , any.cardano-ledger-conway == 1.16.0.0
-  , any.ouroboros-consensus == 0.20.0.0
-  , any.ouroboros-consensus-cardano == 0.18.0.0
-  , any.ouroboros-consensus-diffusion == 0.17.0.1
-  , any.ouroboros-network == 0.16.1.1
-  , any.plutus-core == 1.30.0.0
-  , any.plutus-ledger-api == 1.30.0.0
+  , any.cardano-node == 10.1.3
+
+  , any.cardano-ledger-core == 1.15.0.0
+  , any.cardano-ledger-shelley == 1.14.1.0
+  , any.cardano-ledger-conway == 1.17.3.0
+
+  , any.ouroboros-consensus == 0.21.0.0
+  , any.ouroboros-consensus-cardano == 0.20.0.0
+  , any.ouroboros-consensus-diffusion == 0.18.0.0
+  , any.ouroboros-network == 0.17.1.2
+
   , any.io-classes == 1.5.0.0
   , any.io-classes-mtl == 0.1.2.0
   , any.formatting == 7.2.0
   , any.text source
+
   , direct-sqlite == 2.3.29.1
   , sqlite-simple == 0.4.19.0.1
 
@@ -68,7 +71,7 @@ allow-newer:
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/ogmios
-  tag: 0316c754794477629dddfbffa55c2e743cb993ba
+  tag: ae876badb138f42dcd6d2389734b0c15502684ed
   -- NOTE
   -- I still don't know how to generate those. 'nix-prefetch-url' yields
   -- a different output on each invocation. I spent 15 minutes fiddling with

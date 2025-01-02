@@ -149,7 +149,7 @@ import qualified Test.Kupo.Data.Pattern.Fixture as Fixture
 spec :: Spec
 spec = do
     specification <- runIO $ do
-        Yaml.decodeFileThrow @IO @OpenApi "./docs/api/latest.yaml"
+        Yaml.decodeFileThrow @IO @OpenApi "./docs/api/nightly.yaml"
 
     parallel $ do
         specify "Preflight" $ do
