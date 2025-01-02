@@ -428,12 +428,16 @@ decodePoint =
             Nothing -> fail "decodePoint"
             Just pt -> pure pt
 
-decodeRedeemer :: Json.Value -> Json.Parser BinaryData
+decodeRedeemer :: Json.Value -> Json.Parser (Maybe BinaryData)
 decodeRedeemer =
     Json.withObject "Redeemer" $ \o -> do
-        bytes <- o .: "redeemer"
-        maybe (fail "failed to decode Redeemer") pure
-            (binaryDataFromBytes $ unsafeDecodeBase16 bytes)
+        redeemer <- o .:? "redeemer"
+        case redeemer of
+            Just bytes ->
+                maybe (fail "failed to decode Redeemer") (pure . Just)
+                    (binaryDataFromBytes $ unsafeDecodeBase16 bytes)
+            Nothing ->
+                pure Nothing
 
 decodeInputReference :: Json.KeyMap Json.Value -> Json.Parser OutputReference
 decodeInputReference o = do
@@ -556,4 +560,8 @@ decodeResult = Json.withObject "Result" $ \o -> Result
     <*> (decodePoint =<< (o .: "created_at"))
     <*> (traverse decodePoint =<< (o .:? "spent_at"))
     <*> (traverse decodeInputReference =<< (o .:? "spent_at"))
-    <*> (traverse decodeRedeemer =<< (o .:? "spent_at"))
+    <*> (do
+            spentAt <- o .:? "spent_at"
+            redeemer <- traverse decodeRedeemer spentAt
+            pure (join redeemer)
+        )
