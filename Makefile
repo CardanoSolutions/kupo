@@ -54,15 +54,17 @@ $(OUT)/share/kupo/LICENSE:
 
 $(BIN_DIR_PATH)/kupo:
 	@nix develop $(NIX_SHELL) $(NIX_OPTS) --command bash -c "cabal build kupo:exe:kupo $(PG_FLAG)"
+	@chmod +x $@
 ifeq ($(OS),macos)
 	@scripts/patch-nix-deps.sh $@
+	@chmod +x $@
+	@codesign -s - -f -vvvvvv $@
 endif
 
 $(OUT)/bin/kupo: $(BIN_DIR_PATH)/kupo
 	@mkdir -p $(@D)
 	@echo "$^ → $(@D)/kupo"
 	@cp $^ $(@D)
-	@chmod +x $@
 
 $(OUT)/lib:
 	@mkdir -p $@
