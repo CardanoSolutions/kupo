@@ -104,6 +104,9 @@ endif
 check: # Run tests; May require a running cardano-node for end-to-end scenarios
 	cabal test kupo:test:unit
 
+shell: # Start a nix-shell with appropriate context
+	@nix develop --no-write-lock-file --refresh "github:CardanoSolutions/devx#ghc$(NIX_GHC)-static-minimal-iog"
+
 man: $(OUT)/share/man/man1/kupo.1 # Build man page
 
 doc: # Serve the rendered documentation on \033[0;33m<http://localhost:8000>\033[00m
