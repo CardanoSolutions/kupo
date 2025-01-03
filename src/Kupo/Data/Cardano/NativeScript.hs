@@ -17,7 +17,7 @@ import Cardano.Ledger.Keys
     ( KeyHash (..)
     )
 
-import qualified Cardano.Ledger.Shelley.Scripts as Ledger.Shelley
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
+import qualified Cardano.Ledger.Shelley.Scripts as Ledger.Shelley
 
 type NativeScript = Ledger.Allegra.Timelock (ConwayEra StandardCrypto)

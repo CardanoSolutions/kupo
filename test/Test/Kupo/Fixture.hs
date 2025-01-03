@@ -169,8 +169,8 @@ someDatumInOutputHash = fromJust $ hashDatum $ Inline $ Right someDatumInOutput
 -- scripts for:
 --
 -- - 'someScriptInWitness'
--- - 'SomescriptInMetadata'
--- - 'SomeScriptInOutput'
+-- - 'somescriptInMetadata'
+-- - 'someScriptInOutput'
 somePointNearScripts :: Point
 somePointNearScripts = pointFromRow $ Checkpoint
     { checkpointSlotNo =

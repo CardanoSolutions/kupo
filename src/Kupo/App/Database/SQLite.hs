@@ -126,6 +126,9 @@ import Kupo.Data.Database
     , patternToSql
     , redeemerToRow
     )
+import Kupo.Data.Http.ReferenceFlag
+    ( ReferenceFlag (..)
+    )
 import Kupo.Data.Http.SlotRange
     ( Range (..)
     , RangeField (..)
@@ -182,6 +185,7 @@ import Text.URI
     ( URI
     )
 
+import qualified Data.ByteString as BS
 import qualified Data.Char as Char
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as T
@@ -493,7 +497,7 @@ copyDatabase (tr, progress) fromDir intoDir patterns = do
                     traceWith tr $ DatabaseImportTable { table = "inputs", pattern = patternToText pattern_ }
                     copyTable
                         (runTransaction from $ countInputs from pattern_)
-                        (runTransaction from . foldInputs from pattern_ Whole NoStatusFlag Asc)
+                        (runTransaction from . foldInputs from pattern_ Whole NoStatusFlag AsReference Asc)
                         (runTransaction into . insertInputs into)
                         DB.resultToRow
                     traceWith tr $ DatabaseImportTable { table = "policies", pattern = patternToText pattern_ }
@@ -647,12 +651,8 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             traceExecute tr conn pruneInputsQry [ SQLInteger (fromIntegral longestRollback) ]
         changes conn
 
-    , foldInputs = \pattern_ slotRange statusFlag sortDirection yield -> ReaderT $ \conn -> do
-        -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
-        --
-        -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
-        let (datum, refScript) = (Nothing, Nothing)
-        Sqlite.fold_ conn (foldInputsQry pattern_ slotRange statusFlag sortDirection) () $ \() -> \case
+    , foldInputs = \pattern_ slotRange statusFlag referenceFlag sortDirection yield -> ReaderT $ \conn -> do
+        Sqlite.fold_ conn (foldInputsQry pattern_ slotRange statusFlag referenceFlag sortDirection) () $ \() -> \case
             [  SQLBlob extendedOutputReference
              , SQLText address
              , SQLBlob value
@@ -664,8 +664,12 @@ mkDatabase tr mode longestRollback bracketConnection = Database
              , matchMaybeBytes -> spentAtHeaderHash
              , matchMaybeBytes -> spentBy
              , matchMaybeBytes -> spentWith
+             , matchMaybeBytes -> datumBinaryData
+             , matchMaybeBytes -> scriptBinaryData
              ] ->
-                yield (DB.resultFromRow DB.Input{..})
+                let datum = liftA2 DB.BinaryData (BS.drop 1 <$> datumInfo) datumBinaryData
+                    refScript = liftA2 DB.ScriptReference refScriptHash scriptBinaryData
+                 in yield (DB.resultFromRow DB.Input{..})
             (xs :: [SQLData]) ->
                 throwIO (UnexpectedRow (patternToText pattern_) [xs])
 
@@ -911,18 +915,27 @@ foldInputsQry
     :: Pattern
     -> Range SlotNo
     -> StatusFlag
+    -> ReferenceFlag
     -> SortDirection
     -> Query
-foldInputsQry pattern_ slotRange statusFlag sortDirection =
+foldInputsQry pattern_ slotRange statusFlag referenceFlag sortDirection =
     Query $ "SELECT \
       \inputs.ext_output_reference, inputs.address, inputs.value, \
       \inputs.datum_info, inputs.script_hash, \
       \inputs.created_at, createdAt.header_hash, \
       \inputs.spent_at, spentAt.header_hash, \
-      \inputs.spent_by, inputs.spent_with \
-    \FROM (" <> inputs <> ") inputs \
+      \inputs.spent_by, inputs.spent_with"
+    <> case referenceFlag of
+         AsReference -> ", NULL as datum, NULL as script"
+         InlineAll -> ", datums.binary_data as datum, scripts.script as script"
+    <> " FROM (" <> inputs <> ") inputs \
     \JOIN checkpoints AS createdAt ON createdAt.slot_no = inputs.created_at \
     \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = inputs.spent_at"
+    <> case referenceFlag of
+         AsReference -> ""
+         InlineAll ->
+            " LEFT OUTER JOIN binary_data as datums ON datums.binary_data_hash = inputs.datum_hash\
+            \ LEFT OUTER JOIN scripts ON scripts.script_hash = inputs.script_hash"
     <> case statusFlag of
         NoStatusFlag -> ""
         OnlyUnspent -> " WHERE spentAt.header_hash IS NULL"

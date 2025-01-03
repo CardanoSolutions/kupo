@@ -27,8 +27,8 @@ import Kupo.Data.Cardano
     , emptyMetadata
     )
 
-import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
 -- | A partial representation of a Cardano Block. This only contains bits that
 -- are relevant to kupo. Rest isn't indexed.

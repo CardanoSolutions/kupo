@@ -115,6 +115,7 @@ library
       Kupo.Data.Http.ForcedRollback
       Kupo.Data.Http.GetCheckpointMode
       Kupo.Data.Http.OrderMatchesBy
+      Kupo.Data.Http.ReferenceFlag
       Kupo.Data.Http.Response
       Kupo.Data.Http.SlotRange
       Kupo.Data.Http.Status

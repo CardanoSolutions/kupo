@@ -74,6 +74,9 @@ import Kupo.Data.Http.ForcedRollback
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..)
     )
+import Kupo.Data.Http.ReferenceFlag
+    ( ReferenceFlag (..)
+    )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..)
     )
@@ -129,6 +132,7 @@ data HttpClient (m :: Type -> Type) = HttpClient
         :: GetCheckpointMode -> SlotNo -> m (Maybe Point)
     , getAllMatches
         :: StatusFlag
+        -> ReferenceFlag
         -> m [Result]
     , putPatternSince
         :: Pattern
@@ -167,7 +171,7 @@ newHttpClientWith manager (serverHost, serverPort) log =
         , getCheckpointBySlot =
             \a0 a1 -> waitForServer >> _getCheckpointBySlot a0 a1
         , getAllMatches =
-            \a0 -> waitForServer >> _getAllMatches a0
+            \a0 a1 -> waitForServer >> _getAllMatches a0 a1
         , putPatternSince =
             \a0 a1 -> waitForServer >> _putPatternSince a0 a1
         , listPatterns =
@@ -234,12 +238,15 @@ newHttpClientWith manager (serverHost, serverPort) log =
         let body = responseBody res
         pure $ either (const Nothing) Just (eitherDecodeJson decodePoint body)
 
-    _getAllMatches :: StatusFlag -> IO [Result]
-    _getAllMatches st = do
-        let q = case st of
-                 NoStatusFlag -> ""
-                 OnlySpent -> "?spent"
-                 OnlyUnspent -> "?unspent"
+    _getAllMatches :: StatusFlag -> ReferenceFlag -> IO [Result]
+    _getAllMatches st ref = do
+        let q = case (st, ref) of
+                 (NoStatusFlag, AsReference) -> ""
+                 (NoStatusFlag, InlineAll) -> "?resolve_hashes"
+                 (OnlySpent, AsReference) -> "?spent"
+                 (OnlySpent, InlineAll) -> "?spent&resolve_hashes"
+                 (OnlyUnspent, AsReference) -> "?unspent"
+                 (OnlyUnspent, InlineAll) -> "?resolve_hashes&unspent"
         req <- parseRequest (baseUrl <> "/matches" <> q)
         res <- httpLbs req manager
         let body = responseBody res
@@ -287,16 +294,8 @@ newHttpClientWith manager (serverHost, serverPort) log =
                 fail (show e)
             Right Json.Null -> do
                 pure Nothing
-            Right val -> maybe (fail "failed to decode Script.") (pure . Just) $ do
-                bytes <- val ^? key "script" . _String
-                lang <- val ^? key "language" . _String
-                prefix <- case lang of
-                    "native" -> Just "00"
-                    "plutus:v1" -> Just "01"
-                    "plutus:v2" -> Just "02"
-                    "plutus:v3" -> Just "03"
-                    _ -> Nothing
-                scriptFromBytes (unsafeDecodeBase16 (prefix <> bytes))
+            Right val ->
+                Just <$> decodeScript val
 
     _waitScript :: ScriptHash -> IO Script
     _waitScript scriptHash = do
@@ -470,17 +469,31 @@ decodeDatumHash k = do
 decodeDatum
     :: Maybe Text
     -> Maybe Text
+    -> Maybe Text
     -> Json.Parser Datum
-decodeDatum mDatumType mRef =
-    case (mDatumType, mRef) of
+decodeDatum mDatumType mRef mDatum =
+    case (mDatumType, mDatum) of
         (Nothing, Nothing) ->
             pure NoDatum
-        (Just "inline", Just ref) ->
-            Inline . Left <$> decodeDatumHash ref
-        (Just "hash", Just ref) ->
-            Reference . Left <$> decodeDatumHash ref
-        _unexpectedResponse ->
-            fail $ "decodeDatum: malformed datum response: " <> show (mDatumType, mRef)
+        (Just "inline", Just bytes) ->
+            maybe
+                (fail "invalid datum")
+                (pure . Inline . Right)
+                (binaryDataFromBytes (unsafeDecodeBase16 bytes))
+        (Just "hash", Just bytes) ->
+            maybe
+                (fail "invalid datum")
+                (pure . Reference . Right)
+                (binaryDataFromBytes (unsafeDecodeBase16 bytes))
+        _ -> case (mDatumType, mRef) of
+            (Nothing, Nothing) ->
+                pure NoDatum
+            (Just "inline", Just ref) ->
+                Inline . Left <$> decodeDatumHash ref
+            (Just "hash", Just ref) ->
+                Reference . Left <$> decodeDatumHash ref
+            _unexpectedResponse ->
+                fail $ "decodeDatum: malformed datum response: " <> show (mDatumType, mRef)
 
 decodeScriptHash
     :: Text
@@ -496,12 +509,16 @@ decodeScriptHash k = do
 
 decodeScriptReference
     :: Maybe Text
+    -> Maybe Json.Value
     -> Json.Parser ScriptReference
-decodeScriptReference = \case
-    Nothing ->
-        pure NoScript
-    Just str ->
-        ReferencedScript <$> decodeScriptHash str
+decodeScriptReference mScriptHash mScript =
+    case (mScriptHash, mScript) of
+        (Nothing, Nothing) ->
+            pure NoScript
+        (Just scriptHash, Nothing) ->
+            ReferencedScript <$> decodeScriptHash scriptHash
+        (_, Just script) ->
+            InlineScript <$> decodeScript script
 
 decodeTransactionId
     :: Text
@@ -538,6 +555,22 @@ decodeHash
 decodeHash =
     maybe empty pure . hashFromTextAsHex
 
+decodeScript
+    :: MonadFail m
+    => Json.Value
+    -> m Script
+decodeScript obj = do
+    maybe (fail "failed to decode Script.") pure $ do
+        bytes <- obj ^? key "script" . _String
+        lang <- obj ^? key "language" . _String
+        prefix <- case lang of
+            "native" -> Just "00"
+            "plutus:v1" -> Just "01"
+            "plutus:v2" -> Just "02"
+            "plutus:v3" -> Just "03"
+            _ -> Nothing
+        scriptFromBytes (unsafeDecodeBase16 (prefix <> bytes))
+
 decodeMetadata
     :: Json.Value
     -> Json.Parser (MetadataHash, Metadata)
@@ -555,8 +588,8 @@ decodeResult = Json.withObject "Result" $ \o -> Result
     <$> (decodeOutputReference o)
     <*> (decodeAddress =<< (o .: "address"))
     <*> (decodeValue =<< (o .: "value"))
-    <*> join (liftA2 decodeDatum (o .:? "datum_type") (o .:? "datum_hash"))
-    <*> (decodeScriptReference =<< (o .:? "script_hash"))
+    <*> join (liftA3 decodeDatum (o .:? "datum_type") (o .:? "datum_hash") (o .:? "datum"))
+    <*> join (liftA2 decodeScriptReference (o .:? "script_hash") (o .:? "script"))
     <*> (decodePoint =<< (o .: "created_at"))
     <*> (traverse decodePoint =<< (o .:? "spent_at"))
     <*> (traverse decodeInputReference =<< (o .:? "spent_at"))

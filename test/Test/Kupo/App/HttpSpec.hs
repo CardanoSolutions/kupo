@@ -199,6 +199,12 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson True schema
 
+        session specification get "/matches?resolve_hashes" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?resolve_hashes"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson True schema
+
         session specification get "/matches?spent" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?spent"
@@ -535,7 +541,7 @@ databaseStub = Database
         \_ -> lift (generate arbitrary)
     , insertInputs =
         \_ -> return ()
-    , foldInputs = \_ _ _ _ callback -> lift $ do
+    , foldInputs = \_ _ _ _ _ callback -> lift $ do
         rows <- generate (listOf1 genResult)
         mapM_ callback rows
     , deleteInputs =

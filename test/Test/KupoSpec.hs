@@ -68,7 +68,9 @@ import Kupo.Control.MonadTime
     , timeout
     )
 import Kupo.Data.Cardano
-    ( Point
+    ( Datum (..)
+    , Point
+    , ScriptReference (..)
     , getPointSlotNo
     , hasPolicyId
     , mkOutputReference
@@ -88,6 +90,9 @@ import Kupo.Data.Configuration
     )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..)
+    )
+import Kupo.Data.Http.ReferenceFlag
+    ( ReferenceFlag (..)
     )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..)
@@ -172,6 +177,9 @@ import Type.Reflection
 import Control.Monad.Class.MonadThrow
     ( throwIO
     )
+import Kupo.Data.Configuration
+    ( Since (..)
+    )
 import Kupo.Data.Health
     ( ConnectionStatus (..)
     , Health (..)
@@ -184,9 +192,6 @@ import System.IO
 import qualified Data.Aeson as Json
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as Builder
-import Kupo.Data.Configuration
-    ( Since (..)
-    )
 import qualified Prelude
 
 varCardanoNodeSocket :: String
@@ -226,7 +231,7 @@ spec = skippableContext "End-to-end" $ do
             }
         runSpec env 5 $ do
             waitSlot (> 0)
-            matches <- getAllMatches NoStatusFlag
+            matches <- getAllMatches NoStatusFlag AsReference
             matches `shouldSatisfy` not . null
 
     endToEnd "in-memory" $ \(configure, runSpec, HttpClient{..}) -> do
@@ -342,7 +347,7 @@ spec = skippableContext "End-to-end" $ do
             }
         runSpec env 30 $ do
             waitSlot (> 50_000)
-            matches <- getAllMatches NoStatusFlag
+            matches <- getAllMatches NoStatusFlag AsReference
             all (isNothing . spentAt) matches `shouldBe` True
 
     endToEnd "Retrieve checkpoints and ancestors" $ \(configure, runSpec, HttpClient{..}) -> do
@@ -370,17 +375,38 @@ spec = skippableContext "End-to-end" $ do
             { since = Just (SincePoint lastAlonzoPoint)
             , patterns = fromList [MatchAny OnlyShelley]
             }
+
+        let extractInline = mapMaybe $ \Result { datum } ->
+                case datum of
+                  Reference (Right binaryData) -> Just binaryData
+                  Inline (Right binaryData) -> Just binaryData
+                  _ -> Nothing
+
         runSpec env 20 $ do
             waitDatum someDatumInWitnessHash
                 `shouldReturn` someDatumInWitness
             waitDatum someDatumInOutputHash
                 `shouldReturn` someDatumInOutput
 
+            whenRefs <- getAllMatches NoStatusFlag AsReference <&> extractInline
+            whenRefs `shouldSatisfy` notElem someDatumInWitness
+            whenRefs `shouldSatisfy` notElem someDatumInOutput
+
+            whenInline <- getAllMatches NoStatusFlag InlineAll <&> extractInline
+            whenInline `shouldSatisfy` elem someDatumInWitness
+            whenInline `shouldSatisfy` elem someDatumInOutput
+
     endToEnd "Retrieve scripts associated with script hashes" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
             { since = Just (SincePoint somePointNearScripts)
             , patterns = fromList [MatchAny OnlyShelley]
             }
+
+        let extractInline = mapMaybe $ \Result { scriptReference } ->
+                case scriptReference of
+                  InlineScript script -> Just script
+                  _ -> Nothing
+
         runSpec env 20 $ do
             waitScript someScriptInWitnessHash
                 `shouldReturn` someScriptInWitness
@@ -388,6 +414,13 @@ spec = skippableContext "End-to-end" $ do
                 `shouldReturn` someScriptInMetadata
             waitScript someScriptInOutputHash
                 `shouldReturn` someScriptInOutput
+
+            whenRefs <- getAllMatches NoStatusFlag AsReference <&> extractInline
+            whenRefs `shouldSatisfy` notElem someScriptInOutput
+
+            whenInline <- getAllMatches NoStatusFlag InlineAll <&> extractInline
+            whenInline `shouldSatisfy` elem someScriptInOutput
+
 
     endToEnd "Dynamically add pattern and restart to a past point when syncing" $ \(configure, runSpec, HttpClient{..}) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
@@ -406,13 +439,13 @@ spec = skippableContext "End-to-end" $ do
         ref <- newIORef ([], [])
         runSpec env 10 $ do
             waitSlot (>= maxSlot)
-            xs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
+            xs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag AsReference
             xs `shouldNotBe` []
             res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right lastByronPoint)
             res `shouldBe` True
             waitSlot (< maxSlot) -- Observe rollback
             waitSlot (>= maxSlot)
-            ys <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
+            ys <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag AsReference
             (xs \\ ys) `shouldBe` []
             (sort <$> listPatterns) `shouldReturn`
                 [ MatchDelegation someStakeKey
@@ -428,7 +461,7 @@ spec = skippableContext "End-to-end" $ do
                 }
             runSpec env' 10 $ do
                 waitSlot (>= maxSlot)
-                zs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag
+                zs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag AsReference
                 ys \\ zs `shouldBe` xs
 
     endToEnd "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(configure, runSpec, HttpClient{..})  -> do
@@ -472,7 +505,7 @@ spec = skippableContext "End-to-end" $ do
                 ]
             }
         runSpec env 10 $ waitUntilM $ do
-            outRefs <- fmap outputReference <$> getAllMatches NoStatusFlag
+            outRefs <- fmap outputReference <$> getAllMatches NoStatusFlag AsReference
             return $
                 (mkOutputReference someTransactionId 0, 0) `elem` outRefs
                 &&
@@ -484,7 +517,7 @@ spec = skippableContext "End-to-end" $ do
             , patterns = fromList [MatchPolicyId somePolicyId]
             }
         runSpec env 10 $ waitUntilM $ do
-            values <- fmap value <$> getAllMatches NoStatusFlag
+            values <- fmap value <$> getAllMatches NoStatusFlag AsReference
             return $ all (`hasPolicyId` somePolicyId) values
 
     endToEnd "Fetch metadata by slot" $ \(configure, runSpec, HttpClient{..}) -> do
@@ -507,9 +540,9 @@ spec = skippableContext "End-to-end" $ do
         runSpec env 10 $ do
             let predicate = (== (mkOutputReference somePhase2FailedTransactionIdWithReturn 1)) . fst . outputReference
             waitUntilM $ do
-                results <- getAllMatches NoStatusFlag
+                results <- getAllMatches NoStatusFlag AsReference
                 return (any predicate results)
-            let matches = find predicate <$> getAllMatches NoStatusFlag
+            let matches = find predicate <$> getAllMatches NoStatusFlag AsReference
             matches >>= \case
                 Nothing -> fail "impossible: the result disappeared?"
                 Just r  -> value r `shouldBe` unsafeValueFromList 7_000_000 []

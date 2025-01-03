@@ -79,6 +79,15 @@ invalidPatterns validPatterns =
         , details = Nothing
         }
 
+invalidReferenceFlag :: Response
+invalidReferenceFlag =
+    responseJson status400 Default.headers $ HttpError
+        { hint = "Invalid query operator! Datums & scripts can be provided inline \
+                 \using the HTTP query flag '?resolve_hashes'. In case of doubts, \
+                 \check the documentation at: <https://cardanosolutions.github.io/kupo#operation/getAllMatches>!"
+        , details = Nothing
+        }
+
 invalidStatusFlag :: Response
 invalidStatusFlag =
     responseJson status400 Default.headers $ HttpError

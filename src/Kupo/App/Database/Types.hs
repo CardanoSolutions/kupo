@@ -50,6 +50,9 @@ import Kupo.Data.Configuration
 import Kupo.Data.Database
     ( SortDirection (..)
     )
+import Kupo.Data.Http.ReferenceFlag
+    ( ReferenceFlag (..)
+    )
 import Kupo.Data.Http.SlotRange
     ( Range (..)
     )
@@ -96,6 +99,7 @@ data Database (m :: Type -> Type) = Database
         :: Pattern
         -> Range SlotNo
         -> StatusFlag
+        -> ReferenceFlag
         -> SortDirection
         -> (Result -> m ())
         -> DBTransaction m ()

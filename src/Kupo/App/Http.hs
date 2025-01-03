@@ -113,6 +113,9 @@ import Kupo.Data.Http.GetCheckpointMode
 import Kupo.Data.Http.OrderMatchesBy
     ( orderMatchesBy
     )
+import Kupo.Data.Http.ReferenceFlag
+    ( referenceFlagFromQueryParams
+    )
 import Kupo.Data.Http.Response
     ( responseJson
     , responseJsonEncoding
@@ -559,13 +562,16 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
     statusFlag <- statusFlagFromQueryParams queryParams
         `orAbort` Errors.invalidStatusFlag
 
+    referenceFlag <- referenceFlagFromQueryParams queryParams
+        `orAbort` Errors.invalidReferenceFlag
+
     yieldIf <- (mkYieldIf pattern_ <$> filterMatchesBy queryParams)
         `orAbort` Errors.invalidMatchFilter
 
     sortDirection <- mkSortDirection <$> orderMatchesBy queryParams
         `orAbort` Errors.invalidSortDirection
 
-    pure $ responseStreamJson headers resultToJson $ \yield done -> do
+    pure $ responseStreamJson headers (resultToJson referenceFlag) $ \yield done -> do
         let assertPointExists :: Point -> DBTransaction IO ()
             assertPointExists requested = do
                 let nextSlot = next (getPointSlotNo requested)
@@ -579,7 +585,7 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
                         throwIO ErrPointNotFound{requested}
         runTransaction $ do
             slotRange <- intoSlotRange assertPointExists assertPointExists pointRange
-            foldInputs pattern_ slotRange statusFlag sortDirection (yieldIf yield)
+            foldInputs pattern_ slotRange statusFlag referenceFlag sortDirection (yieldIf yield)
         done
   where
     -- NOTE: kupo does support two different ways for fetching results, via query parameters or via

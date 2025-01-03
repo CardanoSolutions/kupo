@@ -12,10 +12,10 @@ import Kupo.Data.Cardano.OutputIndex
     ( InputIndex
     )
 
-import qualified Data.Map as Map
+import qualified Cardano.Ledger.Alonzo.Scripts as Ledger
 import qualified Cardano.Ledger.Alonzo.TxWits as Ledger
 import qualified Cardano.Ledger.Conway.Scripts as Ledger
-import qualified Cardano.Ledger.Alonzo.Scripts as Ledger
+import qualified Data.Map as Map
 
 data Redeemers
     = RedeemersAlonzo (Ledger.Redeemers (AlonzoEra StandardCrypto))

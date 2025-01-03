@@ -761,7 +761,7 @@ components:
           type: string
           description: Some hint about what went wrong.
 
-    BinaryData:
+    BinaryData: &BinaryData
       type: string
       description: A serialized Plutus' Data (datum or redeemer).
       contentEncoding: base16
@@ -1161,6 +1161,7 @@ components:
             - native
             - 'plutus:v1'
             - 'plutus:v2'
+            - 'plutus:v3'
         script:
           type: string
           description: A serialized script (native or Plutus).
@@ -1290,10 +1291,23 @@ components:
           $ref: "#/components/schemas/Value"
         datum_hash:
           $ref: "#/components/schemas/DatumHash"
+        datum:
+          description: The resolved datum, if available. The field is only and always present (yet may be `null`) if `?resolve_hashes` was set.
+          oneOf:
+            - <<: *BinaryData
+              description: A serialized Plutus' Data.
+            - type: "null"
+              description: None or unknown datum.
         datum_type:
           $ref: "#/components/schemas/DatumType"
         script_hash:
           $ref: "#/components/schemas/ScriptHash"
+        script:
+          description: The resolved script, if available. The field is only and always present (yet may be `null`) if `?resolve_hashes` was set.
+          oneOf:
+            - $ref: "#/components/schemas/Script"
+            - type: "null"
+              description: None or unknown script.
         created_at:
           <<: *Point
           description: Block reference at which this transaction was included in the ledger.
@@ -1557,6 +1571,14 @@ components:
         > Query filters are slower than path-parameters. If you only need to match for a
         > specific policy id, use an explicit [Pattern](#section/Patterns) as _path-parameter_ instead.
 
+    resolve-hashes:
+      name: resolve_hashes
+      in: query
+      required: false
+      allowEmptyValue: true
+      description: |
+        A query flag (i.e. `?resolve_hashes`) to resolve hash references and include `datum` and `script` when available.
+
     script-hash:
       name: script_hash
       in: path
@@ -1752,8 +1774,12 @@ paths:
       summary: Get All Matches
       description: |
         Retrieve all matches from the database, in descending `slot_no` order. Results are streamed to the client for more efficiency.
-        Note that this is generally a bad idea for indexes built off permissive patterns (e.g. `*`) for the server will yield a large response.
+
+        Optionally, use `?resolve_hashes` to automatically resolve and include `datum` and `script` associated with hash references, if available. Datums and scripts can otherwise be fetched using the [_Get Datum by Hash_](#tag/Datums/paths/~1datums~1{datum-hash}/get) and [_Get Script by Hash_](#tag/Scripts/paths/~1scripts~1{script-hash}/get) endpoints respectively.
+
+        Note that it is generally a bad idea to fetch **ALL matches** for indexes built off permissive patterns (e.g. `*`), for the server will yield a large response.
       parameters:
+        - $ref: "#/components/parameters/resolve-hashes"
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
         - $ref: "#/components/parameters/order"
@@ -1788,6 +1814,7 @@ paths:
         See [Patterns](#section/Patterns) for more information about constructing patterns.
       parameters:
         - $ref: "#/components/parameters/pattern"
+        - $ref: "#/components/parameters/resolve-hashes"
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
         - $ref: "#/components/parameters/order"

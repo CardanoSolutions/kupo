@@ -106,6 +106,9 @@ import Kupo.Data.Database
     , scriptReferenceFromRow
     , scriptReferenceToRow
     )
+import Kupo.Data.Http.ReferenceFlag
+    ( ReferenceFlag (..)
+    )
 import Kupo.Data.Http.SlotRange
     ( Range (..)
     , RangeField (..)
@@ -307,11 +310,11 @@ spec = parallel $ do
                             insertCheckpoints (mapMaybe spentAt results)
 
                         qAsc <- newTBQueueIO (fromIntegral $ length results)
-                        runTransaction $ foldInputs matchAll Whole NoStatusFlag Asc
+                        runTransaction $ foldInputs matchAll Whole NoStatusFlag AsReference Asc
                             (atomically . writeTBQueue qAsc)
 
                         qDesc <- newTBQueueIO (fromIntegral $ length results)
-                        runTransaction $ foldInputs matchAll Whole NoStatusFlag Desc
+                        runTransaction $ foldInputs matchAll Whole NoStatusFlag AsReference Desc
                             (atomically . writeTBQueue qDesc)
 
                         atomically $ (,) <$> flushTBQueue qAsc <*> flushTBQueue qDesc
@@ -473,6 +476,13 @@ spec = parallel $ do
                     , "USE TEMP B-TREE FOR ORDER BY"
                     ]
 
+            let suffixInline =
+                    Prelude.init suffix ++
+                        [ "SEARCH datums USING INDEX sqlite_autoindex_binary_data_1 (binary_data_hash=?) LEFT-JOIN"
+                        , "SEARCH scripts USING INDEX sqlite_autoindex_scripts_1 (script_hash=?) LEFT-JOIN"
+                        , Prelude.last suffix
+                        ]
+
             context "pruneBinaryData" $ do
                 specifyQuery "pruneBinaryData" installIndexes
                     (pure pruneBinaryDataQry)
@@ -491,10 +501,23 @@ spec = parallel $ do
                         <$> fmap MatchExact genAddress
                         <*> pure Whole
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
+                    )
+
+                specifyQuery "NoStatusFlag + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure Whole
+                        <*> pure NoStatusFlag
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffixInline )
                     )
 
                 specifyQuery "Created After" installIndexes
@@ -502,10 +525,23 @@ spec = parallel $ do
                         <$> fmap MatchExact genAddress
                         <*> pure (After CreatedAt 14)
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
+                    )
+
+                specifyQuery "Created After + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure (After CreatedAt 14)
+                        <*> pure NoStatusFlag
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffixInline )
                     )
 
                 specifyQuery "Spent Before" installIndexes
@@ -513,10 +549,23 @@ spec = parallel $ do
                         <$> fmap MatchExact genAddress
                         <*> pure (Before SpentAt 14)
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
+                    )
+
+                specifyQuery "Spent Before + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure (Before SpentAt 14)
+                        <*> pure NoStatusFlag
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffixInline )
                     )
 
                 specifyQuery "Created Between" installIndexes
@@ -524,10 +573,23 @@ spec = parallel $ do
                         <$> fmap MatchExact genAddress
                         <*> pure (Between (CreatedAt, 14) (CreatedAt, 42))
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
+                    )
+
+                specifyQuery "Created Between + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure (Between (CreatedAt, 14) (CreatedAt, 42))
+                        <*> pure NoStatusFlag
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffixInline )
                     )
 
                 specifyQuery "Spent Between" installIndexes
@@ -535,10 +597,23 @@ spec = parallel $ do
                         <$> fmap MatchExact genAddress
                         <*> pure (Between (SpentAt, 14) (SpentAt, 42))
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
+                    )
+
+                specifyQuery "Spent Between + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure (Between (SpentAt, 14) (SpentAt, 42))
+                        <*> pure NoStatusFlag
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffixInline )
                     )
 
                 specifyQuery "Created/Spent Between" installIndexes
@@ -546,6 +621,7 @@ spec = parallel $ do
                         <$> fmap MatchExact genAddress
                         <*> pure (Between (CreatedAt, 14) (SpentAt, 42))
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -557,10 +633,23 @@ spec = parallel $ do
                         <$> fmap MatchExact genAddress
                         <*> pure Whole
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
+                    )
+
+                specifyQuery "OnlyUnspent + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchExact genAddress
+                        <*> pure Whole
+                        <*> pure OnlyUnspent
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffixInline )
                     )
 
                 specifyQuery "Created Before" installIndexes
@@ -568,6 +657,7 @@ spec = parallel $ do
                         <$> fmap MatchExact genAddress
                         <*> pure (Before CreatedAt 42)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -579,6 +669,7 @@ spec = parallel $ do
                         <$> fmap MatchExact genAddress
                         <*> pure (Before SpentAt 42)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -590,6 +681,7 @@ spec = parallel $ do
                         <$> fmap MatchExact genAddress
                         <*> pure Whole
                         <*> pure OnlySpent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -607,10 +699,23 @@ spec = parallel $ do
                         <$> fmap MatchPayment (genBytes 28)
                         <*> pure Whole
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)" : suffix )
+                    )
+
+                specifyQuery "NoStatusFlag + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchPayment (genBytes 28)
+                        <*> pure Whole
+                        <*> pure NoStatusFlag
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByPaymentCredential (payment_credential=?)" : suffixInline )
                     )
 
                 specifyQuery "Created Before" installIndexes
@@ -618,6 +723,7 @@ spec = parallel $ do
                         <$> fmap MatchPayment (genBytes 28)
                         <*> pure (Before CreatedAt 42)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -629,6 +735,7 @@ spec = parallel $ do
                         <$> fmap MatchPayment (genBytes 28)
                         <*> pure (After SpentAt 42)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -640,6 +747,7 @@ spec = parallel $ do
                         <$> fmap MatchPayment (genBytes 28)
                         <*> pure (Between (CreatedAt, 14) (CreatedAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -651,6 +759,7 @@ spec = parallel $ do
                         <$> fmap MatchPayment (genBytes 28)
                         <*> pure (Between (SpentAt, 14) (SpentAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -662,6 +771,7 @@ spec = parallel $ do
                         <$> fmap MatchPayment (genBytes 28)
                         <*> pure (Between (CreatedAt, 14) (SpentAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -673,6 +783,7 @@ spec = parallel $ do
                         <$> fmap MatchPayment (genBytes 28)
                         <*> pure Whole
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -684,6 +795,7 @@ spec = parallel $ do
                         <$> fmap MatchPayment (genBytes 28)
                         <*> pure Whole
                         <*> pure OnlySpent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -701,10 +813,23 @@ spec = parallel $ do
                         <$> fmap MatchDelegation (genBytes 28)
                         <*> pure Whole
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)" : suffix )
+                    )
+
+                specifyQuery "NoStatusFlag + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchDelegation (genBytes 28)
+                        <*> pure Whole
+                        <*> pure NoStatusFlag
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByAddress (address>? AND address<?)" : suffixInline )
                     )
 
                 specifyQuery "Created After" installIndexes
@@ -712,6 +837,7 @@ spec = parallel $ do
                         <$> fmap MatchDelegation (genBytes 28)
                         <*> pure (After CreatedAt 14)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -723,6 +849,7 @@ spec = parallel $ do
                         <$> fmap MatchDelegation (genBytes 28)
                         <*> pure (Before SpentAt 42)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -734,6 +861,7 @@ spec = parallel $ do
                         <$> fmap MatchDelegation (genBytes 28)
                         <*> pure (Between (CreatedAt, 14) (CreatedAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -745,6 +873,7 @@ spec = parallel $ do
                         <$> fmap MatchDelegation (genBytes 28)
                         <*> pure (Between (SpentAt, 14) (SpentAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -756,6 +885,7 @@ spec = parallel $ do
                         <$> fmap MatchDelegation (genBytes 28)
                         <*> pure (Between (SpentAt, 14) (CreatedAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -767,6 +897,7 @@ spec = parallel $ do
                         <$> fmap MatchDelegation (genBytes 28)
                         <*> pure Whole
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -778,6 +909,7 @@ spec = parallel $ do
                         <$> fmap MatchDelegation (genBytes 28)
                         <*> pure Whole
                         <*> pure OnlySpent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -795,10 +927,23 @@ spec = parallel $ do
                         <$> fmap MatchTransactionId genTransactionId
                         <*> pure Whole
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
                         ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference>? AND output_reference<?)" : suffix )
+                    )
+
+                specifyQuery "NoStatusFlag + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchTransactionId genTransactionId
+                        <*> pure Whole
+                        <*> pure NoStatusFlag
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsByOutputReference (output_reference>? AND output_reference<?)" : suffixInline )
                     )
 
                 specifyQuery "Created Before" installIndexes
@@ -806,6 +951,7 @@ spec = parallel $ do
                         <$> fmap MatchTransactionId genTransactionId
                         <*> pure (Before CreatedAt 42)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -817,6 +963,7 @@ spec = parallel $ do
                         <$> fmap MatchTransactionId genTransactionId
                         <*> pure (After SpentAt 14)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -828,6 +975,7 @@ spec = parallel $ do
                         <$> fmap MatchTransactionId genTransactionId
                         <*> pure (Between (CreatedAt, 14) (CreatedAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -839,6 +987,7 @@ spec = parallel $ do
                         <$> fmap MatchTransactionId genTransactionId
                         <*> pure (Between (SpentAt, 14) (SpentAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -850,6 +999,7 @@ spec = parallel $ do
                         <$> fmap MatchTransactionId genTransactionId
                         <*> pure (Between (CreatedAt, 14) (SpentAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -861,6 +1011,7 @@ spec = parallel $ do
                         <$> fmap MatchTransactionId genTransactionId
                         <*> pure Whole
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -872,6 +1023,7 @@ spec = parallel $ do
                         <$> fmap MatchTransactionId genTransactionId
                         <*> pure Whole
                         <*> pure OnlySpent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -889,6 +1041,7 @@ spec = parallel $ do
                         <$> fmap MatchOutputReference genOutputReference
                         <*> pure Whole
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -898,11 +1051,29 @@ spec = parallel $ do
                         ]
                     )
 
+                specifyQuery "NoStatusFlag + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchOutputReference genOutputReference
+                        <*> pure Whole
+                        <*> pure NoStatusFlag
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        [ "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        , "SEARCH createdAt USING INTEGER PRIMARY KEY (rowid=?)"
+                        , "SEARCH spentAt USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
+                        , "SEARCH datums USING INDEX sqlite_autoindex_binary_data_1 (binary_data_hash=?) LEFT-JOIN"
+                        , "SEARCH scripts USING INDEX sqlite_autoindex_scripts_1 (script_hash=?) LEFT-JOIN"
+                        ]
+                    )
+
                 specifyQuery "Created After" installIndexes
                     (foldInputsQry
                         <$> fmap MatchOutputReference genOutputReference
                         <*> pure (After CreatedAt 14)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -917,6 +1088,7 @@ spec = parallel $ do
                         <$> fmap MatchOutputReference genOutputReference
                         <*> pure (Before SpentAt 42)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -931,6 +1103,7 @@ spec = parallel $ do
                         <$> fmap MatchOutputReference genOutputReference
                         <*> pure (Between (CreatedAt, 14) (CreatedAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -945,6 +1118,7 @@ spec = parallel $ do
                         <$> fmap MatchOutputReference genOutputReference
                         <*> pure (Between (SpentAt, 14) (SpentAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -959,6 +1133,7 @@ spec = parallel $ do
                         <$> fmap MatchOutputReference genOutputReference
                         <*> pure (Between (SpentAt, 14) (CreatedAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -973,6 +1148,7 @@ spec = parallel $ do
                         <$> fmap MatchOutputReference genOutputReference
                         <*> pure Whole
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -984,6 +1160,7 @@ spec = parallel $ do
                         <$> fmap MatchOutputReference genOutputReference
                         <*> pure Whole
                         <*> pure OnlySpent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -1001,6 +1178,7 @@ spec = parallel $ do
                         <$> fmap MatchPolicyId genPolicyId
                         <*> pure Whole
                         <*> pure NoStatusFlag
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -1009,11 +1187,26 @@ spec = parallel $ do
                         ] ++ suffix
                     )
 
+                specifyQuery "NoStatusFlag + InlineAll" installIndexes
+                    (foldInputsQry
+                        <$> fmap MatchPolicyId genPolicyId
+                        <*> pure Whole
+                        <*> pure NoStatusFlag
+                        <*> pure InlineAll
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        [ "SEARCH policies USING INDEX policiesByPolicyId (policy_id=?)"
+                        , "SEARCH inputs USING INDEX inputsByOutputReference (output_reference=?)"
+                        ] ++ suffixInline
+                    )
+
                 specifyQuery "Created Before" installIndexes
                     (foldInputsQry
                         <$> fmap MatchPolicyId genPolicyId
                         <*> pure (Before CreatedAt 42)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -1027,6 +1220,7 @@ spec = parallel $ do
                         <$> fmap MatchPolicyId genPolicyId
                         <*> pure (After SpentAt 14)
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -1040,6 +1234,7 @@ spec = parallel $ do
                         <$> fmap MatchPolicyId genPolicyId
                         <*> pure (Between (CreatedAt, 14) (CreatedAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -1053,6 +1248,7 @@ spec = parallel $ do
                         <$> fmap MatchPolicyId genPolicyId
                         <*> pure (Between (SpentAt, 14) (SpentAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -1066,6 +1262,7 @@ spec = parallel $ do
                         <$> fmap MatchPolicyId genPolicyId
                         <*> pure (Between (CreatedAt, 14) (SpentAt, 42))
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -1079,6 +1276,7 @@ spec = parallel $ do
                         <$> fmap MatchPolicyId genPolicyId
                         <*> pure Whole
                         <*> pure OnlyUnspent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -1092,6 +1290,7 @@ spec = parallel $ do
                         <$> fmap MatchPolicyId genPolicyId
                         <*> pure Whole
                         <*> pure OnlySpent
+                        <*> pure AsReference
                         <*> pure Asc
                     )
                     (`shouldBe`
@@ -1205,8 +1404,9 @@ shortLivedWorker dbPool mode = do
                 , (2, do
                     pattern_ <- genQueryablePattern
                     status <- elements [NoStatusFlag, OnlySpent, OnlyUnspent]
+                    reference <- elements [AsReference, InlineAll]
                     sortDir <- elements [Asc, Desc]
-                    pure $ runTransaction $ foldInputs pattern_ Whole status sortDir (\_ -> pure ())
+                    pure $ runTransaction $ foldInputs pattern_ Whole status reference sortDir (\_ -> pure ())
                   )
                 ]
                 ++

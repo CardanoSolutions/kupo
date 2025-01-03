@@ -124,6 +124,9 @@ import Kupo.Data.FetchBlock
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..)
     )
+import Kupo.Data.Http.ReferenceFlag
+    ( ReferenceFlag (..)
+    )
 import Kupo.Data.Http.StatusFlag
     ( StatusFlag (..)
     )
@@ -876,7 +879,7 @@ semantics pause HttpClient{..} chan = \case
     GetPreviousCheckpoint sl -> do
         Checkpoint <$> getCheckpointBySlot GetCheckpointClosestAncestor sl
     GetUtxo -> do
-        Utxo . foldMap (Set.singleton . fst . outputReference) <$> getAllMatches OnlyUnspent
+        Utxo . foldMap (Set.singleton . fst . outputReference) <$> getAllMatches OnlyUnspent AsReference
     GetDatumByHash hash ->
         DatumByHash <$> lookupDatumByHash hash
     GetScriptByHash hash ->

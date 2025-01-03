@@ -57,12 +57,12 @@ import Kupo.Data.Configuration
     , NetworkParameters (..)
     , Since (..)
     )
+import Kupo.Data.FetchTip
+    ( FetchTipClient
+    )
 import Kupo.Data.Pattern
     ( Pattern (..)
     , patternToText
-    )
-import Kupo.Data.FetchTip
-    ( FetchTipClient
     )
 import System.Directory
     ( doesFileExist

@@ -88,6 +88,7 @@ import Kupo.Data.Cardano
     , policyIdFromText
     , policyIdToText
     , scriptHashToJson
+    , scriptToJson
     , slotNoToJson
     , transactionIdFromText
     , transactionIdToJson
@@ -95,6 +96,9 @@ import Kupo.Data.Cardano
     , transactionIndexToJson
     , unsafeGetPointHeaderHash
     , valueToJson
+    )
+import Kupo.Data.Http.ReferenceFlag
+    ( ReferenceFlag (..)
     )
 
 import qualified Codec.Binary.Bech32 as Bech32
@@ -438,9 +442,10 @@ data Result = Result
     } deriving (Show, Eq)
 
 resultToJson
-    :: Result
+    :: ReferenceFlag
+    -> Result
     -> Json.Encoding
-resultToJson Result{..} = Json.pairs $ mconcat
+resultToJson referenceFlag Result{..} = Json.pairs $ mconcat
     [ Json.pair "transaction_index"
         (transactionIndexToJson (snd outputReference))
     , Json.pair "transaction_id"
@@ -455,13 +460,16 @@ resultToJson Result{..} = Json.pairs $ mconcat
         (maybe Json.null_ datumHashToJson (hashDatum datum))
     , case datum of
         NoDatum ->
-            mempty
-        Inline{} ->
-            Json.pair "datum_type" (Json.text "inline")
-        Reference{} ->
-            Json.pair "datum_type" (Json.text "hash")
+            nullDatum
+        Inline datum' ->
+            datumToJson "inline" datum'
+        Reference datum' ->
+            datumToJson "hash" datum'
     , Json.pair "script_hash"
         (maybe Json.null_ scriptHashToJson (hashScriptReference scriptReference))
+    , case scriptReference of
+        InlineScript script -> Json.pair "script" (scriptToJson script)
+        _ -> nullScript
     , Json.pair "created_at"
         (Json.pairs $ mconcat
             [ Json.pair "slot_no"
@@ -488,6 +496,25 @@ resultToJson Result{..} = Json.pairs $ mconcat
                     ]
         )
     ]
+  where
+    datumToJson datumType choice =
+        mconcat
+            [ case choice of
+                Right binaryData -> Json.pair "datum" (binaryDataToJson binaryData)
+                Left{} -> nullDatum
+            , Json.pair "datum_type" (Json.text datumType)
+            ]
+
+    (nullDatum, nullScript) =
+        case referenceFlag of
+            AsReference ->
+                ( mempty
+                , mempty
+                )
+            InlineAll ->
+                ( Json.pair "datum" Json.null_
+                , Json.pair "script" Json.null_
+                )
 
 -- | Codecs to encode data-type to some target structure. This allows to encode
 -- on-the-fly as we traverse the structure, rather than traversing all results a
