@@ -111,6 +111,18 @@ jobs:
           type=raw,value=latest,enable={{is_default_branch}}
           type=semver,pattern=v{{version}}
 
+    - name: Tag build artifacts
+      id: tag
+      shell: bash
+      run: |
+        if [ "${GITHUB_REF/refs\/tags\//}" == "refs/heads/master" ]; then
+          echo "value=$GIT_SHA" >> $GITHUB_OUTPUT
+        else
+          echo "value=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+        fi
+      env:
+        GIT_SHA: ${{ github.sha }}
+
     - name: hadolint
       uses: hadolint/hadolint-action@v3.0.0
       with:
@@ -128,7 +140,7 @@ jobs:
     - name: Download
       uses: actions/download-artifact@v3
       with:
-        name: kupo-${{ github.sha }}-${{ matrix.arch }}-${{ matrix.os }}
+        name: kupo-${{ steps.tag.outputs.value }}-${{ matrix.arch }}-${{ matrix.os }}
 
     - name: Build and push (latest)
       if: ${{ github.event_name == 'push' }}
