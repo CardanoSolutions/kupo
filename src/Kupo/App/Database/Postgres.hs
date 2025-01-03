@@ -8,6 +8,11 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
+-- NOTE:
+-- Beside the module name, this file is a copy of Kupo.App.Database.SQLite.
+-- It only exists as a preliminary step of an effort to get Kupo multi-backend, which was put on hold.
+-- See https://github.com/CardanoSolutions/kupo/pull/175 for the next steps.
+
 module Kupo.App.Database.Postgres
     (
 
@@ -112,6 +117,7 @@ import Kupo.Control.MonadTime
     )
 import Kupo.Data.Cardano
     ( SlotNo (..)
+    , mkOutputReference
     , slotNoToText
     )
 import Kupo.Data.Configuration
@@ -121,7 +127,12 @@ import Kupo.Data.Configuration
     )
 import Kupo.Data.Database
     ( SortDirection (..)
+    , outputReferenceToRow
     , patternToSql
+    , redeemerToRow
+    )
+import Kupo.Data.Http.ReferenceFlag
+    ( ReferenceFlag (..)
     )
 import Kupo.Data.Http.SlotRange
     ( Range (..)
@@ -179,6 +190,7 @@ import Text.URI
     ( URI
     )
 
+import qualified Data.ByteString as BS
 import qualified Data.Char as Char
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as T
@@ -490,7 +502,7 @@ copyDatabase (tr, progress) fromDir intoDir patterns = do
                     traceWith tr $ DatabaseImportTable { table = "inputs", pattern = patternToText pattern_ }
                     copyTable
                         (runTransaction from $ countInputs from pattern_)
-                        (runTransaction from . foldInputs from pattern_ Whole NoStatusFlag Asc)
+                        (runTransaction from . foldInputs from pattern_ Whole NoStatusFlag AsReference Asc)
                         (runTransaction into . insertInputs into)
                         DB.resultToRow
                     traceWith tr $ DatabaseImportTable { table = "policies", pattern = patternToText pattern_ }
@@ -604,6 +616,8 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                     , maybe SQLNull SQLBlob refScriptHash
                     , SQLInteger (fromIntegral createdAtSlotNo)
                     , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
+                    , SQLNull
+                    , SQLNull
                     ]
                 case datum of
                     Nothing ->
@@ -628,11 +642,13 @@ mkDatabase tr mode longestRollback bracketConnection = Database
         withTotalChanges conn $
             mapM_ (execute_ conn . deleteInputsQry) refs
 
-    , markInputs = \(fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> do
+    , markInputs = \(parentRef, fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> do
         withTotalChanges conn $
-            forM_ refs $ \ref -> do
+            forM_ refs $ \(ref, ix, redeemer)  -> do
                 execute conn (markInputsQry ref)
                     [ SQLInteger slotNo
+                    , SQLBlob (outputReferenceToRow $ mkOutputReference parentRef ix)
+                    , maybe SQLNull (SQLBlob . redeemerToRow) redeemer
                     ]
 
     , pruneInputs = ReaderT $ \conn -> do
@@ -640,12 +656,8 @@ mkDatabase tr mode longestRollback bracketConnection = Database
             traceExecute tr conn pruneInputsQry [ SQLInteger (fromIntegral longestRollback) ]
         changes conn
 
-    , foldInputs = \pattern_ slotRange statusFlag sortDirection yield -> ReaderT $ \conn -> do
-        -- TODO: Allow resolving datums / scripts on demand through LEFT JOIN
-        --
-        -- See [#21](https://github.com/CardanoSolutions/kupo/issues/21)
-        let (datum, refScript) = (Nothing, Nothing)
-        Sqlite.fold_ conn (foldInputsQry pattern_ slotRange statusFlag sortDirection) () $ \() -> \case
+    , foldInputs = \pattern_ slotRange statusFlag referenceFlag sortDirection yield -> ReaderT $ \conn -> do
+        Sqlite.fold_ conn (foldInputsQry pattern_ slotRange statusFlag referenceFlag sortDirection) () $ \() -> \case
             [  SQLBlob extendedOutputReference
              , SQLText address
              , SQLBlob value
@@ -655,8 +667,14 @@ mkDatabase tr mode longestRollback bracketConnection = Database
              , SQLBlob createdAtHeaderHash
              , matchMaybeWord64 -> spentAtSlotNo
              , matchMaybeBytes -> spentAtHeaderHash
+             , matchMaybeBytes -> spentBy
+             , matchMaybeBytes -> spentWith
+             , matchMaybeBytes -> datumBinaryData
+             , matchMaybeBytes -> scriptBinaryData
              ] ->
-                yield (DB.resultFromRow DB.Input{..})
+                let datum = liftA2 DB.BinaryData (BS.drop 1 <$> datumInfo) datumBinaryData
+                    refScript = liftA2 DB.ScriptReference refScriptHash scriptBinaryData
+                 in yield (DB.resultFromRow DB.Input{..})
             (xs :: [SQLData]) ->
                 throwIO (UnexpectedRow (patternToText pattern_) [xs])
 
@@ -839,7 +857,7 @@ deleteInputsQry pattern_ =
 markInputsQry :: Pattern -> Query
 markInputsQry pattern_ =
     Query $ unwords
-        [ "UPDATE inputs SET spent_at = ?"
+        [ "UPDATE inputs SET spent_at = ?, spent_by = ?, spent_with = ?"
         , additionalJoin
         , "WHERE"
         , whereClause
@@ -902,17 +920,27 @@ foldInputsQry
     :: Pattern
     -> Range SlotNo
     -> StatusFlag
+    -> ReferenceFlag
     -> SortDirection
     -> Query
-foldInputsQry pattern_ slotRange statusFlag sortDirection =
+foldInputsQry pattern_ slotRange statusFlag referenceFlag sortDirection =
     Query $ "SELECT \
       \inputs.ext_output_reference, inputs.address, inputs.value, \
       \inputs.datum_info, inputs.script_hash, \
       \inputs.created_at, createdAt.header_hash, \
-      \inputs.spent_at, spentAt.header_hash \
-    \FROM (" <> inputs <> ") inputs \
+      \inputs.spent_at, spentAt.header_hash, \
+      \inputs.spent_by, inputs.spent_with"
+    <> case referenceFlag of
+         AsReference -> ", NULL as datum, NULL as script"
+         InlineAll -> ", datums.binary_data as datum, scripts.script as script"
+    <> " FROM (" <> inputs <> ") inputs \
     \JOIN checkpoints AS createdAt ON createdAt.slot_no = inputs.created_at \
     \LEFT OUTER JOIN checkpoints AS spentAt ON spentAt.slot_no = inputs.spent_at"
+    <> case referenceFlag of
+         AsReference -> ""
+         InlineAll ->
+            " LEFT OUTER JOIN binary_data as datums ON datums.binary_data_hash = inputs.datum_hash\
+            \ LEFT OUTER JOIN scripts ON scripts.script_hash = inputs.script_hash"
     <> case statusFlag of
         NoStatusFlag -> ""
         OnlyUnspent -> " WHERE spentAt.header_hash IS NULL"
@@ -1258,6 +1286,7 @@ migrations =
         , $(embedFile "db/v2.1.0/002.sql")
         , $(embedFile "db/v2.1.0/003.sql")
         , $(embedFile "db/v2.2.0/001.sql")
+        , $(embedFile "db/v2.10.0/001.sql")
         ]
     ]
   where
