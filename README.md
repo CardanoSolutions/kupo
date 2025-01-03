@@ -30,7 +30,7 @@ The project keeps a [changelog 💾](./CHANGELOG.md) in which all _recent-but-no
 
 ### Planned work
 
-The [projects boards 🎯][roadmap] list planned tasks that haven't been implemented but have reached enough maturity to be well-defined and scoped.
+The [issues list 🎯][roadmap] references planned tasks that haven't been implemented but have reached enough maturity to be well-defined and scoped.
 
 ### Future work
 
@@ -91,7 +91,7 @@ A big thank to [all our sponsors 💖](https://github.com/CardanoSolutions#-spon
 [testing strategy]: https://github.com/CardanoSolutions/kupo/tree/master/test#testing-strategy
 [user manual]: https://cardanosolutions.github.io/kupo
 [discussions]: https://github.com/CardanoSolutions/kupo/discussions/categories/ideas?discussions_q=category%3AIdeas+sort%3Atop
-[roadmap]: https://github.com/CardanoSolutions/kupo/projects?type=classic
+[roadmap]: https://github.com/CardanoSolutions/kupo/issues?q=is%3Aopen+is%3Aissue+label%3Aenhancement
 
 [^1]: The maximum memory usage depends on runtime flags and internal settings. This can be made lower if necessary (possibly as small as a hundred megabytes) by tweaking those settings. The obvious counter-part being slower synchronization times when syncing over large chunks of data. When synchronized, however, this has close to no impact.
 
