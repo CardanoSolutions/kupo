@@ -21,7 +21,7 @@ For development, [cabal](https://cabal.readthedocs.io/en/latest/) should work _o
 Alternatively, you can spin up a nix shell as follow:
 
 ```
-nix develop github:CardanoSolutions/devx#ghc96-iog-full --no-write-lock-file --refresh
+nix develop github:CardanoSolutions/devx#ghc94-iog-full --no-write-lock-file --refresh
 ```
 
 If using the Nix shell, you'll likely want to create a `cabal.project.local` file:
