@@ -68,18 +68,13 @@ constraints:
 allow-newer:
   *:formatting
 
+-- NOTE update hash using
+-- nix-prefetch-git https://github.com/CardanoSolutions/ogmios.git --rev <tag> --fetch-submodules --quiet | jq '.hash' | tail -c +9 | head -c -2
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/ogmios
   tag: ae876badb138f42dcd6d2389734b0c15502684ed
-  -- NOTE
-  -- I still don't know how to generate those. 'nix-prefetch-url' yields
-  -- a different output on each invocation. I spent 15 minutes fiddling with
-  -- nix commands in my terminal and it's been the worse part of my day so
-  -- far. So if someone needs this, feel free to make a PR. And I'd
-  -- welcome any *reproducible* command I can run to re-generate those in
-  -- the future.
-  --sha256: m/l5XUzb9EG/qTMeHnxT/orfqrjPgOr+9Rns+zQr/CA=
+  --sha256: xkOfOdX6Dxi7+VW78Tk3n3MoguIg39pKdxiNVfdeEwE=
   subdir:
     server/modules/fast-bech32
 
