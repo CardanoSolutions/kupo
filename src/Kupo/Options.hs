@@ -66,7 +66,8 @@ import Kupo.Control.MonadTime
     , secondsToDiffTime
     )
 import Kupo.Data.Cardano
-    ( pointFromText
+    ( Point
+    , pointFromText
     )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
@@ -140,6 +141,7 @@ parserInfo = info (helper <*> parser) $ mempty
                     <*> serverHostOption
                     <*> serverPortOption
                     <*> optional sinceOption
+                    <*> optional untilOption
                     <*> fmap fromList (many patternOption)
                     <*> inputManagementOption
                     <*> pure 129600 -- TODO: should be pulled from genesis parameters
@@ -306,6 +308,24 @@ sinceOption = option (maybeReader rdr) $ mempty
     rdr :: String -> Maybe Since
     rdr "tip" = pure SinceTip
     rdr s = fmap SincePoint (pointFromText $ toText s)
+
+-- | [--until=POINT]
+untilOption :: Parser Point
+untilOption = option (maybeReader rdr) $ mempty
+    <> long "until"
+    <> metavar "POINT"
+    <> helpDoc (Just $ mconcat
+        [ "A point on chain to stop syncing at, if any. Useful for getting point in time snapshots."
+        , softline
+        , "Expects:"
+        , hardline
+        , vsep
+            [ align $ indent 2 $ longline "- A dot-separated integer (slot number) and base16-encoded digest (block header hash)."
+            ]
+        ])
+    where
+    rdr :: String -> Maybe Point
+    rdr s = pointFromText $ toText s
 
 -- | [--match=PATTERN]
 patternOption :: Parser Pattern

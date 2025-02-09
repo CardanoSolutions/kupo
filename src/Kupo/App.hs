@@ -16,6 +16,10 @@ module Kupo.App
     , consumer
     , readOnlyConsumer
 
+      -- * Rollforward variants
+    , rollForward
+    , rollForwardUntil
+
       -- * Gardener
     , gardener
 
@@ -324,6 +328,13 @@ newFetchTipClient = \case
             (Node.newFetchTipClient response)
         atomically $ takeTMVar response
 
+type ApplyFn m block = Tracer IO TraceConsumer
+                    -> InputManagement
+                    -> (Tip -> Maybe Point -> DBTransaction m ())
+                    -> Database m -> NonEmpty (Tip, block)
+                    -> Set Pattern
+                    -> m ()
+
 -- | Consumer process that is reading messages from the 'Mailbox'. Messages are
 -- enqueued by another process (the producer).
 consumer
@@ -331,7 +342,6 @@ consumer
         ( MonadSTM m
         , MonadLog m
         , Monad (DBTransaction m)
-        , IsBlock block
         )
     => Tracer IO TraceConsumer
     -> InputManagement
@@ -339,49 +349,17 @@ consumer
     -> Mailbox m (Tip, block) (Tip, Point)
     -> TVar m (Set Pattern)
     -> Database m
+    -> ApplyFn m block
     -> m Void
-consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
+consumer tr inputManagement notifyTip mailbox patternsVar database@Database{..} applyFn =
     forever $ do
         logWith tr ConsumerWaitingForNextBatch
         atomically ((,) <$> flushMailbox mailbox <*> readTVar patternsVar) >>= \case
             (Left blks, patterns) ->
-                rollForward blks patterns
+                applyFn tr inputManagement notifyTip database blks patterns
             (Right pt, _) ->
                 rollBackward pt
   where
-    rollForward :: (NonEmpty (Tip, block) -> Set Pattern -> m ())
-    rollForward blks patterns = do
-        let (lastKnownTip, lastKnownBlk) = last blks
-        let lastKnownPoint = getPoint lastKnownBlk
-        let lastKnownSlot = getPointSlotNo lastKnownPoint
-        let Match{consumed, produced, datums, scripts, policies} =
-                foldMap (matchBlock codecs patterns . snd) blks
-        isNonEmptyBlock <- runTransaction $ do
-            insertCheckpoints (foldr ((:) . getPoint . snd) [] blks)
-            insertInputs produced
-            insertPolicies policies
-            nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot consumed
-            -- NOTE: In case where the user has entered a relatively restrictive
-            -- pattern (e.g. one specific address), we do a best-effort at not
-            -- storing all the garbage of the world and only store scripts and
-            -- binary_data from the block if there's at least one transaction
-            -- that is relevant to that configuration.
-            -- Note that this isn't done from within 'matchBlock' because we
-            -- only know if we've spent inputs after running the above database
-            -- operation.
-            let isNonEmptyBlock = nSpentInputs > 0 || not (null produced)
-            when isNonEmptyBlock $ do
-                insertBinaryData datums
-                insertScripts scripts
-            notifyTip lastKnownTip (Just lastKnownPoint)
-            return isNonEmptyBlock
-        logWith tr $ ConsumerRollForward
-            { slotNo = lastKnownSlot
-            , inputs = length produced
-            , binaryData = if isNonEmptyBlock then length datums else 0
-            , scripts = if isNonEmptyBlock then length scripts else 0
-            }
-
     rollBackward :: (Tip, Point) -> m ()
     rollBackward (tip, pt) = do
         logWith tr (ConsumerRollBackward { point = getPointSlotNo pt })
@@ -389,13 +367,52 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
             lastKnownSlot <- rollbackTo (getPointSlotNo pt)
             notifyTip tip lastKnownSlot
 
+rollForward
+    :: forall m block.
+        ( MonadSTM m
+        , MonadLog m
+        , Monad (DBTransaction m)
+        , IsBlock block
+        )
+    => ApplyFn m block
+rollForward tr inputManagement notifyTip Database{..} blks patterns = do
+    let (lastKnownTip, lastKnownBlk) = last blks
+    let lastKnownPoint = getPoint lastKnownBlk
+    let lastKnownSlot = getPointSlotNo lastKnownPoint
+    let Match{consumed, produced, datums, scripts, policies} =
+            foldMap (matchBlock codecs patterns . snd) blks
+    isNonEmptyBlock <- runTransaction $ do
+        insertCheckpoints (foldr ((:) . getPoint . snd) [] blks)
+        insertInputs produced
+        insertPolicies policies
+        nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot consumed
+        -- NOTE: In case where the user has entered a relatively restrictive
+        -- pattern (e.g. one specific address), we do a best-effort at not
+        -- storing all the garbage of the world and only store scripts and
+        -- binary_data from the block if there's at least one transaction
+        -- that is relevant to that configuration.
+        -- Note that this isn't done from within 'matchBlock' because we
+        -- only know if we've spent inputs after running the above database
+        -- operation.
+        let isNonEmptyBlock = nSpentInputs > 0 || not (null produced)
+        when isNonEmptyBlock $ do
+            insertBinaryData datums
+            insertScripts scripts
+        notifyTip lastKnownTip (Just lastKnownPoint)
+        return isNonEmptyBlock
+    logWith tr $ ConsumerRollForward
+        { slotNo = lastKnownSlot
+        , inputs = length produced
+        , binaryData = if isNonEmptyBlock then length datums else 0
+        , scripts = if isNonEmptyBlock then length scripts else 0
+        }
+  where
     codecs = Codecs
         { toResult = resultToRow
         , toBinaryData = binaryDataToRow
         , toScript = scriptToRow
         , toPolicy = policyToRow
         }
-
     onSpentInputs
         :: Tip
         -> SlotNo
@@ -416,6 +433,22 @@ consumer tr inputManagement notifyTip mailbox patternsVar Database{..} =
       where
         unstableWindow =
             getLongestRollback longestRollback
+
+
+rollForwardUntil
+    :: forall m block.
+        ( MonadSTM m
+        , MonadLog m
+        , Monad (DBTransaction m)
+        , IsBlock block
+        )
+    => Point
+    -> ApplyFn m block
+rollForwardUntil until tr inputManagement notifyTip database blks patterns = do
+    let blocksBefore = takeWhile ((< until) . getPoint . snd) $ toList blks
+    case nonEmpty blocksBefore of
+        Nothing -> pure ()
+        Just blocksBefore' -> rollForward tr inputManagement notifyTip database blocksBefore' patterns
 
 readOnlyConsumer
     :: forall m.

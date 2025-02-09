@@ -261,6 +261,7 @@ spec = do
                       , serverHost
                       , serverPort
                       , since = Just (SincePoint GenesisPoint)
+                      , until = Nothing
                       , patterns = fromList [MatchAny IncludingBootstrap]
                       , inputManagement
                       , longestRollback
