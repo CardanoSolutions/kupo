@@ -46,6 +46,8 @@ import Kupo.App
     , TraceConsumer (..)
     , TraceKupo (..)
     , consumer
+    , rollForward
+    , rollForwardUntil
     , gardener
     , idle
     , mkNotifyTip
@@ -197,6 +199,7 @@ kupoWith tr withProducer withFetchBlock =
             , longestRollback
             , deferIndexes
             , chainProducer
+            , until
             }
         } <- ask
 
@@ -264,6 +267,7 @@ kupoWith tr withProducer withFetchBlock =
                             mailbox
                             patterns
                             db
+                            (maybe rollForward rollForwardUntil until)
                     )
 
                     -- Database garbage-collector

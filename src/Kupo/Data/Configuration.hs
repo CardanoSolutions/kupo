@@ -92,6 +92,8 @@ data Configuration = Configuration
         -- ^ Port for the API HTTP Server
     , since :: !(Maybe Since)
         -- ^ Point from when a *new* synchronization should start
+    , until :: !(Maybe Point)
+        -- ^ Point at which to stop indexing and just serve queries
     , patterns :: !(Set Pattern)
         -- ^ List of address patterns to look for when synchronizing
     , inputManagement :: !InputManagement
