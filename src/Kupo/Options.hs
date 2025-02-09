@@ -315,7 +315,7 @@ untilOption = option (maybeReader rdr) $ mempty
     <> long "until"
     <> metavar "POINT"
     <> helpDoc (Just $ mconcat
-        [ "A point on chain to stop syncing at, if any. Useful for getting point in time snapshots."
+        [ "A point on chain to sync up-to, but not including. Useful for getting point in time snapshots."
         , softline
         , "Expects:"
         , hardline
