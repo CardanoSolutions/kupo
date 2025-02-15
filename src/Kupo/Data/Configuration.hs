@@ -14,6 +14,8 @@ module Kupo.Data.Configuration
       Configuration (..)
     , DatabaseLocation (..)
     , Since (..)
+    , Until (..)
+    , untilPredicate
     , InputManagement (..)
     , ChainProducer (..)
     , LongestRollback (..)
@@ -58,6 +60,7 @@ import Kupo.Control.MonadTime
 import Kupo.Data.Cardano
     ( Point
     , SlotNo
+    , getPointSlotNo
     )
 import Kupo.Data.Pattern
     ( Pattern (..)
@@ -93,7 +96,7 @@ data Configuration = Configuration
         -- ^ Port for the API HTTP Server
     , since :: !(Maybe Since)
         -- ^ Point from when a *new* synchronization should start
-    , until :: !(Maybe SlotNo)
+    , until :: !(Maybe Until)
         -- ^ Slot at which to stop indexing and just serve queries
     , patterns :: !(Set Pattern)
         -- ^ List of address patterns to look for when synchronizing
@@ -148,6 +151,15 @@ data ChainProducer
 -- | Captures the starting point of the indexer when the is no known checkpoint.
 data Since = SinceTip | SincePoint Point
     deriving (Generic, Eq, Show)
+
+-- | Captures the point up-to which synchronize.
+data Until = UntilPoint Point | UntilSlot SlotNo
+    deriving (Generic, Eq, Show)
+
+untilPredicate :: Until -> Point -> Bool
+untilPredicate = \case
+    UntilPoint until -> (<= until)
+    UntilSlot until -> (<= until) . getPointSlotNo
 
 -- | Database working directory. 'in-memory' runs the database in hot memory,
 -- only suitable for non-permissive patterns or testing.

@@ -118,6 +118,7 @@ import Kupo.Data.Configuration
     , DeferIndexesInstallation (..)
     , NodeTipHasBeenReachedException (..)
     , isReadOnlyReplica
+    , untilPredicate
     )
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
@@ -267,7 +268,7 @@ kupoWith tr withProducer withFetchBlock =
                             mailbox
                             patterns
                             db
-                            (maybe rollForwardAll rollForwardUntil until)
+                            (maybe rollForwardAll (rollForwardUntil . untilPredicate) until)
                     )
 
                     -- Database garbage-collector

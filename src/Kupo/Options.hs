@@ -64,8 +64,7 @@ import Kupo.Control.MonadTime
     , secondsToDiffTime
     )
 import Kupo.Data.Cardano
-    ( SlotNo
-    , pointFromText
+    ( pointFromText
     , slotNoFromText
     )
 import Kupo.Data.Configuration
@@ -75,6 +74,7 @@ import Kupo.Data.Configuration
     , DeferIndexesInstallation (..)
     , InputManagement (..)
     , Since (..)
+    , Until (..)
     )
 import Kupo.Data.Pattern
     ( Pattern
@@ -102,9 +102,9 @@ import Text.URI
     ( URI
     )
 
-import qualified Text.URI as URI
 import qualified Data.Text as T
 import qualified Data.Text.Read as T
+import qualified Text.URI as URI
 
 data Command
     = Run !Configuration !(Tracers IO MinSeverities)
@@ -312,13 +312,16 @@ sinceOption = option (maybeReader rdr) $ mempty
     rdr s = fmap SincePoint (pointFromText $ toText s)
 
 -- | [--until=SLOT]
-untilOption :: Parser SlotNo
-untilOption = option (maybeReader (slotNoFromText . toText)) $ mempty
+untilOption :: Parser Until
+untilOption = option (maybeReader asSlot <|> maybeReader asPoint) $ mempty
     <> long "until"
-    <> metavar "SLOT"
+    <> metavar "POINT|SLOT"
     <> helpDoc (Just $ mconcat
-        [ "A slot (inclusive) to sync up-to. Useful for getting point in time snapshots."
+        [ "A point or slot (inclusive) to sync up-to. Useful for getting point in time snapshots."
         ])
+  where
+    asSlot = fmap UntilSlot . slotNoFromText . toText
+    asPoint = fmap UntilPoint . pointFromText . toText
 
 -- | [--match=PATTERN]
 patternOption :: Parser Pattern
