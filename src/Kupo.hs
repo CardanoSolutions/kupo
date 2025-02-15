@@ -46,14 +46,14 @@ import Kupo.App
     , TraceConsumer (..)
     , TraceKupo (..)
     , consumer
-    , rollForward
-    , rollForwardUntil
     , gardener
     , idle
     , mkNotifyTip
     , newFetchTipClient
     , newProducer
     , readOnlyConsumer
+    , rollForwardAll
+    , rollForwardUntil
     , withFetchBlockClient
     )
 import Kupo.App.ChainSync
@@ -267,7 +267,7 @@ kupoWith tr withProducer withFetchBlock =
                             mailbox
                             patterns
                             db
-                            (maybe rollForward rollForwardUntil until)
+                            (maybe rollForwardAll rollForwardUntil until)
                     )
 
                     -- Database garbage-collector

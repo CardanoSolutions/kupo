@@ -17,7 +17,7 @@ module Kupo.App
     , readOnlyConsumer
 
       -- * Rollforward variants
-    , rollForward
+    , rollForwardAll
     , rollForwardUntil
 
       -- * Gardener
@@ -142,6 +142,7 @@ import Kupo.Data.Pattern
     , matchBlock
     )
 
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Kupo.App.ChainSync.Hydra as Hydra
@@ -328,12 +329,14 @@ newFetchTipClient = \case
             (Node.newFetchTipClient response)
         atomically $ takeTMVar response
 
-type ApplyFn m block = Tracer IO TraceConsumer
-                    -> InputManagement
-                    -> (Tip -> Maybe Point -> DBTransaction m ())
-                    -> Database m -> NonEmpty (Tip, block)
-                    -> Set Pattern
-                    -> m ()
+type RollForward m block =
+    Tracer IO TraceConsumer
+    -> InputManagement
+    -> (Tip -> Maybe Point -> DBTransaction m ())
+    -> Database m
+    -> Set Pattern
+    -> NonEmpty (Tip, block)
+    -> m ()
 
 -- | Consumer process that is reading messages from the 'Mailbox'. Messages are
 -- enqueued by another process (the producer).
@@ -349,14 +352,14 @@ consumer
     -> Mailbox m (Tip, block) (Tip, Point)
     -> TVar m (Set Pattern)
     -> Database m
-    -> ApplyFn m block
+    -> RollForward m block
     -> m Void
-consumer tr inputManagement notifyTip mailbox patternsVar database@Database{..} applyFn =
+consumer tr inputManagement notifyTip mailbox patternsVar database@Database{..} rollForward =
     forever $ do
         logWith tr ConsumerWaitingForNextBatch
         atomically ((,) <$> flushMailbox mailbox <*> readTVar patternsVar) >>= \case
             (Left blks, patterns) ->
-                applyFn tr inputManagement notifyTip database blks patterns
+                rollForward tr inputManagement notifyTip database patterns blks
             (Right pt, _) ->
                 rollBackward pt
   where
@@ -367,15 +370,15 @@ consumer tr inputManagement notifyTip mailbox patternsVar database@Database{..} 
             lastKnownSlot <- rollbackTo (getPointSlotNo pt)
             notifyTip tip lastKnownSlot
 
-rollForward
+rollForwardAll
     :: forall m block.
         ( MonadSTM m
         , MonadLog m
         , Monad (DBTransaction m)
         , IsBlock block
         )
-    => ApplyFn m block
-rollForward tr inputManagement notifyTip Database{..} blks patterns = do
+    => RollForward m block
+rollForwardAll tr inputManagement notifyTip Database{..} patterns blks = do
     let (lastKnownTip, lastKnownBlk) = last blks
     let lastKnownPoint = getPoint lastKnownBlk
     let lastKnownSlot = getPointSlotNo lastKnownPoint
@@ -443,12 +446,11 @@ rollForwardUntil
         , IsBlock block
         )
     => Point
-    -> ApplyFn m block
-rollForwardUntil until tr inputManagement notifyTip database blks patterns = do
-    let blocksBefore = takeWhile ((< until) . getPoint . snd) $ toList blks
-    case nonEmpty blocksBefore of
-        Nothing -> pure ()
-        Just blocksBefore' -> rollForward tr inputManagement notifyTip database blocksBefore' patterns
+    -> RollForward m block
+rollForwardUntil until tr inputManagement notifyTip database patterns blks = do
+    let blksBefore = NE.takeWhile ((< until) . getPoint . snd) blks
+    whenJust (nonEmpty blksBefore) $
+        rollForwardAll tr inputManagement notifyTip database patterns
 
 readOnlyConsumer
     :: forall m.
