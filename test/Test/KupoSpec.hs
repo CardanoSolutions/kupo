@@ -586,6 +586,23 @@ spec = skippableContext "End-to-end" $ do
             Health{configuration} <- getHealth
             configuration `shouldBe` (Just InstallIndexesIfNotExist)
 
+    endToEnd "Does not synchronize beyond a given point when asked (--until)" $ \(configure, runSpec, HttpClient{..}) -> do
+        let maxSlot = 11037873 -- Somewhat after `somePoint`, but close enough. Note that this slot must still exist (i.e. be active)
+                               -- if we don't want `waitSlot` down below to be waiting forever!
+        (_, env) <- configure $ \defaultCfg -> defaultCfg
+            { since = Just (SincePoint somePoint)
+            , until = Just maxSlot
+            , patterns = fromList [MatchAny IncludingBootstrap]
+            , deferIndexes = SkipNonEssentialIndexes
+            }
+        runSpec env 30 $ do
+            waitSlot (>= maxSlot)
+            points <- listCheckpoints
+            forM_ points $ \point -> getPointSlotNo point `shouldSatisfy` (<= maxSlot)
+            -- Ensures that even if we let time pass, we're not synchronizing beyond --until
+            threadDelay 1
+            points' <- listCheckpoints
+            forM_ points' $ \point -> getPointSlotNo point `shouldSatisfy` (<= maxSlot)
 
 -- | Create an 'EndToEndContext' around each child specification item within that 'Spec' tree. The
 -- spec items are 'skippable' and only executed if the appropriate environment variables are present.
