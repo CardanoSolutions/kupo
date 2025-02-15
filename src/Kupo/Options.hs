@@ -37,8 +37,6 @@ import Control.Monad.Trans.Except
 import Data.Char
     ( toUpper
     )
-import qualified Data.Text as T
-import qualified Data.Text.Read as T
 import Kupo.App
     ( TraceConsumer
     , TraceGardener
@@ -66,8 +64,9 @@ import Kupo.Control.MonadTime
     , secondsToDiffTime
     )
 import Kupo.Data.Cardano
-    ( Point
+    ( SlotNo
     , pointFromText
+    , slotNoFromText
     )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
@@ -99,10 +98,13 @@ import Options.Applicative.Types
 import Safe
     ( readMay
     )
-import qualified Text.URI as URI
 import Text.URI
     ( URI
     )
+
+import qualified Text.URI as URI
+import qualified Data.Text as T
+import qualified Data.Text.Read as T
 
 data Command
     = Run !Configuration !(Tracers IO MinSeverities)
@@ -309,23 +311,14 @@ sinceOption = option (maybeReader rdr) $ mempty
     rdr "tip" = pure SinceTip
     rdr s = fmap SincePoint (pointFromText $ toText s)
 
--- | [--until=POINT]
-untilOption :: Parser Point
-untilOption = option (maybeReader rdr) $ mempty
+-- | [--until=SLOT]
+untilOption :: Parser SlotNo
+untilOption = option (maybeReader (slotNoFromText . toText)) $ mempty
     <> long "until"
-    <> metavar "POINT"
+    <> metavar "SLOT"
     <> helpDoc (Just $ mconcat
-        [ "A point on chain to sync up-to, but not including. Useful for getting point in time snapshots."
-        , softline
-        , "Expects:"
-        , hardline
-        , vsep
-            [ align $ indent 2 $ longline "- A dot-separated integer (slot number) and base16-encoded digest (block header hash)."
-            ]
+        [ "A slot (inclusive) to sync up-to. Useful for getting point in time snapshots."
         ])
-    where
-    rdr :: String -> Maybe Point
-    rdr s = pointFromText $ toText s
 
 -- | [--match=PATTERN]
 patternOption :: Parser Pattern
