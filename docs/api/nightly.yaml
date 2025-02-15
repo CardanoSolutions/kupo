@@ -569,7 +569,7 @@ info:
       | Last Allegra block | N/A      | N/A                                                              |
       | Last Mary block    | N/A      | N/A                                                              |
       | Last Alonzo block  | 259180   | 0ad91d3bbe350b1cfa05b13dba5263c47c5eca4f97b3a3105eba96416785a487 |
-      | Last Conway block  | 55814394 | bdd4baa2c81d0500a695f836332193ea06c2ce364e585057142220fc0782144c |
+      | Last Babbage block | 55814394 | bdd4baa2c81d0500a695f836332193ea06c2ce364e585057142220fc0782144c |
       | Last Conway block  | N/A      | N/A                                                              |
 
       See <a target="_blank" href="https://github.com/input-output-hk/cardano-configurations/tree/master/network/preview">configuration files for <strong>Preview</strong></a>.
