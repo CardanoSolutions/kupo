@@ -179,6 +179,7 @@ import Control.Monad.Class.MonadThrow
     )
 import Kupo.Data.Configuration
     ( Since (..)
+    , Until (..)
     )
 import Kupo.Data.Health
     ( ConnectionStatus (..)
@@ -591,7 +592,7 @@ spec = skippableContext "End-to-end" $ do
                                -- if we don't want `waitSlot` down below to be waiting forever!
         (_, env) <- configure $ \defaultCfg -> defaultCfg
             { since = Just (SincePoint somePoint)
-            , until = Just maxSlot
+            , until = Just (UntilSlot maxSlot)
             , patterns = fromList [MatchAny IncludingBootstrap]
             , deferIndexes = SkipNonEssentialIndexes
             }

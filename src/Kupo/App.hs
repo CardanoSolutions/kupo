@@ -445,10 +445,10 @@ rollForwardUntil
         , Monad (DBTransaction m)
         , IsBlock block
         )
-    => SlotNo
+    => (Point -> Bool)
     -> RollForward m block
 rollForwardUntil until tr inputManagement notifyTip database patterns blks = do
-    let blksBefore = NE.takeWhile ((<= until) . getPointSlotNo . getPoint . snd) blks
+    let blksBefore = NE.takeWhile (until . getPoint . snd) blks
     whenJust (nonEmpty blksBefore) $
         rollForwardAll tr inputManagement notifyTip database patterns
 
