@@ -1,3 +1,17 @@
+### [2.11.0] - UNRELEASED
+
+#### Added
+
+- New `--until=SLOT|POINT` command line option to instrument synchronization up to a certain point.
+
+#### Changed
+
+N/A
+
+#### Removed
+
+N/A
+
 ### [2.10.0] - 2025-01-03
 
 #### Added
