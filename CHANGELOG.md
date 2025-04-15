@@ -6,7 +6,7 @@
 
 #### Changed
 
-N/A
+- Fix `hydra` integration, now supporting `0.20.0` and at least upcoming `0.21.0`. The API changed in version `0.20.0` such that transactions are fully contained.
 
 #### Removed
 

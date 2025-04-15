@@ -5,9 +5,6 @@
 module Kupo.App.ChainSync.Hydra
     ( connect
     , runChainSyncClient
-    , newTransactionStore
-    , TransactionStore (..)
-    , TransactionStoreException (..)
     ) where
 
 import Kupo.Prelude
@@ -25,7 +22,6 @@ import Kupo.Control.MonadThrow
 import Kupo.Data.Cardano
     ( Point
     , Tip
-    , TransactionId
     , WithOrigin (..)
     , getPointSlotNo
     , getTipSlotNo
@@ -41,10 +37,9 @@ import Kupo.Data.Hydra
     )
 import Kupo.Data.PartialBlock
     ( PartialBlock (..)
-    , PartialTransaction (..)
+    
     )
 
-import qualified Data.Map as Map
 import qualified Network.WebSockets as WS
 import qualified Network.WebSockets.Json as WS
 
@@ -53,7 +48,6 @@ runChainSyncClient
         ( MonadIO m
         , MonadSTM m
         , MonadThrow m
-        , MonadThrow (STM m)
         )
     => Mailbox m (Tip, PartialBlock) (Tip, Point)
     -> m () -- An action to run before the main loop starts.
@@ -62,16 +56,14 @@ runChainSyncClient
     -> m IntersectionNotFoundException
 runChainSyncClient mailbox beforeMainLoop pts ws = do
     beforeMainLoop
-    TransactionStore{push, pop} <- newTransactionStore
     flip evalStateT (sortOn getPointSlotNo pts) $ forever $ do
        lift (WS.receiveJson ws decodeHydraMessage) >>= \case
             HeadIsOpen{genesisTxs} -> do
                 handleBlock $ mkHydraBlock 0 genesisTxs
-            TxValid{tx} -> do
-                lift $ push tx
-            SnapshotConfirmed{ snapshot = Snapshot { number, confirmedTransactionIds }} -> do
-                txs <- lift $ pop confirmedTransactionIds
-                handleBlock $ mkHydraBlock number txs
+            TxValid{} ->
+                pure ()
+            SnapshotConfirmed{ snapshot = Snapshot { number, confirmedTransactions }} -> do
+                handleBlock $ mkHydraBlock number confirmedTransactions
             SomethingElse -> do
                 pure ()
   where
@@ -166,42 +158,5 @@ connect
     -> (WS.Connection -> IO a)
     -> IO a
 connect ConnectionStatusToggle{toggleConnected} host port action =
-    WS.runClientWith host port "/"
+    WS.runClientWith host port "/?history=yes"
         WS.defaultConnectionOptions [] (\ws -> toggleConnected >> action ws)
-
--- | Handle to store and later retrieve transaction.
-data TransactionStore m = TransactionStore
-    { -- | Store a transaction for later retrieval.
-      push :: PartialTransaction -> m ()
-
-    , -- | Removes transactions from the store.
-      -- Throws 'TransactionNotInStore' when not found.
-      pop :: MonadThrow m => [TransactionId] -> m [PartialTransaction]
-    }
-
-newtype TransactionStoreException = TransactionNotInStore { transactionId :: TransactionId }
-  deriving (Eq, Show)
-
-instance Exception TransactionStoreException
-
-newTransactionStore
-    :: forall m.
-        ( MonadSTM m
-        , MonadThrow (STM m)
-        )
-    => m (TransactionStore m)
-newTransactionStore = do
-  store <- atomically $ newTVar mempty
-  pure TransactionStore
-    { push = \tx@PartialTransaction{id} ->
-        atomically $ modifyTVar' store (Map.insert id tx)
-    , pop = \ids ->
-        atomically $ do
-            txMap <- readTVar store
-            forM ids $ \id -> do
-                case Map.lookup id txMap of
-                  Nothing -> throwIO $ TransactionNotInStore id
-                  Just tx -> do
-                      writeTVar store (Map.delete id txMap)
-                      pure tx
-    }
