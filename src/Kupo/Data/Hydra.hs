@@ -88,13 +88,13 @@ import qualified Data.Text as T
 
 data HydraMessage
     = HeadIsOpen { genesisTxs :: [PartialTransaction] }
-    | TxValid { tx :: PartialTransaction }
+    | TxValid { txId :: TransactionId }
     | SnapshotConfirmed { snapshot :: Snapshot }
     | SomethingElse
 
 data Snapshot = Snapshot
     { number :: Word64
-    , confirmedTransactionIds :: [TransactionId]
+    , confirmedTransactions :: [PartialTransaction]
     }
 
 mkHydraBlock :: Word64 -> [PartialTransaction] -> (Tip, PartialBlock)
@@ -129,7 +129,7 @@ decodeHydraMessage =
             ("HeadIsOpen" :: Text) ->
                 HeadIsOpen <$> decodeHeadIsOpen o
             ("TxValid" :: Text) ->
-                TxValid <$> (o .: "transaction" >>= decodePartialTransaction)
+                TxValid <$> (o .: "transactionId" >>= decodeTransactionId)
             ("SnapshotConfirmed" :: Text) ->
                 SnapshotConfirmed <$> decodeSnapshotConfirmed o
             _ ->
@@ -181,7 +181,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
 
     bytes <- decodeBase16' hexText
 
-    tx <- case decodeCborAnn @BabbageEra "PartialTransaction" decCBOR (fromStrict bytes) of
+    tx <- case decodeCborAnn @ConwayEra "PartialTransaction" decCBOR (fromStrict bytes) of
       Left e -> fail $ show e
       Right tx -> pure tx
 
@@ -314,11 +314,11 @@ decodeScriptInEnvelope = Json.withObject "ScriptInEnvelope" $ \o -> do
 decodeSnapshotConfirmed :: Json.Object -> Json.Parser Snapshot
 decodeSnapshotConfirmed o = do
     snapshot <- o .: "snapshot"
-    number <- snapshot .: "snapshotNumber"
-    confirmedTransactionIds <- snapshot .: "confirmedTransactions" >>= mapM decodeTransactionId
+    number <- snapshot .: "number"
+    confirmedTransactions <- snapshot .: "confirmed" >>= mapM decodePartialTransaction
     pure Snapshot
         { number
-        , confirmedTransactionIds
+        , confirmedTransactions
         }
 
 decodeValue
