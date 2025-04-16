@@ -644,28 +644,28 @@ generator inputManagement model =
               )
             ]
         blocks@(tip:_) -> Just $ frequency
-            [ (3, pure GetMostRecentCheckpoint)
-            , (3, GetPreviousCheckpoint <$> oneof
+            [ (10, pure GetMostRecentCheckpoint)
+            , (10, GetPreviousCheckpoint <$> oneof
                 [ getPointSlotNo <$> genNonGenesisPoint
                 , elements (getPointSlotNo . blockPoint <$> blocks)
                 ]
               )
-            , (5, pure GetUtxo)
-            , (5, GetDatumByHash <$> genOrSelectDatum inputManagement model)
-            , (3, GetScriptByHash <$> genOrSelectScript model)
-            , (3, GetMetadataBySlotNo . SlotNo <$> (elements [0 .. unSlotNo (getPointSlotNo (blockPoint tip))]))
-            , (15, DoRollForward
+            , (20, pure GetUtxo)
+            , (20, GetDatumByHash <$> genOrSelectDatum inputManagement model)
+            , (10, GetScriptByHash <$> genOrSelectScript model)
+            , (10, GetMetadataBySlotNo . SlotNo <$> (elements [0 .. unSlotNo (getPointSlotNo (blockPoint tip))]))
+            , (60, DoRollForward
                 <$> genContinuingTip (networkTip model) (blockPoint tip)
                 <*> genContinuingBlock
                         (unspentOutputReferences model)
                         (mempool model)
                         (blockPoint tip)
               )
-            , (3, DoRollBackward
+            , (10, DoRollBackward
                 <$> genContinuingTip (networkTip model) (blockPoint tip)
                 <*> selectPastPoint (blockPoint <$> blocks)
               )
-            , (1, pure Pause)
+            , (5, pure Pause)
             , (1, pure LoseConnection)
             ]
 
