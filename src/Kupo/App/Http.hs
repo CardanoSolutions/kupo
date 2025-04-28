@@ -176,6 +176,7 @@ import qualified Data.Set as Set
 import qualified GHC.Clock
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
+import qualified Network.HTTP.Types.Status as Http
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.URI as Http
 import qualified Network.Wai.Handler.Warp as Warp
@@ -262,6 +263,9 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
         ("health" : args) ->
             routeHealth (requestMethod req, args)
 
+        ("metrics" : args) ->
+            routeMetrics (requestMethod req, args)
+
         ("checkpoints" : args) ->
             cacheOr readHealth req send $ flip routeCheckpoints (requestMethod req, args)
 
@@ -286,10 +290,19 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
         _unmatchedRoutes ->
             send Errors.notFound
 
+    routeMetrics = \case
+        ("GET", []) -> do
+            health <- readHealth
+            send =<< handleGetHealth (requestHeaders req) (Just status200) health
+        ("GET", _) ->
+            send Errors.notFound
+        (_, _) ->
+            send Errors.methodNotAllowed
+
     routeHealth = \case
         ("GET", []) -> do
             health <- readHealth
-            send =<< handleGetHealth (requestHeaders req) health
+            send =<< handleGetHealth (requestHeaders req) Nothing health
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
@@ -448,9 +461,10 @@ pathParametersToText = \case
 
 handleGetHealth
     :: [Http.Header]
+    -> Maybe Http.Status
     -> Health
     -> IO Response
-handleGetHealth reqHeaders health =
+handleGetHealth reqHeaders forcedStatus health =
     case findContentType reqHeaders of
         Just ct | cTextPlain `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders [(hContentType, cTextPlain <> ";charset=utf-8")] health
@@ -467,21 +481,23 @@ handleGetHealth reqHeaders health =
         Just{} ->
             return $ Errors.unsupportedContentType (prettyContentTypes <$> [cApplicationJson, cTextPlain])
   where
-    status = case connectionStatus of
-        -- We consider the server 'far away' from another point if it is more than a 'batch' distance
-        -- from that point. The 'mailboxCapacity' is given in slot, and we consider an active slot
-        -- coefficient of 1/20 (which has been the default on ALL cardano networks).
-        --
-        -- If the distance is lower than that, it means we are one roll-forward away from being
-        -- synchronized, in which case, we consider the server synchronized. Note that we could
-        -- theoritically consider 0 here, but this gives us some resilience to rollbacks so long as
-        -- they aren't longer than 'mailboxCapacity' blocks.
-        Connected | fromMaybe maxBound d < fromIntegral (mailboxCapacity * 20) ->
-            status200
-        Connected ->
-            status202
-        Disconnected ->
-            status503
+    status = fromMaybe
+        (case connectionStatus of
+            -- We consider the server 'far away' from another point if it is more than a 'batch' distance
+            -- from that point. The 'mailboxCapacity' is given in slot, and we consider an active slot
+            -- coefficient of 1/20 (which has been the default on ALL cardano networks).
+            --
+            -- If the distance is lower than that, it means we are one roll-forward away from being
+            -- synchronized, in which case, we consider the server synchronized. Note that we could
+            -- theoritically consider 0 here, but this gives us some resilience to rollbacks so long as
+            -- they aren't longer than 'mailboxCapacity' blocks.
+            Connected | fromMaybe maxBound d < fromIntegral (mailboxCapacity * 20) ->
+                status200
+            Connected ->
+                status202
+            Disconnected ->
+                status503
+        ) forcedStatus
       where
         Health{..} = health
         d = distanceToSlot
@@ -501,6 +517,7 @@ handleGetHealth reqHeaders health =
     cAny = "*/*"
 
     prettyContentTypes ct = decodeUtf8 ("'" <> ct <> "'")
+
 
 --
 -- /checkpoints

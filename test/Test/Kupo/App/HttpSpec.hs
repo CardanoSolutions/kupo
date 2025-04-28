@@ -160,6 +160,12 @@ spec = do
                 res & Wai.assertStatus (Http.statusCode Http.status200)
                 res & Wai.assertHeader "Access-Control-Allow-Origin" "*"
 
+        session specification get "/metrics" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.setPath Wai.defaultRequest "/metrics"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson True schema
+
         session specification get "/health" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/health"

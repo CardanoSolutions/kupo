@@ -1371,20 +1371,6 @@ components:
         - `connected` and `disconnected` (from `connection_status`) are encoded as `1.0` and `0.0` respectively.
         - `installed` and `deferred` (from `configuration.indexes`) are encoded as `1.0` and `0.0` respectively.
         - `version` is not present in the Prometheus metrics.
-      examples:
-        response:
-          value: |
-            # TYPE kupo_connection_status gauge
-            kupo_connection_status  1.0
-
-            # TYPE kupo_most_recent_checkpoint counter
-            kupo_most_recent_checkpoint  294998
-
-            # TYPE kupo_most_recent_node_tip counter
-            kupo_most_recent_node_tip  71753381
-
-            # TYPE kupo_configuration_indexes gauge
-            kupo_configuration_indexes  1.0
 
   parameters:
     asset-name:
@@ -2197,6 +2183,18 @@ paths:
             "text/plain;charset=utf-8":
               schema:
                 $ref: "#/components/schemas/HealthPrometheus"
+              example: &HealthPrometheusExample |
+                # TYPE kupo_connection_status gauge
+                kupo_connection_status  1.0
+
+                # TYPE kupo_most_recent_checkpoint counter
+                kupo_most_recent_checkpoint  294998
+
+                # TYPE kupo_most_recent_node_tip counter
+                kupo_most_recent_node_tip  71753381
+
+                # TYPE kupo_configuration_indexes gauge
+                kupo_configuration_indexes  1.0
 
         202:
           description: Syncing
@@ -2207,6 +2205,7 @@ paths:
                 $ref: "#/components/schemas/Health"
 
             "text/plain;charset=utf-8":
+              example: *HealthPrometheusExample
               schema:
                 $ref: "#/components/schemas/HealthPrometheus"
 
@@ -2219,5 +2218,27 @@ paths:
                 $ref: "#/components/schemas/Health"
 
             "text/plain;charset=utf-8":
+              example: *HealthPrometheusExample
               schema:
                 $ref: "#/components/schemas/HealthPrometheus"
+
+  /metrics:
+    get:
+      operationId: getMetrics
+      tags: ["Health"]
+      summary: Get Metrics
+      description: |
+        Like [`/health`](#operation/getHealth), but always return `200 OK` as a status.
+      responses:
+        200:
+          description: Metrics
+          headers: *default-headers
+          content:
+            "text/plain;charset=utf-8":
+              example: *HealthPrometheusExample
+              schema:
+                $ref: "#/components/schemas/HealthPrometheus"
+
+            "application/json;charset=utf-8":
+              schema:
+                $ref: "#/components/schemas/Health"
