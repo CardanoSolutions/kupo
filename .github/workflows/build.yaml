@@ -165,7 +165,7 @@ jobs:
       if: ${{ github.event_name == 'push' }}
       uses: actions/upload-artifact@v4
       with:
-        name: digests
+        name: digests-${{ matrix.arch == 'x86_64' && 'amd64' || 'arm64' }}
         path: /tmp/digests/*
         if-no-files-found: error
         retention-days: 1
@@ -174,10 +174,16 @@ jobs:
     needs: [ docker ]
     runs-on: ubuntu-latest
     steps:
-      - name: Download digests
+      - name: Download digests (amd)
         uses: actions/download-artifact@v4
         with:
-          name: digests
+          name: digests-amd64
+          path: /tmp/digests
+
+      - name: Download digests (arm)
+        uses: actions/download-artifact@v4
+        with:
+          name: digests-arm64
           path: /tmp/digests
 
       - name: Set up Docker Buildx
