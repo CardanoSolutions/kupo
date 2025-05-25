@@ -13,83 +13,41 @@ import Data.Aeson.Lens
     ( _Array
     , key
     )
-import Kupo.App.ChainSync.Hydra
-    ( TransactionStore (..)
-    , TransactionStoreException (..)
-    , newTransactionStore
-    )
 import Kupo.Data.Hydra
     ( decodeHydraMessage
     )
-import Kupo.Data.PartialBlock
-    ( PartialTransaction (..)
-    )
+import System.Directory (listDirectory)
 import Test.Hspec
     ( Spec
     , context
-    , parallel
-    , shouldBe
-    , shouldThrow
+    , parallel, runIO
     )
-import Test.Hspec.QuickCheck
-    ( prop
-    )
-import Test.Kupo.AppSpec
-    ( genPartialTransactions
-    )
-import Test.Kupo.Data.Generators
-    ( genOutputReference
-    )
+import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck
     ( Property
     , counterexample
-    , label
-    , listOf1
-    , shuffle
-    , withMaxSuccess
+    , withMaxSuccess, conjoin
     )
 import Test.QuickCheck.Monadic
     ( assert
     , monadicIO
     , monitor
-    , pick
     , run
     )
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Types as Json
-import qualified Data.Set as Set
+import System.FilePath ((</>))
 
 spec :: Spec
 spec = parallel $ do
-  context "TransactionStore" $ do
-    prop "can retrieve transactions in any order" prop_canRetrieveTxInAnyOrder
-
   context "JSON decoders" $ do
       context "decodeHydraMessage" $ do
-          prop "can decode test vectors" $ withMaxSuccess 1 $ do
-              prop_canDecodeFile
-                  (mapM decodeHydraMessage . getSamples)
-                  "./test/vectors/hydra/hydra-node/golden/ReasonablySized (ServerOutput (Tx BabbageEra)).json"
-
-prop_canRetrieveTxInAnyOrder
-    :: Property
-prop_canRetrieveTxInAnyOrder = monadicIO $ do
-      TransactionStore{push, pop} <- run newTransactionStore
-      txs <- pick $ do
-           txIns <- listOf1 genOutputReference
-           evalStateT genPartialTransactions (Set.fromList txIns)
-      txsWithIds <- forM txs $ \tx@PartialTransaction{id} -> do
-            run $ push tx
-            pure (tx, id)
-      monitor (label $ "Generated list length is " <> show (length txsWithIds))
-      shuffledTxs <- pick $ shuffle txsWithIds
-      pure $
-          forM_ shuffledTxs $ \(tx, txId) -> do
-              txs' <- pop [txId]
-              txs' `shouldBe` [tx]
-              pop [txId] `shouldThrow` \case
-                  TransactionNotInStore txId' -> txId' == txId
+          let dir = "./test/vectors/hydra/hydra-node/golden/ServerOutput"
+          files <- runIO (listDirectory dir) <&> map (dir </>)
+          prop "can decode test vectors" $ do
+              withMaxSuccess 1 $
+                  conjoin $ map (prop_canDecodeFile (mapM decodeHydraMessage . getSamples)) files
 
 prop_canDecodeFile
     :: (Json.Value -> Json.Parser b)

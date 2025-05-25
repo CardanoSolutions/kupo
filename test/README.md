@@ -10,6 +10,8 @@ Various scenarios are tested, including:
 - restarting the application with various combination of options;
 - in-memory and on-disk indexing...
 
+To run the Hydra integration tests, make sure the `HYDRA_HOST` and `HYDRA_PORT` are set and point to a running `hydra-node`. The [hydra repository](https://github.com/cardano-scaling/hydra) also provides a tool to start "busy" local devnet quickly using `hydra-cluster --devnet --publish-hydra-scripts --busy`.
+
 ## State-Machine
 
 In [AppSpec](./Test/Kupo/AppSpec.hs), Kupo implements a state-machine testing strategy to test the application as a black box (or as _John Hughes_ says 'a big ball of mud'), alongside with a model. These tests focuses on how kupo maintains a consistent database index w.r.t to the UTxO set. They do so by mocking the networking side of Kupo and modelling that as arbitrarily generated events (roll-forward / roll-backward).  This generates a sequence of events which can be interpreted by Kupo and that are interleaved with client requests on the API. The observations on the real application are compared against a simple model (i.e. a linked list of the chain) through post-conditions checked on each query.
