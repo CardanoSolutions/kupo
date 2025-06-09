@@ -50,6 +50,9 @@ import Kupo.Data.Configuration
 import Kupo.Version
     ( version
     )
+import Ouroboros.Network.Magic
+    ( NetworkMagic (..)
+    )
 import System.Metrics.Prometheus.Encode.Text
     ( encodeMetrics
     )
@@ -69,9 +72,6 @@ import System.Metrics.Prometheus.MetricId
     )
 import System.Metrics.Prometheus.Registry
     ( RegistrySample (..)
-    )
-import Ouroboros.Network.Magic
-    ( NetworkMagic (..)
     )
 
 import qualified Data.Aeson.Encoding as Json

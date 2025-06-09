@@ -279,7 +279,7 @@ spec = do
               producer <- run (newMockProducer httpClient <$> atomically (dupTChan chan))
               fetchBlock <- run (newMockFetchBlock <$> atomically (dupTChan chan))
               let fetchTip = throwIO UnusedFetchTipClient
-              let kupo = kupoWith tracers Nothing producer fetchBlock fetchTip `runWith` env
+              let kupo = kupoWith tracers (pure Nothing) producer fetchBlock fetchTip `runWith` env
               asyncId <- run (async kupo)
               run $ link asyncId
               (_hist, model, res) <- runCommands stateMachine cmds

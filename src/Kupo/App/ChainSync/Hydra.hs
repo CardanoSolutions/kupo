@@ -37,7 +37,6 @@ import Kupo.Data.Hydra
     )
 import Kupo.Data.PartialBlock
     ( PartialBlock (..)
-    
     )
 
 import qualified Network.WebSockets as WS

@@ -197,7 +197,7 @@ httpServer
         ( IsBlock block
         )
     => Tracer IO TraceHttpServer
-    -> Maybe NetworkParameters
+    -> IO (Maybe NetworkParameters)
     -> WithDatabase IO ResponseReceived
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> FetchBlockClient IO block
@@ -259,7 +259,7 @@ app
         ( IsBlock block
         , res ~ ResponseReceived
         )
-    => Maybe NetworkParameters
+    => IO (Maybe NetworkParameters)
     -> ((Response -> IO res) -> ConnectionType -> (Database IO -> IO res) -> IO res)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> FetchBlockClient IO block
@@ -475,10 +475,11 @@ pathParametersToText = \case
 handleGetHealth
     :: [Http.Header]
     -> Maybe Http.Status
-    -> Maybe NetworkParameters
+    -> IO (Maybe NetworkParameters)
     -> Health
     -> IO Response
-handleGetHealth reqHeaders forcedStatus networkParameters health = do
+handleGetHealth reqHeaders forcedStatus resolveNetworkParameters health = do
+    networkParameters <- resolveNetworkParameters
     now <- getCurrentTime
     case findContentType reqHeaders of
         Just ct | cTextPlain `BS.isInfixOf` ct -> do

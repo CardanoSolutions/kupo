@@ -501,7 +501,7 @@ newStubbedApplication :: [Pattern] -> IO Application
 newStubbedApplication defaultPatterns = do
     patternsVar <- newTVarIO (fromList defaultPatterns)
     pure $ app
-        Nothing
+        (pure Nothing)
         (\_send _mode callback -> callback databaseStub)
         (\_point ForcedRollbackHandler{onSuccess} -> onSuccess)
         (\point reply ->

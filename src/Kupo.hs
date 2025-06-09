@@ -54,15 +54,14 @@ import Kupo.App
     , readOnlyConsumer
     , rollForwardAll
     , rollForwardUntil
+    , withExceptionHandler
     , withFetchBlockClient
-    )
-import Kupo.App.ChainSync
-    ( withChainSyncExceptionHandler
     )
 import Kupo.App.Configuration
     ( TraceConfiguration (..)
-    , hydrateNetworkParameters
+    , hydrateChainProducer
     , newPatternsCache
+    , resolveNetworkParameters
     , startOrResume
     )
 import Kupo.App.Database
@@ -115,8 +114,7 @@ import Kupo.Data.ChainSync
     ( ForcedRollbackHandler
     )
 import Kupo.Data.Configuration
-    ( ChainProducer (..)
-    , Configuration (..)
+    ( Configuration (..)
     , DeferIndexesInstallation (..)
     , NetworkParameters
     , NodeTipHasBeenReachedException (..)
@@ -171,15 +169,9 @@ kupo tr = do
             }
         } <- ask
 
-    chainProducerWithParams <- liftIO (hydrateNetworkParameters chainProducer)
+    chainProducerWithParams <- liftIO $ hydrateChainProducer chainProducer
 
-    let networkParams = case chainProducerWithParams of
-            CardanoNode{networkParameters} -> Just networkParameters
-            Ogmios{networkParameters} -> Just networkParameters
-            Hydra{} -> Nothing
-            ReadOnlyReplica{} -> Nothing
-
-    kupoWith tr networkParams
+    kupoWith tr (resolveNetworkParameters chainProducerWithParams)
         (newProducer (tracerConfiguration tr) chainProducerWithParams)
         (withFetchBlockClient chainProducerWithParams)
         (newFetchTipClient chainProducerWithParams)
@@ -188,7 +180,7 @@ kupo tr = do
 kupoWith
     :: Tracers IO Concrete
 
-    -> Maybe NetworkParameters
+    -> IO (Maybe NetworkParameters)
 
     -> ( ( forall block. IsBlock block
           => (Point -> ForcedRollbackHandler IO -> IO ())
@@ -309,7 +301,7 @@ kupoWith tr networkParameters withProducer withFetchBlock fetchTipClient =
                     ( if isReadOnlyReplica config then
                         toggleConnected statusToggle *> idle
                       else
-                        withChainSyncExceptionHandler (tracerChainSync tr) statusToggle $ do
+                        withExceptionHandler (tracerKupo tr) statusToggle $ do
                             (mostRecentCheckpoint, checkpoints) <- startOrResume
                                 (tracerConfiguration tr)
                                 config

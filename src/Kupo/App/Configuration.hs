@@ -7,8 +7,8 @@
 
 module Kupo.App.Configuration
     ( -- * NetworkParameters
-      hydrateNetworkParameters
-    , fetchNetworkParameters
+      hydrateChainProducer
+    , resolveNetworkParameters
     , parseNetworkParameters
 
     -- * Application Setup
@@ -34,7 +34,8 @@ import Kupo.App.Database.Types
     ( Database (..)
     )
 import Kupo.Control.MonadCatch
-    ( catch
+    ( MonadCatch (..)
+    , catch
     )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..)
@@ -87,24 +88,52 @@ import qualified Network.WebSockets.Json as WS
 import qualified Network.WebSockets.Tls as WSS
 
 --
--- Network Paramters
+-- Network Parameters
 --
 
-hydrateNetworkParameters :: ChainProducer () -> IO (ChainProducer NetworkParameters)
-hydrateNetworkParameters = \case
-        CardanoNode{nodeSocket, nodeConfig} -> do
-            networkParameters <- parseNetworkParameters nodeConfig
-            pure $ CardanoNode { nodeSocket, nodeConfig, networkParameters }
+hydrateChainProducer :: ChainProducer () -> IO (ChainProducer (TMVar IO NetworkParameters))
+hydrateChainProducer = \case
+    CardanoNode{nodeSocket, nodeConfig} -> do
+        networkParameters <- liftIO newEmptyTMVarIO
+        let chainProducer = CardanoNode{nodeSocket, nodeConfig, networkParameters}
+        resolveNetworkParameters chainProducer $> chainProducer
 
-        Ogmios{ogmiosHost, ogmiosPort} -> do
-            networkParameters <- WSS.runClient ogmiosHost ogmiosPort fetchNetworkParameters
-            pure $ Ogmios { ogmiosHost, ogmiosPort, networkParameters }
+    Ogmios{ogmiosHost, ogmiosPort} -> do
+        networkParameters <- liftIO newEmptyTMVarIO
+        let chainProducer = Ogmios{ogmiosHost, ogmiosPort, networkParameters}
+        resolveNetworkParameters chainProducer $> chainProducer
 
-        Hydra{hydraHost, hydraPort} -> do
-            pure $ Hydra { hydraHost, hydraPort }
+    Hydra{hydraHost, hydraPort} -> do
+        pure Hydra{hydraHost, hydraPort}
 
-        ReadOnlyReplica -> do
-            pure ReadOnlyReplica
+    ReadOnlyReplica -> do
+        pure ReadOnlyReplica
+
+resolveNetworkParameters :: ChainProducer (TMVar IO NetworkParameters) -> IO (Maybe NetworkParameters)
+resolveNetworkParameters = \case
+    CardanoNode{nodeConfig, networkParameters} -> do
+        atomically (tryTakeTMVar networkParameters) >>= \case
+            Nothing -> do
+                handle (\(_ :: SomeException) -> pure Nothing) $ do
+                    params <- parseNetworkParameters nodeConfig
+                    atomically (putTMVar networkParameters params) $> Just params
+            Just params -> do
+                pure $ Just params
+
+    Ogmios{ogmiosHost, ogmiosPort, networkParameters} -> do
+        atomically (tryTakeTMVar networkParameters) >>= \case
+            Nothing -> do
+                handle (\(_ :: SomeException) -> pure Nothing) $ do
+                    params <- WSS.runClient ogmiosHost ogmiosPort fetchNetworkParameters
+                    atomically (putTMVar networkParameters params) $> Just params
+            Just params -> do
+                pure $ Just params
+
+    Hydra{} -> do
+        pure Nothing
+
+    ReadOnlyReplica -> do
+        pure Nothing
 
 fetchNetworkParameters :: WS.ClientApp NetworkParameters
 fetchNetworkParameters ws = do

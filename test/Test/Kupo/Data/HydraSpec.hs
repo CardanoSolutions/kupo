@@ -16,17 +16,23 @@ import Data.Aeson.Lens
 import Kupo.Data.Hydra
     ( decodeHydraMessage
     )
-import System.Directory (listDirectory)
+import System.Directory
+    ( listDirectory
+    )
 import Test.Hspec
     ( Spec
     , context
-    , parallel, runIO
+    , parallel
+    , runIO
     )
-import Test.Hspec.QuickCheck (prop)
+import Test.Hspec.QuickCheck
+    ( prop
+    )
 import Test.QuickCheck
     ( Property
+    , conjoin
     , counterexample
-    , withMaxSuccess, conjoin
+    , withMaxSuccess
     )
 import Test.QuickCheck.Monadic
     ( assert
@@ -37,7 +43,9 @@ import Test.QuickCheck.Monadic
 
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Types as Json
-import System.FilePath ((</>))
+import System.FilePath
+    ( (</>)
+    )
 
 spec :: Spec
 spec = parallel $ do

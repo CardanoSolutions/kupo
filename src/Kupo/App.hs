@@ -23,6 +23,9 @@ module Kupo.App
       -- * Gardener
     , gardener
 
+      -- * Exception handler
+    , withExceptionHandler
+
       -- * Utils
     , idle
     , mkNotifyTip
@@ -35,12 +38,28 @@ module Kupo.App
 
 import Kupo.Prelude
 
+import Control.Exception.Safe
+    ( IOException
+    )
+import Data.Char
+    ( isDigit
+    )
+import Data.List
+    ( isInfixOf
+    )
+import Data.Severity
+    ( HasSeverityAnnotation (..)
+    , Severity (..)
+    )
+import Data.Time.Clock
+    ( DiffTime
+    )
 import Kupo.App.ChainSync
     ( TraceChainSync (..)
-    , withChainSyncExceptionHandler
     )
 import Kupo.App.Configuration
     ( TraceConfiguration (..)
+    , resolveNetworkParameters
     )
 import Kupo.App.Database.Types
     ( DBTransaction
@@ -63,27 +82,27 @@ import Kupo.Control.MonadCatch
     )
 import Kupo.Control.MonadDelay
     ( MonadDelay
+    , foreverCalmly
     , threadDelay
     )
 import Kupo.Control.MonadLog
-    ( HasSeverityAnnotation (..)
-    , MonadLog (..)
-    , Severity (..)
+    ( MonadLog (..)
     , Tracer
     , nullTracer
+    , traceWith
     )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..)
     , NodeToClientVersion (..)
-    )
-import Kupo.Control.MonadTime
-    ( MonadTime (..)
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
 import Kupo.Control.MonadThrow
     ( MonadThrow (..)
+    )
+import Kupo.Control.MonadTime
+    ( MonadTime (..)
     )
 import Kupo.Data.Cardano
     ( BinaryData
@@ -101,6 +120,7 @@ import Kupo.Data.Cardano
     )
 import Kupo.Data.ChainSync
     ( ForcedRollbackHandler (..)
+    , HandshakeException (..)
     , IntersectionNotFoundException (..)
     )
 import Kupo.Data.Configuration
@@ -143,10 +163,24 @@ import Kupo.Data.Pattern
     , included
     , matchBlock
     )
+import Network.Mux
+    ( MuxError (..)
+    , MuxErrorType (..)
+    )
+import Network.WebSockets
+    ( ConnectionException (..)
+    )
+import Ouroboros.Network.Protocol.Handshake
+    ( HandshakeProtocolError (..)
+    )
+import System.IO.Error
+    ( isDoesNotExistError
+    )
 
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Text as T
 import qualified Kupo.App.ChainSync.Hydra as Hydra
 import qualified Kupo.App.ChainSync.Node as Node
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
@@ -154,6 +188,111 @@ import qualified Kupo.App.FetchBlock.Node as Node
 import qualified Kupo.App.FetchBlock.Ogmios as Ogmios
 import qualified Kupo.App.FetchTip.Node as Node
 import qualified Kupo.App.FetchTip.Ogmios as Ogmios
+import Kupo.Data.Configuration
+    ( EpochSlots
+    , NetworkMagic
+    )
+import qualified Ouroboros.Network.Protocol.Handshake as Handshake
+
+
+withExceptionHandler
+    :: Tracer IO TraceKupo
+    -> ConnectionStatusToggle IO
+    -> IO ()
+    -> IO Void
+withExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
+    foreverCalmly (handleExceptions (io $> 42))
+  where
+    handleExceptions :: IO DiffTime -> IO DiffTime
+    handleExceptions
+        = handle onHandshakeException
+        . handle (onRetryableException 5 isRetryableIOException)
+        . handle (onRetryableException 5 isRetryableMuxError)
+        . handle (onRetryableException 5 isRetryableConnectionException)
+        . handle (onRetryableException 0 isRetryableIntersectionNotFoundException)
+        . (`onException` toggleDisconnected)
+
+    onRetryableException :: Exception e => DiffTime -> (e -> Bool) -> e -> IO DiffTime
+    onRetryableException retryingIn isRetryable e
+        | isRetryable e = do
+            traceWith tr $ KupoFailedToConnectOrConnectionLost{retryingIn}
+            pure retryingIn
+        | otherwise = do
+            throwIO e
+
+    isRetryableIOException :: IOException -> Bool
+    isRetryableIOException e
+        | isResourceVanishedError e = True
+        | isDoesNotExistError e = True
+        | isResourceExhaustedError e = True
+        | isInvalidArgumentOnSocket e = True
+        | otherwise = False
+
+    isRetryableMuxError :: MuxError -> Bool
+    isRetryableMuxError MuxError{errorType} =
+        case errorType of
+            MuxBearerClosed -> True
+            MuxSDUReadTimeout -> True
+            MuxSDUWriteTimeout -> True
+            MuxIOException e -> isRetryableIOException e
+            _notRetryable -> False
+
+    isRetryableConnectionException :: ConnectionException -> Bool
+    isRetryableConnectionException = \case
+        CloseRequest{} -> True
+        ConnectionClosed{} -> True
+        ParseException{} -> False
+        UnicodeException{} -> False
+
+    isRetryableIntersectionNotFoundException :: IntersectionNotFoundException -> Bool
+    isRetryableIntersectionNotFoundException = \case
+        ForcedIntersectionNotFound{} -> True
+        IntersectionNotFound{} -> False
+
+-- | Show better errors when failing to handshake with the cardano-node. This is generally
+-- because users have misconfigured their instance.
+onHandshakeException :: HandshakeProtocolError NodeToClientVersion -> IO a
+onHandshakeException = \case
+    HandshakeError (Handshake.Refused _version reason) -> do
+        let hint = case T.splitOn "/=" reason of
+                [T.filter isDigit -> remoteConfig, T.filter isDigit -> localConfig] ->
+                    unwords
+                        [ "Kupo is configured for", prettyNetwork localConfig
+                        , "but cardano-node is running on", prettyNetwork remoteConfig <> "."
+                        , "You probably want to use a different configuration."
+                        ]
+                _unexpectedReasonMessage ->
+                    ""
+        throwIO $ HandshakeException $ unwords
+            [ "Unable to establish the connection with the cardano-node:"
+            , "it runs on a different network!"
+            , hint
+            ]
+    e ->
+        throwIO e
+
+-- | Show a named version of the network magic when we recognize it for better UX.
+prettyNetwork :: Text -> Text
+prettyNetwork = \case
+    "764824073" -> "'mainnet'"
+    "1097911063" -> "'testnet'"
+    "1" -> "'preview'"
+    "2" -> "'preprod'"
+    unknownMagic -> "'network-magic=" <> unknownMagic <> "'"
+
+isResourceExhaustedError :: IOException -> Bool
+isResourceExhaustedError =
+    isInfixOf "resource exhausted" . show
+
+isResourceVanishedError :: IOException -> Bool
+isResourceVanishedError =
+    isInfixOf "resource vanished" . show
+
+-- NOTE: MacOS
+isInvalidArgumentOnSocket :: IOException -> Bool
+isInvalidArgumentOnSocket =
+    isInfixOf "invalid argument (Socket operation on non-socket)" . show
+
 
 --
 -- Producer
@@ -167,7 +306,7 @@ type ChainSyncClient m block =
 
 newProducer
     :: Tracer IO TraceConfiguration
-    -> ChainProducer NetworkParameters
+    -> ChainProducer (TMVar IO NetworkParameters)
     -> ( forall block. IsBlock block
         => (Point -> ForcedRollbackHandler IO -> IO ())
         -> Mailbox IO (Tip, block) (Tip, Point)
@@ -180,14 +319,16 @@ newProducer tr chainProducer callback = do
     let forcedRollbackCallback point handler =
             atomically (putTMVar forcedRollbackVar (point, handler))
 
+    networkParameters <- resolveNetworkParameters chainProducer
+
     case chainProducer of
         ReadOnlyReplica -> do
             mailbox <- atomically (newMailbox mailboxCapacity)
             callback @Void forcedRollbackCallback mailbox $ \_ _ _ -> pure ()
 
-        Ogmios{ogmiosHost, ogmiosPort, networkParameters} -> do
+        Ogmios{ogmiosHost, ogmiosPort} -> do
             logWith tr ConfigurationOgmios { ogmiosHost, ogmiosPort }
-            logWith tr ConfigurationNetwork { networkParameters }
+            whenJust networkParameters $ logWith tr . ConfigurationNetwork
             mailbox <- atomically (newMailbox mailboxCapacity)
             callback forcedRollbackCallback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
                 let runOgmios pts beforeMainLoop onIntersectionNotFound continuation = do
@@ -242,16 +383,20 @@ newProducer tr chainProducer callback = do
 
                 runHydra checkpoints (return ()) throwIO restart
 
-        CardanoNode{nodeSocket, nodeConfig, networkParameters} -> do
+        CardanoNode{nodeSocket, nodeConfig} -> do
             logWith tr ConfigurationCardanoNode { nodeSocket, nodeConfig }
-            logWith tr ConfigurationNetwork { networkParameters }
+            whenJust networkParameters $ logWith tr . ConfigurationNetwork
             mailbox <- atomically (newMailbox mailboxCapacity)
+
+            magic <- networkMagicOrThrow networkParameters
+            slots <- slotsPerEpochOrThrow networkParameters
+
             callback forcedRollbackCallback mailbox $ \tracerChainSync checkpoints statusToggle -> do
                 withChainSyncServer
                   statusToggle
                   [ NodeToClientV_9 .. maxBound ]
-                  (networkMagic networkParameters)
-                  (slotsPerEpoch networkParameters)
+                  magic
+                  slots
                   nodeSocket
                   (Node.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
                   & handle
@@ -271,7 +416,7 @@ newProducer tr chainProducer callback = do
 -- The FetchBlockClient is more geared towards fetching precise information (e.g. metadata of a
 -- transaction in a known block).
 withFetchBlockClient
-    :: ChainProducer NetworkParameters
+    :: ChainProducer (TMVar IO NetworkParameters)
     -> ( forall block. IsBlock block
         => FetchBlockClient IO block
         -> IO ()
@@ -285,22 +430,25 @@ withFetchBlockClient chainProducer callback = do
             Ogmios.withFetchBlockClient ogmiosHost ogmiosPort callback
         Hydra{} ->
             callback @PartialBlock (\_point respond -> respond Nothing)
-        CardanoNode{nodeSocket, networkParameters} -> do
+        CardanoNode{nodeSocket} -> do
             (chainSyncClient, fetchBlockClient) <- Node.newFetchBlockClient
             race_
                 (callback fetchBlockClient)
-                (withChainSyncExceptionHandler nullTracer noConnectionStatusToggle $
+                (withExceptionHandler nullTracer noConnectionStatusToggle $ do
+                    networkParameters <- resolveNetworkParameters chainProducer
+                    magic <- networkMagicOrThrow networkParameters
+                    slots <- slotsPerEpochOrThrow networkParameters
                     withChainSyncServer
                         noConnectionStatusToggle
                         [ NodeToClientV_9 .. maxBound ]
-                        (networkMagic networkParameters)
-                        (slotsPerEpoch networkParameters)
+                        magic
+                        slots
                         nodeSocket
                         chainSyncClient
                 )
 
 newFetchTipClient
-    :: ChainProducer NetworkParameters
+    :: ChainProducer (TMVar IO NetworkParameters)
     -> FetchTipClient IO
 newFetchTipClient = \case
     ReadOnlyReplica ->
@@ -309,15 +457,21 @@ newFetchTipClient = \case
         throwIO UnableToFetchTipFromHydra
     Ogmios{ogmiosHost, ogmiosPort} ->
         Ogmios.newFetchTipClient ogmiosHost ogmiosPort
-    CardanoNode{nodeSocket, networkParameters} -> do
+    chainProducer@CardanoNode{nodeSocket} -> do
+        networkParameters <- resolveNetworkParameters chainProducer
+        magic <- networkMagicOrThrow networkParameters
+        slots <- slotsPerEpochOrThrow networkParameters
+
         response <- newEmptyTMVarIO
+
         withChainSyncServer
             noConnectionStatusToggle
             [ NodeToClientV_9 .. maxBound ]
-            (networkMagic networkParameters)
-            (slotsPerEpoch networkParameters)
+            magic
+            slots
             nodeSocket
             (Node.newFetchTipClient response)
+
         atomically $ takeTMVar response
 
 type RollForward m block =
@@ -532,6 +686,14 @@ gardener tr config patterns withDatabase = forever $ do
 idle :: (MonadDelay m) => m Void
 idle = forever (threadDelay 86400)
 
+networkMagicOrThrow :: MonadThrow m => Maybe NetworkParameters -> m NetworkMagic
+networkMagicOrThrow =
+    maybe (throwIO FailedToRetrieveNetworkParameters) (pure . networkMagic)
+
+slotsPerEpochOrThrow :: MonadThrow m => Maybe NetworkParameters -> m EpochSlots
+slotsPerEpochOrThrow =
+    maybe (throwIO FailedToRetrieveNetworkParameters) (pure . slotsPerEpoch)
+
 mkNotifyTip
     :: (MonadThrow m, MonadSTM m, MonadTime m)
     => DeferIndexesInstallation
@@ -547,6 +709,9 @@ mkNotifyTip indexMode health tip point = do
             let distance = maybe maxBound (distanceToTip tip . getPointSlotNo) point
             when (distance <= 60) $ throwIO NodeTipHasBeenReached{ distance }
     recordCheckpoint health now (getTipSlotNo tip) point
+
+data FailedToRetrieveNetworkParameters = FailedToRetrieveNetworkParameters deriving (Show, Generic)
+instance Exception FailedToRetrieveNetworkParameters
 
 --
 -- Tracer
@@ -606,6 +771,9 @@ instance HasSeverityAnnotation TraceGardener where
 data TraceKupo where
     KupoExit
         :: TraceKupo
+    KupoFailedToConnectOrConnectionLost
+        :: { retryingIn :: DiffTime }
+        -> TraceKupo
     KupoRestartingWithIndexes
         :: { distance :: Word64 }
         -> TraceKupo
@@ -621,5 +789,6 @@ instance ToJSON TraceKupo where
 instance HasSeverityAnnotation TraceKupo where
     getSeverityAnnotation = \case
         KupoExit{} -> Debug
+        KupoFailedToConnectOrConnectionLost{} -> Warning
         KupoRestartingWithIndexes{} -> Notice
         KupoUnexpectedError{} -> Error
