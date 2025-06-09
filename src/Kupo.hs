@@ -176,8 +176,7 @@ kupo tr = do
     let networkParams = case chainProducerWithParams of
             CardanoNode{networkParameters} -> Just networkParameters
             Ogmios{networkParameters} -> Just networkParameters
-            Hydra{networkParameters} -> Just networkParameters
-            -- TODO: Could store in db and fetch back.
+            Hydra{} -> Nothing
             ReadOnlyReplica{} -> Nothing
 
     kupoWith tr networkParams

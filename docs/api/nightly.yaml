@@ -1325,6 +1325,8 @@ components:
         - connection_status
         - most_recent_checkpoint
         - most_recent_node_tip
+        - seconds_since_last_block
+        - network_synchronization
         - configuration
         - version
       properties:
@@ -1346,6 +1348,20 @@ components:
               description: Absolute slot number of the current tip of the node.
             - type: "null"
               description: Absolute slot number of the current tip of the node.
+        seconds_since_last_block:
+          oneOf:
+            - type: integer
+              description: Number of seconds elapsed since the last block was ingested by Kupo.
+            - type: "null"
+              description: Number of seconds elapsed since the last block was ingested by Kupo.
+        network_synchronization:
+          oneOf:
+            - type: number
+              minimum: 0
+              maximum: 1
+              description: A progress percentage of the synchronization towards the node tip.
+            - type: "null"
+              description: A progress percentage of the synchronization towards the node tip.
         configuration:
           type: object
           description: A summary of hand-picked configuration parameters.
@@ -2184,17 +2200,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthPrometheus"
               example: &HealthPrometheusExample |
+                # TYPE kupo_configuration_indexes gauge
+                kupo_configuration_indexes  1.0
+
                 # TYPE kupo_connection_status gauge
                 kupo_connection_status  1.0
 
                 # TYPE kupo_most_recent_checkpoint counter
-                kupo_most_recent_checkpoint  294998
+                kupo_most_recent_checkpoint  61264845
 
                 # TYPE kupo_most_recent_node_tip counter
-                kupo_most_recent_node_tip  71753381
+                kupo_most_recent_node_tip  82838775
 
-                # TYPE kupo_configuration_indexes gauge
-                kupo_configuration_indexes  1.0
+                # TYPE kupo_network_synchronization gauge
+                kupo_network_synchronization  0.73956
+
+                # TYPE kupo_seconds_since_last_block gauge
+                kupo_seconds_since_last_block  2.0
 
         202:
           description: Syncing

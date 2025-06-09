@@ -11,6 +11,9 @@ module Kupo.App.Health
 
 import Kupo.Prelude
 
+import Data.Time
+    ( UTCTime
+    )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
@@ -57,13 +60,15 @@ recordCheckpoint
         ( MonadSTM m
         )
     => TVar m Health
+    -> UTCTime
     -> SlotNo
     -> Maybe Point
     -> m ()
-recordCheckpoint health (Just -> mostRecentNodeTip) mostRecentCheckpoint =
+recordCheckpoint health (Just -> mostRecentClockTick) (Just -> mostRecentNodeTip) mostRecentCheckpoint =
     atomically $ modifyTVar' health $ \h -> h
         { mostRecentNodeTip
         , mostRecentCheckpoint
+        , mostRecentClockTick
         }
 
 -- | A safe setter for the most recent checkpoint.

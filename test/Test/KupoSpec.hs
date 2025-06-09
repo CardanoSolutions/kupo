@@ -308,11 +308,13 @@ spec = skippableContext "End-to-end" $ do
                         CardanoNode
                             { nodeSocket = "/dev/null"
                             , nodeConfig
+                            , networkParameters = ()
                             }
                     Ogmios{ogmiosPort} ->
                         Ogmios
                             { ogmiosHost = "/dev/null"
                             , ogmiosPort
+                            , networkParameters = ()
                             }
                     Hydra{hydraPort} ->
                         Hydra
@@ -627,7 +629,7 @@ skippableContext prefix skippableSpec = do
         (Just nodeSocket, Just nodeConfig) -> do
             manager <- runIO $ newManager defaultManagerSettings
             let defaultCfg = Configuration
-                    { chainProducer = CardanoNode { nodeSocket, nodeConfig }
+                    { chainProducer = CardanoNode { nodeSocket, nodeConfig, networkParameters = () }
                     , databaseLocation = InMemory Nothing
                     , serverHost = "127.0.0.1"
                     , serverPort = 0
@@ -649,7 +651,7 @@ skippableContext prefix skippableSpec = do
             manager <- runIO $ newManager $
                 defaultManagerSettings { managerResponseTimeout = responseTimeoutNone }
             let defaultCfg = Configuration
-                    { chainProducer = Ogmios { ogmiosHost, ogmiosPort }
+                    { chainProducer = Ogmios { ogmiosHost, ogmiosPort, networkParameters = () }
                     , databaseLocation = InMemory Nothing
                     , serverHost = "127.0.0.1"
                     , serverPort = 0

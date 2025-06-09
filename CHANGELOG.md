@@ -4,6 +4,12 @@
 
 - New `--until=SLOT|POINT` command line option to instrument synchronization up to a certain point.
 
+- New endpoint `/metrics`, which returns the server health. The semantic is slightly different from the `/health` endpoint in that it always return a status `200 OK` even when the server isn't connected or far from the tip.
+
+- New health metric added:
+  - `seconds_since_last_block`: number of seconds elapsed since the last block was ingested by Kupo;
+  - `network_synchronization`: a progress percentage of the synchronization towards the node tip.
+
 #### Changed
 
 N/A

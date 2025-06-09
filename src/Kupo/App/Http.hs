@@ -23,6 +23,9 @@ import Kupo.Prelude
 import Data.Aeson
     ( (.:)
     )
+import Data.Time
+    ( getCurrentTime
+    )
 import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBTransaction
@@ -178,8 +181,8 @@ import qualified Data.Set as Set
 import qualified GHC.Clock
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
-import qualified Network.HTTP.Types.Status as Http
 import qualified Network.HTTP.Types.Header as Http
+import qualified Network.HTTP.Types.Status as Http
 import qualified Network.HTTP.Types.URI as Http
 import qualified Network.Wai.Handler.Warp as Warp
 
@@ -475,20 +478,21 @@ handleGetHealth
     -> Maybe NetworkParameters
     -> Health
     -> IO Response
-handleGetHealth reqHeaders forcedStatus networkParameters health =
+handleGetHealth reqHeaders forcedStatus networkParameters health = do
+    now <- getCurrentTime
     case findContentType reqHeaders of
         Just ct | cTextPlain `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders [(hContentType, cTextPlain <> ";charset=utf-8")] health
-            return $ responseBuilder status resHeaders (mkPrometheusMetrics health)
+            return $ responseBuilder status resHeaders (mkPrometheusMetrics now networkParameters health)
         Just ct | cApplicationJson `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders Default.headers health
-            return $ responseJson status resHeaders (SerialisableHealth networkParameters health)
+            return $ responseJson status resHeaders (SerialisableHealth health networkParameters now)
         Just ct | cAny `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders Default.headers health
-            return $ responseBuilder status resHeaders (mkPrometheusMetrics health)
+            return $ responseBuilder status resHeaders (mkPrometheusMetrics now networkParameters health)
         Nothing -> do
             let resHeaders = addCacheHeaders Default.headers health
-            return $ responseJson status resHeaders (SerialisableHealth networkParameters health)
+            return $ responseJson status resHeaders (SerialisableHealth health networkParameters now)
         Just{} ->
             return $ Errors.unsupportedContentType (prettyContentTypes <$> [cApplicationJson, cTextPlain])
   where

@@ -186,7 +186,6 @@ chainProducerOption =
     hydraOptions = Hydra
         <$> hydraHostOption
         <*> hydraPortOption
-        <*> pure ()
 
 -- | --node-socket=FILEPATH
 nodeSocketOption :: Parser FilePath

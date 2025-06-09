@@ -78,8 +78,8 @@ import Text.URI
     )
 
 import qualified Data.Aeson as Json
-import qualified Data.Aeson.Types as Json
 import qualified Data.Aeson.Encoding as Json
+import qualified Data.Aeson.Types as Json
 
 
 -- | Application-level configuration.
@@ -147,7 +147,6 @@ data ChainProducer params
     | Hydra
         { hydraHost :: !String
         , hydraPort :: !Int
-        , networkParameters :: params
         }
     | ReadOnlyReplica
         -- ^ A read-only replica will only watch the database and do not require a connection to the
@@ -286,9 +285,10 @@ newtype NetworkParametersFromOgmios = FromOgmios NetworkParameters
 
 instance FromJSON NetworkParametersFromOgmios where
     parseJSON = Json.withObject "NetworkParameters" $ \obj -> do
-        nm <- obj .: "networkMagic"
-        ss <- obj .: "startTime" >>= parseISO8601
-        k  <- obj .: "securityParameters"
+        result <- obj .: "result"
+        nm <- result .: "networkMagic"
+        ss <- result .: "startTime" >>= parseISO8601
+        k  <- result .: "securityParameter"
         pure $ FromOgmios $ NetworkParameters
             { networkMagic =
                 NetworkMagic (fromIntegral @Integer nm)

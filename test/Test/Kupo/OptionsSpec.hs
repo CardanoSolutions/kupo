@@ -123,7 +123,6 @@ spec = parallel $ do
             { chainProducer = Hydra
                 { hydraHost = "localhost"
                 , hydraPort = 4001
-                , networkParameters = ()
                 }
             , databaseLocation = InMemory Nothing
             }

@@ -100,8 +100,8 @@ hydrateNetworkParameters = \case
             networkParameters <- WSS.runClient ogmiosHost ogmiosPort fetchNetworkParameters
             pure $ Ogmios { ogmiosHost, ogmiosPort, networkParameters }
 
-        Hydra{} -> do
-            error "TODO"
+        Hydra{hydraHost, hydraPort} -> do
+            pure $ Hydra { hydraHost, hydraPort }
 
         ReadOnlyReplica -> do
             pure ReadOnlyReplica

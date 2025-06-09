@@ -76,6 +76,9 @@ import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..)
     , NodeToClientVersion (..)
     )
+import Kupo.Control.MonadTime
+    ( MonadTime (..)
+    )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
@@ -207,9 +210,8 @@ newProducer tr chainProducer callback = do
 
                 runOgmios checkpoints (return ()) throwIO restart
 
-        Hydra{hydraHost, hydraPort, networkParameters} -> do
+        Hydra{hydraHost, hydraPort} -> do
             logWith tr ConfigurationHydra { hydraHost, hydraPort }
-            logWith tr ConfigurationNetwork { networkParameters }
             mailbox <- atomically (newMailbox mailboxCapacity)
 
             callback forcedRollbackCallback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
@@ -445,6 +447,7 @@ readOnlyConsumer
     :: forall m.
         ( MonadSTM m
         , MonadDelay m
+        , MonadTime m
         )
     => TVar m Health
     -> Database m
@@ -454,7 +457,8 @@ readOnlyConsumer health Database{..} = do
         mostRecentCheckpoint <- runTransaction listCheckpointsDesc <&> \case
             []  -> Nothing
             h:_ -> Just h
-        recordCheckpoint health (maybe 0 getPointSlotNo mostRecentCheckpoint) mostRecentCheckpoint
+        now <- getCurrentTime
+        recordCheckpoint health now (maybe 0 getPointSlotNo mostRecentCheckpoint) mostRecentCheckpoint
         threadDelay 5
 
 -- | Periodically garbage collect the database from entries that aren't of
@@ -529,19 +533,20 @@ idle :: (MonadDelay m) => m Void
 idle = forever (threadDelay 86400)
 
 mkNotifyTip
-    :: (MonadThrow m, MonadSTM m)
+    :: (MonadThrow m, MonadSTM m, MonadTime m)
     => DeferIndexesInstallation
     -> TVar m Health
     -> Tip
     -> Maybe Point
     -> m ()
 mkNotifyTip indexMode health tip point = do
+    now <- getCurrentTime
     case indexMode of
         InstallIndexesIfNotExist -> pure ()
         SkipNonEssentialIndexes  -> do
             let distance = maybe maxBound (distanceToTip tip . getPointSlotNo) point
             when (distance <= 60) $ throwIO NodeTipHasBeenReached{ distance }
-    recordCheckpoint health (getTipSlotNo tip) point
+    recordCheckpoint health now (getTipSlotNo tip) point
 
 --
 -- Tracer
