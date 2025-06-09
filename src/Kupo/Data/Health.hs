@@ -7,6 +7,7 @@
 module Kupo.Data.Health
     ( -- * Health
       Health (..)
+    , SerialisableHealth (..)
     , emptyHealth
 
       -- * ConnectionStatus
@@ -17,18 +18,28 @@ module Kupo.Data.Health
 
 import Kupo.Prelude
 
+import Data.ByteString.Builder
+    ( Builder
+    )
+import Data.ByteString.Builder.Scientific
+    ( formatScientificBuilder
+    )
+import Data.Scientific
+    ( FPFormat (Fixed)
+    , Scientific
+    )
+import Data.Time
+    ( UTCTime
+    )
 import Kupo.Data.Cardano
     ( Point
     , SlotNo (..)
     , getPointSlotNo
     , slotNoToJson
     )
-
-import Data.ByteString.Builder
-    ( Builder
-    )
 import Kupo.Data.Configuration
     ( DeferIndexesInstallation (..)
+    , NetworkParameters (..)
     )
 import Kupo.Version
     ( version
@@ -65,12 +76,18 @@ data Health = Health
         -- ^ Absolute slot number of the most recent database checkpoint.
     , mostRecentNodeTip :: !(Maybe SlotNo)
         -- ^ Absolute slot number of the tip of the node
+    , mostRecentClockTick :: !(Maybe UTCTime)
+        -- ^ The clock value when the health was last updated
     , configuration :: !(Maybe DeferIndexesInstallation)
         -- ^ Some useful server configuration
     } deriving stock (Generic, Eq, Show)
 
-instance ToJSON Health where
-    toEncoding Health{..} = Json.pairs $ mconcat
+data SerialisableHealth = SerialisableHealth (Maybe NetworkParameters) Health
+
+instance ToJSON SerialisableHealth where
+    toJSON =
+        error "'toJSON' called on 'Health'. This should never happen. Use 'toEncoding' instead."
+    toEncoding (SerialisableHealth _ Health{..}) = Json.pairs $ mconcat
         [ Json.pair
             "connection_status"
             (toEncoding connectionStatus)
@@ -98,6 +115,7 @@ emptyHealth = Health
     { connectionStatus = Disconnected
     , mostRecentCheckpoint = Nothing
     , mostRecentNodeTip = Nothing
+    , mostRecentClockTick = Nothing
     , configuration = Nothing
     }
 

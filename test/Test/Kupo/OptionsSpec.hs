@@ -103,6 +103,7 @@ spec = parallel $ do
             { chainProducer = CardanoNode
                 { nodeSocket = "./node.socket"
                 , nodeConfig = "./node.config"
+                , networkParameters = ()
                 }
             , databaseLocation = InMemory Nothing
             }
@@ -112,6 +113,7 @@ spec = parallel $ do
             { chainProducer = Ogmios
                 { ogmiosHost = "localhost"
                 , ogmiosPort = 1337
+                , networkParameters = ()
                 }
             , databaseLocation = InMemory Nothing
             }
@@ -121,6 +123,7 @@ spec = parallel $ do
             { chainProducer = Hydra
                 { hydraHost = "localhost"
                 , hydraPort = 4001
+                , networkParameters = ()
                 }
             , databaseLocation = InMemory Nothing
             }

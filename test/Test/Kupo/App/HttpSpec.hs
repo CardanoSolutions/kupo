@@ -501,6 +501,7 @@ newStubbedApplication :: [Pattern] -> IO Application
 newStubbedApplication defaultPatterns = do
     patternsVar <- newTVarIO (fromList defaultPatterns)
     pure $ app
+        Nothing
         (\_send _mode callback -> callback databaseStub)
         (\_point ForcedRollbackHandler{onSuccess} -> onSuccess)
         (\point reply ->
@@ -532,6 +533,7 @@ healthStub =
         { connectionStatus = Connected
         , mostRecentCheckpoint = Just $ BlockPoint 42 (generateWith 42 genHeaderHash)
         , mostRecentNodeTip = Just 42
+        , mostRecentClockTick = Nothing
         , configuration = Just InstallIndexesIfNotExist
         }
 

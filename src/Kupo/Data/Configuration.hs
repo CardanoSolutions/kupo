@@ -31,6 +31,8 @@ module Kupo.Data.Configuration
 
     -- * NetworkParameters
     , NetworkParameters (..)
+    , NetworkParametersFromOnDiskConfig (..)
+    , NetworkParametersFromOgmios (..)
 
     -- ** Parameters Components
     , NetworkMagic (..)
@@ -43,6 +45,9 @@ import Kupo.Prelude
 
 import Data.Aeson
     ( (.:)
+    )
+import Data.Time
+    ( UTCTime
     )
 import Data.Time.Clock.POSIX
     ( posixSecondsToUTCTime
@@ -73,12 +78,13 @@ import Text.URI
     )
 
 import qualified Data.Aeson as Json
+import qualified Data.Aeson.Types as Json
 import qualified Data.Aeson.Encoding as Json
 
 
 -- | Application-level configuration.
 data Configuration = Configuration
-    { chainProducer :: !ChainProducer
+    { chainProducer :: !(ChainProducer ())
         -- ^ Where the data comes from: cardano-node, ogmios, or hydra
         --
         -- NOTE: There's no bang pattern on this field because we do not want it
@@ -127,18 +133,21 @@ isReadOnlyReplica Configuration{chainProducer} =
 -- happen _over the wire_ on a remote server but is slower overall. So both have
 -- trade-offs. The 'hydra' chain producer is slightly different as it's "chain"
 -- is actually the UTxO and transactions happening on the Hydra head layer 2.
-data ChainProducer
+data ChainProducer params
     = CardanoNode
         { nodeSocket :: !FilePath
         , nodeConfig :: !FilePath
+        , networkParameters :: params
         }
     | Ogmios
         { ogmiosHost :: !String
         , ogmiosPort :: !Int
+        , networkParameters :: params
         }
     | Hydra
         { hydraHost :: !String
         , hydraPort :: !Int
+        , networkParameters :: params
         }
     | ReadOnlyReplica
         -- ^ A read-only replica will only watch the database and do not require a connection to the
@@ -257,12 +266,14 @@ data NetworkParameters = NetworkParameters
 deriving newtype instance ToJSON EpochSlots
 deriving newtype instance ToJSON NetworkMagic
 
-instance FromJSON NetworkParameters where
+newtype NetworkParametersFromOnDiskConfig = FromOnDiskConfig NetworkParameters
+
+instance FromJSON NetworkParametersFromOnDiskConfig where
     parseJSON = Json.withObject "NetworkParameters" $ \obj -> do
         nm <- obj .: "networkMagic"
         ss <- obj .: "systemStart" >>= parseISO8601
         k  <- obj .: "protocolConsts" >>= Json.withObject "protocolConst" (.: "k")
-        pure NetworkParameters
+        pure $ FromOnDiskConfig $ NetworkParameters
             { networkMagic =
                 NetworkMagic (fromIntegral @Integer nm)
             , systemStart =
@@ -270,11 +281,29 @@ instance FromJSON NetworkParameters where
             , slotsPerEpoch  =
                 EpochSlots (fromIntegral @Integer $ 10 * k)
             }
-      where
-        parseISO8601 (toString @Text -> str) =
-            case iso8601ParseM str of
-                Nothing -> fail "couldn't parse ISO-8601 date-time."
-                Just t  -> pure t
+
+newtype NetworkParametersFromOgmios = FromOgmios NetworkParameters
+
+instance FromJSON NetworkParametersFromOgmios where
+    parseJSON = Json.withObject "NetworkParameters" $ \obj -> do
+        nm <- obj .: "networkMagic"
+        ss <- obj .: "startTime" >>= parseISO8601
+        k  <- obj .: "securityParameters"
+        pure $ FromOgmios $ NetworkParameters
+            { networkMagic =
+                NetworkMagic (fromIntegral @Integer nm)
+            , systemStart =
+                SystemStart ss
+            , slotsPerEpoch  =
+                EpochSlots (fromIntegral @Integer $ 10 * k)
+            }
+
+-- | A JSON parser for UTCTime
+parseISO8601 :: String -> Json.Parser UTCTime
+parseISO8601 str =
+    case iso8601ParseM str of
+        Nothing -> fail "couldn't parse ISO-8601 date-time."
+        Just t  -> pure t
 
 -- | Construct a 'SystemStart' from a number of seconds.
 mkSystemStart :: Int -> SystemStart

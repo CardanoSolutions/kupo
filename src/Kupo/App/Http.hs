@@ -83,6 +83,7 @@ import Kupo.Data.ChainSync
     )
 import Kupo.Data.Configuration
     ( LongestRollback (..)
+    , NetworkParameters
     , mailboxCapacity
     , maxReconnectionAttempts
     )
@@ -95,6 +96,7 @@ import Kupo.Data.FetchBlock
 import Kupo.Data.Health
     ( ConnectionStatus (..)
     , Health (..)
+    , SerialisableHealth (..)
     , mkPrometheusMetrics
     )
 import Kupo.Data.Http.FilterMatchesBy
@@ -192,6 +194,7 @@ httpServer
         ( IsBlock block
         )
     => Tracer IO TraceHttpServer
+    -> Maybe NetworkParameters
     -> WithDatabase IO ResponseReceived
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> FetchBlockClient IO block
@@ -200,10 +203,16 @@ httpServer
     -> String
     -> Int
     -> IO ()
-httpServer tr withDatabase forceRollback fetchBlock patternsVar readHealth host port =
+httpServer tr networkParameters withDatabase forceRollback fetchBlock patternsVar readHealth host port =
     Warp.runSettings settings
         $ tracerMiddleware tr
-        $ app withDatabaseWrapped forceRollback fetchBlock patternsVar readHealth
+        $ app
+            networkParameters
+            withDatabaseWrapped
+            forceRollback
+            fetchBlock
+            patternsVar
+            readHealth
   where
     settings = Warp.defaultSettings
         & Warp.setPort port
@@ -247,13 +256,14 @@ app
         ( IsBlock block
         , res ~ ResponseReceived
         )
-    => ((Response -> IO res) -> ConnectionType -> (Database IO -> IO res) -> IO res)
+    => Maybe NetworkParameters
+    -> ((Response -> IO res) -> ConnectionType -> (Database IO -> IO res) -> IO res)
     -> (Point -> ForcedRollbackHandler IO -> IO ())
     -> FetchBlockClient IO block
     -> TVar IO (Set Pattern)
     -> IO Health
     -> Application
-app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
+app networkParameters withDatabase forceRollback fetchBlock patternsVar readHealth req send =
     if requestMethod req == "OPTIONS" then
         send $ responseLBS status200 Default.corsHeaders mempty
     else
@@ -293,7 +303,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
     routeMetrics = \case
         ("GET", []) -> do
             health <- readHealth
-            send =<< handleGetHealth (requestHeaders req) (Just status200) health
+            send =<< handleGetHealth (requestHeaders req) (Just status200) networkParameters health
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
@@ -302,7 +312,7 @@ app withDatabase forceRollback fetchBlock patternsVar readHealth req send =
     routeHealth = \case
         ("GET", []) -> do
             health <- readHealth
-            send =<< handleGetHealth (requestHeaders req) Nothing health
+            send =<< handleGetHealth (requestHeaders req) Nothing networkParameters health
         ("GET", _) ->
             send Errors.notFound
         (_, _) ->
@@ -462,22 +472,23 @@ pathParametersToText = \case
 handleGetHealth
     :: [Http.Header]
     -> Maybe Http.Status
+    -> Maybe NetworkParameters
     -> Health
     -> IO Response
-handleGetHealth reqHeaders forcedStatus health =
+handleGetHealth reqHeaders forcedStatus networkParameters health =
     case findContentType reqHeaders of
         Just ct | cTextPlain `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders [(hContentType, cTextPlain <> ";charset=utf-8")] health
             return $ responseBuilder status resHeaders (mkPrometheusMetrics health)
         Just ct | cApplicationJson `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders Default.headers health
-            return $ responseJson status resHeaders health
+            return $ responseJson status resHeaders (SerialisableHealth networkParameters health)
         Just ct | cAny `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders Default.headers health
             return $ responseBuilder status resHeaders (mkPrometheusMetrics health)
         Nothing -> do
             let resHeaders = addCacheHeaders Default.headers health
-            return $ responseJson status resHeaders health
+            return $ responseJson status resHeaders (SerialisableHealth networkParameters health)
         Just{} ->
             return $ Errors.unsupportedContentType (prettyContentTypes <$> [cApplicationJson, cTextPlain])
   where

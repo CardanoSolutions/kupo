@@ -148,6 +148,7 @@ tests:
     - sqlite-simple
     - stm
     - temporary
+    - time
     - transformers
     - text
     - wai

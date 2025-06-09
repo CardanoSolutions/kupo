@@ -395,6 +395,7 @@ test-suite unit
     , stm
     , temporary
     , text
+    , time
     , transformers
     , wai
     , wai-extra

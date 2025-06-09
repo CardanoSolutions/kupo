@@ -397,6 +397,7 @@ decodeHealth = Json.withObject "Health" $ \o -> do
         , configuration
         , mostRecentNodeTip = Just (SlotNo mostRecentNodeTip)
         -- NOTE: We only have the point's slot number here. No test should rely on that.
+        , mostRecentClockTick = Nothing
         , mostRecentCheckpoint = Nothing
         }
   where

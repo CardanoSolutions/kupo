@@ -10,6 +10,7 @@ module Kupo.Data.Ogmios
 
     , NextBlockResponse (..)
 
+    , encodeQueryNetworkGenesisConfiguration
     , encodeFindIntersectionRequest
     , encodeNextBlockRequest
 
@@ -124,6 +125,12 @@ data ScriptPurpose
     deriving (Eq)
 
 -- Encoders
+
+encodeQueryNetworkGenesisConfiguration :: Text -> Json.Encoding
+encodeQueryNetworkGenesisConfiguration era = Json.pairs $ mempty
+    <> Json.pair "jsonrpc" (Json.text "2.0")
+    <> Json.pair "method" (Json.text "queryNetwork/genesisConfiguration")
+    <> Json.pair "params" (Json.pairs $ Json.pair "era" (Json.text era))
 
 encodeFindIntersectionRequest :: [Point] -> Json.Encoding
 encodeFindIntersectionRequest pts = Json.pairs $ mempty

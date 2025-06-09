@@ -11,6 +11,10 @@ import Kupo.Prelude
 import Data.Bits
     ( shiftL
     )
+import Data.Time
+    ( Day (..)
+    , UTCTime (..)
+    )
 import Kupo.Data.Cardano
     ( Address
     , AssetId
@@ -205,7 +209,13 @@ genHealth = Health
     <$> genConnectionStatus
     <*> frequency [(1, pure Nothing), (5, Just <$> genNonGenesisPoint)]
     <*> frequency [(1, pure Nothing), (5, Just <$> genSlotNo)]
+    <*> frequency [(1, pure Nothing), (5, Just <$> genUTCTime)]
     <*> frequency [(1, pure Nothing), (5, Just <$> elements [SkipNonEssentialIndexes, InstallIndexesIfNotExist])]
+
+genUTCTime :: Gen UTCTime
+genUTCTime = UTCTime
+    <$> (ModifiedJulianDay <$> (2000 +) <$> arbitrary)
+    <*> (fromRational . toRational <$> choose (0::Double, 86400))
 
 genNonGenesisPoint :: Gen Point
 genNonGenesisPoint = do

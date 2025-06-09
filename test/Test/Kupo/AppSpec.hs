@@ -227,6 +227,12 @@ import qualified Test.StateMachine.Types.Rank2 as Rank2
 varStateMachineIterations :: String
 varStateMachineIterations = "KUPO_STATE_MACHINE_ITERATIONS"
 
+data UnusedFetchTipClient
+    = UnusedFetchTipClient
+    deriving (Generic, Show, Eq)
+
+instance Exception UnusedFetchTipClient
+
 spec :: Spec
 spec = do
     manager <- runIO (newManager defaultManagerSettings)
@@ -256,6 +262,7 @@ spec = do
                       { chainProducer = CardanoNode -- NOTE: unused, but must be different than ReadOnlyReplica
                           { nodeSocket = "/dev/null"
                           , nodeConfig = "/dev/null"
+                          , networkParameters = ()
                           }
                       , databaseLocation = InMemory Nothing
                       , serverHost
@@ -271,7 +278,8 @@ spec = do
               env <- run (newEnvironment config)
               producer <- run (newMockProducer httpClient <$> atomically (dupTChan chan))
               fetchBlock <- run (newMockFetchBlock <$> atomically (dupTChan chan))
-              let kupo = kupoWith tracers producer fetchBlock `runWith` env
+              let fetchTip = throwIO UnusedFetchTipClient
+              let kupo = kupoWith tracers Nothing producer fetchBlock fetchTip `runWith` env
               asyncId <- run (async kupo)
               run $ link asyncId
               (_hist, model, res) <- runCommands stateMachine cmds

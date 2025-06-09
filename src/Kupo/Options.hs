@@ -169,21 +169,24 @@ parserInfo = info (helper <*> parser) $ mempty
 -- Command-line options
 --
 
-chainProducerOption :: Parser ChainProducer
+chainProducerOption :: Parser (ChainProducer ())
 chainProducerOption =
     cardanoNodeOptions <|> ogmiosOptions <|> hydraOptions <|> readOnlyReplicaFlag
   where
     cardanoNodeOptions = CardanoNode
         <$> nodeSocketOption
         <*> nodeConfigOption
+        <*> pure ()
 
     ogmiosOptions = Ogmios
         <$> ogmiosHostOption
         <*> ogmiosPortOption
+        <*> pure ()
 
     hydraOptions = Hydra
         <$> hydraHostOption
         <*> hydraPortOption
+        <*> pure ()
 
 -- | --node-socket=FILEPATH
 nodeSocketOption :: Parser FilePath
@@ -356,7 +359,7 @@ deferIndexesOption = flag InstallIndexesIfNotExist SkipNonEssentialIndexes $ mem
         )
 
 -- | [--read-only]
-readOnlyReplicaFlag :: Parser ChainProducer
+readOnlyReplicaFlag :: Parser (ChainProducer ())
 readOnlyReplicaFlag = flag' ReadOnlyReplica $ mempty
     <> long "read-only"
     <> help

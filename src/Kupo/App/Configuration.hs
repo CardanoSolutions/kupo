@@ -7,7 +7,9 @@
 
 module Kupo.App.Configuration
     ( -- * NetworkParameters
-      parseNetworkParameters
+      hydrateNetworkParameters
+    , fetchNetworkParameters
+    , parseNetworkParameters
 
     -- * Application Setup
     , startOrResume
@@ -53,12 +55,18 @@ import Kupo.Data.Cardano
     , pointFromTip
     )
 import Kupo.Data.Configuration
-    ( Configuration (..)
+    ( ChainProducer (..)
+    , Configuration (..)
     , NetworkParameters (..)
+    , NetworkParametersFromOgmios (..)
+    , NetworkParametersFromOnDiskConfig (..)
     , Since (..)
     )
 import Kupo.Data.FetchTip
     ( FetchTipClient
+    )
+import Kupo.Data.Ogmios
+    ( encodeQueryNetworkGenesisConfiguration
     )
 import Kupo.Data.Pattern
     ( Pattern (..)
@@ -74,6 +82,35 @@ import System.FilePath.Posix
 import qualified Data.Aeson as Json
 import qualified Data.Set as Set
 import qualified Data.Yaml as Yaml
+import qualified Network.WebSockets as WS
+import qualified Network.WebSockets.Json as WS
+import qualified Network.WebSockets.Tls as WSS
+
+--
+-- Network Paramters
+--
+
+hydrateNetworkParameters :: ChainProducer () -> IO (ChainProducer NetworkParameters)
+hydrateNetworkParameters = \case
+        CardanoNode{nodeSocket, nodeConfig} -> do
+            networkParameters <- parseNetworkParameters nodeConfig
+            pure $ CardanoNode { nodeSocket, nodeConfig, networkParameters }
+
+        Ogmios{ogmiosHost, ogmiosPort} -> do
+            networkParameters <- WSS.runClient ogmiosHost ogmiosPort fetchNetworkParameters
+            pure $ Ogmios { ogmiosHost, ogmiosPort, networkParameters }
+
+        Hydra{} -> do
+            error "TODO"
+
+        ReadOnlyReplica -> do
+            pure ReadOnlyReplica
+
+fetchNetworkParameters :: WS.ClientApp NetworkParameters
+fetchNetworkParameters ws = do
+    WS.sendJson ws $ encodeQueryNetworkGenesisConfiguration "byron"
+    FromOgmios networkParameters <- WS.receiveJson ws Json.parseJSON
+    pure networkParameters
 
 parseNetworkParameters :: FilePath -> IO NetworkParameters
 parseNetworkParameters configFile = runOrDie $ do
@@ -89,7 +126,7 @@ parseNetworkParameters configFile = runOrDie $ do
             shelleyGenesis <- decodeYaml (replaceFileName configFile shelleyGenesisFile)
             case Json.fromJSON (Json.Object (byronGenesis <> shelleyGenesis)) of
                 Json.Error e -> throwE e
-                Json.Success params -> pure params
+                Json.Success (FromOnDiskConfig params) -> pure params
   where
     runOrDie :: ExceptT String IO a -> IO a
     runOrDie = runExceptT >=> either (die . ("Failed to configure network parameters: " <>)) pure

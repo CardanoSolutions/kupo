@@ -61,6 +61,7 @@ import Kupo.App.ChainSync
     )
 import Kupo.App.Configuration
     ( TraceConfiguration (..)
+    , hydrateNetworkParameters
     , newPatternsCache
     , startOrResume
     )
@@ -114,14 +115,19 @@ import Kupo.Data.ChainSync
     ( ForcedRollbackHandler
     )
 import Kupo.Data.Configuration
-    ( Configuration (..)
+    ( ChainProducer (..)
+    , Configuration (..)
     , DeferIndexesInstallation (..)
+    , NetworkParameters
     , NodeTipHasBeenReachedException (..)
     , isReadOnlyReplica
     , untilPredicate
     )
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
+    )
+import Kupo.Data.FetchTip
+    ( FetchTipClient
     )
 import Kupo.Data.Health
     ( Health
@@ -164,13 +170,27 @@ kupo tr = do
             { chainProducer
             }
         } <- ask
-    kupoWith tr
-        (newProducer (tracerConfiguration tr) chainProducer)
-        (withFetchBlockClient chainProducer)
+
+    chainProducerWithParams <- liftIO (hydrateNetworkParameters chainProducer)
+
+    let networkParams = case chainProducerWithParams of
+            CardanoNode{networkParameters} -> Just networkParameters
+            Ogmios{networkParameters} -> Just networkParameters
+            Hydra{networkParameters} -> Just networkParameters
+            -- TODO: Could store in db and fetch back.
+            ReadOnlyReplica{} -> Nothing
+
+    kupoWith tr networkParams
+        (newProducer (tracerConfiguration tr) chainProducerWithParams)
+        (withFetchBlockClient chainProducerWithParams)
+        (newFetchTipClient chainProducerWithParams)
 
 -- | Same as 'kupo', but allows specifying the chain producer component.
 kupoWith
     :: Tracers IO Concrete
+
+    -> Maybe NetworkParameters
+
     -> ( ( forall block. IsBlock block
           => (Point -> ForcedRollbackHandler IO -> IO ())
           -> Mailbox IO (Tip, block) (Tip, Point)
@@ -180,6 +200,7 @@ kupoWith
          -> IO ()
        )
        -- ^ Chain producer acquisition bracket
+
     -> ( ( forall block. IsBlock block
           => FetchBlockClient IO block
           -> IO ()
@@ -187,8 +208,11 @@ kupoWith
          -> IO ()
        )
        -- ^ FetchBlockClient acquisition bracket
+
+    -> FetchTipClient IO
+
     -> Kupo ()
-kupoWith tr withProducer withFetchBlock =
+kupoWith tr networkParameters withProducer withFetchBlock fetchTipClient =
   hijackSigTerm *> do
     Env { health
         , crashWith
@@ -199,7 +223,6 @@ kupoWith tr withProducer withFetchBlock =
             , inputManagement
             , longestRollback
             , deferIndexes
-            , chainProducer
             , until
             }
         } <- ask
@@ -246,6 +269,7 @@ kupoWith tr withProducer withFetchBlock =
                     -- HTTP Server
                     ( httpServer
                         (tracerHttp tr)
+                        networkParameters
                         (tryWithDatabase dbPool)
                         forceRollback
                         fetchBlock
@@ -291,7 +315,7 @@ kupoWith tr withProducer withFetchBlock =
                                 (tracerConfiguration tr)
                                 config
                                 db
-                                (newFetchTipClient chainProducer)
+                                fetchTipClient
 
                             initializeHealth health mostRecentCheckpoint
 

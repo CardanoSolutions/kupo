@@ -41,7 +41,6 @@ import Kupo.App.ChainSync
     )
 import Kupo.App.Configuration
     ( TraceConfiguration (..)
-    , parseNetworkParameters
     )
 import Kupo.App.Database.Types
     ( DBTransaction
@@ -165,7 +164,7 @@ type ChainSyncClient m block =
 
 newProducer
     :: Tracer IO TraceConfiguration
-    -> ChainProducer
+    -> ChainProducer NetworkParameters
     -> ( forall block. IsBlock block
         => (Point -> ForcedRollbackHandler IO -> IO ())
         -> Mailbox IO (Tip, block) (Tip, Point)
@@ -183,8 +182,9 @@ newProducer tr chainProducer callback = do
             mailbox <- atomically (newMailbox mailboxCapacity)
             callback @Void forcedRollbackCallback mailbox $ \_ _ _ -> pure ()
 
-        Ogmios{ogmiosHost, ogmiosPort} -> do
-            logWith tr ConfigurationOgmios{ogmiosHost, ogmiosPort}
+        Ogmios{ogmiosHost, ogmiosPort, networkParameters} -> do
+            logWith tr ConfigurationOgmios { ogmiosHost, ogmiosPort }
+            logWith tr ConfigurationNetwork { networkParameters }
             mailbox <- atomically (newMailbox mailboxCapacity)
             callback forcedRollbackCallback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
                 let runOgmios pts beforeMainLoop onIntersectionNotFound continuation = do
@@ -207,8 +207,9 @@ newProducer tr chainProducer callback = do
 
                 runOgmios checkpoints (return ()) throwIO restart
 
-        Hydra{hydraHost, hydraPort} -> do
-            logWith tr ConfigurationHydra{hydraHost, hydraPort}
+        Hydra{hydraHost, hydraPort, networkParameters} -> do
+            logWith tr ConfigurationHydra { hydraHost, hydraPort }
+            logWith tr ConfigurationNetwork { networkParameters }
             mailbox <- atomically (newMailbox mailboxCapacity)
 
             callback forcedRollbackCallback mailbox $ \_tracerChainSync checkpoints statusToggle -> do
@@ -239,20 +240,16 @@ newProducer tr chainProducer callback = do
 
                 runHydra checkpoints (return ()) throwIO restart
 
-        CardanoNode{nodeSocket, nodeConfig} -> do
-            logWith tr ConfigurationCardanoNode{nodeSocket,nodeConfig}
+        CardanoNode{nodeSocket, nodeConfig, networkParameters} -> do
+            logWith tr ConfigurationCardanoNode { nodeSocket, nodeConfig }
+            logWith tr ConfigurationNetwork { networkParameters }
             mailbox <- atomically (newMailbox mailboxCapacity)
-            network@NetworkParameters
-                { networkMagic
-                , slotsPerEpoch
-                } <- liftIO (parseNetworkParameters nodeConfig)
-            logWith tr (ConfigurationNetwork network)
             callback forcedRollbackCallback mailbox $ \tracerChainSync checkpoints statusToggle -> do
                 withChainSyncServer
                   statusToggle
                   [ NodeToClientV_9 .. maxBound ]
-                  networkMagic
-                  slotsPerEpoch
+                  (networkMagic networkParameters)
+                  (slotsPerEpoch networkParameters)
                   nodeSocket
                   (Node.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
                   & handle
@@ -272,7 +269,7 @@ newProducer tr chainProducer callback = do
 -- The FetchBlockClient is more geared towards fetching precise information (e.g. metadata of a
 -- transaction in a known block).
 withFetchBlockClient
-    :: ChainProducer
+    :: ChainProducer NetworkParameters
     -> ( forall block. IsBlock block
         => FetchBlockClient IO block
         -> IO ()
@@ -286,11 +283,7 @@ withFetchBlockClient chainProducer callback = do
             Ogmios.withFetchBlockClient ogmiosHost ogmiosPort callback
         Hydra{} ->
             callback @PartialBlock (\_point respond -> respond Nothing)
-        CardanoNode{nodeSocket, nodeConfig} -> do
-            NetworkParameters
-                { networkMagic
-                , slotsPerEpoch
-                } <- liftIO (parseNetworkParameters nodeConfig)
+        CardanoNode{nodeSocket, networkParameters} -> do
             (chainSyncClient, fetchBlockClient) <- Node.newFetchBlockClient
             race_
                 (callback fetchBlockClient)
@@ -298,14 +291,14 @@ withFetchBlockClient chainProducer callback = do
                     withChainSyncServer
                         noConnectionStatusToggle
                         [ NodeToClientV_9 .. maxBound ]
-                        networkMagic
-                        slotsPerEpoch
+                        (networkMagic networkParameters)
+                        (slotsPerEpoch networkParameters)
                         nodeSocket
                         chainSyncClient
                 )
 
 newFetchTipClient
-    :: ChainProducer
+    :: ChainProducer NetworkParameters
     -> FetchTipClient IO
 newFetchTipClient = \case
     ReadOnlyReplica ->
@@ -314,17 +307,13 @@ newFetchTipClient = \case
         throwIO UnableToFetchTipFromHydra
     Ogmios{ogmiosHost, ogmiosPort} ->
         Ogmios.newFetchTipClient ogmiosHost ogmiosPort
-    CardanoNode{nodeSocket, nodeConfig} -> do
-        NetworkParameters
-            { networkMagic
-            , slotsPerEpoch
-            } <- liftIO (parseNetworkParameters nodeConfig)
+    CardanoNode{nodeSocket, networkParameters} -> do
         response <- newEmptyTMVarIO
         withChainSyncServer
             noConnectionStatusToggle
             [ NodeToClientV_9 .. maxBound ]
-            networkMagic
-            slotsPerEpoch
+            (networkMagic networkParameters)
+            (slotsPerEpoch networkParameters)
             nodeSocket
             (Node.newFetchTipClient response)
         atomically $ takeTMVar response
