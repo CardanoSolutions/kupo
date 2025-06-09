@@ -124,13 +124,13 @@ mkHydraBlock number txs = do
 decodeHydraMessage :: Json.Value -> Json.Parser HydraMessage
 decodeHydraMessage =
     Json.withObject "HydraMessage" $ \o -> do
-        tag <- o .: "tag"
-        case tag of
-            ("HeadIsOpen" :: Text) ->
+        tag <- o .:? "tag"
+        case tag :: Maybe Text of
+            (Just "HeadIsOpen") ->
                 HeadIsOpen <$> decodeHeadIsOpen o
-            ("TxValid" :: Text) ->
+            (Just "TxValid") ->
                 TxValid <$> (o .: "transactionId" >>= decodeTransactionId)
-            ("SnapshotConfirmed" :: Text) ->
+            (Just "SnapshotConfirmed") ->
                 SnapshotConfirmed <$> decodeSnapshotConfirmed o
             _ ->
                 pure SomethingElse
