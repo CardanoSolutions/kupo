@@ -66,7 +66,7 @@ jobs:
 
     - name: 🔨 Build
       run: |
-        make
+        make all
       env:
         GIT_SHA: ${{ github.sha }}
 
