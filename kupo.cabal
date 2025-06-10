@@ -32,7 +32,7 @@ extra-source-files:
 data-files:
     docs/api/nightly.yaml
     docs/api/v2.10.0.yaml
-    docs/api/v2.9.0.yaml
+    docs/api/v2.11.0.yaml
 
 source-repository head
   type: git

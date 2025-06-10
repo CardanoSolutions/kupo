@@ -5,7 +5,7 @@ servers:
 
 info:
   title: Kupo
-  version: v2.9.0
+  version: v2.11.0
   license:
     name: MPL-2.0
     url: https://raw.githubusercontent.com/cardanosolutions/kupo/master/LICENSE
@@ -28,11 +28,18 @@ info:
 
     # Installation
 
-    ## From pre-compiled executables
+    ## Via Homebrew
+
+    ```console
+    $ brew tap CardanoSolutions/formulas
+    $ brew install kupo
+    ```
+
+    ## Manually
 
     Pre-compiled static binaries can be downloaded as build artifacts from
     [latest releases](https://github.com/CardanoSolutions/kupo/releases) or the
-    continuous [`Nix` Github workflow](https://github.com/CardanoSolutions/kupo/actions).
+    continuous [`Build` Github workflow](https://github.com/CardanoSolutions/kupo/actions/workflow/build.yaml).
 
     ```
     kupo-{x.y.z}-{arch}-{os}.tar.gz
@@ -71,10 +78,14 @@ info:
 
     ### Pre-requisite
 
-    On Linux, make sure to have [nix](https://nixos.org/download.html#nix-install-linux) and [cachix](https://www.cachix.org/) installed.
-    Configure cachix to use `kupo.cachix.org-1:RzYQ8KVjRJdPNt/Bhq/UqdyGYWFM8ShjEMNG8wzHBQ4=` (`cachix use kupo`).
+    Make sure to have [nix](https://nixos.org/download.html#nix-install-linux) installed with a cache:
 
-    On MacOS, you'll need `cabal` as well as a few system dependencies. Follow the [instructions to install `cardano-node` on the developer portal](https://developers.cardano.org/docs/get-started/installing-cardano-node#macos) since Kupo share a similar set of dependencies.
+    ```
+    trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=
+    substituters = https://cache.iog.io/ https://cache.nixos.org/
+    ```
+
+    On MacOS, you'll need to install `libffi` and `bzip2` if they aren't already installed.
 
     ### Building
 
@@ -528,9 +539,6 @@ info:
       <input type="radio" checked name="tab" id="tab-mainnet">
       <label for="tab-mainnet">Mainnet</label>
 
-      <input type="radio" name="tab" id="tab-testnet">
-      <label for="tab-testnet">Testnet</label>
-
       <input type="radio" name="tab" id="tab-preview">
       <label for="tab-preview">Preview</label>
 
@@ -539,14 +547,15 @@ info:
 
       <div class="tab">
 
-      | Era Bound          | SlotNo   | Block Header Hash                                                |
-      | ---                | ---      | ---                                                              |
-      | Last Byron block   | 4492799  | f8084c61b6a238acec985b59310b6ecec49c0ab8352249afd7268da5cff2a457 |
-      | Last Shelley block | 16588737 | 4e9bbbb67e3ae262133d94c3da5bffce7b1127fc436e7433b87668dba34c354a |
-      | Last Allegra block | 23068793 | 69c44ac1dda2ec74646e4223bc804d9126f719b1c245dadc2ad65e8de1b276d7 |
-      | Last Mary block    | 39916796 | e72579ff89dc9ed325b723a33624b596c08141c7bd573ecfff56a1f7229e4d09 |
-      | Last Alonzo block  | 72316796 | c58a24ba8203e7629422a24d9dc68ce2ed495420bf40d9dab124373655161a20 |
-      | Last Babbage block | N/A      | N/A                                                              |
+      | Era Bound          | SlotNo    | Block Header Hash                                                |
+      | ---                | ---       | ---                                                              |
+      | Last Byron block   | 4492799   | f8084c61b6a238acec985b59310b6ecec49c0ab8352249afd7268da5cff2a457 |
+      | Last Shelley block | 16588737  | 4e9bbbb67e3ae262133d94c3da5bffce7b1127fc436e7433b87668dba34c354a |
+      | Last Allegra block | 23068793  | 69c44ac1dda2ec74646e4223bc804d9126f719b1c245dadc2ad65e8de1b276d7 |
+      | Last Mary block    | 39916796  | e72579ff89dc9ed325b723a33624b596c08141c7bd573ecfff56a1f7229e4d09 |
+      | Last Alonzo block  | 72316796  | c58a24ba8203e7629422a24d9dc68ce2ed495420bf40d9dab124373655161a20 |
+      | Last Babbage block | 133660799 | e757d57eb8dc9500a61c60a39fadb63d9be6973ba96ae337fd24453d4d15c343 |
+      | Last Conway block  | N/A       | N/A                                                              |
 
       See <a target="_blank" href="https://github.com/input-output-hk/cardano-configurations/tree/master/network/mainnet">configuration files for <strong>Mainnet</strong></a>.
       </div>
@@ -555,44 +564,28 @@ info:
 
       | Era Bound          | SlotNo   | Block Header Hash                                                |
       | ---                | ---      | ---                                                              |
-      | Last Byron block   | 1598399  | 7e16781b40ebf8b6da18f7b5e8ade855d6738095ef2f1c58c77e88b6e45997a4 |
-      | Last Shelley block | 13694363 | b596f9739b647ab5af901c8fc6f75791e262b0aeba81994a1d622543459734f2 |
-      | Last Allegra block | 18014387 | 9914c8da22a833a777d8fc1f735d2dbba70b99f15d765b6c6ee45fe322d92d93 |
-      | Last Mary block    | 36158304 | 2b95ce628d36c3f8f37a32c2942b48e4f9295ccfe8190bcbc1f012e1e97c79eb |
-      | Last Alonzo block  | 62510369 | d931221f9bc4cae34de422d9f4281a2b0344e86aac6b31eb54e2ee90f44a09b9 |
-      | Last Babbage block | N/A      | N/A                                                              |
-
-      > <sup><strong>WARNING</strong></sup> <br/>
-      >
-      > The testnet network is now deprecated and may be retired at any time. Use `Preview` or `Preprod` instead.
-
-      See <a target="_blank" href="https://github.com/input-output-hk/cardano-configurations/tree/master/network/testnet">configuration files for <strong>Testnet</strong></a>.
-      </div>
-
-      <div class="tab">
-
-      | Era Bound          | SlotNo | Block Header Hash                                                |
-      | ---                | ---    | ---                                                              |
-      | Last Byron block   | N/A    | N/A                                                              |
-      | Last Shelley block | N/A    | N/A                                                              |
-      | Last Allegra block | N/A    | N/A                                                              |
-      | Last Mary block    | N/A    | N/A                                                              |
-      | Last Alonzo block  | 259180 | 0ad91d3bbe350b1cfa05b13dba5263c47c5eca4f97b3a3105eba96416785a487 |
-      | Last Babbage block | N/A    | N/A                                                              |
+      | Last Byron block   | N/A      | N/A                                                              |
+      | Last Shelley block | N/A      | N/A                                                              |
+      | Last Allegra block | N/A      | N/A                                                              |
+      | Last Mary block    | N/A      | N/A                                                              |
+      | Last Alonzo block  | 259180   | 0ad91d3bbe350b1cfa05b13dba5263c47c5eca4f97b3a3105eba96416785a487 |
+      | Last Babbage block | 55814394 | bdd4baa2c81d0500a695f836332193ea06c2ce364e585057142220fc0782144c |
+      | Last Conway block  | N/A      | N/A                                                              |
 
       See <a target="_blank" href="https://github.com/input-output-hk/cardano-configurations/tree/master/network/preview">configuration files for <strong>Preview</strong></a>.
       </div>
 
       <div class="tab">
 
-      | Era Bound          | SlotNo  | Block Header Hash                                                |
-      | ---                | ---     | ---                                                              |
-      | Last Byron block   | 84242   | 45899e8002b27df291e09188bfe3aeb5397ac03546a7d0ead93aa2500860f1af |
-      | Last Shelley block | 518360  | f9d8b6c77fedd60c3caf5de0ce63a0aeb9d1753269c9c07503d9aa09d5144481 |
-      | Last Allegra block | 950340  | 74c03af754bcde9cd242c5a168689edcab1756a3f7ae4d5dca1a31d86839c7b1 |
-      | Last Mary block    | 1382348 | af5fddc7d16a349e1a2af8ba89f4f5d3273955a13095b3709ef6e3db576a0b33 |
-      | Last Alonzo block  | 3542390 | f93e682d5b91a94d8660e748aef229c19cb285bfb9830db48941d6a78183d81f |
-      | Last Babbage block | N/A     | N/A                                                              |
+      | Era Bound          | SlotNo   | Block Header Hash                                                |
+      | ---                | ---      | ---                                                              |
+      | Last Byron block   | 84242    | 45899e8002b27df291e09188bfe3aeb5397ac03546a7d0ead93aa2500860f1af |
+      | Last Shelley block | 518360   | f9d8b6c77fedd60c3caf5de0ce63a0aeb9d1753269c9c07503d9aa09d5144481 |
+      | Last Allegra block | 950340   | 74c03af754bcde9cd242c5a168689edcab1756a3f7ae4d5dca1a31d86839c7b1 |
+      | Last Mary block    | 1382348  | af5fddc7d16a349e1a2af8ba89f4f5d3273955a13095b3709ef6e3db576a0b33 |
+      | Last Alonzo block  | 3542390  | f93e682d5b91a94d8660e748aef229c19cb285bfb9830db48941d6a78183d81f |
+      | Last Babbage block | 68774372 | 36f5b4a370c22fd4a5c870248f26ac72c0ac0ecc34a42e28ced1a4e15136efa4 |
+      | Last Conway block  | N/A      | N/A                                                              |
 
       See <a target="_blank" href="https://github.com/input-output-hk/cardano-configurations/tree/master/network/preprod">configuration files for <strong>Preprod</strong></a>.
       </div>
@@ -768,6 +761,12 @@ components:
           type: string
           description: Some hint about what went wrong.
 
+    BinaryData: &BinaryData
+      type: string
+      description: A serialized Plutus' Data (datum or redeemer).
+      contentEncoding: base16
+      example: d87980
+
     Datum:
       title: Datum
       type: object
@@ -776,10 +775,7 @@ components:
       additionalProperties: false
       properties:
         datum:
-          type: string
-          description: A serialized Plutus' datum.
-          contentEncoding: base16
-          example: d87980
+          $ref: "#/components/schemas/BinaryData"
 
     DatumHash:
       description: A blake2b-256 hash digest of a Plutus' datum, if any.
@@ -887,6 +883,12 @@ components:
       example: 9d09...31bf
       minLength: 64
       maxLength: 64
+
+    InputIndex:
+      type: integer
+      description: The index of the input within the transaction carrying it.
+      minimum: 0
+      example: 1
 
     Metadata:
       type: object
@@ -1159,6 +1161,7 @@ components:
             - native
             - 'plutus:v1'
             - 'plutus:v2'
+            - 'plutus:v3'
         script:
           type: string
           description: A serialized script (native or Plutus).
@@ -1189,6 +1192,34 @@ components:
       description: An absolut slot number.
       minimum: 0
       example: 51540727
+
+    SpentAt:
+      title: SpentAt
+      type: object
+      additionalProperties: false
+      required:
+        - slot_no
+        - header_hash
+        - transaction_id
+        - input_index
+        - redeemer
+      properties:
+        slot_no:
+          $ref: "#/components/schemas/SlotNo"
+        header_hash:
+          $ref: "#/components/schemas/HeaderHash"
+        transaction_id:
+          oneOf:
+            - $ref: "#/components/schemas/TransactionId"
+            - type: "null"
+        input_index:
+          oneOf:
+            - $ref: "#/components/schemas/InputIndex"
+            - type: "null"
+        redeemer:
+          oneOf:
+            - $ref: "#/components/schemas/BinaryData"
+            - type: "null"
 
     TransactionId:
       type: string
@@ -1260,17 +1291,30 @@ components:
           $ref: "#/components/schemas/Value"
         datum_hash:
           $ref: "#/components/schemas/DatumHash"
+        datum:
+          description: The resolved datum, if available. The field is only and always present (yet may be `null`) if `?resolve_hashes` was set.
+          oneOf:
+            - <<: *BinaryData
+              description: A serialized Plutus' Data.
+            - type: "null"
+              description: None or unknown datum.
         datum_type:
           $ref: "#/components/schemas/DatumType"
         script_hash:
           $ref: "#/components/schemas/ScriptHash"
+        script:
+          description: The resolved script, if available. The field is only and always present (yet may be `null`) if `?resolve_hashes` was set.
+          oneOf:
+            - $ref: "#/components/schemas/Script"
+            - type: "null"
+              description: None or unknown script.
         created_at:
           <<: *Point
           description: Block reference at which this transaction was included in the ledger.
         spent_at:
           description: Block reference at which this transaction input was spent, if any.
           oneOf:
-            - $ref: "#/components/schemas/Point"
+            - $ref: "#/components/schemas/SpentAt"
             - type: "null"
 
     Health:
@@ -1281,6 +1325,8 @@ components:
         - connection_status
         - most_recent_checkpoint
         - most_recent_node_tip
+        - seconds_since_last_block
+        - network_synchronization
         - configuration
         - version
       properties:
@@ -1302,6 +1348,20 @@ components:
               description: Absolute slot number of the current tip of the node.
             - type: "null"
               description: Absolute slot number of the current tip of the node.
+        seconds_since_last_block:
+          oneOf:
+            - type: integer
+              description: Number of seconds elapsed since the last block was ingested by Kupo.
+            - type: "null"
+              description: Number of seconds elapsed since the last block was ingested by Kupo.
+        network_synchronization:
+          oneOf:
+            - type: number
+              minimum: 0
+              maximum: 1
+              description: A progress percentage of the synchronization towards the node tip.
+            - type: "null"
+              description: A progress percentage of the synchronization towards the node tip.
         configuration:
           type: object
           description: A summary of hand-picked configuration parameters.
@@ -1327,20 +1387,6 @@ components:
         - `connected` and `disconnected` (from `connection_status`) are encoded as `1.0` and `0.0` respectively.
         - `installed` and `deferred` (from `configuration.indexes`) are encoded as `1.0` and `0.0` respectively.
         - `version` is not present in the Prometheus metrics.
-      examples:
-        response:
-          value: |
-            # TYPE kupo_connection_status gauge
-            kupo_connection_status  1.0
-
-            # TYPE kupo_most_recent_checkpoint counter
-            kupo_most_recent_checkpoint  294998
-
-            # TYPE kupo_most_recent_node_tip counter
-            kupo_most_recent_node_tip  71753381
-
-            # TYPE kupo_configuration_indexes gauge
-            kupo_configuration_indexes  1.0
 
   parameters:
     asset-name:
@@ -1526,6 +1572,14 @@ components:
         >
         > Query filters are slower than path-parameters. If you only need to match for a
         > specific policy id, use an explicit [Pattern](#section/Patterns) as _path-parameter_ instead.
+
+    resolve-hashes:
+      name: resolve_hashes
+      in: query
+      required: false
+      allowEmptyValue: true
+      description: |
+        A query flag (i.e. `?resolve_hashes`) to resolve hash references and include `datum` and `script` when available.
 
     script-hash:
       name: script_hash
@@ -1722,8 +1776,12 @@ paths:
       summary: Get All Matches
       description: |
         Retrieve all matches from the database, in descending `slot_no` order. Results are streamed to the client for more efficiency.
-        Note that this is generally a bad idea for indexes built off permissive patterns (e.g. `*`) for the server will yield a large response.
+
+        Optionally, use `?resolve_hashes` to automatically resolve and include `datum` and `script` associated with hash references, if available. Datums and scripts can otherwise be fetched using the [_Get Datum by Hash_](#tag/Datums/paths/~1datums~1{datum-hash}/get) and [_Get Script by Hash_](#tag/Scripts/paths/~1scripts~1{script-hash}/get) endpoints respectively.
+
+        Note that it is generally a bad idea to fetch **ALL matches** for indexes built off permissive patterns (e.g. `*`), for the server will yield a large response.
       parameters:
+        - $ref: "#/components/parameters/resolve-hashes"
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
         - $ref: "#/components/parameters/order"
@@ -1758,6 +1816,7 @@ paths:
         See [Patterns](#section/Patterns) for more information about constructing patterns.
       parameters:
         - $ref: "#/components/parameters/pattern"
+        - $ref: "#/components/parameters/resolve-hashes"
         - $ref: "#/components/parameters/spent"
         - $ref: "#/components/parameters/unspent"
         - $ref: "#/components/parameters/order"
@@ -2140,6 +2199,24 @@ paths:
             "text/plain;charset=utf-8":
               schema:
                 $ref: "#/components/schemas/HealthPrometheus"
+              example: &HealthPrometheusExample |
+                # TYPE kupo_configuration_indexes gauge
+                kupo_configuration_indexes  1.0
+
+                # TYPE kupo_connection_status gauge
+                kupo_connection_status  1.0
+
+                # TYPE kupo_most_recent_checkpoint counter
+                kupo_most_recent_checkpoint  61264845
+
+                # TYPE kupo_most_recent_node_tip counter
+                kupo_most_recent_node_tip  82838775
+
+                # TYPE kupo_network_synchronization gauge
+                kupo_network_synchronization  0.73956
+
+                # TYPE kupo_seconds_since_last_block gauge
+                kupo_seconds_since_last_block  2.0
 
         202:
           description: Syncing
@@ -2150,6 +2227,7 @@ paths:
                 $ref: "#/components/schemas/Health"
 
             "text/plain;charset=utf-8":
+              example: *HealthPrometheusExample
               schema:
                 $ref: "#/components/schemas/HealthPrometheus"
 
@@ -2162,5 +2240,27 @@ paths:
                 $ref: "#/components/schemas/Health"
 
             "text/plain;charset=utf-8":
+              example: *HealthPrometheusExample
               schema:
                 $ref: "#/components/schemas/HealthPrometheus"
+
+  /metrics:
+    get:
+      operationId: getMetrics
+      tags: ["Health"]
+      summary: Get Metrics
+      description: |
+        Like [`/health`](#operation/getHealth), but always return `200 OK` as a status.
+      responses:
+        200:
+          description: Metrics
+          headers: *default-headers
+          content:
+            "text/plain;charset=utf-8":
+              example: *HealthPrometheusExample
+              schema:
+                $ref: "#/components/schemas/HealthPrometheus"
+
+            "application/json;charset=utf-8":
+              schema:
+                $ref: "#/components/schemas/Health"
