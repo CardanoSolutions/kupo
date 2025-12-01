@@ -18,9 +18,9 @@ import qualified Cardano.Ledger.Conway.Scripts as Ledger
 import qualified Data.Map as Map
 
 data Redeemers
-    = RedeemersAlonzo (Ledger.Redeemers (AlonzoEra StandardCrypto))
-    | RedeemersBabbage (Ledger.Redeemers (BabbageEra StandardCrypto))
-    | RedeemersConway (Ledger.Redeemers (ConwayEra StandardCrypto))
+    = RedeemersAlonzo (Ledger.Redeemers AlonzoEra)
+    | RedeemersBabbage (Ledger.Redeemers BabbageEra)
+    | RedeemersConway (Ledger.Redeemers ConwayEra)
 
 lookupSpendRedeemer
     :: InputIndex

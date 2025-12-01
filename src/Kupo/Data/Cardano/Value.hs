@@ -25,10 +25,7 @@ import qualified Data.Set as Set
 import qualified Data.Text.Lazy.Builder as Builder
 
 type Value =
-    Value' StandardCrypto
-
-type Value' crypto =
-    Ledger.MaryValue crypto
+    Ledger.MaryValue
 
 foldrValue
     :: (PolicyId -> Map AssetName Integer -> a -> a)
@@ -68,7 +65,7 @@ valueToJson (Ledger.MaryValue (Ledger.Coin coins) (Ledger.MultiAsset assets)) =
         Builder.fromText . encodeBase16 . fromShort
 
     assetsToJson
-        :: Map (Ledger.PolicyID StandardCrypto) (Map Ledger.AssetName Integer)
+        :: Map PolicyId (Map AssetName Integer)
         -> Json.Encoding
     assetsToJson =
         Json.pairs

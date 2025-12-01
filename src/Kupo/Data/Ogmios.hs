@@ -27,7 +27,7 @@ import Cardano.Crypto.Hash.Class
     ( hashFromTextAsHex
     , hashToBytes
     )
-import Cardano.Ledger.SafeHash
+import Cardano.Ledger.Hashes
     ( unsafeMakeSafeHash
     )
 import Data.Aeson

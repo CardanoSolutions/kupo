@@ -20,8 +20,6 @@ import Ouroboros.Consensus.Util
     ( eitherToMaybe
     )
 
-import qualified Cardano.Ledger.Plutus.Language as Ledger
-
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
 import qualified Cardano.Ledger.Allegra.TxAuxData as Ledger.Allegra
 import qualified Cardano.Ledger.Alonzo as Ledger.Alonzo
@@ -29,8 +27,7 @@ import qualified Cardano.Ledger.Alonzo.Scripts as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
 import qualified Cardano.Ledger.Binary.Plain as Ledger
 import qualified Cardano.Ledger.Core as Ledger.Core
-import qualified Cardano.Ledger.Era as Ledger
-import qualified Cardano.Ledger.SafeHash as Ledger
+import qualified Cardano.Ledger.Plutus.Language as Ledger
 
 import qualified Codec.CBOR.Decoding as Cbor
 import qualified Codec.CBOR.Read as Cbor
@@ -40,11 +37,11 @@ import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 
 type Script =
-    Ledger.Alonzo.Script (ConwayEra StandardCrypto)
+    Ledger.Alonzo.Script ConwayEra
 
 scriptFromAllegraAuxiliaryData
     :: forall era.
-        ( Ledger.Era era
+        ( Ledger.Core.Era era
         , Ledger.Core.Script era ~ Ledger.Allegra.Timelock era
         )
     => (Ledger.Core.Script era -> Script)
@@ -75,35 +72,35 @@ scriptFromAlonzoAuxiliaryData liftScript (Ledger.Alonzo.AlonzoTxAuxData _ script
 {-# INLINABLE scriptFromAlonzoAuxiliaryData #-}
 
 fromAllegraScript
-    :: Ledger.Allegra.Timelock (AllegraEra StandardCrypto)
+    :: Ledger.Allegra.Timelock AllegraEra
     -> Script
 fromAllegraScript =
     Ledger.Alonzo.TimelockScript . Ledger.Allegra.translateTimelock
 {-# INLINABLE fromAllegraScript #-}
 
 fromMaryScript
-    :: Ledger.Allegra.Timelock (MaryEra StandardCrypto)
+    :: Ledger.Allegra.Timelock MaryEra
     -> Script
 fromMaryScript =
     Ledger.Alonzo.TimelockScript . Ledger.Allegra.translateTimelock
 {-# INLINABLE fromMaryScript  #-}
 
 fromAlonzoScript
-    :: Ledger.Alonzo.Script (AlonzoEra StandardCrypto)
+    :: Ledger.Alonzo.Script AlonzoEra
     -> Script
 fromAlonzoScript =
     fromBabbageScript . Ledger.Core.upgradeScript
 {-# INLINABLE fromAlonzoScript #-}
 
 fromBabbageScript
-    :: Ledger.Alonzo.Script (BabbageEra StandardCrypto)
+    :: Ledger.Alonzo.Script BabbageEra
     -> Script
 fromBabbageScript =
     Ledger.Core.upgradeScript
 {-# INLINABLE fromBabbageScript #-}
 
 fromConwayScript
-    :: Ledger.Alonzo.Script (ConwayEra StandardCrypto)
+    :: Ledger.Alonzo.Script ConwayEra
     -> Script
 fromConwayScript =
     identity
@@ -113,7 +110,7 @@ scriptToJson
     :: Script
     -> Json.Encoding
 scriptToJson script = encodeObject
-    [ ("script", encodeBytes (Ledger.originalBytes script))
+    [ ("script", encodeBytes (Ledger.Core.originalBytes script))
     , ("language", case script of
         Ledger.Alonzo.TimelockScript _ ->
             Json.text "native"
@@ -129,7 +126,7 @@ scriptToBytes
     :: Script
     -> ByteString
 scriptToBytes =
-    let withTag n s = BS.singleton n <> Ledger.originalBytes s
+    let withTag n s = BS.singleton n <> Ledger.Core.originalBytes s
      in \case
         Ledger.Alonzo.TimelockScript script ->
             withTag 0 script
@@ -168,7 +165,7 @@ scriptFromBytes (toLazy -> bytes) =
 
             script = maybeToRight
                 (Ledger.DecoderErrorCustom "Incompatible language and era" $ show (lang, uplc))
-                (Ledger.Alonzo.mkBinaryPlutusScript @(ConwayEra StandardCrypto) lang uplc)
+                (Ledger.Alonzo.mkBinaryPlutusScript @ConwayEra lang uplc)
          in
             Ledger.Alonzo.PlutusScript <$> script
 
@@ -183,7 +180,7 @@ hashScript
     :: Script
     -> ScriptHash
 hashScript =
-    Ledger.Core.hashScript @(ConwayEra StandardCrypto)
+    Ledger.Core.hashScript @ConwayEra
 {-# INLINABLE hashScript #-}
 
 newtype ComparableScript = ComparableScript { unComparableScript :: Script }
@@ -191,7 +188,7 @@ newtype ComparableScript = ComparableScript { unComparableScript :: Script }
 
 instance Ord ComparableScript where
     compare (ComparableScript a) (ComparableScript b) =
-        compare (Ledger.originalBytes a) (Ledger.originalBytes b)
+        compare (Ledger.Core.originalBytes a) (Ledger.Core.originalBytes b)
 
 toComparableScript :: Script -> ComparableScript
 toComparableScript = ComparableScript

@@ -8,7 +8,7 @@ import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString as BS
 
 type ScriptHash =
-    Ledger.ScriptHash StandardCrypto
+    Ledger.ScriptHash
 
 unsafeScriptHashFromBytes
     :: HasCallStack

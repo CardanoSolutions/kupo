@@ -27,27 +27,21 @@ import qualified Data.Text as T
 -- Input
 
 type Input =
-    Input' StandardCrypto
+    Ledger.TxIn
 
-type Input' crypto =
-    Ledger.TxIn crypto
+-- OutputReference
+
+type OutputReference =
+    Input
 
 -- ExtendedOutputReference
 
 type ExtendedOutputReference =
     (OutputReference, TransactionIndex)
 
--- OutputReference
-
-type OutputReference =
-    OutputReference' StandardCrypto
-
-type OutputReference' crypto =
-    Input' crypto
-
-getOutputIndex :: OutputReference' crypto -> OutputIndex
+getOutputIndex :: OutputReference -> OutputIndex
 getOutputIndex (Ledger.TxIn _ (Ledger.TxIx ix)) =
-    fromIntegral ix
+    ix
 {-# INLINABLE getOutputIndex #-}
 
 mkOutputReference
@@ -55,7 +49,7 @@ mkOutputReference
     -> OutputIndex
     -> OutputReference
 mkOutputReference i =
-    Ledger.TxIn i . Ledger.TxIx . fromIntegral
+    Ledger.TxIn i . Ledger.TxIx
 {-# INLINABLE mkOutputReference #-}
 
 withReferences

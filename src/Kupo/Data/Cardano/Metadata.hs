@@ -29,7 +29,6 @@ import Ouroboros.Consensus.Util
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
 import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
 import qualified Cardano.Ledger.Core as Ledger
-import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Cardano.Ledger.Shelley.TxAuxData as Ledger
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
@@ -41,7 +40,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Read as T
 
 type Metadata =
-    AlonzoTxAuxData (ConwayEra StandardCrypto)
+    AlonzoTxAuxData ConwayEra
 
 emptyMetadata :: Metadata
 emptyMetadata =
@@ -54,7 +53,7 @@ mkMetadata labels =
 {-# INLINABLE mkMetadata #-}
 
 hashMetadata :: Metadata -> MetadataHash
-hashMetadata = Ledger.Alonzo.unsafeAuxiliaryDataHash . Ledger.hashTxAuxData
+hashMetadata = Ledger.unTxAuxDataHash . Ledger.hashTxAuxData
 {-# INLINABLE hashMetadata #-}
 
 hasMetadataTag :: Word64 -> Metadata -> Bool
@@ -160,32 +159,32 @@ metadataToJson' (hash, meta) =
         , ("schema", metadataToJson meta)
         ]
 
-fromShelleyMetadata :: ShelleyTxAuxData (ShelleyEra StandardCrypto) -> Metadata
+fromShelleyMetadata :: ShelleyTxAuxData ShelleyEra -> Metadata
 fromShelleyMetadata (ShelleyTxAuxData labels) =
     AlonzoTxAuxData labels mempty mempty
 {-# INLINABLE fromShelleyMetadata #-}
 
-fromAllegraMetadata :: AllegraTxAuxData (AllegraEra StandardCrypto) -> Metadata
+fromAllegraMetadata :: AllegraTxAuxData AllegraEra -> Metadata
 fromAllegraMetadata (AllegraTxAuxData labels timelocks) =
     AlonzoTxAuxData labels (Ledger.Allegra.translateTimelock <$> timelocks) mempty
 {-# INLINABLE fromAllegraMetadata #-}
 
-fromMaryMetadata :: AllegraTxAuxData (MaryEra StandardCrypto) -> Metadata
+fromMaryMetadata :: AllegraTxAuxData MaryEra -> Metadata
 fromMaryMetadata (AllegraTxAuxData labels timelocks) =
     AlonzoTxAuxData labels (Ledger.Allegra.translateTimelock <$> timelocks) mempty
 {-# INLINABLE fromMaryMetadata #-}
 
-fromAlonzoMetadata :: AlonzoTxAuxData (AlonzoEra StandardCrypto) -> Metadata
+fromAlonzoMetadata :: AlonzoTxAuxData AlonzoEra -> Metadata
 fromAlonzoMetadata =
     Ledger.Alonzo.translateAlonzoTxAuxData
 {-# INLINABLE fromAlonzoMetadata #-}
 
-fromBabbageMetadata :: AlonzoTxAuxData (BabbageEra StandardCrypto) -> Metadata
+fromBabbageMetadata :: AlonzoTxAuxData BabbageEra -> Metadata
 fromBabbageMetadata =
     Ledger.upgradeTxAuxData
 {-# INLINABLE fromBabbageMetadata #-}
 
-fromConwayMetadata :: AlonzoTxAuxData (ConwayEra StandardCrypto) -> Metadata
+fromConwayMetadata :: AlonzoTxAuxData ConwayEra -> Metadata
 fromConwayMetadata =
     identity
 {-# INLINABLE fromConwayMetadata #-}

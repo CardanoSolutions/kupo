@@ -10,6 +10,7 @@ module Kupo.App.Configuration
       hydrateChainProducer
     , resolveNetworkParameters
     , parseNetworkParameters
+    , nodeToClientVMin
 
     -- * Application Setup
     , startOrResume
@@ -35,13 +36,15 @@ import Kupo.App.Database.Types
     )
 import Kupo.Control.MonadCatch
     ( MonadCatch (..)
-    , catch
     )
 import Kupo.Control.MonadLog
     ( HasSeverityAnnotation (..)
     , MonadLog (..)
     , Severity (..)
     , Tracer
+    )
+import Kupo.Control.MonadOuroboros
+    ( NodeToClientVersion (..)
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
@@ -90,6 +93,9 @@ import qualified Network.WebSockets.Tls as WSS
 --
 -- Network Parameters
 --
+
+nodeToClientVMin :: NodeToClientVersion
+nodeToClientVMin = NodeToClientV_16
 
 hydrateChainProducer :: ChainProducer () -> IO (ChainProducer (TMVar IO NetworkParameters))
 hydrateChainProducer = \case
@@ -161,13 +167,13 @@ parseNetworkParameters configFile = runOrDie $ do
     runOrDie = runExceptT >=> either (die . ("Failed to configure network parameters: " <>)) pure
 
     decodeYaml :: FromJSON a => FilePath -> ExceptT String IO a
-    decodeYaml filepath = Yaml.decodeFileThrow filepath `catch` (\(e :: Yaml.ParseException) -> do
-        lift (doesFileExist configFile) >>= \case
+    decodeYaml filepath = ExceptT $ Yaml.decodeFileEither filepath >>= \case
+        Right a -> return (Right a)
+        Left e -> doesFileExist configFile >>= \case
             True ->
-                throwE $ "failed to parse configuration: malformed JSON/YAML: " <> show e
+                return $ Left $ "failed to parse configuration: malformed JSON/YAML: " <> show e
             False ->
-                throwE $ "no configuration file found at the given location: " <> configFile
-        )
+                return $ Left $ "no configuration file found at the given location: " <> configFile
 
 --
 -- Application Bootstrapping

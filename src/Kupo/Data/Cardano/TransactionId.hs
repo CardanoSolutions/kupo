@@ -9,31 +9,25 @@ import Cardano.Crypto.Hash
 import qualified Cardano.Chain.UTxO as Ledger.Byron
 import qualified Cardano.Crypto as Ledger.Byron
 import qualified Cardano.Ledger.Hashes as Ledger
-import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Data.Aeson as Json
 
 -- TransactionId
 
-class HasTransactionId (a :: Type) (crypto :: Type) where
-    getTransactionId
-        :: a
-        -> TransactionId' crypto
+class HasTransactionId (a :: Type) where
+    getTransactionId :: a -> TransactionId
 
-instance HasTransactionId Void crypto where
+instance HasTransactionId Void where
     getTransactionId = absurd
 
-instance HasTransactionId (Ledger.TxIn crypto) crypto where
+instance HasTransactionId Ledger.TxIn where
     getTransactionId (Ledger.TxIn i _) = i
 
-instance (HasTransactionId a crypto) => HasTransactionId (a, b) crypto where
+instance (HasTransactionId a) => HasTransactionId (a, b) where
     getTransactionId = getTransactionId . fst
 
 type TransactionId =
-    TransactionId' StandardCrypto
-
-type TransactionId' crypto =
-    Ledger.TxId crypto
+    Ledger.TxId
 
 transactionIdFromByron
     :: Ledger.Byron.TxId

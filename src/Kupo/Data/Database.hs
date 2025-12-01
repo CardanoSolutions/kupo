@@ -68,7 +68,7 @@ module Kupo.Data.Database
 
 import Kupo.Prelude
 
-import Cardano.Ledger.SafeHash
+import Cardano.Ledger.Hashes
     ( originalBytes
     )
 import Data.Binary
@@ -96,7 +96,6 @@ import qualified Cardano.Ledger.Address as Ledger
 import qualified Cardano.Ledger.BaseTypes as Ledger
 import qualified Cardano.Ledger.Core as Ledger
 import qualified Cardano.Ledger.Credential as Ledger
-import qualified Cardano.Ledger.Keys as Ledger
 import qualified Cardano.Ledger.Plutus.Data as Ledger
 import qualified Cardano.Ledger.TxIn as Ledger
 import qualified Data.Binary.Get as B
@@ -249,14 +248,14 @@ extendedOutputReferenceToRow :: App.ExtendedOutputReference -> ByteString
 extendedOutputReferenceToRow (Ledger.TxIn txId (Ledger.TxIx outIx), txIx) =
     BL.toStrict $ B.runPut $ do
         B.putByteString (transactionIdToBytes txId)
-        B.putWord16be (fromIntegral outIx)
+        B.putWord16be outIx
         B.putWord16be txIx
 
 outputReferenceToRow :: App.OutputReference -> ByteString
 outputReferenceToRow (Ledger.TxIn txId (Ledger.TxIx outIx)) =
     BL.toStrict $ B.runPut $ do
         B.putByteString (transactionIdToBytes txId)
-        B.putWord16be (fromIntegral outIx)
+        B.putWord16be outIx
 
 outputReferenceFromRow :: ByteString -> App.OutputReference
 outputReferenceFromRow bytes =
@@ -270,7 +269,7 @@ outputReferenceFromRow bytes =
   where
     parser = do
         txId <- unsafeTransactionIdFromBytes <$> B.getByteString (digestSize @Blake2b_256)
-        outIx <- Ledger.TxIx . fromIntegral <$> B.getWord16be
+        outIx <- Ledger.TxIx <$> B.getWord16be
         pure (Ledger.TxIn txId outIx)
 
 extendedOutputReferenceFromRow :: ByteString -> App.ExtendedOutputReference
@@ -285,7 +284,7 @@ extendedOutputReferenceFromRow bytes =
   where
     parser = do
         txId <- unsafeTransactionIdFromBytes <$> B.getByteString (digestSize @Blake2b_256)
-        outIx <- Ledger.TxIx . fromIntegral <$> B.getWord16be
+        outIx <- Ledger.TxIx <$> B.getWord16be
         txIx <- B.getWord16be
         pure (Ledger.TxIn txId outIx, txIx)
 
@@ -651,19 +650,19 @@ addressFromRow =
                 fail ("unknown tag: " <> show tag)
 
     getPtr = Ledger.Ptr
-        <$> (Ledger.SlotNo <$> getVariableLengthWord64)
-        <*> (Ledger.TxIx <$> getVariableLengthWord64)
-        <*> (Ledger.CertIx  <$> getVariableLengthWord64)
+        <$> (Ledger.SlotNo32 . fromIntegral <$> getVariableLengthWord64)
+        <*> (Ledger.TxIx . fromIntegral <$> getVariableLengthWord64)
+        <*> (Ledger.CertIx . fromIntegral <$> getVariableLengthWord64)
 
     getHash :: forall alg. HashAlgorithm alg => Get ByteString
     getHash =
         B.getByteString (digestSize @alg)
 
     mkDelegationCredential
-        :: forall kr crypto. (Crypto crypto)
+        :: forall kr. ()
         => Word8
         -> ByteString
-        -> Ledger.Credential kr crypto
+        -> Ledger.Credential kr
     mkDelegationCredential header
         | header `testBit` 5 =
             Ledger.ScriptHashObj . Ledger.ScriptHash . unsafeHashFromBytes
@@ -671,10 +670,10 @@ addressFromRow =
             Ledger.KeyHashObj . Ledger.KeyHash . unsafeHashFromBytes
 
     mkPaymentCredential
-        :: forall kr crypto. (Crypto crypto)
+        :: forall kr. ()
         => Word8
         -> ByteString
-        -> Ledger.Credential kr crypto
+        -> Ledger.Credential kr
     mkPaymentCredential header
         | header `testBit` 4 =
             Ledger.ScriptHashObj . Ledger.ScriptHash . unsafeHashFromBytes

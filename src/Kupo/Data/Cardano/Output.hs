@@ -53,10 +53,7 @@ import qualified Data.Map as Map
 -- Output
 
 type Output =
-    Output' StandardCrypto
-
-type Output' crypto =
-    Ledger.Babbage.BabbageTxOut (ConwayEra crypto)
+    Ledger.Babbage.BabbageTxOut ConwayEra
 
 mkOutput
     :: Address
@@ -73,11 +70,8 @@ mkOutput address value datum script =
 {-# INLINABLE mkOutput #-}
 
 fromByronOutput
-    :: forall crypto.
-        ( Crypto crypto
-        )
-    => Ledger.Byron.TxOut
-    -> Output' crypto
+    :: Ledger.Byron.TxOut
+    -> Output
 fromByronOutput (Ledger.Byron.TxOut address value) =
     Ledger.Babbage.BabbageTxOut
         (Ledger.AddrBootstrap (Ledger.BootstrapAddress address))
@@ -87,25 +81,21 @@ fromByronOutput (Ledger.Byron.TxOut address value) =
 {-# INLINABLE fromByronOutput #-}
 
 fromShelleyOutput
-    :: forall (era :: Type -> Type) crypto.
-        ( Ledger.Core.Era (era crypto)
-        , Ledger.Core.EraCrypto (era crypto) ~ crypto
-        , Ledger.Core.TxOut (era crypto) ~ Ledger.Shelley.ShelleyTxOut (era crypto)
-        , Val (Ledger.Core.Value (era crypto))
+    :: forall (era :: Type).
+        ( Ledger.Core.Era era
+        , Ledger.Core.TxOut era ~ Ledger.Shelley.ShelleyTxOut era
+        , Val (Ledger.Core.Value era)
         )
-    => (Ledger.Core.Value (era crypto) -> Ledger.MaryValue crypto)
-    -> Ledger.Core.TxOut (era crypto)
-    -> Output' crypto
+    => (Ledger.Core.Value era -> Ledger.MaryValue)
+    -> Ledger.Core.TxOut era
+    -> Output
 fromShelleyOutput liftValue (Ledger.Shelley.ShelleyTxOut addr value) =
     Ledger.Babbage.BabbageTxOut addr (liftValue value) Ledger.NoDatum SNothing
 {-# INLINABLE fromShelleyOutput #-}
 
 fromAlonzoOutput
-    :: forall crypto.
-        ( Crypto crypto
-        )
-    => Ledger.Core.TxOut (AlonzoEra crypto)
-    -> Output' crypto
+    :: Ledger.Core.TxOut AlonzoEra
+    -> Output
 fromAlonzoOutput (Ledger.Alonzo.AlonzoTxOut addr value datum) =
     case datum of
         SNothing ->
@@ -123,11 +113,8 @@ fromAlonzoOutput (Ledger.Alonzo.AlonzoTxOut addr value datum) =
                 SNothing
 
 fromBabbageOutput
-    :: forall crypto.
-        ( Crypto crypto
-        )
-    => Ledger.Core.TxOut (BabbageEra crypto)
-    -> Output' crypto
+    :: Ledger.Core.TxOut BabbageEra
+    -> Output
 fromBabbageOutput =
     Ledger.Core.upgradeTxOut
 {-# INLINABLE fromBabbageOutput #-}

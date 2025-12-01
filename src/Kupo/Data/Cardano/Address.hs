@@ -20,10 +20,7 @@ import qualified Data.Aeson.Encoding as Json
 -- Address
 
 type Address =
-    Address' StandardCrypto
-
-type Address' crypto =
-    Ledger.Addr crypto
+    Ledger.Addr
 
 addressToJson :: Address -> Json.Encoding
 addressToJson = \case
@@ -47,8 +44,8 @@ unsafeAddressFromBytes =
 {-# INLINABLE unsafeAddressFromBytes #-}
 
 addressFromBytes :: ByteString -> Maybe Address
-addressFromBytes bytes =
-    Ledger.Api.decodeAddrLenient bytes
+addressFromBytes =
+    Ledger.Api.decodeAddrLenient
 {-# INLINABLE addressFromBytes #-}
 
 isBootstrap :: Address -> Bool

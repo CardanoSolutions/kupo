@@ -20,7 +20,7 @@ data Datum
 
 toConwayDatum
     :: Datum
-    -> Ledger.Datum (ConwayEra StandardCrypto)
+    -> Ledger.Datum ConwayEra
 toConwayDatum = \case
     NoDatum -> Ledger.NoDatum
     Reference (Left ref) -> Ledger.DatumHash ref
@@ -29,7 +29,7 @@ toConwayDatum = \case
     Inline (Right bin) -> Ledger.Datum bin
 
 fromConwayDatum
-    :: Ledger.Datum (ConwayEra StandardCrypto)
+    :: Ledger.Datum ConwayEra
     -> Datum
 fromConwayDatum = \case
     Ledger.NoDatum -> NoDatum

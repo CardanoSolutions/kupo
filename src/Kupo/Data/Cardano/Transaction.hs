@@ -15,44 +15,42 @@ import qualified Cardano.Ledger.Shelley.Tx as Ledger.Shelley
 
 -- Transaction
 
-type Transaction = Transaction' StandardCrypto
-
-data Transaction' crypto
+data Transaction
     = TransactionByron
         !Ledger.Byron.Tx
         !Ledger.Byron.TxId
     | TransactionShelley
-        !(Ledger.Shelley.ShelleyTx (ShelleyEra crypto))
+        !(Ledger.Shelley.ShelleyTx ShelleyEra)
     | TransactionAllegra
-        !(Ledger.Shelley.ShelleyTx (AllegraEra crypto))
+        !(Ledger.Shelley.ShelleyTx AllegraEra)
     | TransactionMary
-        !(Ledger.Shelley.ShelleyTx (MaryEra crypto))
+        !(Ledger.Shelley.ShelleyTx MaryEra)
     | TransactionAlonzo
-        !(Ledger.Alonzo.AlonzoTx (AlonzoEra crypto))
+        !(Ledger.Alonzo.AlonzoTx AlonzoEra)
     | TransactionBabbage
-        !(Ledger.Alonzo.AlonzoTx (BabbageEra crypto))
+        !(Ledger.Alonzo.AlonzoTx BabbageEra)
     | TransactionConway
-        !(Ledger.Alonzo.AlonzoTx (ConwayEra crypto))
+        !(Ledger.Alonzo.AlonzoTx ConwayEra)
 
-instance HasTransactionId Transaction StandardCrypto where
+instance HasTransactionId Transaction where
     getTransactionId = \case
         TransactionByron _ i ->
             transactionIdFromByron i
         TransactionShelley tx ->
             let body = Ledger.Shelley.body tx
-             in Ledger.txIdTxBody @(ShelleyEra StandardCrypto) body
+             in Ledger.txIdTxBody @ShelleyEra body
         TransactionAllegra tx ->
             let body = Ledger.Shelley.body tx
-             in Ledger.txIdTxBody @(AllegraEra StandardCrypto) body
+             in Ledger.txIdTxBody @AllegraEra body
         TransactionMary tx ->
             let body = Ledger.Shelley.body tx
-             in Ledger.txIdTxBody @(MaryEra StandardCrypto) body
+             in Ledger.txIdTxBody @MaryEra body
         TransactionAlonzo tx ->
             let body = Ledger.Alonzo.body tx
-             in Ledger.txIdTxBody @(AlonzoEra StandardCrypto) body
+             in Ledger.txIdTxBody @AlonzoEra body
         TransactionBabbage tx ->
             let body = Ledger.Alonzo.body tx
-             in Ledger.txIdTxBody @(BabbageEra StandardCrypto) body
+             in Ledger.txIdTxBody @BabbageEra body
         TransactionConway tx ->
             let body = Ledger.Alonzo.body tx
-             in Ledger.txIdTxBody @(ConwayEra StandardCrypto) body
+             in Ledger.txIdTxBody @ConwayEra body

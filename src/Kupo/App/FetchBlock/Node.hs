@@ -22,7 +22,7 @@ import Kupo.Data.Cardano
 import Kupo.Data.FetchBlock
     ( FetchBlockClient
     )
-import Network.TypedProtocol.Pipelined
+import Network.TypedProtocol
     ( N (..)
     )
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined

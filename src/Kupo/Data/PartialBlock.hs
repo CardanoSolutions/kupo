@@ -49,7 +49,7 @@ data PartialTransaction = PartialTransaction
     , metadata :: !(Maybe (MetadataHash, Metadata))
     } deriving (Eq, Show)
 
-instance HasTransactionId PartialTransaction StandardCrypto where
+instance HasTransactionId PartialTransaction where
     getTransactionId = id
 
 instance IsBlock PartialBlock where

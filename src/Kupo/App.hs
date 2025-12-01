@@ -59,6 +59,7 @@ import Kupo.App.ChainSync
     )
 import Kupo.App.Configuration
     ( TraceConfiguration (..)
+    , nodeToClientVMin
     , resolveNetworkParameters
     )
 import Kupo.App.Database.Types
@@ -93,7 +94,7 @@ import Kupo.Control.MonadLog
     )
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..)
-    , NodeToClientVersion (..)
+    , NodeToClientVersion
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
@@ -127,8 +128,10 @@ import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
     , DeferIndexesInstallation (..)
+    , EpochSlots
     , InputManagement (..)
     , LongestRollback (..)
+    , NetworkMagic
     , NetworkParameters (..)
     , NodeTipHasBeenReachedException (..)
     , UnableToFetchBlockFromReadOnlyReplicaException (..)
@@ -163,10 +166,6 @@ import Kupo.Data.Pattern
     , included
     , matchBlock
     )
-import Network.Mux
-    ( MuxError (..)
-    , MuxErrorType (..)
-    )
 import Network.WebSockets
     ( ConnectionException (..)
     )
@@ -188,12 +187,8 @@ import qualified Kupo.App.FetchBlock.Node as Node
 import qualified Kupo.App.FetchBlock.Ogmios as Ogmios
 import qualified Kupo.App.FetchTip.Node as Node
 import qualified Kupo.App.FetchTip.Ogmios as Ogmios
-import Kupo.Data.Configuration
-    ( EpochSlots
-    , NetworkMagic
-    )
+import qualified Network.Mux as Mux
 import qualified Ouroboros.Network.Protocol.Handshake as Handshake
-
 
 withExceptionHandler
     :: Tracer IO TraceKupo
@@ -228,13 +223,12 @@ withExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
         | isInvalidArgumentOnSocket e = True
         | otherwise = False
 
-    isRetryableMuxError :: MuxError -> Bool
-    isRetryableMuxError MuxError{errorType} =
-        case errorType of
-            MuxBearerClosed -> True
-            MuxSDUReadTimeout -> True
-            MuxSDUWriteTimeout -> True
-            MuxIOException e -> isRetryableIOException e
+    isRetryableMuxError :: Mux.Error -> Bool
+    isRetryableMuxError = \case
+            Mux.BearerClosed{} -> True
+            Mux.SDUReadTimeout -> True
+            Mux.SDUWriteTimeout -> True
+            Mux.IOException e _ -> isRetryableIOException e
             _notRetryable -> False
 
     isRetryableConnectionException :: ConnectionException -> Bool
@@ -394,7 +388,7 @@ newProducer tr chainProducer callback = do
             callback forcedRollbackCallback mailbox $ \tracerChainSync checkpoints statusToggle -> do
                 withChainSyncServer
                   statusToggle
-                  [ NodeToClientV_9 .. maxBound ]
+                  [ nodeToClientVMin .. maxBound ]
                   magic
                   slots
                   nodeSocket
@@ -440,7 +434,7 @@ withFetchBlockClient chainProducer callback = do
                     slots <- slotsPerEpochOrThrow networkParameters
                     withChainSyncServer
                         noConnectionStatusToggle
-                        [ NodeToClientV_9 .. maxBound ]
+                        [ nodeToClientVMin .. maxBound ]
                         magic
                         slots
                         nodeSocket
@@ -466,7 +460,7 @@ newFetchTipClient = \case
 
         withChainSyncServer
             noConnectionStatusToggle
-            [ NodeToClientV_9 .. maxBound ]
+            [ nodeToClientVMin .. maxBound ]
             magic
             slots
             nodeSocket

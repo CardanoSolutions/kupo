@@ -1,4 +1,4 @@
-#!/usr/bin/env bash 
+#!/usr/bin/env bash
 
 for nixlib in $(otool -L "$1" | awk '/nix\/store/{ print $1 }'); do
     case "$nixlib" in

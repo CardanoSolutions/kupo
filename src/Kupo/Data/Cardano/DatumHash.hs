@@ -1,19 +1,13 @@
-{-# LANGUAGE TypeOperators #-}
-
 module Kupo.Data.Cardano.DatumHash where
 
 import Kupo.Prelude
 
 import qualified Cardano.Ledger.Hashes as Ledger
-import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.ByteString as BS
 
 type DatumHash =
-    DatumHash' StandardCrypto
-
-type DatumHash' crypto =
-    Ledger.DataHash crypto
+    Ledger.DataHash
 
 datumHashToBytes
     :: DatumHash
@@ -48,12 +42,9 @@ datumHashFromText str =
         Left{} -> Nothing
 
 unsafeDatumHashFromBytes
-    :: forall crypto.
-        ( HasCallStack
-        , HASH crypto ~ Blake2b_256
-        )
+    :: HasCallStack
     => ByteString
-    -> DatumHash' crypto
+    -> DatumHash
 unsafeDatumHashFromBytes =
     Ledger.unsafeMakeSafeHash . unsafeHashFromBytes @Blake2b_256
 {-# INLINABLE unsafeDatumHashFromBytes #-}

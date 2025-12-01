@@ -26,7 +26,7 @@ import Cardano.Ledger.Api
     , scriptTxWitsL
     , witsTxL
     )
-import Cardano.Ledger.SafeHash
+import Cardano.Ledger.Hashes
     ( unsafeMakeSafeHash
     )
 import Data.Aeson

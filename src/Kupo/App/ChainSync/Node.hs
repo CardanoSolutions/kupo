@@ -31,7 +31,7 @@ import Kupo.Data.ChainSync
     , maxInFlight
     , mkDistanceFromTip
     )
-import Network.TypedProtocol.Pipelined
+import Network.TypedProtocol
     ( Nat (..)
     , natToInt
     )

@@ -10,7 +10,7 @@ import Kupo.Data.Cardano.ScriptHash
     , scriptHashToText
     )
 
-type PolicyId = Ledger.PolicyID StandardCrypto
+type PolicyId = Ledger.PolicyID
 
 policyIdToBytes :: PolicyId -> ByteString
 policyIdToBytes (Ledger.PolicyID h) =

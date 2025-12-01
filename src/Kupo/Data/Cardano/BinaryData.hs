@@ -6,13 +6,13 @@ import Kupo.Data.Cardano.DatumHash
     ( DatumHash
     )
 
+import qualified Cardano.Ledger.Hashes as Ledger
 import qualified Cardano.Ledger.Plutus.Data as Ledger
-import qualified Cardano.Ledger.SafeHash as Ledger
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 
 type BinaryData =
-    Ledger.BinaryData (ConwayEra StandardCrypto)
+    Ledger.BinaryData ConwayEra
 
 type BinaryDataHash =
     DatumHash
@@ -55,14 +55,14 @@ unsafeBinaryDataFromBytes =
 
 fromAlonzoData
     :: HasCallStack
-    => Ledger.Data (AlonzoEra StandardCrypto)
+    => Ledger.Data AlonzoEra
     -> BinaryData
 fromAlonzoData =
     unsafeBinaryDataFromBytes . Ledger.originalBytes
 {-# INLINEABLE fromAlonzoData #-}
 
 fromBabbageData
-    :: Ledger.Data (BabbageEra StandardCrypto)
+    :: Ledger.Data BabbageEra
     -> BinaryData
 fromBabbageData =
       Ledger.dataToBinaryData
@@ -70,7 +70,7 @@ fromBabbageData =
 {-# INLINEABLE fromBabbageData #-}
 
 fromConwayData
-    :: Ledger.Data (ConwayEra StandardCrypto)
+    :: Ledger.Data ConwayEra
     -> BinaryData
 fromConwayData =
     Ledger.dataToBinaryData

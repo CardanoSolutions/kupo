@@ -29,6 +29,12 @@ import Control.Tracer
 import Data.Map.Strict
     ( (!)
     )
+import Kupo.Control.MonadThrow
+    ( MonadThrow (..)
+    )
+import Network.Mux
+    ( StartOnDemandOrEagerly (..)
+    )
 import Ouroboros.Consensus.Byron.Ledger.Config
     ( CodecConfig (..)
     )
@@ -94,7 +100,7 @@ import Ouroboros.Network.Snocket
 import Ouroboros.Consensus.Shelley.Ledger.SupportsProtocol
     ()
 
-class MonadOuroboros (m :: Type -> Type) where
+class MonadThrow m => MonadOuroboros (m :: Type -> Type) where
     type BlockT m :: Type
     withChainSyncServer
         :: (StandardHash (BlockT m), Typeable (BlockT m))
@@ -110,7 +116,7 @@ instance MonadOuroboros IO where
     type BlockT IO = CardanoBlock StandardCrypto
     withChainSyncServer ConnectionStatusToggle{..} wantedVersions networkMagic slotsPerEpoch socket client =
         withIOManager $ \iocp -> do
-            connectTo (mkLocalSnocket iocp) tracers versions socket
+            connectTo (mkLocalSnocket iocp) tracers versions socket >>= either throwIO return
       where
         tracers = NetworkConnectTracers
             { nctMuxTracer = nullTracer
@@ -132,11 +138,13 @@ instance MonadOuroboros IO where
           where
             vData  = NodeToClientVersionData networkMagic False
 
-        mkOuroborosApplication version =
+        mkOuroborosApplication version _versionData =
             OuroborosApplication
                 [ MiniProtocol
                     { miniProtocolNum =
                         MiniProtocolNum 5
+                    , miniProtocolStart =
+                        StartEagerly
                     , miniProtocolLimits =
                         MiniProtocolLimits (fromIntegral $ maxBound @Word32)
                     , miniProtocolRun =

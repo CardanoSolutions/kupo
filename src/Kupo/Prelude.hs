@@ -58,9 +58,7 @@ module Kupo.Prelude
       -- * Crypto
     , Blake2b_224
     , Blake2b_256
-    , Crypto
     , Era
-    , HASH
     , Hash (..)
     , HashAlgorithm (..)
     , StandardCrypto
@@ -112,10 +110,6 @@ import Cardano.Ledger.Core
     ( ByronEra
     , Era
     , eraProtVerLow
-    )
-import Cardano.Ledger.Crypto
-    ( Crypto (HASH)
-    , StandardCrypto
     )
 import Cardano.Ledger.Mary
     ( MaryEra
@@ -173,6 +167,9 @@ import GHC.TypeLits
     )
 import Ouroboros.Consensus.Cardano.Block
     ( CardanoEras
+    )
+import Ouroboros.Consensus.Shelley.Eras
+    ( StandardCrypto
     )
 import Ouroboros.Consensus.Shelley.Ledger
     ( ShelleyBlock
@@ -285,7 +282,7 @@ encodeBytes =
 --
 
 serializeCbor
-    :: forall (era :: Type -> Type) a. (Era (era StandardCrypto))
+    :: forall (era :: Type) a. (Era era)
     => (a -> Binary.Encoding)
     -> a
     -> ByteString
@@ -296,7 +293,7 @@ serializeCbor encode =
     -- buffers. Chosen because they seem to give good performance. They are not
     -- sacred.
     strategy = safeStrategy 1024 4096
-    version = eraProtVerLow @(era StandardCrypto)
+    version = eraProtVerLow @era
 
 serializeCborLatest
     :: (a -> Binary.Encoding)
@@ -309,35 +306,35 @@ serializeCborLatest encode =
     -- buffers. Chosen because they seem to give good performance. They are not
     -- sacred.
     strategy = safeStrategy 1024 4096
-    version = eraProtVerLow @(MostRecentEra StandardCrypto)
+    version = eraProtVerLow @MostRecentEra
 
 decodeCborAnn
-    :: forall (era :: Type -> Type) a. (Era (era StandardCrypto))
+    :: forall (era :: Type) a. (Era era)
     => Text
     -> (forall s. Binary.Decoder s (Binary.Annotator a))
     -> LByteString
     -> Either Binary.DecoderError a
 decodeCborAnn =
-    Binary.decodeFullAnnotator (eraProtVerLow @(era StandardCrypto))
+    Binary.decodeFullAnnotator (eraProtVerLow @era)
 
 unsafeDecodeCborAnn
-    :: forall (era :: Type -> Type) a. (Era (era StandardCrypto), HasCallStack)
+    :: forall (era :: Type) a. (Era era, HasCallStack)
     => Text
     -> (forall s. Binary.Decoder s (Binary.Annotator a))
     -> LByteString
     -> a
 unsafeDecodeCborAnn lbl decoder =
     either (error . show) identity .
-        Binary.decodeFullAnnotator (eraProtVerLow @(era StandardCrypto)) lbl decoder
+        Binary.decodeFullAnnotator (eraProtVerLow @era) lbl decoder
 
 decodeCbor
-    :: forall (era :: Type -> Type) a. (Era (era StandardCrypto))
+    :: forall (era :: Type) a. (Era era)
     => Text
     -> (forall s. Binary.Decoder s a)
     -> LByteString
     -> Either Binary.DecoderError a
 decodeCbor =
-    Binary.decodeFullDecoder (eraProtVerLow @(era StandardCrypto))
+    Binary.decodeFullDecoder (eraProtVerLow @era)
 
 decodeCborLatest
     :: Text
@@ -345,17 +342,17 @@ decodeCborLatest
     -> LByteString
     -> Either Binary.DecoderError a
 decodeCborLatest =
-    Binary.decodeFullDecoder (eraProtVerLow @(MostRecentEra StandardCrypto))
+    Binary.decodeFullDecoder (eraProtVerLow @MostRecentEra)
 
 unsafeDecodeCbor
-    :: forall (era :: Type -> Type) a. (Era (era StandardCrypto), HasCallStack)
+    :: forall (era :: Type) a. (Era era, HasCallStack)
     => Text
     -> (forall s. Binary.Decoder s a)
     -> LByteString
     -> a
 unsafeDecodeCbor lbl decoder =
     either (error . show) identity .
-        Binary.decodeFullDecoder (eraProtVerLow @(era StandardCrypto)) lbl decoder
+        Binary.decodeFullDecoder (eraProtVerLow @era) lbl decoder
 
 --
 -- Extras
@@ -484,7 +481,7 @@ type family LastElem xs where
     LastElem (x : '[]) = x
     LastElem (x : xs)  = LastElem xs
 
-type MostRecentEra crypto = BlockEra (LastElem (CardanoEras crypto))
+type MostRecentEra = BlockEra (LastElem (CardanoEras StandardCrypto))
 
 type family BlockEra block :: Type where
    BlockEra (ShelleyBlock protocol era) = era
