@@ -16,7 +16,7 @@ jobs:
       matrix:
         os: [ linux, macos ]
         arch: [ x86_64, aarch64 ]
-        compiler: [ ghc948 ]
+        compiler: [ ghc967 ]
         exclude:
           - os: macos
             arch: x86_64

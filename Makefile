@@ -1,6 +1,6 @@
 OUT := dist
 
-GHC := 9.4.8
+GHC := 9.6.7
 STYLISH_HASKELL_VERSION := 0.14.5.0
 
 # Default network for snapshots.
