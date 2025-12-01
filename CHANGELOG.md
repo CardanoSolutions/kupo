@@ -1,3 +1,19 @@
+### [2.12.0] - UNRELEASED
+
+#### Added
+
+N/A
+
+#### Changed
+
+- Bumped internal dependencies to cardano-node==10.5.1
+
+- Fixed network synchronisation calculations (see [#191](https://github.com/CardanoSolutions/kupo/issues/191)).
+
+#### Removed
+
+N/A
+
 ### [2.11.0] - 2025-06-10
 
 #### Added

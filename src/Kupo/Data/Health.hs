@@ -13,6 +13,9 @@ module Kupo.Data.Health
       -- * ConnectionStatus
     , ConnectionStatus (..)
 
+      -- * Metrics
+    , NetworkSynchronization (..)
+    , mkNetworkSynchronization
     , mkPrometheusMetrics
     ) where
 
@@ -34,6 +37,7 @@ import Data.Scientific
 import Data.Time
     ( NominalDiffTime
     , UTCTime
+    , addUTCTime
     , diffUTCTime
     )
 import Kupo.Data.Cardano
@@ -198,27 +202,41 @@ mkNetworkSynchronization
     -> NetworkSynchronization
 mkNetworkSynchronization now NetworkParameters { systemStart = SystemStart systemStart, networkMagic } (SlotNo lastKnownTip) =
     let
-        tip = fromIntegral @_ @Integer lastKnownTip
+        tip =
+            fromIntegral @_ @Integer lastKnownTip
+
+        byronSlotLength :: Integer
+        byronSlotLength = 20
 
         -- Number of slots that happened in the Byron era, based on the Network Magic
-        offset = case networkMagic of
-            NetworkMagic 764824073 -> 4492799
-            NetworkMagic 1 -> 84242
+        firstShelleySlot :: Integer
+        firstShelleySlot = case networkMagic of
+            NetworkMagic 764824073 -> 4492800
+            NetworkMagic 1 -> 86400
             NetworkMagic 2 -> 0
             _ -> 0
 
-        byronSlotLength = 20
+        -- Duration of the Byron era, in seconds
+        byronDuration :: Integer
+        byronDuration = byronSlotLength * firstShelleySlot
 
-        preByron
-            | tip >= offset = offset * byronSlotLength
-            | otherwise = tip * byronSlotLength
+        -- Total number of seconds until now. In Shelley, slots are aligned with seconds in wall-clock
+        -- time. In Byron, slots lasted 20s.
+        den =
+            byronDuration + shelleyDuration
+          where
+            shelleyStart :: UTCTime
+            shelleyStart = addUTCTime (fromInteger byronDuration) systemStart
 
-        postByron
-            | tip >= offset = tip - offset
-            | otherwise = 0
+            shelleyDuration :: Integer
+            shelleyDuration = round (now `diffUTCTime` shelleyStart)
 
-        num = preByron + postByron
-        den = round @_ @Integer (now `diffUTCTime` systemStart) + offset * (byronSlotLength - 1)
+        -- Total number of seconds synchronized so far.
+        num
+            | tip <= firstShelleySlot =
+                tip * byronSlotLength
+            | otherwise =
+                byronDuration + (tip - firstShelleySlot)
 
         tolerance = 120
         p = 100000

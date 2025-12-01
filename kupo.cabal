@@ -314,6 +314,7 @@ test-suite unit
       Test.Kupo.Data.CardanoSpec
       Test.Kupo.Data.DatabaseSpec
       Test.Kupo.Data.Generators
+      Test.Kupo.Data.HealthSpec
       Test.Kupo.Data.Http.FilterMatchesBySpec
       Test.Kupo.Data.Http.ForcedRollbackSpec
       Test.Kupo.Data.Http.Helpers
@@ -390,6 +391,7 @@ test-suite unit
     , openapi3
     , process
     , quickcheck-state-machine
+    , relude
     , si-timers
     , sqlite-simple
     , stm
