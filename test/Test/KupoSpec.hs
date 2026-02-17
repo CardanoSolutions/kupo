@@ -189,6 +189,9 @@ import System.IO
     ( hClose
     , hGetLine
     )
+import System.Environment
+    ( getEnvironment
+    )
 
 import qualified Data.Aeson as Json
 import qualified Data.Text as T
@@ -792,7 +795,8 @@ currentNetworkTip = do
         Nothing ->
             fail $ varCardanoNodeSocket <> " not set but necessary for this test."
         Just socket -> do
-            let env = Just [("CARDANO_NODE_SOCKET_PATH", socket)]
+            baseEnv <- getEnvironment
+            let env = Just (("CARDANO_NODE_SOCKET_PATH", socket):baseEnv)
             let args =
                     [ "query", "tip"
                     , "--testnet-magic", "1"
