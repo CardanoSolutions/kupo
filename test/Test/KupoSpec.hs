@@ -109,6 +109,15 @@ import Network.HTTP.Client
     , newManager
     , responseTimeoutNone
     )
+import System.Directory
+    ( Permissions (..)
+    , getPermissions
+    , listDirectory
+    , setPermissions
+    )
+import System.FilePath
+    ( (</>)
+    )
 import System.IO.Temp
     ( withSystemTempDirectory
     , withTempFile
@@ -609,6 +618,37 @@ spec = skippableContext "End-to-end" $ do
             threadDelay 1
             points' <- listCheckpoints
             forM_ points' $ \point -> getPointSlotNo point `shouldSatisfy` (<= maxSlot)
+
+    endToEnd "Read-only works with read-only permissions" $
+        \(configure, runSpec, HttpClient{..}) -> do
+            withSystemTempDirectory "kupo-end-to-end" $ \tmp -> do
+
+                -- Start first time to create database files
+                (cfg, env) <- configure $ \defaultCfg -> defaultCfg
+                    { databaseLocation = Dir tmp
+                    , since = Just (SincePoint lastByronPoint)
+                    , patterns = fromList [MatchAny OnlyShelley]
+                    , deferIndexes = SkipNonEssentialIndexes
+                    }
+                runSpec env 5 $ do
+                    waitSlot (> 0)
+                    listPatterns `shouldReturn` [MatchAny OnlyShelley]
+
+                -- Change permissions and re-start in replica mode
+                filenames <- listDirectory tmp
+                let paths = map (tmp </>) filenames
+                mapM_ makeUnwritable paths
+                makeUnwritable tmp
+                (_, env') <- configure $ \_ -> cfg
+                    { chainProducer = ReadOnlyReplica }
+                runSpec env' 5 $ do
+                    waitSlot (> 0)
+                    listPatterns `shouldReturn` [MatchAny OnlyShelley]
+
+        where
+           makeUnwritable f = do
+               p <- getPermissions f
+               setPermissions f (p {writable = False})
 
 -- | Create an 'EndToEndContext' around each child specification item within that 'Spec' tree. The
 -- spec items are 'skippable' and only executed if the appropriate environment variables are present.
