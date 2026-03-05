@@ -148,7 +148,8 @@ import Kupo.Data.Pattern
     , wildcard
     )
 import Network.HTTP.Types
-    ( hAccept
+    ( Header
+    , hAccept
     , hContentType
     , status200
     , status202
@@ -481,7 +482,7 @@ handleGetHealth
 handleGetHealth reqHeaders forcedStatus resolveNetworkParameters health = do
     networkParameters <- resolveNetworkParameters
     now <- getCurrentTime
-    case findContentType reqHeaders of
+    case findAcceptHeader reqHeaders of
         Just ct | cTextPlain `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders [(hContentType, cTextPlain <> ";charset=utf-8")] health
             return $ responseBuilder status resHeaders (mkPrometheusMetrics now networkParameters health)
@@ -519,14 +520,6 @@ handleGetHealth reqHeaders forcedStatus resolveNetworkParameters health = do
         d = distanceToSlot
             <$> mostRecentNodeTip
             <*> (getPointSlotNo <$> mostRecentCheckpoint)
-
-    findContentType = \case
-        [] -> Nothing
-        (headerName, headerValue):rest ->
-            if headerName == hAccept then
-                Just headerValue
-            else
-                findContentType rest
 
     cTextPlain = "text/plain"
     cApplicationJson = "application/json"
@@ -942,6 +935,16 @@ requestBodyJson parser req = do
     case Json.parse parser <$> Json.decodeStrict' (toStrict bytes) of
         Just (Json.Success a) -> return (Just a)
         _failureOrMalformed -> return Nothing
+
+findAcceptHeader :: [Header] -> Maybe ByteString
+findAcceptHeader = \case
+    [] -> Nothing
+    (headerName, headerValue):rest ->
+        if headerName == hAccept then
+            Just headerValue
+        else
+            findAcceptHeader rest
+
 
 --
 -- Tracer
