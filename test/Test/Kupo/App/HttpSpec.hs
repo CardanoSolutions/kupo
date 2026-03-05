@@ -13,6 +13,11 @@ import Kupo.Prelude hiding
     , put
     )
 
+import Data.Aeson
+    ( (.!=)
+    , (.:)
+    , (.:?)
+    )
 import Data.OpenApi
     ( OpenApi
     , Operation
@@ -135,7 +140,9 @@ import Test.QuickCheck.Monadic
     )
 
 import qualified Data.Aeson as Json
+import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
+import qualified Data.Map as Map
 import qualified Data.OpenApi as OpenApi
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
@@ -203,6 +210,17 @@ spec = do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches"
             res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson True schema
+
+        session specification get "/matches" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            let acceptHeader = ("Accept", renderHeader mediaTypeJsonStringQuantities)
+            let request = Wai.defaultRequest & Wai.mapRequestHeaders (acceptHeader :)
+            res <- Wai.request $ Wai.setPath request "/matches"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            case eitherDecodeJson (Json.listParser decodePartialResult) (Wai.simpleBody res) of
+              Left e -> liftIO $ fail (show e)
+              Right _ -> pure ()
             res & assertJson True schema
 
         session specification get "/matches?resolve_hashes" $ \assertJson endpoint -> do
@@ -610,6 +628,10 @@ mediaTypeJson :: MediaType
 mediaTypeJson =
     "application" // "json" /: ("charset", "utf-8")
 
+mediaTypeJsonStringQuantities ::MediaType
+mediaTypeJsonStringQuantities =
+    "application" // "json" /: ("charset", "utf-8") /: ("asset-quantity", "string")
+
 mediaTypeTextPlain :: MediaType
 mediaTypeTextPlain =
     "text" // "plain" /: ("charset", "utf-8")
@@ -736,6 +758,23 @@ session' path s = do
 
 oops :: (HasCallStack, Applicative f) => Text -> Maybe a -> f a
 oops str = maybe (error str) pure
+
+-- Decode only the value coins and asset quantities from Text, fails otherwise.
+decodePartialResult :: Json.Value -> Json.Parser ()
+decodePartialResult = Json.withObject "Result" $ \o -> do
+    o .: "value" >>= decodePartialValue
+
+-- Decode only the value coins and asset quantities from Text, fails otherwise.
+decodePartialValue
+    ::Json.Value
+    -> Json.Parser ()
+decodePartialValue = Json.withObject "Value" $ \o -> do
+    _coins :: Text <- o .: "coins"
+    _ <- o .:? "assets" .!= mempty >>= traverse decodeAsset . Map.toList
+    pure ()
+  where
+    decodeAsset :: (Text, Text) -> Json.Parser ()
+    decodeAsset (_assetId, _quantity) = pure ()
 
 --
 -- Generators
