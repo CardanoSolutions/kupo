@@ -76,6 +76,7 @@ jobs:
         ./dist/bin/kupo +RTS --info -RTS
 
     - name: 📎 Upload Artifact
+      if: ${{ github.event_name == 'push' }}
       uses: actions/upload-artifact@v4
       with:
         name: kupo-${{ steps.tag.outputs.value }}-${{ matrix.arch }}-${{ matrix.os }}
@@ -84,6 +85,7 @@ jobs:
           dist/share
 
   docker:
+    if: ${{ github.event_name == 'push' }}
     needs: [ build ]
 
     strategy:
