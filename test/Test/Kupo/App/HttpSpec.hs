@@ -212,7 +212,7 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson True schema
 
-        session specification get "/matches" $ \assertJson endpoint -> do
+        sessionWithAccept mediaTypeJsonStringQuantities specification get "/matches" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             let acceptHeader = ("Accept", renderHeader mediaTypeJsonStringQuantities)
             let request = Wai.defaultRequest & Wai.mapRequestHeaders (acceptHeader :)
@@ -271,7 +271,7 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson True schema
 
-        sessionWith noWildcard specification delete "/matches/{pattern}" $ \assertJson endpoint -> do
+        sessionWithPatterns noWildcard specification delete "/matches/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             let allPatterns = (\(p, _, _) -> p) <$> patterns
             fragment <- liftIO $ generate $
@@ -667,9 +667,10 @@ session
        )
     -> Spec
 session =
-    sessionWith [ p | (_, p, _) <- Fixture.patterns ]
+    sessionWith [ p | (_, p, _) <- Fixture.patterns ] mediaTypeJson
 
-sessionWith
+
+sessionWithPatterns
     :: [Pattern]
     -> OpenApi
     -> Lens' PathItem (Maybe Operation)
@@ -679,7 +680,34 @@ sessionWith
        -> Wai.Session (Json.Value, [ValidationError])
        )
     -> Spec
-sessionWith defaultPatterns specification opL path callback =
+sessionWithPatterns ps =
+    sessionWith ps mediaTypeJson
+
+sessionWithAccept
+    :: MediaType
+    -> OpenApi
+    -> Lens' PathItem (Maybe Operation)
+    -> Text
+    -> ( (Bool -> Schema -> Wai.SResponse -> Wai.Session (Json.Value, [ValidationError]))
+       -> Operation
+       -> Wai.Session (Json.Value, [ValidationError])
+       )
+    -> Spec
+sessionWithAccept =
+    sessionWith [ p | (_, p, _) <- Fixture.patterns ]
+
+sessionWith
+    :: [Pattern]
+    -> MediaType
+    -> OpenApi
+    -> Lens' PathItem (Maybe Operation)
+    -> Text
+    -> ( (Bool -> Schema -> Wai.SResponse -> Wai.Session (Json.Value, [ValidationError]))
+       -> Operation
+       -> Wai.Session (Json.Value, [ValidationError])
+       )
+    -> Spec
+sessionWith defaultPatterns defaultMediaType specification opL path callback =
     prop (method <> " " <> toString path) $ monadicIO $ do
         stub <- run (newStubbedApplication defaultPatterns)
         (json, errs) <- run $ Wai.runSession (callback assertJson endpoint) stub
@@ -738,7 +766,7 @@ sessionWith defaultPatterns specification opL path callback =
             paramAt paramName rest
 
     assertJson shouldHaveMostRecentCheckpoint schema res = do
-        res & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+        res & Wai.assertHeader Http.hContentType (renderHeader defaultMediaType)
         res & Wai.assertHeader "Access-Control-Allow-Origin" "*"
         when shouldHaveMostRecentCheckpoint $
             liftIO $ (fst <$> Wai.simpleHeaders res) `shouldContain` ["X-Most-Recent-Checkpoint"]

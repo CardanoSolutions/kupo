@@ -97,6 +97,9 @@ import Kupo.Data.Cardano
     , unsafeGetPointHeaderHash
     , valueToJson
     )
+import Kupo.Data.Http.QuantityEncoding
+    ( QuantityEncoding (..)
+    )
 import Kupo.Data.Http.ReferenceFlag
     ( ReferenceFlag (..)
     )
@@ -443,9 +446,10 @@ data Result = Result
 
 resultToJson
     :: ReferenceFlag
+    -> QuantityEncoding
     -> Result
     -> Json.Encoding
-resultToJson referenceFlag Result{..} = Json.pairs $ mconcat
+resultToJson referenceFlag quantityEncoding Result{..} = Json.pairs $ mconcat
     [ Json.pair "transaction_index"
         (transactionIndexToJson (snd outputReference))
     , Json.pair "transaction_id"
@@ -455,7 +459,7 @@ resultToJson referenceFlag Result{..} = Json.pairs $ mconcat
     , Json.pair "address"
         (addressToJson address)
     , Json.pair "value"
-        (valueToJson value)
+        (valueToJson quantityEncoding value)
     , Json.pair "datum_hash"
         (maybe Json.null_ datumHashToJson (hashDatum datum))
     , case datum of

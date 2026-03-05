@@ -26,13 +26,6 @@ import Data.Aeson
 import Data.Time
     ( getCurrentTime
     )
-import Network.HTTP.Media
-    ( mapAccept
-    )
-import Network.HTTP.Media.MediaType
-    ( (//)
-    , (/:)
-    )
 import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBTransaction
@@ -125,6 +118,9 @@ import Kupo.Data.Http.GetCheckpointMode
 import Kupo.Data.Http.OrderMatchesBy
     ( orderMatchesBy
     )
+import Kupo.Data.Http.QuantityEncoding
+    ( QuantityEncoding (..)
+    )
 import Kupo.Data.Http.ReferenceFlag
     ( referenceFlagFromQueryParams
     )
@@ -132,9 +128,6 @@ import Kupo.Data.Http.Response
     ( responseJson
     , responseJsonEncoding
     , responseStreamJson
-    )
-import Kupo.Data.Http.QuantityEncoding
-    ( QuantityEncoding (..)
     )
 import Kupo.Data.Http.SlotRange
     ( intoSlotRange
@@ -156,6 +149,13 @@ import Kupo.Data.Pattern
     , patternToText
     , resultToJson
     , wildcard
+    )
+import Network.HTTP.Media
+    ( mapAccept
+    )
+import Network.HTTP.Media.MediaType
+    ( (//)
+    , (/:)
     )
 import Network.HTTP.Types
     ( Header
@@ -354,6 +354,7 @@ app networkParameters withDatabase forceRollback fetchBlock patternsVar readHeal
             withDatabase send ReadOnly $ \db -> do
                 send $ handleGetMatches
                             headers
+                            (requestHeaders req)
                             (pathParametersToText args)
                             (queryString req)
                             db
@@ -585,11 +586,12 @@ handleGetCheckpointBySlot headers mSlotNo query Database{..} =
 
 handleGetMatches
     :: [Http.Header]
+    -> [Http.Header]
     -> Maybe Text
     -> Http.Query
     -> Database IO
     -> Response
-handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $ do
+handleGetMatches resHeaders reqHeaders patternQuery queryParams Database{..} = handleRequest $ do
     pattern_ <- (patternQuery >>= patternFromText)
         `orAbort` Errors.invalidPattern
 
@@ -608,14 +610,22 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
     sortDirection <- mkSortDirection <$> orderMatchesBy queryParams
         `orAbort` Errors.invalidSortDirection
 
-    let quality = ("application" // "json" /: QuantityEncoding.mediaTypeParam
-                  , EncodeAsString
-                  )
+    let qualities =
+            [ ("application" // "json" /: QuantityEncoding.mediaTypeParam
+              , EncodeAsString
+              )
+            , ("application" // "json" /: QuantityEncoding.mediaTypeParam /: ("charset", "utf-8")
+              , EncodeAsString
+              )
+            , ("application" // "json" /: ("charset", "utf-8") /: QuantityEncoding.mediaTypeParam
+              , EncodeAsString
+              )
+            ]
 
-    let quantityEncoding = (findAcceptHeader headers >>= mapAccept [quality])
+    let quantityEncoding = (findAcceptHeader reqHeaders >>= mapAccept qualities)
             & fromMaybe EncodeAsInteger
 
-    pure $ responseStreamJson headers (resultToJson referenceFlag) $ \yield done -> do
+    pure $ responseStreamJson resHeaders (resultToJson referenceFlag quantityEncoding) $ \yield done -> do
         let assertPointExists :: Point -> DBTransaction IO ()
             assertPointExists requested = do
                 let nextSlot = next (getPointSlotNo requested)
