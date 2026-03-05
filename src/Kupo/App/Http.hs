@@ -26,6 +26,13 @@ import Data.Aeson
 import Data.Time
     ( getCurrentTime
     )
+import Network.HTTP.Media
+    ( mapAccept
+    )
+import Network.HTTP.Media.MediaType
+    ( (//)
+    , (/:)
+    )
 import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBTransaction
@@ -126,6 +133,9 @@ import Kupo.Data.Http.Response
     , responseJsonEncoding
     , responseStreamJson
     )
+import Kupo.Data.Http.QuantityEncoding
+    ( QuantityEncoding (..)
+    )
 import Kupo.Data.Http.SlotRange
     ( intoSlotRange
     , slotRangeFromQueryParams
@@ -182,6 +192,7 @@ import qualified Data.Set as Set
 import qualified GHC.Clock
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
+import qualified Kupo.Data.Http.QuantityEncoding as QuantityEncoding
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.Status as Http
 import qualified Network.HTTP.Types.URI as Http
@@ -596,6 +607,13 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
 
     sortDirection <- mkSortDirection <$> orderMatchesBy queryParams
         `orAbort` Errors.invalidSortDirection
+
+    let quality = ("application" // "json" /: QuantityEncoding.mediaTypeParam
+                  , EncodeAsString
+                  )
+
+    let quantityEncoding = (findAcceptHeader headers >>= mapAccept [quality])
+            & fromMaybe EncodeAsInteger
 
     pure $ responseStreamJson headers (resultToJson referenceFlag) $ \yield done -> do
         let assertPointExists :: Point -> DBTransaction IO ()

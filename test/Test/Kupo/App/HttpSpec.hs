@@ -12,7 +12,6 @@ import Kupo.Prelude hiding
     ( get
     , put
     )
-
 import Data.Aeson
     ( (.!=)
     , (.:)
@@ -146,6 +145,7 @@ import qualified Data.Map as Map
 import qualified Data.OpenApi as OpenApi
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
+import qualified Kupo.Data.Http.QuantityEncoding as QuantityEncoding
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.Status as Http
 import qualified Network.Wai as Wai
@@ -630,7 +630,7 @@ mediaTypeJson =
 
 mediaTypeJsonStringQuantities ::MediaType
 mediaTypeJsonStringQuantities =
-    "application" // "json" /: ("charset", "utf-8") /: ("asset-quantity", "string")
+    "application" // "json" /: ("charset", "utf-8") /: QuantityEncoding.mediaTypeParam
 
 mediaTypeTextPlain :: MediaType
 mediaTypeTextPlain =
