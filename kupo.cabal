@@ -321,6 +321,7 @@ test-suite unit
       Test.Kupo.Data.Http.ForcedRollbackSpec
       Test.Kupo.Data.Http.Helpers
       Test.Kupo.Data.Http.OrderMatchesBySpec
+      Test.Kupo.Data.Http.QuantityEncodingSpec
       Test.Kupo.Data.Http.SlotRangeSpec
       Test.Kupo.Data.HydraSpec
       Test.Kupo.Data.OgmiosSpec

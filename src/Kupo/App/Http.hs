@@ -625,7 +625,9 @@ handleGetMatches resHeaders reqHeaders patternQuery queryParams Database{..} = h
     let quantityEncoding = (findAcceptHeader reqHeaders >>= mapAccept qualities)
             & fromMaybe EncodeAsInteger
 
-    pure $ responseStreamJson resHeaders (resultToJson referenceFlag quantityEncoding) $ \yield done -> do
+    let resHeaders' = (QuantityEncoding.adjustMediaType quantityEncoding resHeaders)
+
+    pure $ responseStreamJson resHeaders' (resultToJson referenceFlag quantityEncoding) $ \yield done -> do
         let assertPointExists :: Point -> DBTransaction IO ()
             assertPointExists requested = do
                 let nextSlot = next (getPointSlotNo requested)
