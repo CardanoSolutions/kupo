@@ -210,18 +210,19 @@ data FailedToCreateDatabaseFileReason
     | SomeUnexpectedErrorOccured { error :: !IOException }
     deriving (Show)
 
--- | Create a new 'DatabaseFile' in the expected workding directory. Create the target
+-- | Create a new 'DatabaseFile' in the expected working directory. Create the target
 -- directory (recursively) if it doesn't exist.
 newDatabaseFile
     :: (MonadIO m)
     => Tracer IO TraceDatabase
+    -> Bool
     -> Configuration.DatabaseLocation
     -> m DatabaseFile
-newDatabaseFile tr = \case
+newDatabaseFile tr isReadOnly = \case
     Configuration.InMemory path -> do
         return $ InMemory path
     Configuration.Dir dir ->
-        OnDisk <$> newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) dir
+        OnDisk <$> newDatabaseOnDiskFile tr isReadOnly (traceWith tr . DatabaseCreateNew) dir
     Configuration.Remote url -> liftIO $ do
         traceWith tr $ DatabaseMustBeLocal
             { errorMessage =
@@ -234,14 +235,16 @@ newDatabaseFile tr = \case
 newDatabaseOnDiskFile
     :: (MonadIO m)
     => Tracer IO TraceDatabase
+    -> Bool
     -> (FilePath -> IO ())
     -> FilePath
     -> m FilePath
-newDatabaseOnDiskFile tr onFileMissing dir = liftIO $ do
+newDatabaseOnDiskFile tr isReadOnly onFileMissing dir = liftIO $ do
     absoluteDir <- (</> dir) <$> getCurrentDirectory
     handle (onAlreadyExistsError absoluteDir) $ createDirectoryIfMissing True dir
     permissions <- getPermissions absoluteDir
-    unless (writable permissions) $ bail (SpecifiedPathIsReadOnly absoluteDir)
+    unless (isReadOnly || writable permissions) $
+        bail (SpecifiedPathIsReadOnly absoluteDir)
     let dbFile = absoluteDir </> "kupo.sqlite3"
     unlessM (doesFileExist dbFile) $ onFileMissing dbFile
     return dbFile
@@ -389,7 +392,7 @@ newDBPool
     -> LongestRollback
     -> IO (DBPool IO)
 newDBPool tr isReadOnly dbLocation longestRollback = do
-    dbFile <- newDatabaseFile tr dbLocation
+    dbFile <- newDatabaseFile tr isReadOnly dbLocation
     lock <- liftIO newLock
 
     (maxConcurrentWriters, maxConcurrentReaders) <-
@@ -401,8 +404,10 @@ newDBPool tr isReadOnly dbLocation longestRollback = do
         600
         maxConcurrentReaders
 
+    let rw = if isReadOnly then ReadOnly else ReadWrite
+
     readWritePool <- liftIO $ newPool $ defaultPoolConfig
-        (createShortLivedConnection tr ReadWrite lock longestRollback dbFile)
+        (createShortLivedConnection tr rw lock longestRollback dbFile)
         (\Database{close} -> close)
         30
         maxConcurrentWriters
@@ -479,8 +484,8 @@ copyDatabase (tr, progress) fromDir intoDir patterns = do
         throwIO ErrCopyEmptyPatterns
             { hint = "No patterns provided for copy. At least one is required." }
 
-    fromFile <- newDatabaseOnDiskFile tr (throwIO . ErrMissingSourceDatabase) fromDir
-    intoFile <- newDatabaseOnDiskFile tr (traceWith tr . DatabaseCreateNew) intoDir
+    fromFile <- newDatabaseOnDiskFile tr False (throwIO . ErrMissingSourceDatabase) fromDir
+    intoFile <- newDatabaseOnDiskFile tr False (traceWith tr . DatabaseCreateNew) intoDir
 
     cleanupFile <- newCleanupAction intoFile
 
