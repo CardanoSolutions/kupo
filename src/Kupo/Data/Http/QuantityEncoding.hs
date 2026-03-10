@@ -16,10 +16,10 @@ import qualified Prelude as P
 
 import Network.HTTP.Media
     ( MediaType
-    , (//)
-    , (/:)
     , mapContentMedia
     , renderHeader
+    , (//)
+    , (/:)
     )
 import Network.HTTP.Types
     ( Header

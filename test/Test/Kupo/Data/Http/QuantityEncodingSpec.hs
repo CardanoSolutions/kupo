@@ -9,7 +9,7 @@ module Test.Kupo.Data.Http.QuantityEncodingSpec
 import Kupo.Prelude
 
 import Kupo.Data.Http.QuantityEncoding
-    ( QuantityEncoding(..)
+    ( QuantityEncoding (..)
     , adjustMediaType
     , mediaTypeParam
     )
