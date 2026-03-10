@@ -118,6 +118,9 @@ import Kupo.Data.Http.GetCheckpointMode
 import Kupo.Data.Http.OrderMatchesBy
     ( orderMatchesBy
     )
+import Kupo.Data.Http.QuantityEncoding
+    ( QuantityEncoding (..)
+    )
 import Kupo.Data.Http.ReferenceFlag
     ( referenceFlagFromQueryParams
     )
@@ -147,8 +150,16 @@ import Kupo.Data.Pattern
     , resultToJson
     , wildcard
     )
+import Network.HTTP.Media
+    ( mapAccept
+    )
+import Network.HTTP.Media.MediaType
+    ( (//)
+    , (/:)
+    )
 import Network.HTTP.Types
-    ( hAccept
+    ( Header
+    , hAccept
     , hContentType
     , status200
     , status202
@@ -181,6 +192,7 @@ import qualified Data.Set as Set
 import qualified GHC.Clock
 import qualified Kupo.Data.Http.Default as Default
 import qualified Kupo.Data.Http.Error as Errors
+import qualified Kupo.Data.Http.QuantityEncoding as QuantityEncoding
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.Status as Http
 import qualified Network.HTTP.Types.URI as Http
@@ -342,6 +354,7 @@ app networkParameters withDatabase forceRollback fetchBlock patternsVar readHeal
             withDatabase send ReadOnly $ \db -> do
                 send $ handleGetMatches
                             headers
+                            (requestHeaders req)
                             (pathParametersToText args)
                             (queryString req)
                             db
@@ -481,7 +494,7 @@ handleGetHealth
 handleGetHealth reqHeaders forcedStatus resolveNetworkParameters health = do
     networkParameters <- resolveNetworkParameters
     now <- getCurrentTime
-    case findContentType reqHeaders of
+    case findAcceptHeader reqHeaders of
         Just ct | cTextPlain `BS.isInfixOf` ct -> do
             let resHeaders = addCacheHeaders [(hContentType, cTextPlain <> ";charset=utf-8")] health
             return $ responseBuilder status resHeaders (mkPrometheusMetrics now networkParameters health)
@@ -519,14 +532,6 @@ handleGetHealth reqHeaders forcedStatus resolveNetworkParameters health = do
         d = distanceToSlot
             <$> mostRecentNodeTip
             <*> (getPointSlotNo <$> mostRecentCheckpoint)
-
-    findContentType = \case
-        [] -> Nothing
-        (headerName, headerValue):rest ->
-            if headerName == hAccept then
-                Just headerValue
-            else
-                findContentType rest
 
     cTextPlain = "text/plain"
     cApplicationJson = "application/json"
@@ -581,11 +586,12 @@ handleGetCheckpointBySlot headers mSlotNo query Database{..} =
 
 handleGetMatches
     :: [Http.Header]
+    -> [Http.Header]
     -> Maybe Text
     -> Http.Query
     -> Database IO
     -> Response
-handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $ do
+handleGetMatches resHeaders reqHeaders patternQuery queryParams Database{..} = handleRequest $ do
     pattern_ <- (patternQuery >>= patternFromText)
         `orAbort` Errors.invalidPattern
 
@@ -604,7 +610,24 @@ handleGetMatches headers patternQuery queryParams Database{..} = handleRequest $
     sortDirection <- mkSortDirection <$> orderMatchesBy queryParams
         `orAbort` Errors.invalidSortDirection
 
-    pure $ responseStreamJson headers (resultToJson referenceFlag) $ \yield done -> do
+    let qualities =
+            [ ("application" // "json" /: QuantityEncoding.mediaTypeParam
+              , EncodeAsString
+              )
+            , ("application" // "json" /: QuantityEncoding.mediaTypeParam /: ("charset", "utf-8")
+              , EncodeAsString
+              )
+            , ("application" // "json" /: ("charset", "utf-8") /: QuantityEncoding.mediaTypeParam
+              , EncodeAsString
+              )
+            ]
+
+    let quantityEncoding = (findAcceptHeader reqHeaders >>= mapAccept qualities)
+            & fromMaybe EncodeAsInteger
+
+    let resHeaders' = (QuantityEncoding.adjustMediaType quantityEncoding resHeaders)
+
+    pure $ responseStreamJson resHeaders' (resultToJson referenceFlag quantityEncoding) $ \yield done -> do
         let assertPointExists :: Point -> DBTransaction IO ()
             assertPointExists requested = do
                 let nextSlot = next (getPointSlotNo requested)
@@ -942,6 +965,16 @@ requestBodyJson parser req = do
     case Json.parse parser <$> Json.decodeStrict' (toStrict bytes) of
         Just (Json.Success a) -> return (Just a)
         _failureOrMalformed -> return Nothing
+
+findAcceptHeader :: [Header] -> Maybe ByteString
+findAcceptHeader = \case
+    [] -> Nothing
+    (headerName, headerValue):rest ->
+        if headerName == hAccept then
+            Just headerValue
+        else
+            findAcceptHeader rest
+
 
 --
 -- Tracer

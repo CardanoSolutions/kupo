@@ -12,7 +12,11 @@ import Kupo.Prelude hiding
     ( get
     , put
     )
-
+import Data.Aeson
+    ( (.!=)
+    , (.:)
+    , (.:?)
+    )
 import Data.OpenApi
     ( OpenApi
     , Operation
@@ -135,10 +139,13 @@ import Test.QuickCheck.Monadic
     )
 
 import qualified Data.Aeson as Json
+import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
+import qualified Data.Map as Map
 import qualified Data.OpenApi as OpenApi
 import qualified Data.Text as T
 import qualified Data.Yaml as Yaml
+import qualified Kupo.Data.Http.QuantityEncoding as QuantityEncoding
 import qualified Network.HTTP.Types.Header as Http
 import qualified Network.HTTP.Types.Status as Http
 import qualified Network.Wai as Wai
@@ -205,6 +212,17 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson True schema
 
+        sessionWithAccept mediaTypeJsonStringQuantities specification get "/matches" $ \assertJson endpoint -> do
+            let schema = findSchemaWith specification endpoint Http.status200 mediaTypeJsonStringQuantities
+            let acceptHeader = ("Accept", renderHeader mediaTypeJsonStringQuantities)
+            let request = Wai.defaultRequest & Wai.mapRequestHeaders (acceptHeader :)
+            res <- Wai.request $ Wai.setPath request "/matches"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            case eitherDecodeJson (Json.listParser decodePartialResult) (Wai.simpleBody res) of
+              Left e -> liftIO $ fail (show e)
+              Right _ -> pure ()
+            res & assertJson True schema
+
         session specification get "/matches?resolve_hashes" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             res <- Wai.request $ Wai.setPath Wai.defaultRequest "/matches?resolve_hashes"
@@ -253,7 +271,7 @@ spec = do
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson True schema
 
-        sessionWith noWildcard specification delete "/matches/{pattern}" $ \assertJson endpoint -> do
+        sessionWithPatterns noWildcard specification delete "/matches/{pattern}" $ \assertJson endpoint -> do
             let schema = findSchema specification endpoint Http.status200
             let allPatterns = (\(p, _, _) -> p) <$> patterns
             fragment <- liftIO $ generate $
@@ -610,6 +628,10 @@ mediaTypeJson :: MediaType
 mediaTypeJson =
     "application" // "json" /: ("charset", "utf-8")
 
+mediaTypeJsonStringQuantities ::MediaType
+mediaTypeJsonStringQuantities =
+    "application" // "json" /: ("charset", "utf-8") /: QuantityEncoding.mediaTypeParam
+
 mediaTypeTextPlain :: MediaType
 mediaTypeTextPlain =
     "text" // "plain" /: ("charset", "utf-8")
@@ -620,14 +642,24 @@ findSchema
     -> Operation
     -> Http.Status
     -> Schema
-findSchema specification op status = runIdentity $ do
+findSchema specification op status =
+    findSchemaWith specification op status mediaTypeJson
+
+findSchemaWith
+    :: HasCallStack
+    => OpenApi
+    -> Operation
+    -> Http.Status
+    -> MediaType
+    -> Schema
+findSchemaWith specification op status mediaType = runIdentity $ do
     res <- oops "no response for status" (op ^. responses . responses . at (Http.statusCode status)) >>= \case
         Inline a ->
             pure a
         Ref (Reference ref) ->
             oops ("no component for ref: " <> ref) $
                 specification ^. components . responses . at ref
-    ct <- oops "no content for media-type" (res ^. content . at mediaTypeJson)
+    ct <- oops "no content for media-type" (res ^. content . at mediaType)
     oops "content has no schema" (ct ^. OpenApi.schema) >>= \case
         Inline a ->
             pure a
@@ -645,9 +677,10 @@ session
        )
     -> Spec
 session =
-    sessionWith [ p | (_, p, _) <- Fixture.patterns ]
+    sessionWith [ p | (_, p, _) <- Fixture.patterns ] mediaTypeJson
 
-sessionWith
+
+sessionWithPatterns
     :: [Pattern]
     -> OpenApi
     -> Lens' PathItem (Maybe Operation)
@@ -657,7 +690,34 @@ sessionWith
        -> Wai.Session (Json.Value, [ValidationError])
        )
     -> Spec
-sessionWith defaultPatterns specification opL path callback =
+sessionWithPatterns ps =
+    sessionWith ps mediaTypeJson
+
+sessionWithAccept
+    :: MediaType
+    -> OpenApi
+    -> Lens' PathItem (Maybe Operation)
+    -> Text
+    -> ( (Bool -> Schema -> Wai.SResponse -> Wai.Session (Json.Value, [ValidationError]))
+       -> Operation
+       -> Wai.Session (Json.Value, [ValidationError])
+       )
+    -> Spec
+sessionWithAccept =
+    sessionWith [ p | (_, p, _) <- Fixture.patterns ]
+
+sessionWith
+    :: [Pattern]
+    -> MediaType
+    -> OpenApi
+    -> Lens' PathItem (Maybe Operation)
+    -> Text
+    -> ( (Bool -> Schema -> Wai.SResponse -> Wai.Session (Json.Value, [ValidationError]))
+       -> Operation
+       -> Wai.Session (Json.Value, [ValidationError])
+       )
+    -> Spec
+sessionWith defaultPatterns defaultMediaType specification opL path callback =
     prop (method <> " " <> toString path) $ monadicIO $ do
         stub <- run (newStubbedApplication defaultPatterns)
         (json, errs) <- run $ Wai.runSession (callback assertJson endpoint) stub
@@ -716,7 +776,7 @@ sessionWith defaultPatterns specification opL path callback =
             paramAt paramName rest
 
     assertJson shouldHaveMostRecentCheckpoint schema res = do
-        res & Wai.assertHeader Http.hContentType (renderHeader mediaTypeJson)
+        res & Wai.assertHeader Http.hContentType (renderHeader defaultMediaType)
         res & Wai.assertHeader "Access-Control-Allow-Origin" "*"
         when shouldHaveMostRecentCheckpoint $
             liftIO $ (fst <$> Wai.simpleHeaders res) `shouldContain` ["X-Most-Recent-Checkpoint"]
@@ -736,6 +796,23 @@ session' path s = do
 
 oops :: (HasCallStack, Applicative f) => Text -> Maybe a -> f a
 oops str = maybe (error str) pure
+
+-- Decode only the value coins and asset quantities from Text, fails otherwise.
+decodePartialResult :: Json.Value -> Json.Parser ()
+decodePartialResult = Json.withObject "Result" $ \o -> do
+    o .: "value" >>= decodePartialValue
+
+-- Decode only the value coins and asset quantities from Text, fails otherwise.
+decodePartialValue
+    ::Json.Value
+    -> Json.Parser ()
+decodePartialValue = Json.withObject "Value" $ \o -> do
+    _coins :: Text <- o .: "coins"
+    _ <- o .:? "assets" .!= mempty >>= traverse decodeAsset . Map.toList
+    pure ()
+  where
+    decodeAsset :: (Text, Text) -> Json.Parser ()
+    decodeAsset (_assetId, _quantity) = pure ()
 
 --
 -- Generators

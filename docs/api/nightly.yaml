@@ -1260,6 +1260,31 @@ components:
             1220099e5e430475c219518179efc7e6c8289db028904834025d5b086: 231
             289db028904834025d5b085d5b08661220099e5e430475c2195181796.08661220099e: 1
 
+    ValueAsString:
+      type: object
+      description: A (multi-asset) value of a transaction's output.
+      additionalProperties: false
+      required:
+        - coins
+      properties:
+        coins:
+          type: string
+          description: A quantity of Lovelace, encoded as string when 'asset-quantity=string' is specified as media-type parameter.
+          example: "42"
+        assets:
+          type: object
+          description: A _key:value_ map of asset identifier → quantity.
+          propertyNames:
+            type: string
+            pattern: ^[a-f0-9]{56}(.[a-f0-9]{2,64})?$
+          additionalProperties:
+            x-additionalPropertiesName: "{policy-id}.{asset-name}"
+            type: string
+            description: A quantity of some asset, encoded as string when 'asset-quantity=string' is specified as media-type parameter.
+          example:
+            1220099e5e430475c219518179efc7e6c8289db028904834025d5b086: "231"
+            289db028904834025d5b085d5b08661220099e5e430475c2195181796.08661220099e: "1"
+
     Wildcard:
       type: string
       title: Wildcard
@@ -1289,6 +1314,58 @@ components:
           $ref: "#/components/schemas/Address"
         value:
           $ref: "#/components/schemas/Value"
+        datum_hash:
+          $ref: "#/components/schemas/DatumHash"
+        datum:
+          description: The resolved datum, if available. The field is only and always present (yet may be `null`) if `?resolve_hashes` was set.
+          oneOf:
+            - <<: *BinaryData
+              description: A serialized Plutus' Data.
+            - type: "null"
+              description: None or unknown datum.
+        datum_type:
+          $ref: "#/components/schemas/DatumType"
+        script_hash:
+          $ref: "#/components/schemas/ScriptHash"
+        script:
+          description: The resolved script, if available. The field is only and always present (yet may be `null`) if `?resolve_hashes` was set.
+          oneOf:
+            - $ref: "#/components/schemas/Script"
+            - type: "null"
+              description: None or unknown script.
+        created_at:
+          <<: *Point
+          description: Block reference at which this transaction was included in the ledger.
+        spent_at:
+          description: Block reference at which this transaction input was spent, if any.
+          oneOf:
+            - $ref: "#/components/schemas/SpentAt"
+            - type: "null"
+
+    MatchQuantityAsString:
+      type: object
+      additionalProperties: false
+      required:
+        - transaction_index
+        - transaction_id
+        - output_index
+        - address
+        - value
+        - datum_hash
+        - script_hash
+        - created_at
+        - spent_at
+      properties:
+        transaction_index:
+          $ref: "#/components/schemas/TransactionIndex"
+        transaction_id:
+          $ref: "#/components/schemas/TransactionId"
+        output_index:
+          $ref: "#/components/schemas/OutputIndex"
+        address:
+          $ref: "#/components/schemas/Address"
+        value:
+          $ref: "#/components/schemas/ValueAsString"
         datum_hash:
           $ref: "#/components/schemas/DatumHash"
         datum:
@@ -1780,6 +1857,13 @@ paths:
         Optionally, use `?resolve_hashes` to automatically resolve and include `datum` and `script` associated with hash references, if available. Datums and scripts can otherwise be fetched using the [_Get Datum by Hash_](#tag/Datums/paths/~1datums~1{datum-hash}/get) and [_Get Script by Hash_](#tag/Scripts/paths/~1scripts~1{script-hash}/get) endpoints respectively.
 
         Note that it is generally a bad idea to fetch **ALL matches** for indexes built off permissive patterns (e.g. `*`), for the server will yield a large response.
+
+        > <sup><strong>TIP</strong></sup> <br/>
+        >
+        > You can customize coins and assets quantities encoding to always be strings instead of integers through the
+        > `Accept` header media-type as such:
+        >
+        > `Accept: application/json;asset-quantity=string`
       parameters:
         - $ref: "#/components/parameters/resolve-hashes"
         - $ref: "#/components/parameters/spent"
@@ -1803,6 +1887,11 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Match"
+            "application/json;charset=utf-8;asset-quantity=string":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MatchQuantityAsString"
         304:
           $ref: "#/components/responses/304"
 
@@ -1814,6 +1903,13 @@ paths:
       description: |
         Retrieve matches from the database matching the given pattern, in descending `slot_no` order. Results are streamed to the client for more efficiency.
         See [Patterns](#section/Patterns) for more information about constructing patterns.
+
+        > <sup><strong>TIP</strong></sup> <br/>
+        >
+        > You can customize coins and assets quantities encoding to always be strings instead of integers through the
+        > `Accept` header media-type as such:
+        >
+        > `Accept: application/json;asset-quantity=string`
       parameters:
         - $ref: "#/components/parameters/pattern"
         - $ref: "#/components/parameters/resolve-hashes"
@@ -1837,7 +1933,12 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Match"
+
+            "application/json;charset=utf-8;asset-quantity=string":
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MatchQuantityAsString"
         304:
           $ref: "#/components/responses/304"
         400:

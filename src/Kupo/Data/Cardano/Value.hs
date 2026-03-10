@@ -12,6 +12,9 @@ import Kupo.Data.Cardano.PolicyId
     ( PolicyId
     , unsafePolicyIdFromBytes
     )
+import Kupo.Data.Http.QuantityEncoding
+    ( QuantityEncoding (..)
+    )
 
 import qualified Cardano.Ledger.Coin as Ledger
 import qualified Cardano.Ledger.Hashes as Ledger
@@ -54,13 +57,17 @@ unsafeValueFromList ada assets =
         | (pid, name, q) <- assets
         ]
 
-valueToJson :: Value -> Json.Encoding
-valueToJson (Ledger.MaryValue (Ledger.Coin coins) (Ledger.MultiAsset assets)) =
+valueToJson :: QuantityEncoding -> Value -> Json.Encoding
+valueToJson quantityEncoding (Ledger.MaryValue (Ledger.Coin coins) (Ledger.MultiAsset assets)) =
     Json.pairs $
-        Json.pair "coins"  (Json.integer coins)
+        Json.pair "coins"  (encodeQuantity coins)
       <>
         Json.pair "assets" (assetsToJson assets)
   where
+    encodeQuantity = case quantityEncoding of
+        EncodeAsInteger -> Json.integer
+        EncodeAsString -> Json.text . show
+
     shortBytesToKey =
         Builder.fromText . encodeBase16 . fromShort
 
@@ -82,7 +89,7 @@ valueToJson (Ledger.MaryValue (Ledger.Coin coins) (Ledger.MultiAsset assets)) =
                                         fieldName <> "." <> shortBytesToKey assetName
                                     ) & Json.fromText . toStrict . Builder.toLazyText
 
-                                v = Json.integer quantity
+                                v = encodeQuantity quantity
                              in
                                 Json.pair k v <> json
                         )
