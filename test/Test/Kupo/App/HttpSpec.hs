@@ -213,7 +213,7 @@ spec = do
             res & assertJson True schema
 
         sessionWithAccept mediaTypeJsonStringQuantities specification get "/matches" $ \assertJson endpoint -> do
-            let schema = findSchema specification endpoint Http.status200
+            let schema = findSchemaWith specification endpoint Http.status200 mediaTypeJsonStringQuantities
             let acceptHeader = ("Accept", renderHeader mediaTypeJsonStringQuantities)
             let request = Wai.defaultRequest & Wai.mapRequestHeaders (acceptHeader :)
             res <- Wai.request $ Wai.setPath request "/matches"
@@ -642,14 +642,24 @@ findSchema
     -> Operation
     -> Http.Status
     -> Schema
-findSchema specification op status = runIdentity $ do
+findSchema specification op status =
+    findSchemaWith specification op status mediaTypeJson
+
+findSchemaWith
+    :: HasCallStack
+    => OpenApi
+    -> Operation
+    -> Http.Status
+    -> MediaType
+    -> Schema
+findSchemaWith specification op status mediaType = runIdentity $ do
     res <- oops "no response for status" (op ^. responses . responses . at (Http.statusCode status)) >>= \case
         Inline a ->
             pure a
         Ref (Reference ref) ->
             oops ("no component for ref: " <> ref) $
                 specification ^. components . responses . at ref
-    ct <- oops "no content for media-type" (res ^. content . at mediaTypeJson)
+    ct <- oops "no content for media-type" (res ^. content . at mediaType)
     oops "content has no schema" (ct ^. OpenApi.schema) >>= \case
         Inline a ->
             pure a
