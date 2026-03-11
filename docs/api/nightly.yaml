@@ -1933,7 +1933,7 @@ paths:
               schema:
                 type: array
                 items:
-
+                  $ref: "#/components/schemas/Match"
             "application/json;charset=utf-8;asset-quantity=string":
               schema:
                 type: array
