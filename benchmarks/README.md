@@ -1,4 +1,4 @@
-# Benchmarks
+# Benchmarks (mainnet)
 
 ## Specifications
 
@@ -272,3 +272,354 @@ Average:        0.0007 s
 </td>
 </tr>
 </table>
+
+# Benchmarks (preprod)
+
+## Specifications
+
+- Hardware: MacBook Pro (2024), Apple M4, 16 GB RAM, in a UTM VM.
+- Kupo Version: 2.11.0
+
+## Parameters
+
+Benchmarks are conducted on a local Kupo instance, using
+[`oha`](https://github.com/hatoo/oha) with the following parameters
+
+- Concurrent clients: 8
+- Total requests: 30
+
+## Dataset
+
+The data source used for the benchmarks is the pruned preprod database matching
+on `*` from genesis until around slot = 118,837,644 (~ Mar 26, 2026)
+
+Installed Kupo and ran preprod cardano-node using
+<https://github.com/notunrandom/homebrew-cardano>.
+
+Started Kupo with these arguments:
+
+```bash
+mac-vm:~ $ kupo \
+> --node-socket $(brew --prefix)/var/cardano/preprod/node.socket \
+> --node-config $(brew --prefix)/etc/cardano/preprod/config.json \
+> --since origin --defer-db-indexes --prune-utxo --workdir ~/kupodb \
+> --match "*"
+```
+
+It contains a grand total of 18,990,368 indexed outputs, 155,668 unique
+token policies and ??? datums.
+
+The above statistics were obtained using the following SQL queries:
+
+```sql
+sqlite> SELECT COUNT(DISTINCT output_reference) FROM inputs;
+18990368
+sqlite> SELECT COUNT(DISTINCT policy_id) FROM policies;
+155668
+```
+
+TODO: how to obtain number of datums?
+
+## Results
+
+TODO - wrap in HTML tables as above?
+
+```
+Preprod benchmarks
+http://127.0.0.1:1442/matches/stake_test1upyfx7klyd6lapdyqa0ku2ycgpnz9l8lmvp2ej989l6a69c0vnz0r
+Summary:
+  Success rate:	100.00%
+  Total:	40.3126 ms
+  Slowest:	33.0621 ms
+  Fastest:	0.7050 ms
+  Average:	6.2954 ms
+  Requests/sec:	744.1845
+
+  Total data:	98.94 KiB
+  Size/request:	3.30 KiB
+  Size/sec:	2.40 MiB
+
+Response time histogram:
+   0.705 ms [1]  |■
+   3.941 ms [21] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+   7.176 ms [0]  |
+  10.412 ms [0]  |
+  13.648 ms [5]  |■■■■■■■
+  16.884 ms [0]  |
+  20.119 ms [0]  |
+  23.355 ms [0]  |
+  26.591 ms [0]  |
+  29.826 ms [0]  |
+  33.062 ms [3]  |■■■■
+
+Response time distribution:
+  10.00% in 1.5734 ms
+  25.00% in 1.6346 ms
+  50.00% in 1.9557 ms
+  75.00% in 10.7896 ms
+  90.00% in 31.4457 ms
+  95.00% in 31.7721 ms
+  99.00% in 33.0621 ms
+  99.90% in 33.0621 ms
+  99.99% in 33.0621 ms
+
+
+Details (average, fastest, slowest):
+  DNS+dialup:	1.9311 ms, 1.6715 ms, 2.0235 ms
+  DNS-lookup:	0.5915 ms, 0.0025 ms, 0.8418 ms
+
+Status code distribution:
+  [200] 30 responses
+
+Total results
+ 6
+
+
+http://127.0.0.1:1442/matches/stake_test1upyfx7klyd6lapdyqa0ku2ycgpnz9l8lmvp2ej989l6a69c0vnz0r?spent_after=98245654
+Summary:
+  Success rate:	100.00%
+  Total:	9.4558 ms
+  Slowest:	6.0993 ms
+  Fastest:	0.9329 ms
+  Average:	2.0407 ms
+  Requests/sec:	3172.6586
+
+  Total data:	60 B
+  Size/request:	2 B
+  Size/sec:	6.20 KiB
+
+Response time histogram:
+  0.933 ms [1]  |■■■
+  1.450 ms [10] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  1.966 ms [6]  |■■■■■■■■■■■■■■■■■■■
+  2.483 ms [7]  |■■■■■■■■■■■■■■■■■■■■■■
+  2.999 ms [2]  |■■■■■■
+  3.516 ms [2]  |■■■■■■
+  4.033 ms [0]  |
+  4.549 ms [1]  |■■■
+  5.066 ms [0]  |
+  5.583 ms [0]  |
+  6.099 ms [1]  |■■■
+
+Response time distribution:
+  10.00% in 1.1577 ms
+  25.00% in 1.3052 ms
+  50.00% in 1.8326 ms
+  75.00% in 2.3518 ms
+  90.00% in 3.2082 ms
+  95.00% in 4.2998 ms
+  99.00% in 6.0993 ms
+  99.90% in 6.0993 ms
+  99.99% in 6.0993 ms
+
+
+Details (average, fastest, slowest):
+  DNS+dialup:	0.3826 ms, 0.2055 ms, 0.5860 ms
+  DNS-lookup:	0.0664 ms, 0.0016 ms, 0.2757 ms
+
+Status code distribution:
+  [200] 30 responses
+
+Total results
+ 0
+
+
+http://127.0.0.1:1442/matches/addr_test1vzpwq95z3xyum8vqndgdd9mdnmafh3djcxnc6jemlgdmswcve6tkw
+Summary:
+  Success rate:	100.00%
+  Total:	6.2276 sec
+  Slowest:	6.2267 sec
+  Fastest:	0.1799 sec
+  Average:	1.4164 sec
+  Requests/sec:	4.8173
+
+  Total data:	247.00 MiB
+  Size/request:	8.23 MiB
+  Size/sec:	39.66 MiB
+
+Response time histogram:
+  0.180 sec [1]  |■
+  0.785 sec [24] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  1.389 sec [0]  |
+  1.994 sec [0]  |
+  2.599 sec [0]  |
+  3.203 sec [0]  |
+  3.808 sec [0]  |
+  4.413 sec [0]  |
+  5.017 sec [0]  |
+  5.622 sec [0]  |
+  6.227 sec [5]  |■■■■■■
+
+Response time distribution:
+  10.00% in 0.1817 sec
+  25.00% in 0.5078 sec
+  50.00% in 0.5585 sec
+  75.00% in 0.6160 sec
+  90.00% in 6.1526 sec
+  95.00% in 6.1675 sec
+  99.00% in 6.2267 sec
+  99.90% in 6.2267 sec
+  99.99% in 6.2267 sec
+
+
+Details (average, fastest, slowest):
+  DNS+dialup:	0.0004 sec, 0.0002 sec, 0.0005 sec
+  DNS-lookup:	0.0000 sec, 0.0000 sec, 0.0001 sec
+
+Status code distribution:
+  [503] 25 responses
+  [200] 5 responses
+
+Total results
+ 87515
+
+
+http://127.0.0.1:1442/matches/addr_test1vzpwq95z3xyum8vqndgdd9mdnmafh3djcxnc6jemlgdmswcve6tkw?created_after=98677654&created_before=98764054
+Summary:
+  Success rate:	100.00%
+  Total:	286.9277 ms
+  Slowest:	182.7742 ms
+  Fastest:	29.1512 ms
+  Average:	59.9756 ms
+  Requests/sec:	104.5560
+
+  Total data:	1.28 KiB
+  Size/request:	43 B
+  Size/sec:	4.45 KiB
+
+Response time histogram:
+   29.151 ms [1]  |■
+   44.514 ms [18] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+   59.876 ms [3]  |■■■■■
+   75.238 ms [0]  |
+   90.600 ms [4]  |■■■■■■■
+  105.963 ms [1]  |■
+  121.325 ms [0]  |
+  136.687 ms [0]  |
+  152.050 ms [0]  |
+  167.412 ms [0]  |
+  182.774 ms [3]  |■■■■■
+
+Response time distribution:
+  10.00% in 32.4562 ms
+  25.00% in 34.8832 ms
+  50.00% in 37.6838 ms
+  75.00% in 75.9480 ms
+  90.00% in 181.7753 ms
+  95.00% in 182.3838 ms
+  99.00% in 182.7742 ms
+  99.90% in 182.7742 ms
+  99.99% in 182.7742 ms
+
+
+Details (average, fastest, slowest):
+  DNS+dialup:	0.5706 ms, 0.3535 ms, 0.9283 ms
+  DNS-lookup:	0.1763 ms, 0.0029 ms, 0.4009 ms
+
+Status code distribution:
+  [200] 27 responses
+  [503] 3 responses
+
+Total results
+ 0
+
+
+http://127.0.0.1:1442/matches/*@bc40cc86ed43d84d3367a7ff2f4a401dbaed885af96edf1c8fd7379402735699
+Summary:
+  Success rate:	100.00%
+  Total:	9.7147 ms
+  Slowest:	4.1286 ms
+  Fastest:	0.9951 ms
+  Average:	1.9722 ms
+  Requests/sec:	3088.1011
+
+  Total data:	60 B
+  Size/request:	2 B
+  Size/sec:	6.03 KiB
+
+Response time histogram:
+  0.995 ms [1] |■■■■
+  1.308 ms [4] |■■■■■■■■■■■■■■■■■■
+  1.622 ms [6] |■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  1.935 ms [7] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  2.249 ms [3] |■■■■■■■■■■■■■
+  2.562 ms [3] |■■■■■■■■■■■■■
+  2.875 ms [4] |■■■■■■■■■■■■■■■■■■
+  3.189 ms [0] |
+  3.502 ms [0] |
+  3.815 ms [1] |■■■■
+  4.129 ms [1] |■■■■
+
+Response time distribution:
+  10.00% in 1.2322 ms
+  25.00% in 1.5083 ms
+  50.00% in 1.8208 ms
+  75.00% in 2.3690 ms
+  90.00% in 2.8238 ms
+  95.00% in 3.5527 ms
+  99.00% in 4.1286 ms
+  99.90% in 4.1286 ms
+  99.99% in 4.1286 ms
+
+
+Details (average, fastest, slowest):
+  DNS+dialup:	0.4791 ms, 0.1480 ms, 0.8369 ms
+  DNS-lookup:	0.0737 ms, 0.0023 ms, 0.1813 ms
+
+Status code distribution:
+  [200] 30 responses
+
+Total results
+ 0
+
+
+http://127.0.0.1:1442/matches/*?spent_after=98245654&spent_before=98245660
+Summary:
+  Success rate:	100.00%
+  Total:	3.5357 10 sec
+  Slowest:	3.5355 10 sec
+  Fastest:	0.0178 10 sec
+  Average:	0.6042 10 sec
+  Requests/sec:	0.8485
+
+  Total data:	59.66 KiB
+  Size/request:	1.99 KiB
+  Size/sec:	1.69 KiB
+
+Response time histogram:
+  0.018 10 sec [1]  |■
+  0.370 10 sec [24] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  0.721 10 sec [0]  |
+  1.073 10 sec [0]  |
+  1.425 10 sec [0]  |
+  1.777 10 sec [0]  |
+  2.128 10 sec [0]  |
+  2.480 10 sec [0]  |
+  2.832 10 sec [0]  |
+  3.184 10 sec [0]  |
+  3.535 10 sec [5]  |■■■■■■
+
+Response time distribution:
+  10.00% in 0.0179 10 sec
+  25.00% in 0.0179 10 sec
+  50.00% in 0.0179 10 sec
+  75.00% in 0.0181 10 sec
+  90.00% in 3.5355 10 sec
+  95.00% in 3.5355 10 sec
+  99.00% in 3.5355 10 sec
+  99.90% in 3.5355 10 sec
+  99.99% in 3.5355 10 sec
+
+
+Details (average, fastest, slowest):
+  DNS+dialup:	0.0001 10 sec, 0.0000 10 sec, 0.0002 10 sec
+  DNS-lookup:	0.0000 10 sec, 0.0000 10 sec, 0.0000 10 sec
+
+Status code distribution:
+  [503] 25 responses
+  [200] 5 responses
+
+Total results
+ 15
+
+```
