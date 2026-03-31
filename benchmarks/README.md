@@ -322,51 +322,50 @@ TODO: how to obtain number of datums?
 
 ## Results
 
-TODO - wrap in HTML tables as above?
 
 ```
 Preprod benchmarks
 http://127.0.0.1:1442/matches/stake_test1upyfx7klyd6lapdyqa0ku2ycgpnz9l8lmvp2ej989l6a69c0vnz0r
 Summary:
   Success rate:	100.00%
-  Total:	40.3126 ms
-  Slowest:	33.0621 ms
-  Fastest:	0.7050 ms
-  Average:	6.2954 ms
-  Requests/sec:	744.1845
+  Total:	39.8888 ms
+  Slowest:	34.6126 ms
+  Fastest:	0.9592 ms
+  Average:	6.2998 ms
+  Requests/sec:	752.0910
 
-  Total data:	98.94 KiB
-  Size/request:	3.30 KiB
-  Size/sec:	2.40 MiB
+  Total data:	99.29 KiB
+  Size/request:	3.31 KiB
+  Size/sec:	2.43 MiB
 
 Response time histogram:
-   0.705 ms [1]  |■
-   3.941 ms [21] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-   7.176 ms [0]  |
-  10.412 ms [0]  |
-  13.648 ms [5]  |■■■■■■■
-  16.884 ms [0]  |
-  20.119 ms [0]  |
-  23.355 ms [0]  |
-  26.591 ms [0]  |
-  29.826 ms [0]  |
-  33.062 ms [3]  |■■■■
+   0.959 ms [1]  |■
+   4.325 ms [21] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+   7.690 ms [0]  |
+  11.055 ms [5]  |■■■■■■■
+  14.421 ms [0]  |
+  17.786 ms [0]  |
+  21.151 ms [0]  |
+  24.517 ms [0]  |
+  27.882 ms [0]  |
+  31.247 ms [0]  |
+  34.613 ms [3]  |■■■■
 
 Response time distribution:
-  10.00% in 1.5734 ms
-  25.00% in 1.6346 ms
-  50.00% in 1.9557 ms
-  75.00% in 10.7896 ms
-  90.00% in 31.4457 ms
-  95.00% in 31.7721 ms
-  99.00% in 33.0621 ms
-  99.90% in 33.0621 ms
-  99.99% in 33.0621 ms
+  10.00% in 1.2235 ms
+  25.00% in 1.4874 ms
+  50.00% in 1.8979 ms
+  75.00% in 8.2840 ms
+  90.00% in 33.0712 ms
+  95.00% in 34.3138 ms
+  99.00% in 34.6126 ms
+  99.90% in 34.6126 ms
+  99.99% in 34.6126 ms
 
 
 Details (average, fastest, slowest):
-  DNS+dialup:	1.9311 ms, 1.6715 ms, 2.0235 ms
-  DNS-lookup:	0.5915 ms, 0.0025 ms, 0.8418 ms
+  DNS+dialup:	1.6588 ms, 1.4473 ms, 1.7800 ms
+  DNS-lookup:	0.4347 ms, 0.0020 ms, 0.6465 ms
 
 Status code distribution:
   [200] 30 responses
@@ -378,44 +377,44 @@ Total results
 http://127.0.0.1:1442/matches/stake_test1upyfx7klyd6lapdyqa0ku2ycgpnz9l8lmvp2ej989l6a69c0vnz0r?spent_after=98245654
 Summary:
   Success rate:	100.00%
-  Total:	9.4558 ms
-  Slowest:	6.0993 ms
-  Fastest:	0.9329 ms
-  Average:	2.0407 ms
-  Requests/sec:	3172.6586
+  Total:	9.3218 ms
+  Slowest:	6.9830 ms
+  Fastest:	0.6721 ms
+  Average:	2.0703 ms
+  Requests/sec:	3218.2508
 
   Total data:	60 B
   Size/request:	2 B
-  Size/sec:	6.20 KiB
+  Size/sec:	6.29 KiB
 
 Response time histogram:
-  0.933 ms [1]  |■■■
-  1.450 ms [10] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-  1.966 ms [6]  |■■■■■■■■■■■■■■■■■■■
-  2.483 ms [7]  |■■■■■■■■■■■■■■■■■■■■■■
-  2.999 ms [2]  |■■■■■■
-  3.516 ms [2]  |■■■■■■
-  4.033 ms [0]  |
-  4.549 ms [1]  |■■■
-  5.066 ms [0]  |
-  5.583 ms [0]  |
-  6.099 ms [1]  |■■■
+  0.672 ms [1]  |■■
+  1.303 ms [4]  |■■■■■■■■■
+  1.934 ms [13] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  2.565 ms [5]  |■■■■■■■■■■■■
+  3.196 ms [4]  |■■■■■■■■■
+  3.828 ms [1]  |■■
+  4.459 ms [0]  |
+  5.090 ms [1]  |■■
+  5.721 ms [0]  |
+  6.352 ms [0]  |
+  6.983 ms [1]  |■■
 
 Response time distribution:
-  10.00% in 1.1577 ms
-  25.00% in 1.3052 ms
-  50.00% in 1.8326 ms
-  75.00% in 2.3518 ms
-  90.00% in 3.2082 ms
-  95.00% in 4.2998 ms
-  99.00% in 6.0993 ms
-  99.90% in 6.0993 ms
-  99.99% in 6.0993 ms
+  10.00% in 1.1857 ms
+  25.00% in 1.4059 ms
+  50.00% in 1.7446 ms
+  75.00% in 2.3155 ms
+  90.00% in 3.7100 ms
+  95.00% in 4.5280 ms
+  99.00% in 6.9830 ms
+  99.90% in 6.9830 ms
+  99.99% in 6.9830 ms
 
 
 Details (average, fastest, slowest):
-  DNS+dialup:	0.3826 ms, 0.2055 ms, 0.5860 ms
-  DNS-lookup:	0.0664 ms, 0.0016 ms, 0.2757 ms
+  DNS+dialup:	0.3885 ms, 0.2717 ms, 0.4756 ms
+  DNS-lookup:	0.0304 ms, 0.0018 ms, 0.0961 ms
 
 Status code distribution:
   [200] 30 responses
@@ -427,98 +426,98 @@ Total results
 http://127.0.0.1:1442/matches/addr_test1vzpwq95z3xyum8vqndgdd9mdnmafh3djcxnc6jemlgdmswcve6tkw
 Summary:
   Success rate:	100.00%
-  Total:	6.2276 sec
-  Slowest:	6.2267 sec
-  Fastest:	0.1799 sec
-  Average:	1.4164 sec
-  Requests/sec:	4.8173
+  Total:	8.1558 sec
+  Slowest:	8.1549 sec
+  Fastest:	0.1789 sec
+  Average:	1.4619 sec
+  Requests/sec:	3.6783
 
-  Total data:	247.00 MiB
-  Size/request:	8.23 MiB
-  Size/sec:	39.66 MiB
+  Total data:	244.42 MiB
+  Size/request:	8.15 MiB
+  Size/sec:	29.97 MiB
 
 Response time histogram:
-  0.180 sec [1]  |■
-  0.785 sec [24] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-  1.389 sec [0]  |
-  1.994 sec [0]  |
-  2.599 sec [0]  |
-  3.203 sec [0]  |
-  3.808 sec [0]  |
-  4.413 sec [0]  |
-  5.017 sec [0]  |
-  5.622 sec [0]  |
-  6.227 sec [5]  |■■■■■■
+  0.179 sec [1]  |■
+  0.977 sec [24] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  1.774 sec [0]  |
+  2.572 sec [0]  |
+  3.369 sec [0]  |
+  4.167 sec [0]  |
+  4.965 sec [0]  |
+  5.762 sec [0]  |
+  6.560 sec [0]  |
+  7.357 sec [0]  |
+  8.155 sec [5]  |■■■■■■
 
 Response time distribution:
-  10.00% in 0.1817 sec
-  25.00% in 0.5078 sec
-  50.00% in 0.5585 sec
-  75.00% in 0.6160 sec
-  90.00% in 6.1526 sec
-  95.00% in 6.1675 sec
-  99.00% in 6.2267 sec
-  99.90% in 6.2267 sec
-  99.99% in 6.2267 sec
+  10.00% in 0.1791 sec
+  25.00% in 0.1792 sec
+  50.00% in 0.1799 sec
+  75.00% in 0.1808 sec
+  90.00% in 7.9811 sec
+  95.00% in 8.0210 sec
+  99.00% in 8.1549 sec
+  99.90% in 8.1549 sec
+  99.99% in 8.1549 sec
 
 
 Details (average, fastest, slowest):
-  DNS+dialup:	0.0004 sec, 0.0002 sec, 0.0005 sec
-  DNS-lookup:	0.0000 sec, 0.0000 sec, 0.0001 sec
+  DNS+dialup:	0.0008 sec, 0.0002 sec, 0.0010 sec
+  DNS-lookup:	0.0000 sec, 0.0000 sec, 0.0000 sec
 
 Status code distribution:
   [503] 25 responses
   [200] 5 responses
 
 Total results
- 87515
+ 86342
 
 
 http://127.0.0.1:1442/matches/addr_test1vzpwq95z3xyum8vqndgdd9mdnmafh3djcxnc6jemlgdmswcve6tkw?created_after=98677654&created_before=98764054
 Summary:
   Success rate:	100.00%
-  Total:	286.9277 ms
-  Slowest:	182.7742 ms
-  Fastest:	29.1512 ms
-  Average:	59.9756 ms
-  Requests/sec:	104.5560
+  Total:	212.7842 ms
+  Slowest:	210.2276 ms
+  Fastest:	29.6657 ms
+  Average:	51.9895 ms
+  Requests/sec:	140.9879
 
-  Total data:	1.28 KiB
-  Size/request:	43 B
-  Size/sec:	4.45 KiB
+  Total data:	476 B
+  Size/request:	15 B
+  Size/sec:	2.18 KiB
 
 Response time histogram:
-   29.151 ms [1]  |■
-   44.514 ms [18] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-   59.876 ms [3]  |■■■■■
-   75.238 ms [0]  |
-   90.600 ms [4]  |■■■■■■■
-  105.963 ms [1]  |■
-  121.325 ms [0]  |
-  136.687 ms [0]  |
-  152.050 ms [0]  |
-  167.412 ms [0]  |
-  182.774 ms [3]  |■■■■■
+   29.666 ms [1]  |■
+   47.722 ms [26] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+   65.778 ms [0]  |
+   83.834 ms [0]  |
+  101.890 ms [0]  |
+  119.947 ms [0]  |
+  138.003 ms [0]  |
+  156.059 ms [0]  |
+  174.115 ms [0]  |
+  192.171 ms [1]  |■
+  210.228 ms [2]  |■■
 
 Response time distribution:
-  10.00% in 32.4562 ms
-  25.00% in 34.8832 ms
-  50.00% in 37.6838 ms
-  75.00% in 75.9480 ms
-  90.00% in 181.7753 ms
-  95.00% in 182.3838 ms
-  99.00% in 182.7742 ms
-  99.90% in 182.7742 ms
-  99.99% in 182.7742 ms
+  10.00% in 32.4199 ms
+  25.00% in 33.5551 ms
+  50.00% in 35.6305 ms
+  75.00% in 38.0882 ms
+  90.00% in 182.1083 ms
+  95.00% in 209.9236 ms
+  99.00% in 210.2276 ms
+  99.90% in 210.2276 ms
+  99.99% in 210.2276 ms
 
 
 Details (average, fastest, slowest):
-  DNS+dialup:	0.5706 ms, 0.3535 ms, 0.9283 ms
-  DNS-lookup:	0.1763 ms, 0.0029 ms, 0.4009 ms
+  DNS+dialup:	1.1789 ms, 0.5751 ms, 1.7241 ms
+  DNS-lookup:	0.2367 ms, 0.0033 ms, 0.5799 ms
 
 Status code distribution:
-  [200] 27 responses
-  [503] 3 responses
+  [200] 29 responses
+  [503] 1 responses
 
 Total results
  0
@@ -527,44 +526,44 @@ Total results
 http://127.0.0.1:1442/matches/*@bc40cc86ed43d84d3367a7ff2f4a401dbaed885af96edf1c8fd7379402735699
 Summary:
   Success rate:	100.00%
-  Total:	9.7147 ms
-  Slowest:	4.1286 ms
-  Fastest:	0.9951 ms
-  Average:	1.9722 ms
-  Requests/sec:	3088.1011
+  Total:	35.6143 ms
+  Slowest:	33.0405 ms
+  Fastest:	0.7162 ms
+  Average:	4.6884 ms
+  Requests/sec:	842.3575
 
   Total data:	60 B
   Size/request:	2 B
-  Size/sec:	6.03 KiB
+  Size/sec:	1.64 KiB
 
 Response time histogram:
-  0.995 ms [1] |■■■■
-  1.308 ms [4] |■■■■■■■■■■■■■■■■■■
-  1.622 ms [6] |■■■■■■■■■■■■■■■■■■■■■■■■■■■
-  1.935 ms [7] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-  2.249 ms [3] |■■■■■■■■■■■■■
-  2.562 ms [3] |■■■■■■■■■■■■■
-  2.875 ms [4] |■■■■■■■■■■■■■■■■■■
-  3.189 ms [0] |
-  3.502 ms [0] |
-  3.815 ms [1] |■■■■
-  4.129 ms [1] |■■■■
+   0.716 ms [1]  |■
+   3.949 ms [25] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+   7.181 ms [1]  |■
+  10.414 ms [0]  |
+  13.646 ms [0]  |
+  16.878 ms [0]  |
+  20.111 ms [0]  |
+  23.343 ms [0]  |
+  26.576 ms [0]  |
+  29.808 ms [0]  |
+  33.040 ms [3]  |■■■
 
 Response time distribution:
-  10.00% in 1.2322 ms
-  25.00% in 1.5083 ms
-  50.00% in 1.8208 ms
-  75.00% in 2.3690 ms
-  90.00% in 2.8238 ms
-  95.00% in 3.5527 ms
-  99.00% in 4.1286 ms
-  99.90% in 4.1286 ms
-  99.99% in 4.1286 ms
+  10.00% in 0.8104 ms
+  25.00% in 1.0127 ms
+  50.00% in 1.1727 ms
+  75.00% in 3.1173 ms
+  90.00% in 32.3182 ms
+  95.00% in 32.8385 ms
+  99.00% in 33.0405 ms
+  99.90% in 33.0405 ms
+  99.99% in 33.0405 ms
 
 
 Details (average, fastest, slowest):
-  DNS+dialup:	0.4791 ms, 0.1480 ms, 0.8369 ms
-  DNS-lookup:	0.0737 ms, 0.0023 ms, 0.1813 ms
+  DNS+dialup:	0.6855 ms, 0.3095 ms, 1.3621 ms
+  DNS-lookup:	0.0764 ms, 0.0019 ms, 0.1546 ms
 
 Status code distribution:
   [200] 30 responses
@@ -576,50 +575,48 @@ Total results
 http://127.0.0.1:1442/matches/*?spent_after=98245654&spent_before=98245660
 Summary:
   Success rate:	100.00%
-  Total:	3.5357 10 sec
-  Slowest:	3.5355 10 sec
-  Fastest:	0.0178 10 sec
-  Average:	0.6042 10 sec
-  Requests/sec:	0.8485
+  Total:	31.4874 ms
+  Slowest:	29.5086 ms
+  Fastest:	1.0373 ms
+  Average:	7.3920 ms
+  Requests/sec:	952.7628
 
-  Total data:	59.66 KiB
-  Size/request:	1.99 KiB
-  Size/sec:	1.69 KiB
+  Total data:	297.89 KiB
+  Size/request:	9.93 KiB
+  Size/sec:	9.24 MiB
 
 Response time histogram:
-  0.018 10 sec [1]  |■
-  0.370 10 sec [24] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
-  0.721 10 sec [0]  |
-  1.073 10 sec [0]  |
-  1.425 10 sec [0]  |
-  1.777 10 sec [0]  |
-  2.128 10 sec [0]  |
-  2.480 10 sec [0]  |
-  2.832 10 sec [0]  |
-  3.184 10 sec [0]  |
-  3.535 10 sec [5]  |■■■■■■
+   1.037 ms [1]  |■■
+   3.884 ms [16] |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+   6.732 ms [0]  |
+   9.579 ms [8]  |■■■■■■■■■■■■■■■■
+  12.426 ms [2]  |■■■■
+  15.273 ms [0]  |
+  18.120 ms [0]  |
+  20.967 ms [0]  |
+  23.814 ms [0]  |
+  26.661 ms [0]  |
+  29.509 ms [3]  |■■■■■■
 
 Response time distribution:
-  10.00% in 0.0179 10 sec
-  25.00% in 0.0179 10 sec
-  50.00% in 0.0179 10 sec
-  75.00% in 0.0181 10 sec
-  90.00% in 3.5355 10 sec
-  95.00% in 3.5355 10 sec
-  99.00% in 3.5355 10 sec
-  99.90% in 3.5355 10 sec
-  99.99% in 3.5355 10 sec
+  10.00% in 1.9015 ms
+  25.00% in 2.5448 ms
+  50.00% in 3.6228 ms
+  75.00% in 8.8381 ms
+  90.00% in 28.8317 ms
+  95.00% in 29.3221 ms
+  99.00% in 29.5086 ms
+  99.90% in 29.5086 ms
+  99.99% in 29.5086 ms
 
 
 Details (average, fastest, slowest):
-  DNS+dialup:	0.0001 10 sec, 0.0000 10 sec, 0.0002 10 sec
-  DNS-lookup:	0.0000 10 sec, 0.0000 10 sec, 0.0000 10 sec
+  DNS+dialup:	0.4796 ms, 0.1296 ms, 0.8225 ms
+  DNS-lookup:	0.0867 ms, 0.0017 ms, 0.2468 ms
 
 Status code distribution:
-  [503] 25 responses
-  [200] 5 responses
+  [200] 30 responses
 
 Total results
  15
-
 ```
