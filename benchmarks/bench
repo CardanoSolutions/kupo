@@ -4,34 +4,47 @@ BASEURL="http://127.0.0.1:1442/matches"
 
 if [[ $# == 1 && $1 == "preprod" ]]
 then
-  echo "Preprod benchmarks"
+  echo "Preprod benchmarks\n"
   PATTERNS=(
     # Tapioca Testnet [ TAPCT ] stake address (within "Top 100" on Cardanoscan.io)
     "stake_test1upyfx7klyd6lapdyqa0ku2ycgpnz9l8lmvp2ej989l6a69c0vnz0r"
+    # Same address, the slot is chosen arbitrarily
     "stake_test1upyfx7klyd6lapdyqa0ku2ycgpnz9l8lmvp2ej989l6a69c0vnz0r?spent_after=98245654"
+    # MIN token policy ID (biggest number of transations on first page of
+    # https://preprod.cardanoscan.io/tokens
+    "a9fc2c980e6beed499b91089ca06ad433961a6238690219b8021fe43.*"
+    # Same address, the slot is chosen arbitrarily
+    "a9fc2c980e6beed499b91089ca06ad433961a6238690219b8021fe43.*?created_before=98245654&spent_after=98764054"
     # Payment address with high transaction count (within "Top 100" on Cardanoscan.io)
     "addr_test1vzpwq95z3xyum8vqndgdd9mdnmafh3djcxnc6jemlgdmswcve6tkw"
+    # Same address, the slot is chosen arbitrarily
     "addr_test1vzpwq95z3xyum8vqndgdd9mdnmafh3djcxnc6jemlgdmswcve6tkw?created_after=98677654&created_before=98764054"
-    # All outputs with this Transaction ID (that ...?)
+    # All outputs to this arbitrary transaction ID
     "*@bc40cc86ed43d84d3367a7ff2f4a401dbaed885af96edf1c8fd7379402735699"
     # NEW: for ISSUE #194 - wildcard slot-range query
     "*?spent_after=98245654&spent_before=98245660"
   )
 else
+  echo "Mainnet benchmarks\n"
   PATTERNS=(
-    # A stake address that... (has large controlled stake? many reward payments?)
+    # A stake address that is associated with the jpg.store smart contract,
+    # thus having a large number of transactions
     "stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6"
-    # Same address, the slot is chosen for...
+    # Same address, the slot is chosen arbitrarily but after jpg.store launch,
+    # in order to still have results transactions before and after the slot.
     "stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6?spent_after=98245654"
-    # A policy ID that...
+    # World Mobile Token's policy id, which has been largely used without being
+    # the most used
     "1d7f33bd23d85e1a25d87d86fac4f199c3197a2f7afeb662a0f34e1e.*"
-    # Same address, the slot is chosen for...
+    # Same address, the slot is chosen arbitrarily (or at least, I cannot remember why).
     "1d7f33bd23d85e1a25d87d86fac4f199c3197a2f7afeb662a0f34e1e.*?created_before=98245654&spent_after=98764054"
-    # A payment/wallet address that... (has many transactions?)
+    # A payment/wallet address that has many transactions (can't remember the
+    # exact reason I picked this one?)
     "addr1v94725lv4umktv89cg2t04qjn4qq3p6l6zegvtx5esu2zuqfd487u"
-    # Same address, the slot is chosen for...
+    # Same address, the slot is chosen arbitrarily
     "addr1v94725lv4umktv89cg2t04qjn4qq3p6l6zegvtx5esu2zuqfd487u?created_after=98677654&created_before=98764054"
-    # All outputs with this Transaction ID (that ...?)
+    # All outputs to one arbitrary transaction (was probably picked by looking at
+    # the latest transaction in an explorer at the moment of writing this bench!)
     "*@4301551ce28e83ef1082432f57a13bbbd389f4628592b73d71ca19e8833c0eb7"
   )
 fi
