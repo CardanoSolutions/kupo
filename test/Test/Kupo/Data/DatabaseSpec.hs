@@ -604,6 +604,18 @@ spec = parallel $ do
                         ( "SEARCH inputs USING INDEX inputsByAddress (address=?)" : suffix )
                     )
 
+                specifyQuery "Spent Between (wildcard) #194" installIndexes
+                    (foldInputsQry
+                        <$> pure (MatchAny OnlyShelley)
+                        <*> pure (Between (SpentAt, 14) (SpentAt, 42))
+                        <*> pure NoStatusFlag
+                        <*> pure AsReference
+                        <*> pure Asc
+                    )
+                    (`shouldBe`
+                        ( "SEARCH inputs USING INDEX inputsBySpentAt (spent_at>? AND spent_at<?)" : suffix)
+                    )
+
                 specifyQuery "Spent Between + InlineAll" installIndexes
                     (foldInputsQry
                         <$> fmap MatchExact genAddress

@@ -972,12 +972,12 @@ foldInputsQry pattern_ slotRange statusFlag referenceFlag sortDirection =
         Whole ->
             ""
         After field lowerBound ->
-            "+inputs." <> fieldToSql field <> " >= " <> slotNoToText lowerBound
+            unary <> "inputs." <> fieldToSql field <> " >= " <> slotNoToText lowerBound
         Before field upperBound ->
-            "+inputs." <> fieldToSql field <> " <= " <> slotNoToText upperBound
+            unary <> "inputs." <> fieldToSql field <> " <= " <> slotNoToText upperBound
         Between (lowerField, lowerBound) (upperField, upperBound) | lowerField == upperField ->
             unwords
-            ["+inputs."<> fieldToSql lowerField
+            [unary <> "inputs."<> fieldToSql lowerField
             , "BETWEEN"
             , slotNoToText lowerBound
             , "AND"
@@ -985,11 +985,11 @@ foldInputsQry pattern_ slotRange statusFlag referenceFlag sortDirection =
             ]
         Between (lowerField, lowerBound) (upperField, upperBound) ->
             unwords
-            ["+inputs."<> fieldToSql lowerField
+            [unary <> "inputs."<> fieldToSql lowerField
             , ">="
             , slotNoToText lowerBound
             , "AND"
-            ,"+inputs."<> fieldToSql upperField
+            , unary <> "inputs."<> fieldToSql upperField
             , "<="
             , slotNoToText upperBound
             ]
@@ -997,6 +997,10 @@ foldInputsQry pattern_ slotRange statusFlag referenceFlag sortDirection =
     fieldToSql = \case
         CreatedAt -> "created_at"
         SpentAt -> "spent_at"
+
+    unary = case pattern_ of
+        MatchAny _ -> ""
+        _          -> "+"
 
 listCheckpointsQry :: Query
 listCheckpointsQry =
