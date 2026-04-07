@@ -2,9 +2,8 @@
 
 BASEURL="http://127.0.0.1:1442/matches"
 
-if [[ $# == 1 && $1 == "preprod" ]]
+if [[ $# == 1 && ($1 == "preprod" || $1 == "data") ]]
 then
-  echo "Preprod benchmarks\n"
   PATTERNS=(
     # Tapioca Testnet [ TAPCT ] stake address (within "Top 100" on Cardanoscan.io)
     "stake_test1upyfx7klyd6lapdyqa0ku2ycgpnz9l8lmvp2ej989l6a69c0vnz0r"
@@ -25,7 +24,6 @@ then
     "*?spent_after=98245654&spent_before=98245660"
   )
 else
-  echo "Mainnet benchmarks\n"
   PATTERNS=(
     # A stake address that is associated with the jpg.store smart contract,
     # thus having a large number of transactions
@@ -49,11 +47,22 @@ else
   )
 fi
 
-for PATTERN in ${PATTERNS[@]}; do
-  for QUERY in "$PATTERN"; do
-    echo "$BASEURL/$QUERY"
-    oha -n 30 -c 8 "$BASEURL/$QUERY"
-    echo -e "\nTotal results\n $(curl -s "$BASEURL/$QUERY" | jq length)\n"
-    echo ""
+if [[ $# == 1 && $1 == "data" ]]
+then
+  for PATTERN in ${PATTERNS[@]}; do
+    for QUERY in "$PATTERN"; do
+      echo -ne "${QUERY}\t"
+      oha -n 30 -c 8 --output-format json "$BASEURL/$QUERY" | jq -r '.summary|[.successRate,.total,.slowest,.fastest,.average] | @tsv'
+    done
   done
-done
+else
+  for PATTERN in ${PATTERNS[@]}; do
+    for QUERY in "$PATTERN"; do
+      echo "$BASEURL/$QUERY"
+      oha -n 30 -c 8 "$BASEURL/$QUERY"
+      echo -e "\nTotal results\n $(curl -s "$BASEURL/$QUERY" | jq length)\n"
+      echo ""
+    done
+  done
+fi
+
