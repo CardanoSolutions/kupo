@@ -52,7 +52,7 @@ then
   for PATTERN in ${PATTERNS[@]}; do
     for QUERY in "$PATTERN"; do
       echo -ne "${QUERY}\t"
-      oha -n 30 -c 8 --output-format json "$BASEURL/$QUERY" | jq -r '.summary|[.successRate,.total,.slowest,.fastest,.average] | @tsv'
+      oha -n 30 -c 8 --output-format json "$BASEURL/$QUERY" | jq -r '[.summary | {successRate, total, slowest, fastest, average} | .[]] + [.rps | {mean, stddev} | .[]] | @tsv'
     done
   done
 else
