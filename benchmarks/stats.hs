@@ -1,8 +1,14 @@
 {-
- - Produces statistical summaries of benchmarks produced by oha
+ - Analyse benchmarks produced by oha
  -}
 
 module Stats where
+
+import System.Directory (listDirectory)
+import System.FilePath ((</>))
+import Data.List (reverse, sort)
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 type Code    = Int
 type Measure = Double
@@ -16,7 +22,17 @@ data Welford = Welford
   deriving Show
 
 main :: IO ()
-main = interact stats
+main = do
+  dirs <- listDirectory "data"
+  let last2 = (map ("data" </>) . take 2 . reverse . sort) dirs
+  putStr $ "Comparing:\n" ++ unlines last2
+  files <- traverse listDirectory last2
+  let common = Set.toAscList . Set.unions $ map Set.fromList files
+  putStr $ "Common files:\n" ++ (unlines common)
+  let [d2,d1] = last2
+  let pairs = zip (map (d1 </>) common) (map (d2 </>) common)
+  putStrLn $ "Pairs:\n" ++ show pairs
+
 
 stats :: String -> String
 stats = summarise . map parse . map words . lines

@@ -53,10 +53,15 @@ then
   got_headers=$(oha -n 1 -c 1 --output-format csv "$BASEURL/${PATTERNS[0]}" | head -1)
   if [ "$exp_headers" = "$got_headers" ]
   then
+    count=0
+    dir=data/$(date +%Y%m%d-%H%M%S)
+    mkdir -p $dir
+    rm -f index
     for PATTERN in ${PATTERNS[@]}; do
       for QUERY in "$PATTERN"; do
-        echo "${QUERY}"
-        oha -n 1000 -c 1 --output-format csv "$BASEURL/$QUERY" | tail +3 | awk -F',' '{print $7, $4}' | runghc stats.hs
+        ((count++))
+        echo "$count: ${QUERY}" >> index
+        oha -n 111 -c 1 --output-format csv "$BASEURL/$QUERY" | tail +3 | awk -F',' '{print $7, $4}' > $dir/$count
       done
     done
   else
