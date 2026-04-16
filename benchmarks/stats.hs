@@ -48,7 +48,9 @@ data Analysis = Analysis
   deriving Show
 
 data Statistics = Statistics
-  { rankScore :: RankScore
+  { analysis1 :: Analysis
+  , analysis2 :: Analysis
+  , rankScore :: RankScore
   }
   deriving Show
 
@@ -59,13 +61,21 @@ main :: IO ()
 main = do
   dirs <- listDirectory "data"
   let last2 = (map ("data" </>) . take 2 . reverse . sort) dirs
-  putStr $ "Comparing:\n" ++ unlines last2
   files <- traverse listDirectory last2
   let common = Set.toAscList . Set.unions $ map Set.fromList files
-  putStrLn $ "Common files:\n" ++ (unwords common)
+  announce last2 common
   let pairs = [map (</> f) last2 | f <- common]
   results <- sequence $ map analyse pairs
-  putStrLn $ unlines $ map report results
+  putStrLn $ unlines $ map report (zip common results)
+
+announce :: [FilePath] -> [FilePath] -> IO ()
+announce [dir1,dir2] files = do
+  putStrLn "Comparing:"
+  putStrLn $ dir1 <> " (s1: experimental group)"
+  putStrLn $ dir2 <> " (s2: control group)"
+  putStrLn "Common datasets:"
+  putStrLn $ unwords files
+  putStrLn "Significance level: α = 0.05"
 
 analyse :: [FilePath] -> IO Statistics
 analyse paths = do
@@ -77,7 +87,9 @@ analyse' :: DataSet -> Analysis
 analyse' = foldr summarise mkAnalysis
 
 stats :: [Analysis] -> Statistics
-stats as = Statistics $ computeRankScore (map values as)
+stats as = Statistics a1 a2 $ computeRankScore (map values as)
+  where
+    [a1,a2] = as
 
 computeRankScore :: [[Measure]] -> RankScore
 computeRankScore [v1,v2] =
@@ -110,8 +122,38 @@ tie n n' id id' s = add avg id $ add avg id' s
   where
     avg = (n+n')/2
 
-report :: Statistics -> String
-report s = show s
+report :: (FilePath, Statistics) -> String
+report (f, s)
+  | (s1 . rankScore) s < 9378 = repErr f s <> faster s
+  | (s2 . rankScore) s < 9378 = repErr f s <> slower s
+  | otherwise                 = repErr f s <> insignificant
+
+repErr :: FilePath -> Statistics -> String
+repErr f s =
+  f
+  <> ": errors (s1/s2): ("
+  <> (show . errors . analysis1) s
+  <> "/"
+  <> (show . errors . analysis2) s
+  <> "); "
+
+insignificant :: String
+insignificant = "comparison: not significant"
+
+faster :: Statistics -> String
+faster = change "faster"
+
+slower :: Statistics -> String
+slower = change "slower"
+
+change :: String -> Statistics -> String
+change str stat = "comparison: s1 " <> str <> " by factor " <> ratio stat
+
+ratio :: Statistics -> String
+ratio s = show $ mean1/mean2
+  where
+    mean1 = (mean . welford . analysis1) s
+    mean2 = (mean . welford . analysis2) s
 
 parse :: String -> [(Code, Measure)]
 parse = map parse' . map words . lines
