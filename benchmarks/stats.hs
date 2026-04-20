@@ -1,5 +1,9 @@
 {-
- - Analyse benchmarks produced by oha
+ - Analyse benchmarks produced by oha.
+ -
+ - Statistics reference:
+ - "Mathematical Statistics and Data Analysis", 3rd. ed., John Rice, 2007.
+ - Subsection 11.2.3
  -}
 
 module Stats where
@@ -14,34 +18,33 @@ type Code    = Int
 type Measure = Double
 type StdDev  = Double
 
-data RankScore = RankScore
-  { s1 :: Float
-  , s2 :: Float
-  }
-  deriving Show
-
-type Rank = (Float,(Measure,Id))
-type Ranking = [Rank]
+type DataSet = [(Code,Measure)]
 
 type Id = Int
 
-sample1 :: Id
-sample1 = 1
+type Count = Int
 
-sample2 :: Id
-sample2 = 2
+type RankSum = Float
 
-type DataSet = [(Code,Measure)]
+type Rank = (RankSum,(Measure,Id))
+
+type Ranking = [Rank]
+
+data RankScore = RankScore
+  { s1 :: RankSum
+  , s2 :: RankSum
+  }
+  deriving Show
 
 data Welford = Welford
   { mean  :: Double
-  , count :: Int
+  , count :: Count
   , m2    :: Double
   }
   deriving Show
 
 data Analysis = Analysis
-  { errors  :: Int
+  { errors  :: Count
   , welford :: Welford
   , values :: [Measure]
   }
@@ -53,6 +56,20 @@ data Statistics = Statistics
   , rankScore :: RankScore
   }
   deriving Show
+
+sample1 :: Id
+sample1 = 1
+
+sample2 :: Id
+sample2 = 2
+
+-- Minimal sample size
+minN :: Count
+minN = 100
+
+-- Critical value at significance level α = 0.05
+critical :: RankSum
+critical = 9378
 
 mkAnalysis :: Analysis
 mkAnalysis = Analysis 0 (Welford 0 0 0) []
@@ -125,11 +142,11 @@ tie n n' id id' s = add avg id $ add avg id' s
 
 report :: (FilePath, Statistics) -> String
 report (f, s)
-  | (count . welford . analysis1) s < 100 = repErr f s <> insignificant
-  | (count . welford . analysis2) s < 100 = repErr f s <> insignificant
-  | (s1 . rankScore) s < 9378             = repErr f s <> faster s
-  | (s2 . rankScore) s < 9378             = repErr f s <> slower s
-  | otherwise                             = repErr f s <> insignificant
+  | (count . welford . analysis1) s < minN = repErr f s <> insignificant
+  | (count . welford . analysis2) s < minN = repErr f s <> insignificant
+  | (s1 . rankScore) s < critical          = repErr f s <> faster s
+  | (s2 . rankScore) s < critical          = repErr f s <> slower s
+  | otherwise                              = repErr f s <> insignificant
 
 repErr :: FilePath -> Statistics -> String
 repErr f s =
