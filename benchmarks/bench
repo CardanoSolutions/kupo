@@ -70,7 +70,7 @@ then
       for QUERY in "$PATTERN"; do
         ((count++))
         echo "$count: ${QUERY}" >> index
-        oha -n 111 -c 8 --output-format csv "$BASEURL/$QUERY" | tail +3 | awk -F',' '{print $7, $4}' > $dir/$count
+        oha -n 111 -c 2 --output-format csv "$BASEURL/$QUERY" | tail +3 | awk -F',' '{print $7, $4}' > $dir/$count
       done
     done
   else
