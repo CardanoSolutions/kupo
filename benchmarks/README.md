@@ -3,7 +3,7 @@
 This directory contains scripts that generate Kupo benchmarks.
 
 - [bench](./bench) is a Bash script that generates benchmark results
-- [stats.hs](./stats.hs) is a Haskell scripts that performs statistical
+- [stats.hs](./stats.hs) is a Haskell script that performs statistical
   comparisons of two benchmark data sets.
 
 There are three options for running the `bench` script:
@@ -760,10 +760,10 @@ The process is as follows:
    flags). For example, if Kupo and Cardano node were installed from the
    [notunrandom/cardano][tap] Homebrew tap, just invoke `kupo` with the
    required arguments:
-```
-kupo --node-socket $(brew --prefix)/var/cardano/preprod/node.socket --node-config $(brew --prefix)/etc/cardano/preprod/config.json --since origin --defer-db-indexes --prune-utxo --workdir ~/kupodb --match "*"
-```
-1. Wait for Kupo to finished rolling forward and create indexes.
+   ```
+   kupo --node-socket $(brew --prefix)/var/cardano/preprod/node.socket --node-config $(brew --prefix)/etc/cardano/preprod/config.json --since origin --defer-db-indexes --prune-utxo --workdir ~/kupodb --match "*"
+   ```
+1. Wait for Kupo to finish rolling forward and create indexes.
 1. Run `./bench data`. This generates an `./index` file, a `./data`
    subdirectory and a timestamped subdirectory in `./data` containing numbered
    files with benchmark results. Each number corresponds to one of the queries
@@ -775,10 +775,10 @@ kupo --node-socket $(brew --prefix)/var/cardano/preprod/node.socket --node-confi
    exe:kupo)`, from inside the cloned kupo repository with the same arguments
    as the previous run. For example, using the same node as above and same
    `workdir` for Kupo (assuming the versions use the same database):
-```
-$(cabal list-bin exe:kupo) --node-socket $(brew --prefix)/var/cardano/preprod/node.socket --node-config $(brew --prefix)/etc/cardano/preprod/config.json --since origin --defer-db-indexes --prune-utxo --workdir ~/kupodb --match "*"
-```
-1. Wait for Kupo to finished rolling forward and create indexes.
+   ```
+   $(cabal list-bin exe:kupo) --node-socket $(brew --prefix)/var/cardano/preprod/node.socket --node-config $(brew --prefix)/etc/cardano/preprod/config.json --since origin --defer-db-indexes --prune-utxo --workdir ~/kupodb --match "*"
+   ```
+1. Wait for Kupo to finish rolling forward and create indexes.
 1. Run `./bench data` again.
 5. Run `runghc stats`. This provides results such as:
 
@@ -813,3 +813,4 @@ The comparison:
   is provided.
 
 [oha]: https://github.com/hatoo/oha
+[tap]: https://github.com/notunrandom/homebrew-cardano
