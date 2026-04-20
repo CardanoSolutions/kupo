@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 
+if [[ $# != 1 || ($1 != "mainnet" && $1 != "preprod" && $1 != "data") ]]
+then
+  echo "Usage: ./bench [mainnet|preprod|data]"
+  exit 1
+fi
+
+command -v oha &>/dev/null || { echo "Error: needs oha" >&2; exit 2; }
+
 BASEURL="http://127.0.0.1:1442/matches"
 
-if [[ $# == 1 && ($1 == "preprod" || $1 == "data") ]]
+if [[ $1 == "preprod" || $1 == "data" ]]
 then
   PATTERNS=(
     # Tapioca Testnet [ TAPCT ] stake address (within "Top 100" on Cardanoscan.io)
@@ -23,7 +31,8 @@ then
     # NEW: for ISSUE #194 - wildcard slot-range query
     "*?spent_after=98245654&spent_before=98245660"
   )
-else
+elif [[ $1 == "mainnet" ]]
+then
   PATTERNS=(
     # A stake address that is associated with the jpg.store smart contract,
     # thus having a large number of transactions
@@ -47,7 +56,7 @@ else
   )
 fi
 
-if [[ $# == 1 && $1 == "data" ]]
+if [[ $1 == "data" ]]
 then
   exp_headers="request-start,DNS,DNS+dialup,Response-delay,request-duration,bytes,status"
   got_headers=$(oha -n 1 -c 1 --output-format csv "$BASEURL/${PATTERNS[0]}" | head -1)
@@ -61,13 +70,13 @@ then
       for QUERY in "$PATTERN"; do
         ((count++))
         echo "$count: ${QUERY}" >> index
-        oha -n 111 -c 1 --output-format csv "$BASEURL/$QUERY" | tail +3 | awk -F',' '{print $7, $4}' > $dir/$count
+        oha -n 111 -c 8 --output-format csv "$BASEURL/$QUERY" | tail +3 | awk -F',' '{print $7, $4}' > $dir/$count
       done
     done
   else
     echo "Expected: $exp_headers"
     echo "But got : $got_headers"
-    exit 1
+    exit 3
   fi
 else
   for PATTERN in ${PATTERNS[@]}; do

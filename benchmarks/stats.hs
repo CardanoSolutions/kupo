@@ -62,7 +62,8 @@ main = do
   dirs <- listDirectory "data"
   let last2 = (map ("data" </>) . take 2 . reverse . sort) dirs
   files <- traverse listDirectory last2
-  let common = Set.toAscList . Set.unions $ map Set.fromList files
+  let [fs1,fs2] = map Set.fromList files
+  let common = Set.toAscList (Set.intersection fs1 fs2)
   announce last2 common
   let pairs = [map (</> f) last2 | f <- common]
   results <- sequence $ map analyse pairs
@@ -124,9 +125,11 @@ tie n n' id id' s = add avg id $ add avg id' s
 
 report :: (FilePath, Statistics) -> String
 report (f, s)
-  | (s1 . rankScore) s < 9378 = repErr f s <> faster s
-  | (s2 . rankScore) s < 9378 = repErr f s <> slower s
-  | otherwise                 = repErr f s <> insignificant
+  | (count . welford . analysis1) s < 100 = repErr f s <> insignificant
+  | (count . welford . analysis2) s < 100 = repErr f s <> insignificant
+  | (s1 . rankScore) s < 9378             = repErr f s <> faster s
+  | (s2 . rankScore) s < 9378             = repErr f s <> slower s
+  | otherwise                             = repErr f s <> insignificant
 
 repErr :: FilePath -> Statistics -> String
 repErr f s =
