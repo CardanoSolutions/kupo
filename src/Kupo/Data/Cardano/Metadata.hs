@@ -27,7 +27,6 @@ import Ouroboros.Consensus.Util
     )
 
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
-import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
 import qualified Cardano.Ledger.Core as Ledger
 import qualified Cardano.Ledger.Shelley.TxAuxData as Ledger
 import qualified Data.Aeson as Json
@@ -175,13 +174,13 @@ fromMaryMetadata (AllegraTxAuxData labels timelocks) =
 {-# INLINABLE fromMaryMetadata #-}
 
 fromAlonzoMetadata :: AlonzoTxAuxData AlonzoEra -> Metadata
-fromAlonzoMetadata =
-    Ledger.Alonzo.translateAlonzoTxAuxData
+fromAlonzoMetadata (AlonzoTxAuxData metadata nativeScripts plutusScripts) =
+    AlonzoTxAuxData metadata (Ledger.Allegra.translateTimelock <$> nativeScripts) plutusScripts
 {-# INLINABLE fromAlonzoMetadata #-}
 
 fromBabbageMetadata :: AlonzoTxAuxData BabbageEra -> Metadata
-fromBabbageMetadata =
-    Ledger.upgradeTxAuxData
+fromBabbageMetadata (AlonzoTxAuxData metadata nativeScripts plutusScripts) =
+    AlonzoTxAuxData metadata (Ledger.Allegra.translateTimelock <$> nativeScripts) plutusScripts
 {-# INLINABLE fromBabbageMetadata #-}
 
 fromConwayMetadata :: AlonzoTxAuxData ConwayEra -> Metadata

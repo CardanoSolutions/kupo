@@ -93,13 +93,9 @@ library:
     - modern-uri
     - network-mux
     - optparse-applicative
-    - ouroboros-consensus
-    - ouroboros-consensus-cardano
-    - ouroboros-consensus-diffusion
-    - ouroboros-network
-    - ouroboros-network-api
-    - ouroboros-network-framework
-    - ouroboros-network-protocols
+    - ouroboros-consensus:{ouroboros-consensus,cardano,diffusion}
+    - ouroboros-network:{api,framework,protocols}
+    - cardano-diffusion
     - prometheus
     - relude
     - resource-pool
@@ -137,7 +133,7 @@ tests:
     - http-client
     - http-media
     - http-types
-    - io-classes
+    - io-classes:{io-classes,si-timers}
     - io-sim
     - kupo
     - lens-aeson
@@ -146,7 +142,6 @@ tests:
     - QuickCheck
     - quickcheck-state-machine
     - relude
-    - si-timers
     - sqlite-simple
     - stm
     - temporary
