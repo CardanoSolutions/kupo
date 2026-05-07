@@ -29,6 +29,7 @@ data Transaction
         !(Ledger.Tx Ledger.TopTx BabbageEra)
     | TransactionConway
         !(Ledger.Tx Ledger.TopTx ConwayEra)
+    -- TODO: TransactionDijkstra
 
 instance HasTransactionId Transaction where
     getTransactionId = \case
