@@ -92,7 +92,7 @@ import Cardano.Crypto.Hash
     , Hash (..)
     , HashAlgorithm (..)
     , hashFromBytes
-    , sizeHash
+    , hashSize
     )
 import Cardano.Ledger.Allegra
     ( AllegraEra
@@ -419,7 +419,7 @@ unsafeHashFromBytes bytes
 
 digestSize :: forall alg. HashAlgorithm alg => Int
 digestSize =
-    fromIntegral (sizeHash (Proxy @alg))
+    fromIntegral (hashSize (Proxy @alg))
 {-# INLINABLE digestSize #-}
 
 hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding

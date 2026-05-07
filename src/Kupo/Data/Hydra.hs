@@ -26,6 +26,12 @@ import Cardano.Ledger.Api
     , scriptTxWitsL
     , witsTxL
     )
+import Cardano.Ledger.Binary
+    ( Annotator
+    )
+import Cardano.Ledger.Core
+    ( TopTx
+    )
 import Cardano.Ledger.Hashes
     ( unsafeMakeSafeHash
     )
@@ -181,7 +187,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
 
     bytes <- decodeBase16' hexText
 
-    tx <- case decodeCborAnn @ConwayEra "PartialTransaction" decCBOR (fromStrict bytes) of
+    tx <- case decodeCborAnn @BabbageEra "PartialTransaction" (decCBOR @(Annotator (Ledger.Tx TopTx BabbageEra))) (fromStrict bytes) of
       Left e -> fail $ show e
       Right tx -> pure tx
 

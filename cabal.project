@@ -10,8 +10,8 @@ repository cardano-haskell-packages
     d4a35cd3121aa00d18544bb0ac01c3e1691d618f462c46129271bccf39f7e8ee
 
 index-state:
-  , hackage.haskell.org 2025-09-11T07:59:00Z
-  , cardano-haskell-packages 2025-09-11T08:36:14Z
+  , hackage.haskell.org 2026-05-05T07:59:00Z
+  , cardano-haskell-packages 2026-05-05T04:28:05Z
 
 packages:
   ./
@@ -45,21 +45,26 @@ package formatting
 package direct-sqlite
   flags: +nomutex
 
+package blockio
+  flags: +serialblockio
+
 constraints:
-  , any.cardano-node == 10.5.1
+  , any.cardano-node == 11.0.1
 
-  , any.cardano-ledger-core == 1.17.0.0
-  , any.cardano-ledger-shelley == 1.16.0.0
-  , any.cardano-ledger-conway == 1.19.0.0
+  , any.cardano-ledger-core == 1.20.0.0
+  , any.cardano-ledger-shelley == 1.18.1.0
+  , any.cardano-ledger-conway == 1.22.0.0
 
-  , any.ouroboros-consensus == 0.27.0.0
-  , any.ouroboros-consensus-cardano == 0.25.1.0
-  , any.ouroboros-network == 0.21.3.0
+  , any.ouroboros-consensus == 3.0.1.0
+  , any.ouroboros-network == 1.1.0.0
+  , any.cardano-diffusion ==1.0.0.0
 
-  , any.io-classes == 1.5.0.0
+  , any.io-classes == 1.8.0.1
   , any.io-classes-mtl == 0.1.2.0
   , any.formatting == 7.2.0
   , any.text source
+
+  , any.validation < 1.2
 
   , direct-sqlite == 2.3.29.1
   , sqlite-simple == 0.4.19.0.1
