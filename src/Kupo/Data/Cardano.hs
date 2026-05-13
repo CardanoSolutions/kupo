@@ -97,9 +97,12 @@ import Kupo.Data.Cardano.TransactionId
 import Kupo.Data.Cardano.TransactionIndex
 import Kupo.Data.Cardano.Value
 
+import Unsafe.Coerce
+    ( unsafeCoerce
+    )
+
 import qualified Cardano.Chain.UTxO as Ledger.Byron
 import qualified Cardano.Ledger.Alonzo.Core as Ledger
-import qualified Cardano.Ledger.Alonzo.Tx as Ledger
 import qualified Cardano.Ledger.Alonzo.TxWits as Ledger
 import qualified Cardano.Ledger.Babbage.Core as Ledger
 import qualified Cardano.Ledger.Block as Ledger
@@ -184,17 +187,24 @@ instance IsBlock Block where
              in
                 foldrWithIndex ignoreProtocolTxs result (extractTxs blk)
         BlockShelley (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionShelley) result (Ledger.fromTxSeq txs)
+            foldrWithIndex (\ix -> fn ix . TransactionShelley) result (txs ^. Ledger.txSeqBlockBodyL)
         BlockAllegra (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionAllegra) result (Ledger.fromTxSeq txs)
+            foldrWithIndex (\ix -> fn ix . TransactionAllegra) result (txs ^. Ledger.txSeqBlockBodyL)
         BlockMary (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionMary) result (Ledger.fromTxSeq txs)
+            foldrWithIndex (\ix -> fn ix . TransactionMary) result (txs ^. Ledger.txSeqBlockBodyL)
         BlockAlonzo (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionAlonzo) result (Ledger.fromTxSeq txs)
+            foldrWithIndex (\ix -> fn ix . TransactionAlonzo) result (txs ^. Ledger.txSeqBlockBodyL)
         BlockBabbage (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionBabbage) result (Ledger.fromTxSeq txs)
+            foldrWithIndex (\ix -> fn ix . TransactionBabbage) result (txs ^. Ledger.txSeqBlockBodyL)
         BlockConway (ShelleyBlock (Ledger.Block _ txs) _) ->
-            foldrWithIndex (\ix -> fn ix . TransactionConway) result (Ledger.fromTxSeq txs)
+            foldrWithIndex (\ix -> fn ix . TransactionConway) result (txs ^. Ledger.txSeqBlockBodyL)
+        -- NOTE: DijkstraEra transactions are representationally identical to
+        -- ConwayEra but use nominally distinct data family instances, so coerce
+        -- is not available. We unsafeCoerce to reuse TransactionConway rather
+        -- than adding a TransactionDijkstra constructor that would duplicate
+        -- all Conway handling throughout the codebase.
+        BlockDijkstra (ShelleyBlock (Ledger.Block _ txs) _) ->
+            foldrWithIndex (\ix -> fn ix . TransactionConway . unsafeCoerce) result (txs ^. Ledger.txSeqBlockBodyL)
 
     spentInputs
         :: Transaction

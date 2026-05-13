@@ -40,6 +40,7 @@ module Kupo.Prelude
     , at
 
       -- * Extras
+    , eitherToMaybe
     , foldrWithIndex
     , next
     , nubOn
@@ -75,6 +76,7 @@ module Kupo.Prelude
     , AlonzoEra
     , BabbageEra
     , ConwayEra
+    , DijkstraEra
     , MostRecentEra
 
       -- * System
@@ -92,7 +94,7 @@ import Cardano.Crypto.Hash
     , Hash (..)
     , HashAlgorithm (..)
     , hashFromBytes
-    , sizeHash
+    , hashSize
     )
 import Cardano.Ledger.Allegra
     ( AllegraEra
@@ -169,7 +171,8 @@ import Ouroboros.Consensus.Cardano.Block
     ( CardanoEras
     )
 import Ouroboros.Consensus.Shelley.Eras
-    ( StandardCrypto
+    ( DijkstraEra
+    , StandardCrypto
     )
 import Ouroboros.Consensus.Shelley.Ledger
     ( ShelleyBlock
@@ -358,6 +361,10 @@ unsafeDecodeCbor lbl decoder =
 -- Extras
 --
 
+-- | Convert an 'Either' to a 'Maybe', discarding the error.
+eitherToMaybe :: Either e a -> Maybe a
+eitherToMaybe = either (const Nothing) Just
+
 -- | Remove duplicates from a list based on information extracted from the
 -- elements.
 nubOn :: Eq b => (a -> b) -> [a] -> [a]
@@ -419,7 +426,7 @@ unsafeHashFromBytes bytes
 
 digestSize :: forall alg. HashAlgorithm alg => Int
 digestSize =
-    fromIntegral (sizeHash (Proxy @alg))
+    fromIntegral (hashSize (Proxy @alg))
 {-# INLINABLE digestSize #-}
 
 hashToJson :: HashAlgorithm alg => Hash alg a -> Json.Encoding

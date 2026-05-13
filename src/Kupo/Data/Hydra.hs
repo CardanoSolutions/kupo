@@ -10,8 +10,10 @@ import Cardano.Crypto.Hash
     , hashWith
     )
 import Cardano.Ledger.Alonzo.Scripts
-    ( AlonzoPlutusPurpose (..)
-    , AsIx (..)
+    ( AsIx (..)
+    )
+import Cardano.Ledger.Conway.Scripts
+    ( ConwayPlutusPurpose (..)
     )
 import Cardano.Ledger.Alonzo.TxWits
     ( unRedeemers
@@ -26,6 +28,7 @@ import Cardano.Ledger.Api
     , scriptTxWitsL
     , witsTxL
     )
+import qualified Cardano.Ledger.Core as Ledger
 import Cardano.Ledger.Hashes
     ( unsafeMakeSafeHash
     )
@@ -47,9 +50,7 @@ import Kupo.Data.Cardano
     , TransactionId
     , Value
     , binaryDataFromBytes
-    , fromBabbageData
-    , fromBabbageOutput
-    , fromBabbageScript
+    , fromConwayData
     , getOutputIndex
     , getTransactionId
     , mkOutput
@@ -73,7 +74,6 @@ import Kupo.Data.PartialBlock
     , PartialTransaction (..)
     )
 
-import qualified Cardano.Ledger.Api as Ledger
 import qualified Codec.CBOR.Decoding as Cbor
 import qualified Codec.CBOR.Read as Cbor
 import qualified Data.Aeson.Key as Key
@@ -181,7 +181,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
 
     bytes <- decodeBase16' hexText
 
-    tx <- case decodeCborAnn @ConwayEra "PartialTransaction" decCBOR (fromStrict bytes) of
+    (tx :: Ledger.Tx Ledger.TopTx ConwayEra) <- case decodeCborAnn @ConwayEra "PartialTransaction" decCBOR (fromStrict bytes) of
       Left e -> fail $ show e
       Right tx -> pure tx
 
@@ -198,23 +198,23 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     let body' = tx ^. bodyTxL
     let id = Ledger.txIdTxBody body'
     let wits' = tx ^. witsTxL
-    let outputs' = map fromBabbageOutput $ toList (body' ^. outputsTxBodyL)
+    let outputs' = toList (body' ^. outputsTxBodyL)
 
     pure PartialTransaction
         { id
         , inputs = toList (body' ^. inputsTxBodyL)
         , outputs = withReferences 0 id outputs'
-        , datums = Map.map fromBabbageData $ unTxDats (wits' ^. datsTxWitsL)
+        , datums = Map.map fromConwayData $ unTxDats (wits' ^. datsTxWitsL)
         , spendRedeemers =
             Map.foldrWithKey
                 (\purpose (redeemer, _) ->
                     case purpose of
-                      AlonzoSpending (AsIx ix) -> Map.insert (fromIntegral ix) (fromBabbageData redeemer)
+                      ConwaySpending (AsIx ix) -> Map.insert (fromIntegral ix) (fromConwayData redeemer)
                       _ -> identity
                 )
                 mempty
                 (unRedeemers $ wits' ^. rdmrsTxWitsL)
-        , scripts = Map.map fromBabbageScript (wits' ^. scriptTxWitsL)
+        , scripts = wits' ^. scriptTxWitsL
         , metadata = Nothing
         }
 
@@ -305,6 +305,8 @@ decodeScriptInEnvelope = Json.withObject "ScriptInEnvelope" $ \o -> do
             scriptFromBytes' (BS.pack [2] <> nestedBytes)
         "PlutusScriptLanguage PlutusScriptV3" ->
             scriptFromBytes' (BS.pack [3] <> nestedBytes)
+        "PlutusScriptLanguage PlutusScriptV4" ->
+            scriptFromBytes' (BS.pack [4] <> nestedBytes)
         (_ :: Text) ->
             fail "unrecognized script language"
   where

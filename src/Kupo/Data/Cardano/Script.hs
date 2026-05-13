@@ -16,10 +16,6 @@ import Kupo.Data.Cardano.NativeScript
 import Kupo.Data.Cardano.ScriptHash
     ( ScriptHash
     )
-import Ouroboros.Consensus.Util
-    ( eitherToMaybe
-    )
-
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
 import qualified Cardano.Ledger.Allegra.TxAuxData as Ledger.Allegra
 import qualified Cardano.Ledger.Alonzo as Ledger.Alonzo
@@ -42,9 +38,9 @@ type Script =
 scriptFromAllegraAuxiliaryData
     :: forall era.
         ( Ledger.Core.Era era
-        , Ledger.Core.Script era ~ Ledger.Allegra.Timelock era
+        , Ledger.Core.NativeScript era ~ Ledger.Allegra.Timelock era
         )
-    => (Ledger.Core.Script era -> Script)
+    => (Ledger.Allegra.Timelock era -> Script)
     -> Ledger.Allegra.AllegraTxAuxData era
     -> Map ScriptHash Script
     -> Map ScriptHash Script
@@ -66,7 +62,7 @@ scriptFromAlonzoAuxiliaryData
     -> Map ScriptHash Script
 scriptFromAlonzoAuxiliaryData liftScript (Ledger.Alonzo.AlonzoTxAuxData _ scripts _) m0 =
     foldr
-        (\((liftScript . Ledger.Alonzo.TimelockScript) -> s) -> Map.insert (hashScript s) s)
+        (\((liftScript . Ledger.Alonzo.NativeScript) -> s) -> Map.insert (hashScript s) s)
         m0
         scripts
 {-# INLINABLE scriptFromAlonzoAuxiliaryData #-}
@@ -75,14 +71,14 @@ fromAllegraScript
     :: Ledger.Allegra.Timelock AllegraEra
     -> Script
 fromAllegraScript =
-    Ledger.Alonzo.TimelockScript . Ledger.Allegra.translateTimelock
+    Ledger.Alonzo.NativeScript . Ledger.Allegra.translateTimelock
 {-# INLINABLE fromAllegraScript #-}
 
 fromMaryScript
     :: Ledger.Allegra.Timelock MaryEra
     -> Script
 fromMaryScript =
-    Ledger.Alonzo.TimelockScript . Ledger.Allegra.translateTimelock
+    Ledger.Alonzo.NativeScript . Ledger.Allegra.translateTimelock
 {-# INLINABLE fromMaryScript  #-}
 
 fromAlonzoScript
@@ -112,13 +108,14 @@ scriptToJson
 scriptToJson script = encodeObject
     [ ("script", encodeBytes (Ledger.Core.originalBytes script))
     , ("language", case script of
-        Ledger.Alonzo.TimelockScript _ ->
+        Ledger.Alonzo.NativeScript _ ->
             Json.text "native"
         Ledger.Alonzo.PlutusScript ps ->
             case Ledger.Alonzo.plutusScriptLanguage ps of
                 Ledger.PlutusV1 -> Json.text "plutus:v1"
                 Ledger.PlutusV2 -> Json.text "plutus:v2"
                 Ledger.PlutusV3 -> Json.text "plutus:v3"
+                Ledger.PlutusV4 -> Json.text "plutus:v4"
       )
     ]
 
@@ -128,13 +125,14 @@ scriptToBytes
 scriptToBytes =
     let withTag n s = BS.singleton n <> Ledger.Core.originalBytes s
      in \case
-        Ledger.Alonzo.TimelockScript script ->
+        Ledger.Alonzo.NativeScript script ->
             withTag 0 script
         Ledger.Alonzo.PlutusScript script ->
             case Ledger.Alonzo.plutusScriptLanguage script of
                 Ledger.PlutusV1 -> withTag 1 script
                 Ledger.PlutusV2 -> withTag 2 script
                 Ledger.PlutusV3 -> withTag 3 script
+                Ledger.PlutusV4 -> withTag 4 script
 
 unsafeScriptFromBytes
     :: HasCallStack
@@ -150,12 +148,13 @@ scriptFromBytes
 scriptFromBytes (toLazy -> bytes) =
     eitherToMaybe $ do
         (script, tag) <- left (DecoderErrorDeserialiseFailure "Script") $
-            Cbor.deserialiseFromBytes Cbor.decodeWord8 bytes
+            Cbor.deserialiseFromBytes Cbor.decodeWord bytes
         case tag of
-            0 -> Ledger.Alonzo.TimelockScript <$> decodeCborAnn @BabbageEra "Timelock" decCBOR script
+            0 -> Ledger.Alonzo.NativeScript <$> decodeCborAnn @BabbageEra "Timelock" decCBOR script
             1 -> plutusScript Ledger.PlutusV1 script
             2 -> plutusScript Ledger.PlutusV2 script
             3 -> plutusScript Ledger.PlutusV3 script
+            4 -> plutusScript Ledger.PlutusV4 script
             t -> Left (DecoderErrorUnknownTag "Script" t)
   where
     plutusScript lang s =
@@ -165,7 +164,7 @@ scriptFromBytes (toLazy -> bytes) =
 
             script = maybeToRight
                 (Ledger.DecoderErrorCustom "Incompatible language and era" $ show (lang, uplc))
-                (Ledger.Alonzo.mkBinaryPlutusScript @ConwayEra lang uplc)
+                (Ledger.Alonzo.mkBinaryPlutusScript lang uplc)
          in
             Ledger.Alonzo.PlutusScript <$> script
 
@@ -173,7 +172,7 @@ fromNativeScript
     :: NativeScript
     -> Script
 fromNativeScript =
-    Ledger.Alonzo.TimelockScript
+    Ledger.Alonzo.NativeScript
 {-# INLINABLE fromNativeScript #-}
 
 hashScript

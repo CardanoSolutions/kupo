@@ -35,6 +35,7 @@ import Kupo.Control.MonadThrow
 import Network.Mux
     ( StartOnDemandOrEagerly (..)
     )
+import qualified Network.Mux
 import Ouroboros.Consensus.Byron.Ledger.Config
     ( CodecConfig (..)
     )
@@ -74,7 +75,7 @@ import Ouroboros.Network.Mux
     , OuroborosApplication (..)
     , RunMiniProtocol (..)
     )
-import Ouroboros.Network.NodeToClient
+import Cardano.Network.NodeToClient
     ( NetworkConnectTracers (..)
     , NodeToClientVersion (..)
     , NodeToClientVersionData (..)
@@ -119,7 +120,7 @@ instance MonadOuroboros IO where
             connectTo (mkLocalSnocket iocp) tracers versions socket >>= either throwIO return
       where
         tracers = NetworkConnectTracers
-            { nctMuxTracer = nullTracer
+            { nctMuxTracers = Network.Mux.nullTracers
             , nctHandshakeTracer = nullTracer
             }
 
@@ -167,7 +168,7 @@ codecs epochSlots nodeToClientV =
     supportedVersions =
         supportedNodeToClientVersions (Proxy @(BlockT IO))
     cfg =
-        CardanoCodecConfig byron shelley allegra mary alonzo babbage conway
+        CardanoCodecConfig byron shelley allegra mary alonzo babbage conway dijkstra
       where
         byron    = ByronCodecConfig epochSlots
         shelley  = ShelleyCodecConfig
@@ -176,3 +177,4 @@ codecs epochSlots nodeToClientV =
         alonzo   = ShelleyCodecConfig
         babbage  = ShelleyCodecConfig
         conway   = ShelleyCodecConfig
+        dijkstra = ShelleyCodecConfig

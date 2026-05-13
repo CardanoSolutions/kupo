@@ -325,6 +325,7 @@ decodeScript = Json.withObject "Script" $ \o -> do
         "plutus:v1" -> decodePlutus "01" =<< o .: "cbor"
         "plutus:v2" -> decodePlutus "02" =<< o .: "cbor"
         "plutus:v3" -> decodePlutus "03" =<< o .: "cbor"
+        "plutus:v4" -> decodePlutus "04" =<< o .: "cbor"
         (_ :: Text) -> fail "unrecognized script language"
   where
     decodeNative =

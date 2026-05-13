@@ -22,12 +22,7 @@ import Kupo.Data.Cardano.MetadataHash
     ( MetadataHash
     , metadataHashToJson
     )
-import Ouroboros.Consensus.Util
-    ( eitherToMaybe
-    )
-
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
-import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
 import qualified Cardano.Ledger.Core as Ledger
 import qualified Cardano.Ledger.Shelley.TxAuxData as Ledger
 import qualified Data.Aeson as Json
@@ -39,6 +34,10 @@ import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Data.Text.Read as T
 
+-- NOTE: Kept as ConwayEra rather than DijkstraEra because Dijkstra
+-- transactions are coerced to Conway at the block-processing boundary
+-- (see Kupo.Data.Cardano). The two eras share identical representations
+-- for AlonzoTxAuxData, so the choice is cosmetic.
 type Metadata =
     AlonzoTxAuxData ConwayEra
 
@@ -175,13 +174,13 @@ fromMaryMetadata (AllegraTxAuxData labels timelocks) =
 {-# INLINABLE fromMaryMetadata #-}
 
 fromAlonzoMetadata :: AlonzoTxAuxData AlonzoEra -> Metadata
-fromAlonzoMetadata =
-    Ledger.Alonzo.translateAlonzoTxAuxData
+fromAlonzoMetadata (AlonzoTxAuxData labels timelocks scripts) =
+    AlonzoTxAuxData labels (Ledger.Allegra.translateTimelock <$> timelocks) scripts
 {-# INLINABLE fromAlonzoMetadata #-}
 
 fromBabbageMetadata :: AlonzoTxAuxData BabbageEra -> Metadata
-fromBabbageMetadata =
-    Ledger.upgradeTxAuxData
+fromBabbageMetadata (AlonzoTxAuxData labels timelocks scripts) =
+    AlonzoTxAuxData labels (Ledger.Allegra.translateTimelock <$> timelocks) scripts
 {-# INLINABLE fromBabbageMetadata #-}
 
 fromConwayMetadata :: AlonzoTxAuxData ConwayEra -> Metadata
