@@ -45,6 +45,8 @@ import qualified Ouroboros.Network.Block as Ouroboros
 
 type Point = Ouroboros.Point Block
 
+-- ouroboros-network provides a general 'ToJSON (Ouroboros.Point block)' instance
+-- that conflicts with this one, so we need OVERLAPPING to prefer this definition.
 instance {-# OVERLAPPING #-} ToJSON Point where
     toJSON = error "ToJSON Point called instead of 'toEncoding'."
     toEncoding = pointToJson
