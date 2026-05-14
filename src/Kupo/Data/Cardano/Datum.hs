@@ -18,25 +18,6 @@ data Datum
     | Inline !(Either DatumHash BinaryData)
     deriving (Generic, Show, Eq, Ord)
 
--- NOTE: The era parameter of BinaryData is phantom, so coerce between
--- BinaryData ConwayEra and BinaryData DijkstraEra is safe.
-toConwayDatum
-    :: Datum
-    -> Ledger.Datum ConwayEra
-toConwayDatum = \case
-    NoDatum -> Ledger.NoDatum
-    Reference (Left ref) -> Ledger.DatumHash ref
-    Reference (Right bin) -> Ledger.Datum (coerce bin)
-    Inline (Left ref) -> Ledger.DatumHash ref
-    Inline (Right bin) -> Ledger.Datum (coerce bin)
-
-fromConwayDatum
-    :: Ledger.Datum ConwayEra
-    -> Datum
-fromConwayDatum = \case
-    Ledger.NoDatum -> NoDatum
-    Ledger.DatumHash ref -> Reference (Left ref)
-    Ledger.Datum bin -> Inline (Right (Ledger.dataToBinaryData (Ledger.upgradeData (Ledger.binaryDataToData bin))))
 
 fromDijkstraDatum
     :: Ledger.Datum DijkstraEra
