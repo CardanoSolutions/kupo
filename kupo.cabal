@@ -399,6 +399,7 @@ test-suite unit
     , io-sim
     , kupo
     , lens-aeson
+    , network
     , openapi3
     , process
     , quickcheck-state-machine

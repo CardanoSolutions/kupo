@@ -140,6 +140,7 @@ tests:
     - http-types
     - io-classes
     - io-sim
+    - network
     - kupo
     - lens-aeson
     - openapi3
