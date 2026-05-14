@@ -51,6 +51,8 @@ import Kupo.Data.Cardano
     , Value
     , binaryDataFromBytes
     , fromConwayData
+    , fromConwayOutput
+    , fromConwayScript
     , getOutputIndex
     , getTransactionId
     , mkOutput
@@ -198,7 +200,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
     let body' = tx ^. bodyTxL
     let id = Ledger.txIdTxBody body'
     let wits' = tx ^. witsTxL
-    let outputs' = toList (body' ^. outputsTxBodyL)
+    let outputs' = toList (fromConwayOutput <$> body' ^. outputsTxBodyL)
 
     pure PartialTransaction
         { id
@@ -214,7 +216,7 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
                 )
                 mempty
                 (unRedeemers $ wits' ^. rdmrsTxWitsL)
-        , scripts = wits' ^. scriptTxWitsL
+        , scripts = fromConwayScript <$> wits' ^. scriptTxWitsL
         , metadata = Nothing
         }
 

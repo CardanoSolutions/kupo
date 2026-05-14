@@ -75,3 +75,26 @@ fromConwayData
 fromConwayData =
     Ledger.dataToBinaryData
 {-# INLINEABLE fromConwayData #-}
+
+fromDijkstraData
+    :: Ledger.Data DijkstraEra
+    -> BinaryData
+fromDijkstraData =
+    unsafeBinaryDataFromBytes . Ledger.originalBytes
+{-# INLINEABLE fromDijkstraData #-}
+
+fromDijkstraBinaryData
+    :: Ledger.BinaryData DijkstraEra
+    -> BinaryData
+fromDijkstraBinaryData =
+    unsafeBinaryDataFromBytes . Ledger.originalBytes . Ledger.binaryDataToData
+{-# INLINEABLE fromDijkstraBinaryData #-}
+
+toDijkstraBinaryData
+    :: BinaryData
+    -> Ledger.BinaryData DijkstraEra
+toDijkstraBinaryData bd =
+    case Ledger.makeBinaryData (toShort (binaryDataToBytes bd)) of
+        Right b -> b
+        Left _ -> error "toDijkstraBinaryData: impossible"
+{-# INLINEABLE toDijkstraBinaryData #-}

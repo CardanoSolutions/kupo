@@ -23,6 +23,7 @@ import qualified Cardano.Ledger.Alonzo.Scripts as Ledger.Alonzo
 import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
 import qualified Cardano.Ledger.Binary.Plain as Ledger
 import qualified Cardano.Ledger.Core as Ledger.Core
+import qualified Cardano.Ledger.Dijkstra.Scripts as Ledger.Dijkstra
 import qualified Cardano.Ledger.Plutus.Language as Ledger
 
 import qualified Codec.CBOR.Decoding as Cbor
@@ -33,7 +34,7 @@ import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 
 type Script =
-    Ledger.Alonzo.Script ConwayEra
+    Ledger.Alonzo.Script DijkstraEra
 
 scriptFromAllegraAuxiliaryData
     :: forall era.
@@ -71,14 +72,14 @@ fromAllegraScript
     :: Ledger.Allegra.Timelock AllegraEra
     -> Script
 fromAllegraScript =
-    Ledger.Alonzo.NativeScript . Ledger.Allegra.translateTimelock
+    Ledger.Alonzo.NativeScript . Ledger.Dijkstra.upgradeTimelock . Ledger.Allegra.translateTimelock
 {-# INLINABLE fromAllegraScript #-}
 
 fromMaryScript
     :: Ledger.Allegra.Timelock MaryEra
     -> Script
 fromMaryScript =
-    Ledger.Alonzo.NativeScript . Ledger.Allegra.translateTimelock
+    Ledger.Alonzo.NativeScript . Ledger.Dijkstra.upgradeTimelock . Ledger.Allegra.translateTimelock
 {-# INLINABLE fromMaryScript  #-}
 
 fromAlonzoScript
@@ -92,15 +93,22 @@ fromBabbageScript
     :: Ledger.Alonzo.Script BabbageEra
     -> Script
 fromBabbageScript =
-    Ledger.Core.upgradeScript
+    Ledger.Core.upgradeScript . Ledger.Core.upgradeScript
 {-# INLINABLE fromBabbageScript #-}
 
 fromConwayScript
     :: Ledger.Alonzo.Script ConwayEra
     -> Script
 fromConwayScript =
-    identity
+    Ledger.Core.upgradeScript
 {-# INLINABLE fromConwayScript #-}
+
+fromDijkstraScript
+    :: Ledger.Alonzo.Script DijkstraEra
+    -> Script
+fromDijkstraScript =
+    identity
+{-# INLINABLE fromDijkstraScript #-}
 
 scriptToJson
     :: Script
@@ -150,7 +158,7 @@ scriptFromBytes (toLazy -> bytes) =
         (script, tag) <- left (DecoderErrorDeserialiseFailure "Script") $
             Cbor.deserialiseFromBytes Cbor.decodeWord bytes
         case tag of
-            0 -> Ledger.Alonzo.NativeScript <$> decodeCborAnn @BabbageEra "Timelock" decCBOR script
+            0 -> (Ledger.Alonzo.NativeScript . Ledger.Dijkstra.upgradeTimelock) <$> decodeCborAnn @ConwayEra "Timelock" decCBOR script
             1 -> plutusScript Ledger.PlutusV1 script
             2 -> plutusScript Ledger.PlutusV2 script
             3 -> plutusScript Ledger.PlutusV3 script
@@ -172,14 +180,14 @@ fromNativeScript
     :: NativeScript
     -> Script
 fromNativeScript =
-    Ledger.Alonzo.NativeScript
+    fromConwayScript . Ledger.Alonzo.NativeScript
 {-# INLINABLE fromNativeScript #-}
 
 hashScript
     :: Script
     -> ScriptHash
 hashScript =
-    Ledger.Core.hashScript @ConwayEra
+    Ledger.Core.hashScript @DijkstraEra
 {-# INLINABLE hashScript #-}
 
 newtype ComparableScript = ComparableScript { unComparableScript :: Script }

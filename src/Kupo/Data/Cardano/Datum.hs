@@ -4,7 +4,9 @@ import Kupo.Prelude
 
 import Kupo.Data.Cardano.BinaryData
     ( BinaryData
+    , fromDijkstraBinaryData
     , hashBinaryData
+    , toDijkstraBinaryData
     )
 import Kupo.Data.Cardano.DatumHash
     ( DatumHash
@@ -35,6 +37,24 @@ fromConwayDatum = \case
     Ledger.NoDatum -> NoDatum
     Ledger.DatumHash ref -> Reference (Left ref)
     Ledger.Datum bin -> Inline (Right bin)
+
+fromDijkstraDatum
+    :: Ledger.Datum DijkstraEra
+    -> Datum
+fromDijkstraDatum = \case
+    Ledger.NoDatum -> NoDatum
+    Ledger.DatumHash ref -> Reference (Left ref)
+    Ledger.Datum bin -> Inline (Right (fromDijkstraBinaryData bin))
+
+toDijkstraDatum
+    :: Datum
+    -> Ledger.Datum DijkstraEra
+toDijkstraDatum = \case
+    NoDatum -> Ledger.NoDatum
+    Reference (Left ref) -> Ledger.DatumHash ref
+    Reference (Right bin) -> Ledger.Datum (toDijkstraBinaryData bin)
+    Inline (Left ref) -> Ledger.DatumHash ref
+    Inline (Right bin) -> Ledger.Datum (toDijkstraBinaryData bin)
 
 getBinaryData
     :: Datum
