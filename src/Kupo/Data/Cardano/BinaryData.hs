@@ -54,20 +54,17 @@ unsafeBinaryDataFromBytes =
 {-# INLINABLE unsafeBinaryDataFromBytes #-}
 
 fromAlonzoData
-    :: HasCallStack
-    => Ledger.Data AlonzoEra
+    :: Ledger.Data AlonzoEra
     -> BinaryData
 fromAlonzoData =
-    unsafeBinaryDataFromBytes . Ledger.originalBytes
+    Ledger.dataToBinaryData . Ledger.upgradeData
 {-# INLINEABLE fromAlonzoData #-}
 
 fromBabbageData
     :: Ledger.Data BabbageEra
     -> BinaryData
 fromBabbageData =
-      Ledger.dataToBinaryData
-    . (Ledger.upgradeData :: Ledger.Data ConwayEra -> Ledger.Data DijkstraEra)
-    . Ledger.upgradeData
+    Ledger.dataToBinaryData . Ledger.upgradeData
 {-# INLINEABLE fromBabbageData #-}
 
 fromConwayData
