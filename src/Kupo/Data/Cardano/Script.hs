@@ -158,7 +158,7 @@ scriptFromBytes (toLazy -> bytes) =
         (script, tag) <- left (DecoderErrorDeserialiseFailure "Script") $
             Cbor.deserialiseFromBytes Cbor.decodeWord bytes
         case tag of
-            0 -> (Ledger.Alonzo.NativeScript . Ledger.Dijkstra.upgradeTimelock) <$> decodeCborAnn @ConwayEra "Timelock" decCBOR script
+            0 -> Ledger.Alonzo.NativeScript <$> decodeCborAnn @DijkstraEra "DijkstraNativeScript" decCBOR script
             1 -> plutusScript Ledger.PlutusV1 script
             2 -> plutusScript Ledger.PlutusV2 script
             3 -> plutusScript Ledger.PlutusV3 script
@@ -180,7 +180,7 @@ fromNativeScript
     :: NativeScript
     -> Script
 fromNativeScript =
-    fromConwayScript . Ledger.Alonzo.NativeScript
+    Ledger.Alonzo.NativeScript
 {-# INLINABLE fromNativeScript #-}
 
 hashScript
