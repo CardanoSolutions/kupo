@@ -2,10 +2,6 @@ module Kupo.Data.Cardano.AssetName where
 
 import Kupo.Prelude
 
-import Ouroboros.Consensus.Util
-    ( eitherToMaybe
-    )
-
 import qualified Cardano.Ledger.Mary.Value as Ledger
 import qualified Data.ByteString as BS
 

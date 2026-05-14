@@ -22,13 +22,9 @@ import Kupo.Data.Cardano.MetadataHash
     ( MetadataHash
     , metadataHashToJson
     )
-import Ouroboros.Consensus.Util
-    ( eitherToMaybe
-    )
-
 import qualified Cardano.Ledger.Allegra.Scripts as Ledger.Allegra
-import qualified Cardano.Ledger.Alonzo.TxAuxData as Ledger.Alonzo
 import qualified Cardano.Ledger.Core as Ledger
+import qualified Cardano.Ledger.Dijkstra.Scripts as Ledger.Dijkstra
 import qualified Cardano.Ledger.Shelley.TxAuxData as Ledger
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
@@ -40,7 +36,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Read as T
 
 type Metadata =
-    AlonzoTxAuxData ConwayEra
+    AlonzoTxAuxData DijkstraEra
 
 emptyMetadata :: Metadata
 emptyMetadata =
@@ -68,7 +64,7 @@ metadataToText =
 metadataFromText :: Text -> Maybe Metadata
 metadataFromText txt = do
     bytes <- eitherToMaybe $ decodeBase16 (encodeUtf8 txt)
-    eitherToMaybe $ decodeCborAnn @ConwayEra "Metadata" decCBOR (toLazy bytes)
+    eitherToMaybe $ decodeCborAnn @DijkstraEra "Metadata" decCBOR (toLazy bytes)
 
 metadataToJson :: Metadata -> Json.Encoding
 metadataToJson (AlonzoTxAuxData labels _ _) =
@@ -166,25 +162,30 @@ fromShelleyMetadata (ShelleyTxAuxData labels) =
 
 fromAllegraMetadata :: AllegraTxAuxData AllegraEra -> Metadata
 fromAllegraMetadata (AllegraTxAuxData labels timelocks) =
-    AlonzoTxAuxData labels (Ledger.Allegra.translateTimelock <$> timelocks) mempty
+    AlonzoTxAuxData labels (Ledger.Dijkstra.upgradeTimelock . Ledger.Allegra.translateTimelock <$> timelocks) mempty
 {-# INLINABLE fromAllegraMetadata #-}
 
 fromMaryMetadata :: AllegraTxAuxData MaryEra -> Metadata
 fromMaryMetadata (AllegraTxAuxData labels timelocks) =
-    AlonzoTxAuxData labels (Ledger.Allegra.translateTimelock <$> timelocks) mempty
+    AlonzoTxAuxData labels (Ledger.Dijkstra.upgradeTimelock . Ledger.Allegra.translateTimelock <$> timelocks) mempty
 {-# INLINABLE fromMaryMetadata #-}
 
 fromAlonzoMetadata :: AlonzoTxAuxData AlonzoEra -> Metadata
-fromAlonzoMetadata =
-    Ledger.Alonzo.translateAlonzoTxAuxData
+fromAlonzoMetadata (AlonzoTxAuxData labels timelocks plutus) =
+    AlonzoTxAuxData labels (Ledger.Dijkstra.upgradeTimelock . Ledger.Allegra.translateTimelock <$> timelocks) plutus
 {-# INLINABLE fromAlonzoMetadata #-}
 
 fromBabbageMetadata :: AlonzoTxAuxData BabbageEra -> Metadata
-fromBabbageMetadata =
-    Ledger.upgradeTxAuxData
+fromBabbageMetadata (AlonzoTxAuxData labels timelocks plutus) =
+    AlonzoTxAuxData labels (Ledger.Dijkstra.upgradeTimelock . Ledger.Allegra.translateTimelock <$> timelocks) plutus
 {-# INLINABLE fromBabbageMetadata #-}
 
 fromConwayMetadata :: AlonzoTxAuxData ConwayEra -> Metadata
-fromConwayMetadata =
-    identity
+fromConwayMetadata (AlonzoTxAuxData labels timelocks plutus) =
+    AlonzoTxAuxData labels (Ledger.Dijkstra.upgradeTimelock <$> timelocks) plutus
 {-# INLINABLE fromConwayMetadata #-}
+
+fromDijkstraMetadata :: AlonzoTxAuxData DijkstraEra -> Metadata
+fromDijkstraMetadata =
+    identity
+{-# INLINABLE fromDijkstraMetadata #-}

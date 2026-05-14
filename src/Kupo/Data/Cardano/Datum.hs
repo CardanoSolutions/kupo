@@ -18,23 +18,24 @@ data Datum
     | Inline !(Either DatumHash BinaryData)
     deriving (Generic, Show, Eq, Ord)
 
-toConwayDatum
+
+fromDijkstraDatum
+    :: Ledger.Datum DijkstraEra
+    -> Datum
+fromDijkstraDatum = \case
+    Ledger.NoDatum -> NoDatum
+    Ledger.DatumHash ref -> Reference (Left ref)
+    Ledger.Datum bin -> Inline (Right bin)
+
+toDijkstraDatum
     :: Datum
-    -> Ledger.Datum ConwayEra
-toConwayDatum = \case
+    -> Ledger.Datum DijkstraEra
+toDijkstraDatum = \case
     NoDatum -> Ledger.NoDatum
     Reference (Left ref) -> Ledger.DatumHash ref
     Reference (Right bin) -> Ledger.Datum bin
     Inline (Left ref) -> Ledger.DatumHash ref
     Inline (Right bin) -> Ledger.Datum bin
-
-fromConwayDatum
-    :: Ledger.Datum ConwayEra
-    -> Datum
-fromConwayDatum = \case
-    Ledger.NoDatum -> NoDatum
-    Ledger.DatumHash ref -> Reference (Left ref)
-    Ledger.Datum bin -> Inline (Right bin)
 
 getBinaryData
     :: Datum

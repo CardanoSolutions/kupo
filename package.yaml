@@ -71,6 +71,7 @@ library:
     - cardano-ledger-byron
     - cardano-ledger-conway
     - cardano-ledger-core
+    - cardano-ledger-dijkstra
     - cardano-ledger-mary
     - cardano-ledger-shelley
     - cardano-slotting
@@ -93,13 +94,13 @@ library:
     - modern-uri
     - network-mux
     - optparse-applicative
+    - cardano-diffusion
     - ouroboros-consensus
-    - ouroboros-consensus-cardano
-    - ouroboros-consensus-diffusion
-    - ouroboros-network
-    - ouroboros-network-api
-    - ouroboros-network-framework
-    - ouroboros-network-protocols
+    - ouroboros-consensus:cardano
+    - ouroboros-consensus:diffusion
+    - ouroboros-network:api
+    - ouroboros-network:framework
+    - ouroboros-network:protocols
     - prometheus
     - relude
     - resource-pool
@@ -139,6 +140,7 @@ tests:
     - http-types
     - io-classes
     - io-sim
+    - network
     - kupo
     - lens-aeson
     - openapi3
@@ -146,7 +148,7 @@ tests:
     - QuickCheck
     - quickcheck-state-machine
     - relude
-    - si-timers
+    - io-classes:si-timers
     - sqlite-simple
     - stm
     - temporary
