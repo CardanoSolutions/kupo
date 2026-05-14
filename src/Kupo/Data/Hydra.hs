@@ -183,6 +183,9 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
 
     bytes <- decodeBase16' hexText
 
+    -- NOTE: Hydra currently serialises transactions as Conway-era CBOR. When Hydra upgrades its
+    -- internal transaction encoding to Dijkstra, this line and the fromConway* calls below will
+    -- need to change.
     (tx :: Ledger.Tx Ledger.TopTx ConwayEra) <- case decodeCborAnn @ConwayEra "PartialTransaction" decCBOR (fromStrict bytes) of
       Left e -> fail $ show e
       Right tx -> pure tx
