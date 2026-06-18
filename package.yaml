@@ -161,6 +161,21 @@ tests:
     - yaml
     build-tools:
     - hspec-discover
+  accept:
+    main: Spec.hs
+    source-dirs: test-accept
+    ghc-options: *ghc-options-test
+    dependencies:
+    - base
+    - directory
+    - filepath
+    - hspec
+    - http-client
+    - http-types
+    - process
+    - temporary
+    build-tools:
+    - hspec-discover
 
 executables:
   kupo:
