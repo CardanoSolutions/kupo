@@ -166,7 +166,6 @@ tests:
     dependencies:
     - base
     - directory
-    - filepath
     - hspec
     - http-client
     - http-types

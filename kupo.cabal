@@ -355,7 +355,6 @@ test-suite accept
   build-depends:
       base
     , directory
-    , filepath
     , hspec
     , http-client
     , http-types

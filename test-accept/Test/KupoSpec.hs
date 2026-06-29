@@ -6,7 +6,7 @@
 {- Tests for some corner cases that were flaky when run with `cabal test unit`.
  - These tests actually run the executable made with `cabal build`
  - So they are external integration/end-to-end acceptance tests.
- - To run: `PATH=$(dirname $(cabal list-bin exe:kupo)):$PATH cabal test accept`
+ - To run: `cabal build exe:kupo && cabal exec cabal test accept`
  -}
 
 module Test.KupoSpec
