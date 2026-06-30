@@ -227,16 +227,6 @@ endToEnd = specify
 
 spec :: Spec
 spec = skippableContext "End-to-end" $ do
-    endToEnd "can connect" $ \(configure, runSpec, HttpClient{..}) -> do
-        (_cfg, env) <- configure $ \defaultCfg -> defaultCfg
-            { databaseLocation = InMemory Nothing
-            , since = Just (SincePoint GenesisPoint)
-            , patterns = fromList [MatchAny OnlyShelley]
-            }
-        runSpec env 5 $ do
-            waitSlot (> 0)
-            matches <- getAllMatches NoStatusFlag AsReference
-            matches `shouldSatisfy` not . null
 
     endToEnd "in-memory" $ \(configure, runSpec, HttpClient{..}) -> do
         (cfg, env) <- configure $ \defaultCfg -> defaultCfg

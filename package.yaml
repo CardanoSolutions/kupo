@@ -165,6 +165,7 @@ tests:
     ghc-options: *ghc-options-test
     dependencies:
     - base
+    - bytestring
     - directory
     - hspec
     - http-client

@@ -354,6 +354,7 @@ test-suite accept
       hspec-discover:hspec-discover
   build-depends:
       base
+    , bytestring
     , directory
     , hspec
     , http-client
