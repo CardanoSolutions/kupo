@@ -23,8 +23,8 @@ import Control.Exception
     , bracket
     , try
     )
-import Data.Char
-    (ord
+import Data.Aeson
+    ( (.:)
     )
 import Network.HTTP.Client
     ( HttpException
@@ -66,9 +66,12 @@ import Test.Hspec
     , shouldReturn
     )
 
+import qualified Data.Aeson           as A
 import qualified Data.ByteString.Lazy as B
 
 type ResponseCheck = Status -> B.ByteString -> Bool
+
+newtype Slot = Slot Integer deriving (Eq, Ord, Show)
 
 spec :: Spec
 spec = do
@@ -158,13 +161,13 @@ eventually p = go (0::Int)
             go (attempt + 1)
 
 isConnected :: IO Bool
-isConnected = checkResponse "/checkpoints" containsNonEmptyList
+isConnected = checkResponse "/checkpoints" containsCheckpoints
 
 isReady :: IO Bool
 isReady = checkResponse "/health" isHealthy
 
 hasReachedSomePoint :: IO Bool
-hasReachedSomePoint = checkResponse "/checkpoints" containsNonEmptyList
+hasReachedSomePoint = checkResponse "/checkpoints" containsCheckpoints
 
 checkResponse :: String -> ResponseCheck -> IO Bool
 checkResponse path check = do
@@ -176,24 +179,13 @@ checkResponse path check = do
         body   = responseBody   response
     pure (check status body)
 
-containsNonEmptyList :: Status -> B.ByteString -> Bool
-containsNonEmptyList status body =
-    status == status200
-    && B.length body > 2
-    && startsWithBracket body
-    && endsWithBracket   body
-
-startsWithBracket :: B.ByteString -> Bool
-startsWithBracket xs =
-    case B.uncons xs of
-        Nothing     -> False
-        Just (w, _) -> w == fromIntegral (ord '[')
-
-endsWithBracket :: B.ByteString -> Bool
-endsWithBracket xs =
-    case B.unsnoc xs of
-        Nothing     -> False
-        Just (_, w) -> w == fromIntegral (ord ']')
+containsCheckpoints :: Status -> B.ByteString -> Bool
+containsCheckpoints status body =
+    status == status200 && hasSlots (A.decode body :: Maybe [Slot])
+    where
+        hasSlots Nothing   = False
+        hasSlots (Just []) = False
+        hasSlots (Just _ ) = True
 
 isHealthy :: ResponseCheck
 isHealthy status _ = status == status202
@@ -210,3 +202,6 @@ request = parseRequest . (url <>)
 somePoint :: String
 somePoint =
     "11017324.195908564a66d713bd2b71a9b1f290be6853cb31085fe7371276a35a2f8f7e62"
+
+instance A.FromJSON Slot where
+    parseJSON = A.withObject "Slot" $ \o -> Slot <$> o .: "slot_no"
