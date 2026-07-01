@@ -166,6 +166,7 @@ tests:
     source-dirs: test-accept
     ghc-options: *ghc-options-test
     dependencies:
+    - aeson
     - base
     - bytestring
     - directory

@@ -360,7 +360,8 @@ test-suite accept
   build-tool-depends:
       hspec-discover:hspec-discover
   build-depends:
-      base
+      aeson
+    , base
     , bytestring
     , directory
     , hspec
