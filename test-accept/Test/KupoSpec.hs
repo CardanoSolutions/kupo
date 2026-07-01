@@ -83,9 +83,12 @@ spec = do
         describe "Kupo server start/restart corner cases (file DB)" $ do
 
             it "Can start in readonly mode on readonly DB" $ \dir -> do
-                createDatabaseFiles dir
+                runServerUntil dir "tip" isReady
                 makeUnwritable dir
                 startReadOnly dir `shouldReturn` True
+
+            it "Can restart with same arguments" $ \dir -> do
+                runServerUntil dir somePoint hasReachedSomePoint
 
 startInMemorySinceOriginMatchShelley :: IO Bool
 startInMemorySinceOriginMatchShelley = do
@@ -100,16 +103,16 @@ startInMemorySinceOriginMatchShelley = do
 withDir :: (FilePath -> IO ()) -> IO ()
 withDir = bracket (createTempDirectory "." "test-tmp") removePathForcibly
 
-createDatabaseFiles :: FilePath -> IO ()
-createDatabaseFiles dir = do
+runServerUntil :: FilePath -> String -> IO Bool -> IO ()
+runServerUntil dir point check = do
     process <- kupo
-        ["--since"  , "tip"
+        ["--since"  , point
         ,"--match"  , "*/*"
         ,"--workdir", dir
         ]
     withCreateProcess process $ \ _ _ _ _ -> do
-        ready <- eventually isReady
-        pure (assert ready ())
+        checked <- eventually check
+        pure (assert checked ())
 
 kupo :: [String] -> IO CreateProcess
 kupo options = do
@@ -127,11 +130,11 @@ makeUnwritable = setWritable False
 
 startReadOnly :: FilePath -> IO Bool
 startReadOnly dir = do
-    let kupo = proc "kupo"
+    let process = proc "kupo"
             ["--read-only"
             ,"--workdir", dir
             ]
-    withCreateProcess kupo $ \ _ _ _ _ -> do
+    withCreateProcess process $ \ _ _ _ _ -> do
         eventually isReady
 
 setWritable :: Bool -> FilePath -> IO ()
@@ -159,6 +162,9 @@ isConnected = checkResponse "/checkpoints" containsNonEmptyList
 
 isReady :: IO Bool
 isReady = checkResponse "/health" isHealthy
+
+hasReachedSomePoint :: IO Bool
+hasReachedSomePoint = checkResponse "/checkpoints" containsNonEmptyList
 
 checkResponse :: String -> ResponseCheck -> IO Bool
 checkResponse path check = do
@@ -200,3 +206,7 @@ url = "http://127.0.0.1:1442"
 
 request :: String -> IO Request
 request = parseRequest . (url <>)
+
+somePoint :: String
+somePoint =
+    "11017324.195908564a66d713bd2b71a9b1f290be6853cb31085fe7371276a35a2f8f7e62"
