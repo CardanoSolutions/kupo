@@ -147,7 +147,6 @@ import Test.Kupo.Fixture
     , someDatumInWitnessHash
     , someMetadata
     , someNonExistingPoint
-    , someOtherPoint
     , someOtherStakeKey
     , somePhase2FailedTransactionIdWithReturn
     , somePoint
@@ -250,28 +249,6 @@ spec = skippableContext "End-to-end" $ do
                 cp <- maximum . (<> [0]) . fmap getPointSlotNo <$> listCheckpoints
                 waitSlot (> (cp + 1_000))
                 healthCheck (serverHost cfg) (serverPort cfg)
-
-    endToEnd "start → restart(s)" $ \(configure, runSpec, HttpClient{..}) -> do
-        do -- Can start the server on a fresh new db
-            (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just (SincePoint somePoint)
-                , patterns = fromList [MatchAny OnlyShelley]
-                }
-            runSpec env 5 $ waitSlot (> (getPointSlotNo somePoint))
-
-        do -- Can't restart with different, too recent, --since target on same db
-            (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just (SincePoint someOtherPoint)
-                , patterns = fromList [MatchAny OnlyShelley]
-                }
-            shouldThrowTimeout @ConflictingOptionsException 1 (runSpec env)
-
-        do -- Can't restart with different, non-empty, patterns
-            (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just (SincePoint somePoint)
-                , patterns = fromList [MatchAny IncludingBootstrap]
-                }
-            shouldThrowTimeout @ConflictingOptionsException 1 (runSpec env)
 
     endToEnd "Can't start the server on a fresh new db without explicit point" $ \(configure, runSpec, _) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg

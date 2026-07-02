@@ -6,7 +6,17 @@
 {- Tests for some corner cases that were flaky when run with `cabal test unit`.
  - These tests actually run the executable made with `cabal build`
  - So they are external integration/end-to-end acceptance tests.
- - To run: `cabal build exe:kupo && cabal exec cabal test accept`
+ - To run on development server (in current repo):
+ -    `cabal build exe:kupo && cabal exec cabal test accept`
+ - To run on installed server (in PATH, e.g. with brew install):
+ -    `cabal test accept`
+ - To run on server in an alternative repo (e.g. different branch):
+ -    ```
+ -    pushd ../kupo-pr-204
+ -    tmpPath=$(dirname $(cabal list-bin exe:kupo))
+ -    popd
+ -    PATH=$tmpPath:$PATH cabal test accept
+ -    ```
  -}
 
 module Test.KupoSpec where
@@ -145,6 +155,20 @@ spec = do
                 -- Restart kupo on same dir but later "--since" and check
                 -- that its exits with error code
                 withKupoH (options ++ ["--since", someOtherPoint]) $ \h -> do
+                    eventually (exitsWithError h) `shouldReturn` True
+
+            it "Cannot restart with different patterns" $ \dir -> do
+                let options =
+                        ["--since", somePoint
+                        ,"--workdir", dir
+                        ]
+                -- Start kupo on fresh dir until reaches somePoint
+                withKupo (options ++ ["--match"  , "*/*"]) $ do
+                    reached <- eventually hasReachedSomePoint
+                    pure (assert reached ())
+                -- Restart kupo on same dir but with different pattern and check
+                -- that its exits with error code
+                withKupoH (options ++ ["--match", "*"]) $ \h -> do
                     eventually (exitsWithError h) `shouldReturn` True
 
 withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
