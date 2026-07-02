@@ -79,43 +79,62 @@ spec = do
     describe "Kupo server start/restart corner cases (in-memory DB)" $ do
 
         it "Can connect" $ do
-            startInMemorySinceOriginMatchShelley `shouldReturn` True
+            -- Start a kupo and check that it eventually has checkpoints
+            withKupo
+                ["--since"      , "origin"
+                ,"--match"      , "*/*"
+                ,"--in-memory"
+                ]
+                $ eventually isConnected `shouldReturn` True
 
     around withDir $ do
 
         describe "Kupo server start/restart corner cases (file DB)" $ do
 
             it "Can start in readonly mode on readonly DB" $ \dir -> do
-                runServerUntil dir "tip" isReady
+                -- Start a kupo on fresh database until it's ready
+                withKupo
+                    ["--since"  , "tip"
+                    ,"--match"  , "*/*"
+                    ,"--workdir", dir
+                    ]
+                    $ do
+                        ready <- eventually isReady
+                        pure (assert ready ())
+                -- Change permissions on database's directory
                 makeUnwritable dir
-                startReadOnly dir `shouldReturn` True
+                -- Start a read-only kupo on dir and check that it's also ready
+                let process = proc "kupo"
+                        ["--read-only"
+                        ,"--workdir", dir
+                        ]
+                withCreateProcess process $ \ _ _ _ _ -> do
+                    eventually isReady `shouldReturn` True
 
             it "Can restart with same arguments" $ \dir -> do
-                runServerUntil dir somePoint hasReachedSomePoint
+                let options =
+                        ["--since"  , somePoint
+                        ,"--match"  , "*/*"
+                        ,"--workdir", dir
+                        ]
+                -- Start kupo on fresh dir until reaches somePoint
+                withKupo options $ do
+                    reached <- eventually hasReachedSomePoint
+                    pure (assert reached ())
+                -- Restart kupo on same dir and check that it is immediately
+                -- already at or past same point
+                withKupo options $ do
+                    ready <- eventually isReady
+                    pure (assert ready ())
+                    hasReachedSomePoint `shouldReturn` True
 
-startInMemorySinceOriginMatchShelley :: IO Bool
-startInMemorySinceOriginMatchShelley = do
-    process <- kupo
-        ["--since"      , "origin"
-        ,"--match"      , "*/*"
-        ,"--in-memory"
-        ]
-    withCreateProcess process $ \ _ _ _ _ -> do
-        eventually isConnected
+withKupo :: [String] -> IO a -> IO a
+withKupo options action = do
+    process <- kupo options
+    withCreateProcess process $ \_ _ _ _ -> action
 
 withDir :: (FilePath -> IO ()) -> IO ()
 withDir = bracket (createTempDirectory "." "test-tmp") removePathForcibly
-
-runServerUntil :: FilePath -> String -> IO Bool -> IO ()
-runServerUntil dir point check = do
-    process <- kupo
-        ["--since"  , point
-        ,"--match"  , "*/*"
-        ,"--workdir", dir
-        ]
-    withCreateProcess process $ \ _ _ _ _ -> do
-        checked <- eventually check
-        pure (assert checked ())
 
 kupo :: [String] -> IO CreateProcess
 kupo options = do
@@ -130,15 +149,6 @@ kupo options = do
 
 makeUnwritable :: FilePath -> IO ()
 makeUnwritable = setWritable False
-
-startReadOnly :: FilePath -> IO Bool
-startReadOnly dir = do
-    let process = proc "kupo"
-            ["--read-only"
-            ,"--workdir", dir
-            ]
-    withCreateProcess process $ \ _ _ _ _ -> do
-        eventually isReady
 
 setWritable :: Bool -> FilePath -> IO ()
 setWritable x path = do
@@ -167,7 +177,7 @@ isReady :: IO Bool
 isReady = checkResponse "/health" isHealthy
 
 hasReachedSomePoint :: IO Bool
-hasReachedSomePoint = checkResponse "/checkpoints" containsCheckpoints
+hasReachedSomePoint = checkResponse "/checkpoints" $ hasReached $ Slot 11017324
 
 checkResponse :: String -> ResponseCheck -> IO Bool
 checkResponse path check = do
@@ -179,7 +189,7 @@ checkResponse path check = do
         body   = responseBody   response
     pure (check status body)
 
-containsCheckpoints :: Status -> B.ByteString -> Bool
+containsCheckpoints :: ResponseCheck
 containsCheckpoints status body =
     status == status200 && hasSlots (A.decode body :: Maybe [Slot])
     where
@@ -187,8 +197,16 @@ containsCheckpoints status body =
         hasSlots (Just []) = False
         hasSlots (Just _ ) = True
 
+hasReached :: Slot -> ResponseCheck
+hasReached slot status body =
+    status == status200 && hasReached' slot (A.decode body :: Maybe [Slot])
+    where
+        hasReached' _ Nothing      = False
+        hasReached' _ (Just [])    = False
+        hasReached' x (Just (y:_)) = y >= x
+
 isHealthy :: ResponseCheck
-isHealthy status _ = status == status202
+isHealthy status _ = status == status202 || status == status200
 
 tryHttp :: IO a -> IO (Either HttpException a)
 tryHttp m = try m

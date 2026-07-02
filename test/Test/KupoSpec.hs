@@ -259,15 +259,6 @@ spec = skippableContext "End-to-end" $ do
                 }
             runSpec env 5 $ waitSlot (> (getPointSlotNo somePoint))
 
-        do -- Can restart the server
-            (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just (SincePoint somePoint)
-                , patterns = fromList [MatchAny OnlyShelley]
-                }
-            runSpec env 5 $ do
-                cps <- fmap getPointSlotNo <$> listCheckpoints
-                maximum cps `shouldSatisfy` (> (getPointSlotNo somePoint))
-
         do -- Can't restart with different, too recent, --since target on same db
             (_, env) <- configure $ \defaultCfg -> defaultCfg
                 { since = Just (SincePoint someOtherPoint)
