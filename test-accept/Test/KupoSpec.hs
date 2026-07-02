@@ -9,9 +9,9 @@
  - To run: `cabal build exe:kupo && cabal exec cabal test accept`
  -}
 
-module Test.KupoSpec
-    ( spec
-    ) where
+module Test.KupoSpec where
+--    ( spec
+--    ) where
 
 import Prelude
 
@@ -53,8 +53,13 @@ import System.Environment
 import System.IO.Temp
     ( createTempDirectory
     )
+import System.Exit
+    ( ExitCode (..)
+    )
 import System.Process
     ( CreateProcess
+    , ProcessHandle
+    , getProcessExitCode
     , proc
     , withCreateProcess
     )
@@ -94,13 +99,13 @@ spec = do
             it "Can start in readonly mode on readonly DB" $ \dir -> do
                 -- Start a kupo on fresh database until it's ready
                 withKupo
-                    ["--since"  , "tip"
+                    ["--since"  , somePoint
                     ,"--match"  , "*/*"
                     ,"--workdir", dir
                     ]
                     $ do
-                        ready <- eventually isReady
-                        pure (assert ready ())
+                        reached <- eventually hasReachedSomeOtherPoint
+                        pure (assert reached ())
                 -- Change permissions on database's directory
                 makeUnwritable dir
                 -- Start a read-only kupo on dir and check that it's also ready
@@ -124,14 +129,31 @@ spec = do
                 -- Restart kupo on same dir and check that it is immediately
                 -- already at or past same point
                 withKupo options $ do
-                    ready <- eventually isReady
-                    pure (assert ready ())
+                    connected <- eventually isConnected
+                    pure (assert connected ())
                     hasReachedSomePoint `shouldReturn` True
 
-withKupo :: [String] -> IO a -> IO a
-withKupo options action = do
+            it "Cannot restart with later '--since'" $ \dir -> do
+                let options =
+                        ["--match"  , "*/*"
+                        ,"--workdir", dir
+                        ]
+                -- Start kupo on fresh dir until reaches somePoint
+                withKupo (options ++ ["--since", somePoint]) $ do
+                    reached <- eventually hasReachedSomePoint
+                    pure (assert reached ())
+                -- Restart kupo on same dir but later "--since" and check
+                -- that its exits with error code
+                withKupoH (options ++ ["--since", someOtherPoint]) $ \h -> do
+                    eventually (exitsWithError h) `shouldReturn` True
+
+withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
+withKupoH options action = do
     process <- kupo options
-    withCreateProcess process $ \_ _ _ _ -> action
+    withCreateProcess process $ \_ _ _ h -> action h
+
+withKupo :: [String] -> IO a -> IO a
+withKupo options action = withKupoH options (\_ -> action)
 
 withDir :: (FilePath -> IO ()) -> IO ()
 withDir = bracket (createTempDirectory "." "test-tmp") removePathForcibly
@@ -177,7 +199,21 @@ isReady :: IO Bool
 isReady = checkResponse "/health" isHealthy
 
 hasReachedSomePoint :: IO Bool
-hasReachedSomePoint = checkResponse "/checkpoints" $ hasReached $ Slot 11017324
+hasReachedSomePoint = hasReachedPoint $ Slot 11017324
+
+hasReachedSomeOtherPoint :: IO Bool
+hasReachedSomeOtherPoint = hasReachedPoint $ Slot 36492716
+
+hasReachedPoint :: Slot -> IO Bool
+hasReachedPoint p = checkResponse "/checkpoints" $ hasReached $ p
+
+exitsWithError :: ProcessHandle -> IO Bool
+exitsWithError h = do
+    e <- getProcessExitCode h
+    pure $ case e of
+        Nothing              -> False
+        Just ExitSuccess     -> False
+        Just (ExitFailure _) -> True
 
 checkResponse :: String -> ResponseCheck -> IO Bool
 checkResponse path check = do
@@ -220,6 +256,10 @@ request = parseRequest . (url <>)
 somePoint :: String
 somePoint =
     "11017324.195908564a66d713bd2b71a9b1f290be6853cb31085fe7371276a35a2f8f7e62"
+
+someOtherPoint :: String
+someOtherPoint =
+    "36492716.d51095ef5405d83e7a1c82b98d12b357ba6b95f070f684bb38ab47ef90b21688"
 
 instance A.FromJSON Slot where
     parseJSON = A.withObject "Slot" $ \o -> Slot <$> o .: "slot_no"
