@@ -536,20 +536,6 @@ spec = skippableContext "End-to-end" $ do
             res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right tip)
             res `shouldBe` True
 
-    endToEnd "Auto-magically restart when reaching the tip (--defer-db-indexes enabled)" $ \(configure, runSpec, HttpClient{..}) -> do
-        tip <- currentNetworkTip
-        (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just SinceTip
-            , patterns = fromList [MatchAny IncludingBootstrap]
-            , deferIndexes = SkipNonEssentialIndexes
-            }
-        runSpec env 120 $ do
-            waitSlot (>= getPointSlotNo tip)
-            points <- listCheckpoints
-            forM_ points $ \point -> getPointSlotNo point `shouldSatisfy` (>= getPointSlotNo tip)
-            Health{configuration} <- getHealth
-            configuration `shouldBe` (Just InstallIndexesIfNotExist)
-
     endToEnd "Does not synchronize beyond a given point when asked (--until)" $ \(configure, runSpec, HttpClient{..}) -> do
         let maxSlot = 11037873 -- Somewhat after `somePoint`, but close enough. Note that this slot must still exist (i.e. be active)
                                -- if we don't want `waitSlot` down below to be waiting forever!

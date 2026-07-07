@@ -19,9 +19,9 @@
  -    ```
  -}
 
-module Test.KupoSpec where
---    ( spec
---    ) where
+module Test.KupoSpec
+    ( spec
+    ) where
 
 import Prelude
 
@@ -43,8 +43,12 @@ import Network.HTTP.Client
     , httpLbs
     , newManager
     , parseRequest
+    , requestHeaders
     , responseBody
     , responseStatus
+    )
+import Network.HTTP.Types.Header
+    (hAccept
     )
 import Network.HTTP.Types.Status
     ( Status
@@ -86,7 +90,12 @@ import qualified Data.ByteString.Lazy as B
 
 type ResponseCheck = Status -> B.ByteString -> Bool
 
-newtype Slot = Slot Integer deriving (Eq, Ord, Show)
+newtype Slot = Slot Integer deriving (Eq, Ord, Read, Show)
+
+data Point = Point Slot String
+    deriving (Eq, Ord, Read, Show)
+
+newtype Indexes = Indexes String deriving (Eq, Ord, Show)
 
 spec :: Spec
 spec = do
@@ -101,6 +110,18 @@ spec = do
                 ,"--in-memory"
                 ]
                 $ eventually isConnected `shouldReturn` True
+
+        it "Auto-magically restart when --defer-db-indexes is enabled)" $ do
+            -- Read from file a valid point recent but before tip
+            point <- recentPoint
+            -- Start kupo since that point and with --defer-db-indexes
+            withKupo
+                ["--since", fmtPoint point
+                ,"--match", "*"
+                ,"--in-memory"
+                ,"--defer-db-indexes"
+                ]
+                $ eventually (hasIndexes point) `shouldReturn` True
 
     around withDir $ do
 
@@ -222,6 +243,12 @@ isConnected = checkResponse "/checkpoints" containsCheckpoints
 isReady :: IO Bool
 isReady = checkResponse "/health" isHealthy
 
+hasIndexes :: Point -> IO Bool
+hasIndexes pt = do
+    indexes <- checkResponse "/health" hasIndexesInstalled
+    chckpts <- checkResponse "/checkpoints" (laterThan pt)
+    pure (indexes && chckpts)
+
 hasReachedSomePoint :: IO Bool
 hasReachedSomePoint = hasReachedPoint $ Slot 11017324
 
@@ -243,7 +270,10 @@ checkResponse :: String -> ResponseCheck -> IO Bool
 checkResponse path check = do
     manager  <- newManager defaultManagerSettings
     request' <- request path
-    response <- httpLbs request' manager
+    let request'' = request'
+            {requestHeaders = [(hAccept, "application/json; charset=utf-8")]
+            }
+    response <- httpLbs request'' manager
     let
         status = responseStatus response
         body   = responseBody   response
@@ -268,6 +298,21 @@ hasReached slot status body =
 isHealthy :: ResponseCheck
 isHealthy status _ = status == status202 || status == status200
 
+hasIndexesInstalled :: ResponseCheck
+hasIndexesInstalled status body =
+    (status == status200 || status == status202)
+    && (indexesFlag body) == Just (Indexes "installed")
+
+laterThan :: Point -> ResponseCheck
+laterThan (Point slot _) status body =
+    status == status200 && laterThanSlot (A.decode body :: Maybe [Slot])
+    where
+        laterThanSlot Nothing      = False
+        laterThanSlot (Just slots) = all (>= slot) slots
+
+indexesFlag :: B.ByteString -> Maybe Indexes
+indexesFlag = A.decode
+
 tryHttp :: IO a -> IO (Either HttpException a)
 tryHttp m = try m
 
@@ -285,5 +330,23 @@ someOtherPoint :: String
 someOtherPoint =
     "36492716.d51095ef5405d83e7a1c82b98d12b357ba6b95f070f684bb38ab47ef90b21688"
 
+recentPoint :: IO Point
+recentPoint = fmap read (readFile "test-accept/point-recent.dat")
+
+fmtPoint :: Point -> String
+fmtPoint (Point (Slot slot) hash) = show slot ++ "." ++ hash
+
 instance A.FromJSON Slot where
     parseJSON = A.withObject "Slot" $ \o -> Slot <$> o .: "slot_no"
+
+instance A.FromJSON Indexes where
+    parseJSON = A.withObject "Health" $ \o -> do
+        c <- o .: "configuration"
+        i <- c .: "indexes"
+        pure (Indexes i)
+
+instance A.FromJSON Point where
+    parseJSON = A.withObject "Point" $ \o -> do
+        s <- o .: "slot_no"
+        h <- o .: "header_hash"
+        pure (Point s h)
