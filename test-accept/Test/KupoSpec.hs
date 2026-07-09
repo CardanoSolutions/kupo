@@ -21,7 +21,6 @@
 
 module Test.KupoSpec
     ( spec
-    , currentNetworkTip
     ) where
 
 import Prelude
@@ -51,6 +50,8 @@ import Network.HTTP.Client
     , requestHeaders
     , responseBody
     , responseStatus
+    , responseTimeout
+    , responseTimeoutNone
     )
 import Network.HTTP.Types.Header
     (hAccept
@@ -111,7 +112,7 @@ newtype PutPatternBody = PutPatternBody Point
 
 newtype Indexes = Indexes String deriving (Eq, Ord, Show)
 
-type StakeKey = String
+type Pattern = String
 
 spec :: Spec
 spec = do
@@ -139,21 +140,25 @@ spec = do
                 ]
                 $ eventually (hasIndexes point) `shouldReturn` True
 
-        it "Dynamically adds pattern and rolls back to given past point" $ do
-            -- Start a kupo since "pointB" and matching on stakeB
-            withKupo
-                ["--since"      , fromPoint pointB
-                ,"--match"      , "*/" <> stakeB
-                ,"--in-memory"
-                ]
-                $ do
-                    -- Wait for indexing to have started
-                    reached <- eventually (hasReachedPoint pointB)
-                    pure (assert reached ())
-                    later <- allCheckpointsLaterThan pointB
-                    pure (assert later ())
-                    -- Add other pattern forcing rollback to earlier pointA
-                    putNewPattern stakeA pointA `shouldReturn` True
+        it "Dynamically adds pattern and rolls back (when at tip)" $ do
+            tip <- currentNetworkTip
+            case tip of
+                Nothing -> fail "Need to be able to use cardano-cli to get tip"
+                Just (CliPoint point) ->
+                    -- Start a kupo since "tip" and matching on stakeA
+                    withKupo
+                        ["--since"      , fromPoint point
+                        ,"--match"      , stakeA
+                        ,"--in-memory"
+                        ]
+                        $ do
+                            -- Wait for indexing to have finished
+                            reached <- eventually (hasReachedPoint point)
+                            pure (assert reached ())
+                            getPatterns `shouldReturn` Just [stakeA]
+                            -- Add stakeB pattern forcing rollback to same point
+                            putNewPattern stakeB point `shouldReturn` True
+                            getPatterns `shouldReturn` Just [stakeA, stakeB]
 
     around withDir $ do
 
@@ -192,9 +197,8 @@ spec = do
                 -- Restart kupo on same dir and check that it is immediately
                 -- already at or past same point
                 withKupo options $ do
-                    connected <- eventually isConnected
-                    pure (assert connected ())
-                    (hasReachedPoint pointA) `shouldReturn` True
+                    eventually (hasCheckpointsAllLaterThan pointA)
+                        `shouldReturn` True
 
             it "Cannot restart with later '--since'" $ \dir -> do
                 let options =
@@ -284,8 +288,8 @@ hasIndexes pt = do
 hasReachedPoint :: Point -> IO Bool
 hasReachedPoint = checkResponse "/checkpoints" . hasReached
 
-allCheckpointsLaterThan :: Point -> IO Bool
-allCheckpointsLaterThan = checkResponse "/checkpoints" . laterThan
+hasCheckpointsAllLaterThan :: Point -> IO Bool
+hasCheckpointsAllLaterThan = checkResponse "/checkpoints" . nonEmptyAndLaterThan
 
 exitsWithError :: ProcessHandle -> IO Bool
 exitsWithError h = do
@@ -308,13 +312,30 @@ checkResponse path check = do
         body   = responseBody   response
     pure (check status body)
 
-putNewPattern :: StakeKey -> Point -> IO Bool
-putNewPattern key point = do
+getPatterns :: IO (Maybe [Pattern])
+getPatterns = do
+    manager <- newManager defaultManagerSettings
+    request' <- request ("/patterns")
+    let request'' = request'
+            {requestHeaders = [(hAccept, "application/json; charset=utf-8")]
+            }
+    response <- httpLbs request'' manager
+    case responseStatus response of
+        (Status 200 _) -> do
+            let body = responseBody response
+            pure (A.decode body :: Maybe [Pattern])
+        _              ->
+            pure Nothing
+
+
+putNewPattern :: Pattern -> Point -> IO Bool
+putNewPattern pattern point = do
     manager  <- newManager defaultManagerSettings
-    request' <- request ("/patterns/*/" <> key)
+    request' <- request ("/patterns/" <> pattern)
     let request'' = request'
             { method = "PUT"
             , requestBody = RequestBodyLBS (A.encode (PutPatternBody point))
+            , responseTimeout = responseTimeoutNone
             }
     response <- httpLbs request'' manager
     case responseStatus response of
@@ -352,6 +373,14 @@ laterThan (Point slot _) status body =
         laterThanSlot Nothing      = False
         laterThanSlot (Just slots) = all (>= slot) slots
 
+nonEmptyAndLaterThan :: Point -> ResponseCheck
+nonEmptyAndLaterThan (Point slot _) status body =
+    status == status200 && laterThanSlot (A.decode body :: Maybe [Slot])
+    where
+        laterThanSlot Nothing      = False
+        laterThanSlot (Just []   ) = False
+        laterThanSlot (Just slots) = all (>= slot) slots
+
 indexesFlag :: B.ByteString -> Maybe Indexes
 indexesFlag = A.decode
 
@@ -382,15 +411,15 @@ pointB =
 
 -- Some stake key in Shelley, present in addresses from early blocks of Shelley.
 -- (Called someStakeKey in other 'unit' test suite)
-stakeA :: StakeKey
+stakeA :: Pattern
 stakeA =
-    "968d1021ebd7178e1fb0e79676982825cabc779b653e1234d58ce3c6"
+    "*/968d1021ebd7178e1fb0e79676982825cabc779b653e1234d58ce3c6"
 
 -- Similar to stakeA but distinct from it.
 -- (Called someOtherStakeKey in other 'unit' test suite)
-stakeB :: StakeKey
+stakeB :: Pattern
 stakeB =
-    "f130204b518f70c19995449e3737eded3d9ffc31cb50ec0e45010ba3"
+    "*/f130204b518f70c19995449e3737eded3d9ffc31cb50ec0e45010ba3"
 
 recentPoint :: IO Point
 recentPoint = fmap read (readFile "test-accept/point-recent.dat")
