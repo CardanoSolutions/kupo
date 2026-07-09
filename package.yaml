@@ -142,7 +142,6 @@ tests:
     - kupo
     - lens-aeson
     - openapi3
-    - process
     - QuickCheck
     - quickcheck-state-machine
     - relude
@@ -173,6 +172,7 @@ tests:
     - http-types
     - process
     - temporary
+    - typed-process
     build-tools:
     - hspec-discover
 

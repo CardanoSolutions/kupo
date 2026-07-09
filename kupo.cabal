@@ -362,6 +362,7 @@ test-suite accept
     , http-types
     , process
     , temporary
+    , typed-process
   default-language: Haskell2010
 
 test-suite unit
@@ -452,7 +453,6 @@ test-suite unit
     , kupo
     , lens-aeson
     , openapi3
-    , process
     , quickcheck-state-machine
     , relude
     , si-timers
