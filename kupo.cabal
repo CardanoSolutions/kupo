@@ -369,6 +369,7 @@ test-suite accept
     , http-types
     , process
     , temporary
+    , typed-process
   default-language: Haskell2010
 
 test-suite unit
@@ -463,7 +464,6 @@ test-suite unit
     , lens-aeson
     , network
     , openapi3
-    , process
     , quickcheck-state-machine
     , relude
     , sqlite-simple

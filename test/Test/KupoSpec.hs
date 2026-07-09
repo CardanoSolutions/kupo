@@ -18,11 +18,6 @@ import Control.Monad.Trans.Writer
     ( execWriterT
     , tell
     )
-import Data.Aeson.Lens
-    ( _Integer
-    , _String
-    , key
-    )
 import Data.List
     ( maximum
     , (\\)
@@ -69,13 +64,11 @@ import Kupo.Control.MonadTime
     )
 import Kupo.Data.Cardano
     ( Datum (..)
-    , Point
     , ScriptReference (..)
     , getPointSlotNo
     , hasPolicyId
     , mkOutputReference
     , pattern GenesisPoint
-    , pointFromText
     , unsafeValueFromList
     )
 import Kupo.Data.ChainSync
@@ -112,11 +105,6 @@ import Network.HTTP.Client
 import System.IO.Temp
     ( withSystemTempDirectory
     , withTempFile
-    )
-import System.Process
-    ( CreateProcess (..)
-    , proc
-    , readCreateProcess
     )
 import Test.Hspec
     ( Arg
@@ -188,11 +176,7 @@ import System.IO
     ( hClose
     , hGetLine
     )
-import System.Environment
-    ( getEnvironment
-    )
 
-import qualified Data.Aeson as Json
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as Builder
 import qualified Prelude
@@ -525,17 +509,6 @@ spec = skippableContext "End-to-end" $ do
                 connectionStatus `shouldBe` Connected
                 configuration `shouldBe` Nothing
 
-    endToEnd "Dynamically add pattern and restart to a past point when at the tip" $ \(configure, runSpec, HttpClient{..}) -> do
-        tip <- currentNetworkTip
-        (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just (SincePoint tip)
-            , patterns = fromList [MatchAny IncludingBootstrap]
-            }
-        runSpec env 120 $ do
-            waitSlot (>= getPointSlotNo tip)
-            res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right tip)
-            res `shouldBe` True
-
     endToEnd "Does not synchronize beyond a given point when asked (--until)" $ \(configure, runSpec, HttpClient{..}) -> do
         let maxSlot = 11037873 -- Somewhat after `somePoint`, but close enough. Note that this slot must still exist (i.e. be active)
                                -- if we don't want `waitSlot` down below to be waiting forever!
@@ -732,29 +705,6 @@ withReplica cfg test = do
         withTempFile dir "traces" $ \_fp h -> do
             withTracers h version (defaultTracers (Just Info)) $ \tr -> do
                 race_ (kupo tr `runWith` replicaEnv) (test replicaHttpClient)
-
-currentNetworkTip :: IO Point
-currentNetworkTip = do
-    lookupEnv varCardanoNodeSocket >>= \case
-        Nothing ->
-            fail $ varCardanoNodeSocket <> " not set but necessary for this test."
-        Just socket -> do
-            baseEnv <- getEnvironment
-            let env = Just (("CARDANO_NODE_SOCKET_PATH", socket):baseEnv)
-            let args =
-                    [ "query", "tip"
-                    , "--testnet-magic", "1"
-                    , "--cardano-mode"
-                    ]
-            out <- readCreateProcess ((proc "cardano-cli" args) { env }) ""
-            case Json.eitherDecode @Json.Value (encodeUtf8 out) of
-                Left err ->
-                    fail err
-                Right json -> do
-                    maybe (fail "couldn't decode tip from cardano-cli") pure $ do
-                        slotNo <- json ^? key "slot" . _Integer
-                        headerHash <- json ^? key "hash" ._String
-                        pointFromText (show slotNo <> "." <> headerHash)
 
 shouldThrowTimeout :: forall e. (Exception e) => DiffTime -> (DiffTime -> IO () -> IO ()) -> IO ()
 shouldThrowTimeout t action = do
