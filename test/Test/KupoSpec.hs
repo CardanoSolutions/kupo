@@ -20,10 +20,6 @@ import Control.Monad.Trans.Writer
     )
 import Data.List
     ( maximum
-    , (\\)
-    )
-import GHC.IORef
-    ( atomicSwapIORef
     )
 import Kupo
     ( Env
@@ -114,7 +110,6 @@ import Test.Hspec
     , context
     , runIO
     , shouldBe
-    , shouldNotBe
     , shouldReturn
     , shouldSatisfy
     , specify
@@ -150,7 +145,6 @@ import Test.Kupo.Fixture
     , someScriptInWitness
     , someScriptInWitnessHash
     , someSlotWithMetadata
-    , someStakeKey
     , someThirdTransactionId
     , someTransactionId
     , someTransactionIdWithMetadata
