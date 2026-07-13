@@ -114,6 +114,9 @@ newtype Indexes = Indexes String deriving (Eq, Ord, Show)
 
 type Pattern = String
 
+data Match = Match Integer String Int Int
+    deriving (Eq, Ord, Read, Show)
+
 spec :: Spec
 spec = do
 
@@ -159,6 +162,43 @@ spec = do
                             -- Add stakeB pattern forcing rollback to same point
                             putNewPattern stakeB tip `shouldReturn` True
                             getPatterns `shouldReturn` Just [stakeA, stakeB]
+
+        it "Dynamically adds pattern and rolls back (when syncing)" $ do
+            let options =
+                    ["--since"      , fromPoint lastByron
+                    ,"--in-memory"
+                    ]
+            -- Start a kupo since last Byron block and matching on stakeA
+            withKupo (options ++ ["--match", stakeA]) $ do
+                -- Wait for indexing at least 100_000 slots
+                reached <- eventually (hasReachedPoint lastByron136K)
+                pure (assert reached ())
+                getPatterns `shouldReturn` Just [stakeA]
+                getMatchesInWindow lastByron lastByron136K
+                    `shouldReturn` Just
+                        -- slot, hash, transaction idx, output idx
+                        [Match 86440 "49ef96" 0 1]
+            -- Start over, same again except matching on stakeB
+            withKupo (options ++ ["--match", stakeB]) $ do
+                -- Wait for indexing at least 100_000 slots
+                reached <- eventually (hasReachedPoint lastByron136K)
+                pure (assert reached ())
+                getPatterns `shouldReturn` Just [stakeB]
+                getMatchesInWindow lastByron lastByron136K
+                    `shouldReturn` Just
+                        -- output index is different from stakeA's match
+                        [Match 86440 "49ef96" 0 2]
+                -- Add stakeA pattern forcing rollback to last Byron block
+                putNewPattern stakeA lastByron `shouldReturn` True
+                getPatterns `shouldReturn` Just [stakeA, stakeB]
+                reachedAgain <- eventually (hasReachedPoint lastByron136K)
+                pure (assert reachedAgain ())
+                getMatchesInWindow lastByron lastByron136K
+                    `shouldReturn` Just
+                        -- now we have both matches together, proving rollback
+                        [ Match 86440 "49ef96" 0 2
+                        , Match 86440 "49ef96" 0 1
+                        ]
 
     around withDir $ do
 
@@ -333,14 +373,44 @@ putNewPattern pattern point = do
     manager  <- newManager defaultManagerSettings
     request' <- request ("/patterns/" <> pattern)
     let request'' = request'
-            { method = "PUT"
-            , requestBody = RequestBodyLBS (A.encode (PutPatternBody point))
+            { method          = "PUT"
+            , requestBody     = RequestBodyLBS (A.encode (PutPatternBody point))
             , responseTimeout = responseTimeoutNone
             }
     response <- httpLbs request'' manager
     case responseStatus response of
         (Status 200 _) -> pure True
         _              -> pure False
+
+getMatchesInWindow :: Point -> Point -> IO (Maybe [Match])
+getMatchesInWindow from to = do
+    manager <- newManager defaultManagerSettings
+    request' <- request ("/matches")
+    let request'' = request'
+            {requestHeaders   = [(hAccept, "application/json; charset=utf-8")]
+            , responseTimeout = responseTimeoutNone
+            }
+    response <- httpLbs request'' manager
+    case responseStatus response of
+        (Status 200 _) -> do
+            let body = responseBody response
+            let maybeMatches = A.decode body :: Maybe [Match]
+            pure (filter (matchInWindow from to) <$> maybeMatches)
+        _              ->
+            pure Nothing
+
+matchInWindow :: Point -> Point -> Match -> Bool
+matchInWindow (Point (Slot s1) _) (Point (Slot s2) _) (Match s _ _ _) =
+    s1 < s && s < s2
+
+currentNetworkTip :: IO (Maybe CliPoint)
+currentNetworkTip = do
+    let args =
+            [ "query", "tip"
+            , "--testnet-magic", "1"
+            ]
+    (_, out) <- TP.readProcessStdout (TP.proc "cardano-cli" args)
+    pure (A.decode out)
 
 containsCheckpoints :: ResponseCheck
 containsCheckpoints status body =
@@ -393,34 +463,6 @@ url = "http://127.0.0.1:1442"
 request :: String -> IO Request
 request = parseRequest . (url <>)
 
--- A point that exists on-chain. Earlier than pointB.
--- (Called somePoint in other 'unit' test suite)
-pointA :: Point
-pointA =
-    Point
-        (Slot 11017324)
-        "195908564a66d713bd2b71a9b1f290be6853cb31085fe7371276a35a2f8f7e62"
-
--- A point that exists on-chain. Later than pointA.
--- (Called someOtherPoint in other 'unit' test suite)
-pointB :: Point
-pointB =
-    Point
-        (Slot 36492716)
-        "d51095ef5405d83e7a1c82b98d12b357ba6b95f070f684bb38ab47ef90b21688"
-
--- Some stake key in Shelley, present in addresses from early blocks of Shelley.
--- (Called someStakeKey in other 'unit' test suite)
-stakeA :: Pattern
-stakeA =
-    "*/968d1021ebd7178e1fb0e79676982825cabc779b653e1234d58ce3c6"
-
--- Similar to stakeA but distinct from it.
--- (Called someOtherStakeKey in other 'unit' test suite)
-stakeB :: Pattern
-stakeB =
-    "*/f130204b518f70c19995449e3737eded3d9ffc31cb50ec0e45010ba3"
-
 recentPoint :: IO Point
 recentPoint = fmap read (readFile "test-accept/point-recent.dat")
 
@@ -457,13 +499,53 @@ instance A.ToJSON PutPatternBody where
         , "limit" .= ("unsafe_allow_beyond_safe_zone" :: String)
         ]
 
-currentNetworkTip :: IO (Maybe CliPoint)
-currentNetworkTip = do
-    let args =
-            [ "query", "tip"
-            , "--testnet-magic", "1"
-            ]
-    (_, out) <- TP.readProcessStdout (TP.proc "cardano-cli" args)
-    pure (A.decode out)
+instance A.FromJSON Match where
+    parseJSON = A.withObject "Match" $ \o -> do
+        tidx <- o .: "transaction_index"
+        oidx <- o .: "output_index"
+        c    <- o .: "created_at"
+        slot <- c .: "slot_no"
+        hash <- c .: "header_hash"
+        pure (Match slot (take 6 hash) tidx oidx)
 
+-- A point that exists on-chain. Earlier than pointB.
+-- (Called somePoint in other 'unit' test suite)
+pointA :: Point
+pointA =
+    Point
+        (Slot 11017324)
+        "195908564a66d713bd2b71a9b1f290be6853cb31085fe7371276a35a2f8f7e62"
 
+-- A point that exists on-chain. Later than pointA.
+-- (Called someOtherPoint in other 'unit' test suite)
+pointB :: Point
+pointB =
+    Point
+        (Slot 36492716)
+        "d51095ef5405d83e7a1c82b98d12b357ba6b95f070f684bb38ab47ef90b21688"
+
+-- A point that exists on-chain. Last Byron block.
+lastByron :: Point
+lastByron =
+    Point
+        (Slot 84242)
+        "45899e8002b27df291e09188bfe3aeb5397ac03546a7d0ead93aa2500860f1af"
+
+-- A point that exists on-chain. Over 100_000 slots after lastByron
+lastByron136K :: Point
+lastByron136K =
+    Point
+        (Slot 220860)
+        "10915760772b5cf13b5138eda8a4ea36f871ece619547bc4eec63831008ebf69"
+
+-- Some stake key in Shelley, present in addresses from early blocks of Shelley.
+-- (Called someStakeKey in other 'unit' test suite)
+stakeA :: Pattern
+stakeA =
+    "*/968d1021ebd7178e1fb0e79676982825cabc779b653e1234d58ce3c6"
+
+-- Similar to stakeA but distinct from it.
+-- (Called someOtherStakeKey in other 'unit' test suite)
+stakeB :: Pattern
+stakeB =
+    "*/f130204b518f70c19995449e3737eded3d9ffc31cb50ec0e45010ba3"
