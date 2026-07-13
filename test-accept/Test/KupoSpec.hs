@@ -141,23 +141,23 @@ spec = do
                 $ eventually (hasIndexes point) `shouldReturn` True
 
         it "Dynamically adds pattern and rolls back (when at tip)" $ do
-            tip <- currentNetworkTip
-            case tip of
+            maybeTip <- currentNetworkTip
+            case maybeTip of
                 Nothing -> fail "Need to be able to use cardano-cli to get tip"
-                Just (CliPoint point) ->
+                Just (CliPoint tip) ->
                     -- Start a kupo since "tip" and matching on stakeA
                     withKupo
-                        ["--since"      , fromPoint point
+                        ["--since"      , fromPoint tip
                         ,"--match"      , stakeA
                         ,"--in-memory"
                         ]
                         $ do
                             -- Wait for indexing to have finished
-                            reached <- eventually (hasReachedPoint point)
+                            reached <- eventually (hasReachedPoint tip)
                             pure (assert reached ())
                             getPatterns `shouldReturn` Just [stakeA]
                             -- Add stakeB pattern forcing rollback to same point
-                            putNewPattern stakeB point `shouldReturn` True
+                            putNewPattern stakeB tip `shouldReturn` True
                             getPatterns `shouldReturn` Just [stakeA, stakeB]
 
     around withDir $ do
