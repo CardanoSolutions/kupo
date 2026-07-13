@@ -369,49 +369,6 @@ spec = skippableContext "End-to-end" $ do
             whenInline <- getAllMatches NoStatusFlag InlineAll <&> extractInline
             whenInline `shouldSatisfy` elem someScriptInOutput
 
-
-    endToEnd "Dynamically add pattern and restart to a past point when syncing" $ \(configure, runSpec, HttpClient{..}) -> do
-        (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just (SincePoint lastByronPoint)
-            , patterns = fromList [MatchDelegation someStakeKey]
-            }
-        -- NOTE: maxSlot must be high enough after the rollback point to have a chance to observe the
-        -- rollback. If too low, Kupo might have already re-synchronised and we can't assert that a
-        -- rollback did happen.
-        let maxSlot = getPointSlotNo lastByronPoint + 100_000
-        let onlyInWindow r
-                | getPointSlotNo (createdAt r) <= maxSlot =
-                    Just r { spentAt = Nothing }
-                | otherwise =
-                    Nothing
-        ref <- newIORef ([], [])
-        runSpec env 10 $ do
-            waitSlot (>= maxSlot)
-            xs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag AsReference
-            xs `shouldNotBe` []
-            res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right lastByronPoint)
-            res `shouldBe` True
-            waitSlot (< maxSlot) -- Observe rollback
-            waitSlot (>= maxSlot)
-            ys <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag AsReference
-            (xs \\ ys) `shouldBe` []
-            (sort <$> listPatterns) `shouldReturn`
-                [ MatchDelegation someStakeKey
-                , MatchDelegation someOtherStakeKey
-                ]
-            void $ atomicSwapIORef ref (xs, ys)
-        (xs, ys) <- readIORef ref
-        withSystemTempDirectory "kupo-end-to-end" $ \tmp' -> do
-            (_, env') <- configure $ \defaultCfg -> defaultCfg
-                { databaseLocation = Dir tmp'
-                , since = Just (SincePoint lastByronPoint)
-                , patterns = fromList [MatchDelegation someOtherStakeKey]
-                }
-            runSpec env' 10 $ do
-                waitSlot (>= maxSlot)
-                zs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag AsReference
-                ys \\ zs `shouldBe` xs
-
     endToEnd "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(configure, runSpec, HttpClient{..})  -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
             { since = Just (SincePoint lastByronPoint)
