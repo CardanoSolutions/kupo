@@ -190,9 +190,9 @@ spec = do
                         [Match 86440 "49ef96" 0 2]
                 -- Add stakeA pattern forcing rollback to last Byron block
                 putNewPattern stakeA lastByron `shouldReturn` True
-                getPatterns `shouldReturn` Just [stakeA, stakeB]
                 reachedAgain <- eventually (hasReachedPoint lastByron136K)
                 pure (assert reachedAgain ())
+                getPatterns `shouldReturn` Just [stakeA, stakeB]
                 getMatchesInWindow lastByron lastByron136K
                     `shouldReturn` Just
                         -- now we have both matches together, proving rollback
