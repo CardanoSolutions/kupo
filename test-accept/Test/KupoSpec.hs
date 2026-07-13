@@ -125,23 +125,25 @@ spec = do
         it "Can connect" $ do
             -- Start a kupo and check that it eventually has checkpoints
             withKupo
-                ["--since"      , "origin"
+                ["--port"       , "1443"
+                ,"--since"      , "origin"
                 ,"--match"      , "*/*"
                 ,"--in-memory"
                 ]
-                $ eventually isConnected `shouldReturn` True
+                $ eventually (isConnected 1443) `shouldReturn` True
 
         it "Auto-magically restarts when --defer-db-indexes is enabled)" $ do
             -- Read from file a valid point recent but before tip
             point <- recentPoint
             -- Start kupo since that point and with --defer-db-indexes
             withKupo
-                ["--since"      , fromPoint point
+                ["--port"       , "1444"
+                ,"--since"      , fromPoint point
                 ,"--match"      , "*"
                 ,"--in-memory"
                 ,"--defer-db-indexes"
                 ]
-                $ eventually (hasIndexes point) `shouldReturn` True
+                $ eventually (hasIndexes 1444 point) `shouldReturn` True
 
         it "Dynamically adds pattern and rolls back (when at tip)" $ do
             maybeTip <- currentNetworkTip
@@ -150,18 +152,19 @@ spec = do
                 Just (CliPoint tip) ->
                     -- Start a kupo since "tip" and matching on stakeA
                     withKupo
-                        ["--since"      , fromPoint tip
+                        ["--port"       , "1445"
+                        ,"--since"      , fromPoint tip
                         ,"--match"      , stakeA
                         ,"--in-memory"
                         ]
                         $ do
                             -- Wait for indexing to have finished
-                            reached <- eventually (hasReachedPoint tip)
+                            reached <- eventually (hasReachedPoint 1445 tip)
                             pure (assert reached ())
-                            getPatterns `shouldReturn` Just [stakeA]
+                            getPatterns 1445 `shouldReturn` Just [stakeA]
                             -- Add stakeB pattern forcing rollback to same point
-                            putNewPattern stakeB tip `shouldReturn` True
-                            getPatterns `shouldReturn` Just [stakeA, stakeB]
+                            putNewPattern 1445 stakeB tip `shouldReturn` True
+                            getPatterns 1445 `shouldReturn` Just [stakeA, stakeB]
 
         it "Dynamically adds pattern and rolls back (when syncing)" $ do
             let options =
@@ -169,31 +172,31 @@ spec = do
                     ,"--in-memory"
                     ]
             -- Start a kupo since last Byron block and matching on stakeA
-            withKupo (options ++ ["--match", stakeA]) $ do
+            withKupo (options ++ ["--match", stakeA, "--port", "1446"]) $ do
                 -- Wait for indexing at least 100_000 slots
-                reached <- eventually (hasReachedPoint lastByron136K)
+                reached <- eventually (hasReachedPoint 1446 lastByron136K)
                 pure (assert reached ())
-                getPatterns `shouldReturn` Just [stakeA]
-                getMatchesInWindow lastByron lastByron136K
+                getPatterns 1446 `shouldReturn` Just [stakeA]
+                getMatchesInWindow 1446 lastByron lastByron136K
                     `shouldReturn` Just
                         -- slot, hash, transaction idx, output idx
                         [Match 86440 "49ef96" 0 1]
             -- Start over, same again except matching on stakeB
-            withKupo (options ++ ["--match", stakeB]) $ do
+            withKupo (options ++ ["--match", stakeB, "--port", "1447"]) $ do
                 -- Wait for indexing at least 100_000 slots
-                reached <- eventually (hasReachedPoint lastByron136K)
+                reached <- eventually (hasReachedPoint 1447 lastByron136K)
                 pure (assert reached ())
-                getPatterns `shouldReturn` Just [stakeB]
-                getMatchesInWindow lastByron lastByron136K
+                getPatterns 1447 `shouldReturn` Just [stakeB]
+                getMatchesInWindow 1447 lastByron lastByron136K
                     `shouldReturn` Just
                         -- output index is different from stakeA's match
                         [Match 86440 "49ef96" 0 2]
                 -- Add stakeA pattern forcing rollback to last Byron block
-                putNewPattern stakeA lastByron `shouldReturn` True
-                reachedAgain <- eventually (hasReachedPoint lastByron136K)
+                putNewPattern 1447 stakeA lastByron `shouldReturn` True
+                reachedAgain <- eventually (hasReachedPoint 1447 lastByron136K)
                 pure (assert reachedAgain ())
-                getPatterns `shouldReturn` Just [stakeA, stakeB]
-                getMatchesInWindow lastByron lastByron136K
+                getPatterns 1447 `shouldReturn` Just [stakeA, stakeB]
+                getMatchesInWindow 1447 lastByron lastByron136K
                     `shouldReturn` Just
                         -- now we have both matches together, proving rollback
                         [ Match 86440 "49ef96" 0 2
@@ -207,22 +210,24 @@ spec = do
             it "Can start in readonly mode on readonly DB" $ \dir -> do
                 -- Start a kupo on fresh database until it's ready
                 withKupo
-                    ["--since"  , fromPoint pointA
+                    ["--port"   , "1448"
+                    ,"--since"  , fromPoint pointA
                     ,"--match"  , "*/*"
                     ,"--workdir", dir
                     ]
                     $ do
-                        reached <- eventually (hasReachedPoint pointB)
+                        reached <- eventually (hasReachedPoint 1448 pointB)
                         pure (assert reached ())
                 -- Change permissions on database's directory
                 makeUnwritable dir
                 -- Start a read-only kupo on dir and check that it's also ready
                 let process = proc "kupo"
-                        ["--read-only"
+                        ["--port"   , "1449"
+                        ,"--read-only"
                         ,"--workdir", dir
                         ]
                 withCreateProcess process $ \ _ _ _ _ -> do
-                    eventually isReady `shouldReturn` True
+                    eventually (isReady 1449) `shouldReturn` True
 
             it "Can restart with same arguments" $ \dir -> do
                 let options =
@@ -231,13 +236,13 @@ spec = do
                         ,"--workdir", dir
                         ]
                 -- Start kupo on fresh dir until reaches pointA
-                withKupo options $ do
-                    reached <- eventually (hasReachedPoint pointA)
+                withKupo (options ++ ["--port","1450"]) $ do
+                    reached <- eventually (hasReachedPoint 1450 pointA)
                     pure (assert reached ())
                 -- Restart kupo on same dir and check that it is immediately
                 -- already at or past same point
-                withKupo options $ do
-                    eventually (hasCheckpointsAllLaterThan pointA)
+                withKupo (options ++ ["--port","1451"]) $ do
+                    eventually (hasCheckpointsAllLaterThan 1450 pointA)
                         `shouldReturn` True
 
             it "Cannot restart with later '--since'" $ \dir -> do
@@ -246,12 +251,20 @@ spec = do
                         ,"--workdir", dir
                         ]
                 -- Start kupo on fresh dir until reaches pointA
-                withKupo (options ++ ["--since", fromPoint pointA]) $ do
-                    reached <- eventually (hasReachedPoint pointA)
+                let optionsA = options ++
+                        [ "--port" , "1451"
+                        , "--since", fromPoint pointA
+                        ]
+                withKupo optionsA $ do
+                    reached <- eventually (hasReachedPoint 1451 pointA)
                     pure (assert reached ())
                 -- Restart kupo on same dir but later "--since" and check
                 -- that its exits with error code
-                withKupoH (options ++ ["--since", fromPoint pointB]) $ \h -> do
+                let optionsB = options ++
+                        [ "--port" , "1452"
+                        , "--since", fromPoint pointB
+                        ]
+                withKupoH optionsB $ \h -> do
                     eventually (exitsWithError h) `shouldReturn` True
 
             it "Cannot restart with different patterns" $ \dir -> do
@@ -260,12 +273,20 @@ spec = do
                         ,"--workdir", dir
                         ]
                 -- Start kupo on fresh dir until reaches pointA
-                withKupo (options ++ ["--match"  , "*/*"]) $ do
-                    reached <- eventually (hasReachedPoint pointA)
+                let optionsA = options ++
+                        [ "--port" , "1453"
+                        , "--match", "*/*"
+                        ]
+                withKupo optionsA $ do
+                    reached <- eventually (hasReachedPoint 1453 pointA)
                     pure (assert reached ())
                 -- Restart kupo on same dir but with different pattern and check
                 -- that its exits with error code
-                withKupoH (options ++ ["--match", "*"]) $ \h -> do
+                let optionsB = options ++
+                        [ "--port" , "1454"
+                        , "--match", "*"
+                        ]
+                withKupoH optionsB $ \h -> do
                     eventually (exitsWithError h) `shouldReturn` True
 
 withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
@@ -313,23 +334,23 @@ eventually p = go (0::Int)
             threadDelay 1_000_000  -- 1s between retries
             go (attempt + 1)
 
-isConnected :: IO Bool
-isConnected = checkResponse "/checkpoints" containsCheckpoints
+isConnected :: Int -> IO Bool
+isConnected port = checkResponse port "/checkpoints" containsCheckpoints
 
-isReady :: IO Bool
-isReady = checkResponse "/health" isHealthy
+isReady :: Int -> IO Bool
+isReady port = checkResponse port "/health" isHealthy
 
-hasIndexes :: Point -> IO Bool
-hasIndexes pt = do
-    indexes <- checkResponse "/health" hasIndexesInstalled
-    chckpts <- checkResponse "/checkpoints" (laterThan pt)
+hasIndexes :: Int -> Point -> IO Bool
+hasIndexes port point = do
+    indexes <- checkResponse port "/health" hasIndexesInstalled
+    chckpts <- checkResponse port "/checkpoints" (laterThan point)
     pure (indexes && chckpts)
 
-hasReachedPoint :: Point -> IO Bool
-hasReachedPoint = checkResponse "/checkpoints" . hasReached
+hasReachedPoint :: Int -> Point -> IO Bool
+hasReachedPoint port = checkResponse port "/checkpoints" . hasReached
 
-hasCheckpointsAllLaterThan :: Point -> IO Bool
-hasCheckpointsAllLaterThan = checkResponse "/checkpoints" . nonEmptyAndLaterThan
+hasCheckpointsAllLaterThan :: Int -> Point -> IO Bool
+hasCheckpointsAllLaterThan port = checkResponse port "/checkpoints" . nonEmptyAndLaterThan
 
 exitsWithError :: ProcessHandle -> IO Bool
 exitsWithError h = do
@@ -339,10 +360,10 @@ exitsWithError h = do
         Just ExitSuccess     -> False
         Just (ExitFailure _) -> True
 
-checkResponse :: String -> ResponseCheck -> IO Bool
-checkResponse path check = do
+checkResponse :: Int -> String -> ResponseCheck -> IO Bool
+checkResponse port path check = do
     manager  <- newManager defaultManagerSettings
-    request' <- request path
+    request' <- request port path
     let request'' = request'
             {requestHeaders = [(hAccept, "application/json; charset=utf-8")]
             }
@@ -352,10 +373,10 @@ checkResponse path check = do
         body   = responseBody   response
     pure (check status body)
 
-getPatterns :: IO (Maybe [Pattern])
-getPatterns = do
+getPatterns :: Int -> IO (Maybe [Pattern])
+getPatterns port = do
     manager <- newManager defaultManagerSettings
-    request' <- request ("/patterns")
+    request' <- request port "/patterns"
     let request'' = request'
             {requestHeaders = [(hAccept, "application/json; charset=utf-8")]
             }
@@ -368,10 +389,10 @@ getPatterns = do
             pure Nothing
 
 
-putNewPattern :: Pattern -> Point -> IO Bool
-putNewPattern pattern point = do
+putNewPattern :: Int -> Pattern -> Point -> IO Bool
+putNewPattern port pattern point = do
     manager  <- newManager defaultManagerSettings
-    request' <- request ("/patterns/" <> pattern)
+    request' <- request port ("/patterns/" <> pattern)
     let request'' = request'
             { method          = "PUT"
             , requestBody     = RequestBodyLBS (A.encode (PutPatternBody point))
@@ -382,10 +403,10 @@ putNewPattern pattern point = do
         (Status 200 _) -> pure True
         _              -> pure False
 
-getMatchesInWindow :: Point -> Point -> IO (Maybe [Match])
-getMatchesInWindow from to = do
+getMatchesInWindow :: Int -> Point -> Point -> IO (Maybe [Match])
+getMatchesInWindow port from to = do
     manager <- newManager defaultManagerSettings
-    request' <- request ("/matches")
+    request' <- request port "/matches"
     let request'' = request'
             {requestHeaders   = [(hAccept, "application/json; charset=utf-8")]
             , responseTimeout = responseTimeoutNone
@@ -457,11 +478,11 @@ indexesFlag = A.decode
 tryHttp :: IO a -> IO (Either HttpException a)
 tryHttp m = try m
 
-url :: String
-url = "http://127.0.0.1:1442"
+url :: Int -> String
+url port = "http://127.0.0.1:" <> show port
 
-request :: String -> IO Request
-request = parseRequest . (url <>)
+request :: Int -> String -> IO Request
+request port = parseRequest . (url port <>)
 
 recentPoint :: IO Point
 recentPoint = fmap read (readFile "test-accept/point-recent.dat")
