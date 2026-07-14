@@ -242,7 +242,7 @@ spec = do
                 -- Restart kupo on same dir and check that it is immediately
                 -- already at or past same point
                 withKupo (options ++ ["--port","1451"]) $ do
-                    eventually (hasCheckpointsAllLaterThan 1450 pointA)
+                    eventually (hasCheckpointsAllLaterThan 1451 pointA)
                         `shouldReturn` True
 
             it "Cannot restart with later '--since'" $ \dir -> do
@@ -252,16 +252,16 @@ spec = do
                         ]
                 -- Start kupo on fresh dir until reaches pointA
                 let optionsA = options ++
-                        [ "--port" , "1451"
+                        [ "--port" , "1452"
                         , "--since", fromPoint pointA
                         ]
                 withKupo optionsA $ do
-                    reached <- eventually (hasReachedPoint 1451 pointA)
+                    reached <- eventually (hasReachedPoint 1452 pointA)
                     pure (assert reached ())
                 -- Restart kupo on same dir but later "--since" and check
                 -- that its exits with error code
                 let optionsB = options ++
-                        [ "--port" , "1452"
+                        [ "--port" , "1453"
                         , "--since", fromPoint pointB
                         ]
                 withKupoH optionsB $ \h -> do
@@ -274,16 +274,16 @@ spec = do
                         ]
                 -- Start kupo on fresh dir until reaches pointA
                 let optionsA = options ++
-                        [ "--port" , "1453"
+                        [ "--port" , "1454"
                         , "--match", "*/*"
                         ]
                 withKupo optionsA $ do
-                    reached <- eventually (hasReachedPoint 1453 pointA)
+                    reached <- eventually (hasReachedPoint 1454 pointA)
                     pure (assert reached ())
                 -- Restart kupo on same dir but with different pattern and check
                 -- that its exits with error code
                 let optionsB = options ++
-                        [ "--port" , "1454"
+                        [ "--port" , "1455"
                         , "--match", "*"
                         ]
                 withKupoH optionsB $ \h -> do
