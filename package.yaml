@@ -164,14 +164,17 @@ tests:
     ghc-options: *ghc-options-test
     dependencies:
     - aeson
+    - async
     - base
     - bytestring
     - directory
     - hspec
+    - hspec-expectations
     - http-client
     - http-types
     - process
     - temporary
+    - text
     - typed-process
     build-tools:
     - hspec-discover

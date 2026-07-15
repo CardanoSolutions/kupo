@@ -28,14 +28,24 @@ import Prelude
 import Control.Concurrent
     ( threadDelay
     )
+import Control.Concurrent.Async
+    ( withAsync
+    )
 import Control.Exception
-    ( assert
+    ( SomeException
+    , assert
     , bracket
     , try
+    )
+import Control.Exception.Base
+    ( throwIO
     )
 import Data.Aeson
     ( (.:)
     , (.=)
+    )
+import Data.Maybe
+    ( fromJust
     )
 import Network.HTTP.Client
     ( HttpException
@@ -77,10 +87,13 @@ import System.IO.Temp
     ( createTempDirectory
     )
 import System.Process
-    ( CreateProcess
+    ( CreateProcess (..)
     , ProcessHandle
+    , StdStream (CreatePipe)
     , getProcessExitCode
     , proc
+    , terminateProcess
+    , waitForProcess
     , withCreateProcess
     )
 import Test.Hspec
@@ -91,9 +104,13 @@ import Test.Hspec
     , shouldReturn
     )
 
+import qualified Control.Concurrent.Async as Async
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as B
+import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified System.Process.Typed as TP
+import qualified Test.Hspec.Expectations.Contrib as HSpec
 
 type ResponseCheck = Status -> B.ByteString -> Bool
 
@@ -221,13 +238,11 @@ spec = do
                 -- Change permissions on database's directory
                 makeUnwritable dir
                 -- Start a read-only kupo on dir and check that it's also ready
-                let process = proc "kupo"
-                        ["--port"   , "1449"
-                        ,"--read-only"
-                        ,"--workdir", dir
-                        ]
-                withCreateProcess process $ \ _ _ _ _ -> do
-                    eventually (isReady 1449) `shouldReturn` True
+                withKupoNoDefault
+                    ["--port"   , "1449"
+                    ,"--read-only"
+                    ,"--workdir", dir
+                    ] $ eventually (isReady 1449) `shouldReturn` True
 
             it "Can restart with same arguments" $ \dir -> do
                 let options =
@@ -292,24 +307,52 @@ spec = do
 withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
 withKupoH options action = do
     process <- kupo options
-    withCreateProcess process $ \_ _ _ h -> action h
+    withCreateProcess process $ \_stdin stdout _stderr h -> do
+        withAsync (T.hGetContents (fromJust stdout)) $ \logsAsync -> do
+            outcome <- try @SomeException (action h)
+            stopProcess h
+            logs <- Async.wait logsAsync
+            T.length logs `seq` case outcome of
+                Right a ->
+                    pure a
+                Left err ->
+                    HSpec.annotate
+                        ("Kupo logs:\n" <> T.unpack logs)
+                        (throwIO err)
+  where
+    stopProcess :: ProcessHandle -> IO ()
+    stopProcess h = do
+        exitCode <- getProcessExitCode h
+        case exitCode of
+            Just _ ->
+                pure ()
+            Nothing -> do
+                terminateProcess h
+                _ <- waitForProcess h
+                pure ()
 
 withKupo :: [String] -> IO a -> IO a
-withKupo options action = withKupoH options (\_ -> action)
+withKupo options action = do
+    socket <- getEnv "CARDANO_NODE_SOCKET"
+    config <- getEnv "CARDANO_NODE_CONFIG"
+    withKupoH
+        (["--node-socket", socket
+         ,"--node-config", config
+         ]
+         ++ options
+        )
+        (\_ -> action)
+
+withKupoNoDefault :: [String] -> IO a -> IO a
+withKupoNoDefault options action =
+    withKupoH options (\_ -> action)
 
 withDir :: (FilePath -> IO ()) -> IO ()
 withDir = bracket (createTempDirectory "." "test-tmp") removePathForcibly
 
 kupo :: [String] -> IO CreateProcess
 kupo options = do
-    socket <- getEnv "CARDANO_NODE_SOCKET"
-    config <- getEnv "CARDANO_NODE_CONFIG"
-    pure $ proc "kupo"
-        (["--node-socket", socket
-         ,"--node-config", config
-         ]
-         ++ options
-        )
+    pure $ (proc "kupo" options) { std_out = CreatePipe }
 
 makeUnwritable :: FilePath -> IO ()
 makeUnwritable = setWritable False
