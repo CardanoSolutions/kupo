@@ -106,14 +106,14 @@ import Test.Hspec
     )
 
 import qualified Control.Concurrent.Async as Async
-import qualified Data.Aeson as A
-import qualified Data.ByteString.Lazy as B
+import qualified Data.Aeson as Aeson
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import qualified System.Process.Typed as TP
 import qualified Test.Hspec.Expectations.Contrib as HSpec
 
-type ResponseCheck = Status -> B.ByteString -> Bool
+type ResponseCheck = Status -> BL.ByteString -> Bool
 
 newtype Slot = Slot Integer deriving (Eq, Ord, Read, Show)
 
@@ -409,7 +409,7 @@ getPatterns port = do
     case responseStatus response of
         (Status 200 _) -> do
             let body = responseBody response
-            pure (A.decode body :: Maybe [Pattern])
+            pure (Aeson.decode body :: Maybe [Pattern])
         _              ->
             pure Nothing
 
@@ -420,7 +420,7 @@ putNewPattern port pattern point = do
     request' <- request port ("/patterns/" <> pattern)
     let request'' = request'
             { method          = "PUT"
-            , requestBody     = RequestBodyLBS (A.encode (PutPatternBody point))
+            , requestBody     = RequestBodyLBS (Aeson.encode (PutPatternBody point))
             , responseTimeout = responseTimeoutNone
             }
     response <- httpLbs request'' manager
@@ -440,7 +440,7 @@ getMatchesInWindow port from to = do
     case responseStatus response of
         (Status 200 _) -> do
             let body = responseBody response
-            let maybeMatches = A.decode body :: Maybe [Match]
+            let maybeMatches = Aeson.decode body :: Maybe [Match]
             pure (filter (matchInWindow from to) <$> maybeMatches)
         _              ->
             pure Nothing
@@ -458,11 +458,11 @@ currentNetworkTip = do
             , "--socket-path", socket
             ]
     (_, out) <- TP.readProcessStdout (TP.proc "cardano-cli" args)
-    pure (A.decode out)
+    pure (Aeson.decode out)
 
 containsCheckpoints :: ResponseCheck
 containsCheckpoints status body =
-    status == status200 && hasSlots (A.decode body :: Maybe [Slot])
+    status == status200 && hasSlots (Aeson.decode body :: Maybe [Slot])
     where
         hasSlots Nothing   = False
         hasSlots (Just []) = False
@@ -470,7 +470,7 @@ containsCheckpoints status body =
 
 hasReached :: Point -> ResponseCheck
 hasReached (Point slot _) status body =
-    status == status200 && hasReached' slot (A.decode body :: Maybe [Slot])
+    status == status200 && hasReached' slot (Aeson.decode body :: Maybe [Slot])
     where
         hasReached' _ Nothing      = False
         hasReached' _ (Just [])    = False
@@ -486,24 +486,24 @@ hasIndexesInstalled status body =
 
 laterThan :: Point -> ResponseCheck
 laterThan (Point slot _) status body =
-    status == status200 && laterThanSlot (A.decode body :: Maybe [Slot])
+    status == status200 && laterThanSlot (Aeson.decode body :: Maybe [Slot])
     where
         laterThanSlot Nothing      = False
         laterThanSlot (Just slots) = all (>= slot) slots
 
 nonEmptyAndLaterThan :: Point -> ResponseCheck
 nonEmptyAndLaterThan (Point slot _) status body =
-    status == status200 && laterThanSlot (A.decode body :: Maybe [Slot])
+    status == status200 && laterThanSlot (Aeson.decode body :: Maybe [Slot])
     where
         laterThanSlot Nothing      = False
         laterThanSlot (Just []   ) = False
         laterThanSlot (Just slots) = all (>= slot) slots
 
-indexesFlag :: B.ByteString -> Maybe Indexes
-indexesFlag = A.decode
+indexesFlag :: BL.ByteString -> Maybe Indexes
+indexesFlag = Aeson.decode
 
 tryHttp :: IO a -> IO (Either HttpException a)
-tryHttp m = try m
+tryHttp = try
 
 url :: Int -> String
 url port = "http://127.0.0.1:" <> show port
@@ -517,38 +517,38 @@ recentPoint = fmap read (readFile "test-accept/point-recent.dat")
 fromPoint :: Point -> String
 fromPoint (Point (Slot slot) hash) = show slot ++ "." ++ hash
 
-instance A.FromJSON Slot where
-    parseJSON = A.withObject "Slot" $ \o -> Slot <$> o .: "slot_no"
+instance Aeson.FromJSON Slot where
+    parseJSON = Aeson.withObject "Slot" $ \o -> Slot <$> o .: "slot_no"
 
-instance A.FromJSON Indexes where
-    parseJSON = A.withObject "Health" $ \o -> do
+instance Aeson.FromJSON Indexes where
+    parseJSON = Aeson.withObject "Health" $ \o -> do
         c <- o .: "configuration"
         i <- c .: "indexes"
         pure (Indexes i)
 
-instance A.FromJSON Point where
-    parseJSON = A.withObject "Point" $ \o -> do
+instance Aeson.FromJSON Point where
+    parseJSON = Aeson.withObject "Point" $ \o -> do
         s <- o .: "slot_no"
         h <- o .: "header_hash"
         pure (Point s h)
 
-instance A.FromJSON CliPoint where
-    parseJSON = A.withObject "CliPoint" $ \o -> do
+instance Aeson.FromJSON CliPoint where
+    parseJSON = Aeson.withObject "CliPoint" $ \o -> do
         s <- o .: "slot"
         h <- o .: "hash"
         pure (CliPoint (Point (Slot s) h))
 
-instance A.ToJSON PutPatternBody where
-    toJSON (PutPatternBody (Point (Slot slot) hash)) = A.object
-        [ "rollback_to" .= A.object
+instance Aeson.ToJSON PutPatternBody where
+    toJSON (PutPatternBody (Point (Slot slot) hash)) = Aeson.object
+        [ "rollback_to" .= Aeson.object
             [ "slot_no"     .= slot
             , "header_hash" .= hash
             ]
         , "limit" .= ("unsafe_allow_beyond_safe_zone" :: String)
         ]
 
-instance A.FromJSON Match where
-    parseJSON = A.withObject "Match" $ \o -> do
+instance Aeson.FromJSON Match where
+    parseJSON = Aeson.withObject "Match" $ \o -> do
         tidx <- o .: "transaction_index"
         oidx <- o .: "output_index"
         c    <- o .: "created_at"
