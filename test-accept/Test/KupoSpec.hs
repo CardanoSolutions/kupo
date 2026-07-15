@@ -288,8 +288,8 @@ spec = do
                         ]
                 withKupoH optionsB $ \h -> eventually (exitsWithError h)
 
-withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
-withKupoH options action = do
+withKupoProcess :: [String] -> (ProcessHandle -> IO a) -> IO a
+withKupoProcess options action = do
     process <- kupo options
     withCreateProcess process $ \_stdin stdout _stderr h -> do
         withAsync (T.hGetContents (fromJust stdout)) $ \logsAsync -> do
@@ -315,21 +315,19 @@ withKupoH options action = do
                 _ <- waitForProcess h
                 pure ()
 
-withKupo :: [String] -> IO a -> IO a
-withKupo options action = do
+withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
+withKupoH options action = do
     socket <- getEnv "CARDANO_NODE_SOCKET"
     config <- getEnv "CARDANO_NODE_CONFIG"
-    withKupoH
-        (["--node-socket", socket
-         ,"--node-config", config
-         ]
-         ++ options
-        )
-        (\_ -> action)
+    withKupoProcess (["--node-socket", socket ,"--node-config", config] ++ options) action
+
+withKupo :: [String] -> IO a -> IO a
+withKupo options action = do
+    withKupoH options (const action)
 
 withKupoNoDefault :: [String] -> IO a -> IO a
 withKupoNoDefault options action =
-    withKupoH options (\_ -> action)
+    withKupoProcess options (const action)
 
 withDir :: (FilePath -> IO ()) -> IO ()
 withDir = bracket (createTempDirectory "." "test-tmp") removePathForcibly
