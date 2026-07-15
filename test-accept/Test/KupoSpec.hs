@@ -147,7 +147,7 @@ spec = do
                 ,"--match"      , "*/*"
                 ,"--in-memory"
                 ]
-                $ eventually (isConnected 1443) `shouldReturn` True
+                $ eventually (isConnected 1443)
 
         it "Auto-magically restarts when --defer-db-indexes is enabled)" $ do
             -- Read from file a valid point recent but before tip
@@ -160,7 +160,7 @@ spec = do
                 ,"--in-memory"
                 ,"--defer-db-indexes"
                 ]
-                $ eventually (hasIndexes 1444 point) `shouldReturn` True
+                $ eventually (hasIndexes 1444 point)
 
         it "Dynamically adds pattern and rolls back (when at tip)" $ do
             maybeTip <- currentNetworkTip
@@ -176,8 +176,7 @@ spec = do
                         ]
                         $ do
                             -- Wait for indexing to have finished
-                            reached <- eventually (hasReachedPoint 1445 tip)
-                            pure (assert reached ())
+                            eventually (hasReachedPoint 1445 tip)
                             getPatterns 1445 `shouldReturn` Just [stakeA]
                             -- Add stakeB pattern forcing rollback to same point
                             putNewPattern 1445 stakeB tip `shouldReturn` True
@@ -191,8 +190,7 @@ spec = do
             -- Start a kupo since last Byron block and matching on stakeA
             withKupo (options ++ ["--match", stakeA, "--port", "1446"]) $ do
                 -- Wait for indexing at least 100_000 slots
-                reached <- eventually (hasReachedPoint 1446 lastByron136K)
-                pure (assert reached ())
+                eventually (hasReachedPoint 1446 lastByron136K)
                 getPatterns 1446 `shouldReturn` Just [stakeA]
                 getMatchesInWindow 1446 lastByron lastByron136K
                     `shouldReturn` Just
@@ -201,8 +199,7 @@ spec = do
             -- Start over, same again except matching on stakeB
             withKupo (options ++ ["--match", stakeB, "--port", "1447"]) $ do
                 -- Wait for indexing at least 100_000 slots
-                reached <- eventually (hasReachedPoint 1447 lastByron136K)
-                pure (assert reached ())
+                eventually (hasReachedPoint 1447 lastByron136K)
                 getPatterns 1447 `shouldReturn` Just [stakeB]
                 getMatchesInWindow 1447 lastByron lastByron136K
                     `shouldReturn` Just
@@ -210,8 +207,7 @@ spec = do
                         [Match 86440 "49ef96" 0 2]
                 -- Add stakeA pattern forcing rollback to last Byron block
                 putNewPattern 1447 stakeA lastByron `shouldReturn` True
-                reachedAgain <- eventually (hasReachedPoint 1447 lastByron136K)
-                pure (assert reachedAgain ())
+                eventually (hasReachedPoint 1447 lastByron136K)
                 getPatterns 1447 `shouldReturn` Just [stakeA, stakeB]
                 getMatchesInWindow 1447 lastByron lastByron136K
                     `shouldReturn` Just
@@ -231,10 +227,7 @@ spec = do
                     ,"--since"  , fromPoint pointA
                     ,"--match"  , "*/*"
                     ,"--workdir", dir
-                    ]
-                    $ do
-                        reached <- eventually (hasReachedPoint 1448 pointB)
-                        pure (assert reached ())
+                    ] $ eventually (hasReachedPoint 1448 pointB)
                 -- Change permissions on database's directory
                 makeUnwritable dir
                 -- Start a read-only kupo on dir and check that it's also ready
@@ -242,7 +235,7 @@ spec = do
                     ["--port"   , "1449"
                     ,"--read-only"
                     ,"--workdir", dir
-                    ] $ eventually (isReady 1449) `shouldReturn` True
+                    ] $ eventually (isReady 1449)
 
             it "Can restart with same arguments" $ \dir -> do
                 let options =
@@ -251,14 +244,10 @@ spec = do
                         ,"--workdir", dir
                         ]
                 -- Start kupo on fresh dir until reaches pointA
-                withKupo (options ++ ["--port","1450"]) $ do
-                    reached <- eventually (hasReachedPoint 1450 pointA)
-                    pure (assert reached ())
+                withKupo (options ++ ["--port","1450"]) $ eventually (hasReachedPoint 1450 pointA)
                 -- Restart kupo on same dir and check that it is immediately
                 -- already at or past same point
-                withKupo (options ++ ["--port","1451"]) $ do
-                    eventually (hasCheckpointsAllLaterThan 1451 pointA)
-                        `shouldReturn` True
+                withKupo (options ++ ["--port","1451"]) $ eventually (hasCheckpointsAllLaterThan 1451 pointA)
 
             it "Cannot restart with later '--since'" $ \dir -> do
                 let options =
@@ -270,17 +259,14 @@ spec = do
                         [ "--port" , "1452"
                         , "--since", fromPoint pointA
                         ]
-                withKupo optionsA $ do
-                    reached <- eventually (hasReachedPoint 1452 pointA)
-                    pure (assert reached ())
+                withKupo optionsA $ eventually (hasReachedPoint 1452 pointA)
                 -- Restart kupo on same dir but later "--since" and check
                 -- that its exits with error code
                 let optionsB = options ++
                         [ "--port" , "1453"
                         , "--since", fromPoint pointB
                         ]
-                withKupoH optionsB $ \h -> do
-                    eventually (exitsWithError h) `shouldReturn` True
+                withKupoH optionsB $ \h -> eventually (exitsWithError h)
 
             it "Cannot restart with different patterns" $ \dir -> do
                 let options =
@@ -292,17 +278,14 @@ spec = do
                         [ "--port" , "1454"
                         , "--match", "*/*"
                         ]
-                withKupo optionsA $ do
-                    reached <- eventually (hasReachedPoint 1454 pointA)
-                    pure (assert reached ())
+                withKupo optionsA $ eventually (hasReachedPoint 1454 pointA)
                 -- Restart kupo on same dir but with different pattern and check
                 -- that its exits with error code
                 let optionsB = options ++
                         [ "--port" , "1455"
                         , "--match", "*"
                         ]
-                withKupoH optionsB $ \h -> do
-                    eventually (exitsWithError h) `shouldReturn` True
+                withKupoH optionsB $ \h -> eventually (exitsWithError h)
 
 withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
 withKupoH options action = do
@@ -362,8 +345,8 @@ setWritable x path = do
     p <- getPermissions path
     setPermissions path (p {writable = x})
 
-eventually :: IO Bool -> IO Bool
-eventually p = go (0::Int)
+eventually :: IO Bool -> IO ()
+eventually p = go (0::Int) >>= flip assert (pure ())
     where
         go attempt
             | attempt > 20 = pure False
