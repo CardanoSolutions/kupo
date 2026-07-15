@@ -46,6 +46,7 @@ import Data.Aeson
     )
 import Data.Maybe
     ( fromJust
+    , fromMaybe
     )
 import Network.HTTP.Client
     ( HttpException
@@ -207,8 +208,8 @@ spec = do
                         [Match 86440 "49ef96" 0 2]
                 -- Add stakeA pattern forcing rollback to last Byron block
                 putNewPattern 1447 stakeA lastByron `shouldReturn` True
+                eventually $ ((== [stakeA, stakeB]) . fromMaybe []) <$> getPatterns 1447
                 eventually (hasReachedPoint 1447 lastByron136K)
-                getPatterns 1447 `shouldReturn` Just [stakeA, stakeB]
                 getMatchesInWindow 1447 lastByron lastByron136K
                     `shouldReturn` Just
                         -- now we have both matches together, proving rollback
