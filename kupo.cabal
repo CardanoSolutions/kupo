@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.39.6.
+-- This file has been generated from package.yaml by hpack version 0.39.5.
 --
 -- see: https://github.com/sol/hpack
 
@@ -350,6 +350,8 @@ test-suite accept
       TypeSynonymInstances
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -threaded -rtsopts -with-rtsopts=-N
+  build-tools:
+      kupo
   build-tool-depends:
       hspec-discover:hspec-discover
   build-depends:

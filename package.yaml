@@ -175,6 +175,7 @@ tests:
     - typed-process
     build-tools:
     - hspec-discover
+    - kupo
 
 executables:
   kupo:
