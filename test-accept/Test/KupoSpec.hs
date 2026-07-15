@@ -54,12 +54,12 @@ import Network.HTTP.Client
     , responseTimeoutNone
     )
 import Network.HTTP.Types.Header
-    (hAccept
+    ( hAccept
     )
 import Network.HTTP.Types.Status
     ( Status (..)
-    , status202
     , status200
+    , status202
     )
 import System.Directory
     ( Permissions (..)
@@ -70,11 +70,11 @@ import System.Directory
 import System.Environment
     ( getEnv
     )
-import System.IO.Temp
-    ( createTempDirectory
-    )
 import System.Exit
     ( ExitCode (..)
+    )
+import System.IO.Temp
+    ( createTempDirectory
     )
 import System.Process
     ( CreateProcess
@@ -91,7 +91,7 @@ import Test.Hspec
     , shouldReturn
     )
 
-import qualified Data.Aeson           as A
+import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as B
 import qualified System.Process.Typed as TP
 
