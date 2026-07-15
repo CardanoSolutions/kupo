@@ -469,9 +469,11 @@ matchInWindow (Point (Slot s1) _) (Point (Slot s2) _) (Match s _ _ _) =
 
 currentNetworkTip :: IO (Maybe CliPoint)
 currentNetworkTip = do
+    socket <- getEnv "CARDANO_NODE_SOCKET"
     let args =
             [ "query", "tip"
             , "--testnet-magic", "1"
+            , "--socket-path", socket
             ]
     (_, out) <- TP.readProcessStdout (TP.proc "cardano-cli" args)
     pure (A.decode out)
