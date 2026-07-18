@@ -6,6 +6,12 @@
 
 - New slot-range index usage for wildcard (*) match queries (see [#194](https://github.com/CardanoSolutions/kupo/issues/194)).
 
+- Custom indexes can now be added via environment variable, prefixed with `KUPO_INDEX_`. They behave as standard indexes with regards to `--defer-db-indexes` and are only installed if not already present. Indexes are named after the environment variable (after the dropping the prefix). So for example, to add an index for unspent inputs by payment credential, you can now provide:
+
+  ```console
+  KUPO_INDEX_inputsByPaymentCredentialUnspent="inputs(payment_credential COLLATE NOCASE) WHERE spent_at IS NULL" kupo ...
+  ```
+
 #### Changed
 
 - Bumped internal dependencies to cardano-node==11.0.1.

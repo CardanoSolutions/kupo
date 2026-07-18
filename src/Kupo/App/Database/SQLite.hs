@@ -181,6 +181,9 @@ import Kupo.Control.MonadLog
     ( TraceProgress (..)
     , nullTracer
     )
+import System.Environment
+    ( getEnvironment
+    )
 import Text.URI
     ( URI
     )
@@ -1161,33 +1164,45 @@ installIndexes
     -> Connection
     -> DeferIndexesInstallation
     -> IO ()
-installIndexes tr conn = \case
-    SkipNonEssentialIndexes -> do
-        dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByAddress" False
-        dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByDatumHash" False
-        dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByPaymentCredential" False
-        dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsByCreatedAt" False
-        dropIndexIfExists (contramap DatabaseConnection tr) conn "inputsBySpentAt" False
-        dropIndexIfExists (contramap DatabaseConnection tr) conn "policiesByPolicyId" False
-    InstallIndexesIfNotExist -> do
-        installIndex tr conn
-            "inputsByAddress"
-            "inputs(address COLLATE NOCASE)"
-        installIndex tr conn
-            "inputsByDatumHash"
-            "inputs(datum_hash)"
-        installIndex tr conn
-            "inputsByPaymentCredential"
-            "inputs(payment_credential COLLATE NOCASE)"
-        installIndex tr conn
-            "inputsByCreatedAt"
-            "inputs(created_at)"
-        installIndex tr conn
-            "inputsBySpentAt"
-            "inputs(spent_at)"
-        installIndex tr conn
-            "policiesByPolicyId"
-            "policies(policy_id)"
+installIndexes tr conn indexBehavior = do
+    customIndexes <- parseCustomIndexes <$> getEnvironment
+
+    case indexBehavior of
+        SkipNonEssentialIndexes -> do
+            dropIndex "inputsByAddress"
+            dropIndex "inputsByDatumHash"
+            dropIndex "inputsByPaymentCredential"
+            dropIndex "inputsByCreatedAt"
+            dropIndex "inputsBySpentAt"
+            dropIndex "policiesByPolicyId"
+            forM_ customIndexes (\(name, _definition) -> dropIndex name)
+          where
+            dropIndex name = dropIndexIfExists (contramap DatabaseConnection tr) conn name False
+        InstallIndexesIfNotExist -> do
+            installIndex tr conn
+                "inputsByAddress"
+                "inputs(address COLLATE NOCASE)"
+            installIndex tr conn
+                "inputsByDatumHash"
+                "inputs(datum_hash)"
+            installIndex tr conn
+                "inputsByPaymentCredential"
+                "inputs(payment_credential COLLATE NOCASE)"
+            installIndex tr conn
+                "inputsByCreatedAt"
+                "inputs(created_at)"
+            installIndex tr conn
+                "inputsBySpentAt"
+                "inputs(spent_at)"
+            installIndex tr conn
+                "policiesByPolicyId"
+                "policies(policy_id)"
+            forM_ customIndexes (uncurry (installIndex tr conn))
+  where
+    parseCustomIndexes = mapMaybe $ \(key, value) ->
+        case T.stripPrefix "KUPO_INDEX_" (toText key) of
+          Nothing -> Nothing
+          Just name -> Just (name, toText value)
 
 -- Create the given index with some extra logging around it.
 installIndex :: Tracer IO TraceDatabase -> Connection -> Text -> Text -> IO ()

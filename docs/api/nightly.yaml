@@ -273,6 +273,25 @@ info:
     $ man kupo
     ```
 
+    # Custom database indexes
+
+    Kupo supports custom database indexes, provided by environment variable.
+    Hence, any environment variable prefixed with `KUPO_INDEX_` will be parsed
+    and interpreted as a custom database index, managed with the pre-defined
+    indexes.
+
+    For example, you can add a custom index `inputsByPaymentCredentialUnspent`
+    for matching unspent inputs by payment cred by setting the following
+    environment variable:
+
+    ```env
+    KUPO_INDEX_inputsByPaymentCredentialUnspent="inputs(payment_credential COLLATE NOCASE) WHERE spent_at IS NULL"
+    ```
+
+    Use this carefully, as too many indexes may greatly impact the database sync performances and also other queries.
+
+    Existing indexes and the overall database internal schema is [available here](https://github.com/CardanoSolutions/kupo/tree/master/db#overview).
+
     # Patterns
 
     ## Overview
