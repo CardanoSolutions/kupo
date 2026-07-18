@@ -357,10 +357,6 @@ test-suite accept
       TypeSynonymInstances
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -threaded -rtsopts -with-rtsopts=-N
-  build-tools:
-      kupo
-  build-tool-depends:
-      hspec-discover:hspec-discover
   build-depends:
       aeson
     , async
@@ -447,8 +443,6 @@ test-suite unit
       TypeSynonymInstances
       ViewPatterns
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -threaded -rtsopts -with-rtsopts=-N
-  build-tool-depends:
-      hspec-discover:hspec-discover
   build-depends:
       QuickCheck
     , aeson

@@ -158,7 +158,7 @@ tests:
     - wai-extra
     - websockets
     - yaml
-    build-tools:
+    build-tools-depends:
     - hspec-discover
   accept:
     main: Spec.hs
@@ -178,7 +178,7 @@ tests:
     - temporary
     - text
     - typed-process
-    build-tools:
+    build-tools-depends:
     - hspec-discover
     - kupo
 
