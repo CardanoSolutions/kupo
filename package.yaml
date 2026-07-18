@@ -144,7 +144,6 @@ tests:
     - kupo
     - lens-aeson
     - openapi3
-    - process
     - QuickCheck
     - quickcheck-state-machine
     - relude
@@ -161,6 +160,27 @@ tests:
     - yaml
     build-tools:
     - hspec-discover
+  accept:
+    main: Spec.hs
+    source-dirs: test-accept
+    ghc-options: *ghc-options-test
+    dependencies:
+    - aeson
+    - async
+    - base
+    - bytestring
+    - directory
+    - hspec
+    - hspec-expectations
+    - http-client
+    - http-types
+    - process
+    - temporary
+    - text
+    - typed-process
+    build-tools:
+    - hspec-discover
+    - kupo
 
 executables:
   kupo:

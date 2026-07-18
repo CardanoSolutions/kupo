@@ -18,17 +18,8 @@ import Control.Monad.Trans.Writer
     ( execWriterT
     , tell
     )
-import Data.Aeson.Lens
-    ( _Integer
-    , _String
-    , key
-    )
 import Data.List
     ( maximum
-    , (\\)
-    )
-import GHC.IORef
-    ( atomicSwapIORef
     )
 import Kupo
     ( Env
@@ -69,13 +60,11 @@ import Kupo.Control.MonadTime
     )
 import Kupo.Data.Cardano
     ( Datum (..)
-    , Point
     , ScriptReference (..)
     , getPointSlotNo
     , hasPolicyId
     , mkOutputReference
     , pattern GenesisPoint
-    , pointFromText
     , unsafeValueFromList
     )
 import Kupo.Data.ChainSync
@@ -109,23 +98,9 @@ import Network.HTTP.Client
     , newManager
     , responseTimeoutNone
     )
-import System.Directory
-    ( Permissions (..)
-    , getPermissions
-    , listDirectory
-    , setPermissions
-    )
-import System.FilePath
-    ( (</>)
-    )
 import System.IO.Temp
     ( withSystemTempDirectory
     , withTempFile
-    )
-import System.Process
-    ( CreateProcess (..)
-    , proc
-    , readCreateProcess
     )
 import Test.Hspec
     ( Arg
@@ -135,7 +110,6 @@ import Test.Hspec
     , context
     , runIO
     , shouldBe
-    , shouldNotBe
     , shouldReturn
     , shouldSatisfy
     , specify
@@ -156,7 +130,6 @@ import Test.Kupo.Fixture
     , someDatumInWitnessHash
     , someMetadata
     , someNonExistingPoint
-    , someOtherPoint
     , someOtherStakeKey
     , somePhase2FailedTransactionIdWithReturn
     , somePoint
@@ -172,7 +145,6 @@ import Test.Kupo.Fixture
     , someScriptInWitness
     , someScriptInWitnessHash
     , someSlotWithMetadata
-    , someStakeKey
     , someThirdTransactionId
     , someTransactionId
     , someTransactionIdWithMetadata
@@ -198,11 +170,7 @@ import System.IO
     ( hClose
     , hGetLine
     )
-import System.Environment
-    ( getEnvironment
-    )
 
-import qualified Data.Aeson as Json
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.Builder as Builder
 import qualified Prelude
@@ -236,16 +204,6 @@ endToEnd = specify
 
 spec :: Spec
 spec = skippableContext "End-to-end" $ do
-    endToEnd "can connect" $ \(configure, runSpec, HttpClient{..}) -> do
-        (_cfg, env) <- configure $ \defaultCfg -> defaultCfg
-            { databaseLocation = InMemory Nothing
-            , since = Just (SincePoint GenesisPoint)
-            , patterns = fromList [MatchAny OnlyShelley]
-            }
-        runSpec env 5 $ do
-            waitSlot (> 0)
-            matches <- getAllMatches NoStatusFlag AsReference
-            matches `shouldSatisfy` not . null
 
     endToEnd "in-memory" $ \(configure, runSpec, HttpClient{..}) -> do
         (cfg, env) <- configure $ \defaultCfg -> defaultCfg
@@ -269,37 +227,6 @@ spec = skippableContext "End-to-end" $ do
                 cp <- maximum . (<> [0]) . fmap getPointSlotNo <$> listCheckpoints
                 waitSlot (> (cp + 1_000))
                 healthCheck (serverHost cfg) (serverPort cfg)
-
-    endToEnd "start → restart(s)" $ \(configure, runSpec, HttpClient{..}) -> do
-        do -- Can start the server on a fresh new db
-            (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just (SincePoint somePoint)
-                , patterns = fromList [MatchAny OnlyShelley]
-                }
-            runSpec env 5 $ waitSlot (> (getPointSlotNo somePoint))
-
-        do -- Can restart the server
-            (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just (SincePoint somePoint)
-                , patterns = fromList [MatchAny OnlyShelley]
-                }
-            runSpec env 5 $ do
-                cps <- fmap getPointSlotNo <$> listCheckpoints
-                maximum cps `shouldSatisfy` (> (getPointSlotNo somePoint))
-
-        do -- Can't restart with different, too recent, --since target on same db
-            (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just (SincePoint someOtherPoint)
-                , patterns = fromList [MatchAny OnlyShelley]
-                }
-            shouldThrowTimeout @ConflictingOptionsException 1 (runSpec env)
-
-        do -- Can't restart with different, non-empty, patterns
-            (_, env) <- configure $ \defaultCfg -> defaultCfg
-                { since = Just (SincePoint somePoint)
-                , patterns = fromList [MatchAny IncludingBootstrap]
-                }
-            shouldThrowTimeout @ConflictingOptionsException 1 (runSpec env)
 
     endToEnd "Can't start the server on a fresh new db without explicit point" $ \(configure, runSpec, _) -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
@@ -436,49 +363,6 @@ spec = skippableContext "End-to-end" $ do
             whenInline <- getAllMatches NoStatusFlag InlineAll <&> extractInline
             whenInline `shouldSatisfy` elem someScriptInOutput
 
-
-    endToEnd "Dynamically add pattern and restart to a past point when syncing" $ \(configure, runSpec, HttpClient{..}) -> do
-        (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just (SincePoint lastByronPoint)
-            , patterns = fromList [MatchDelegation someStakeKey]
-            }
-        -- NOTE: maxSlot must be high enough after the rollback point to have a chance to observe the
-        -- rollback. If too low, Kupo might have already re-synchronised and we can't assert that a
-        -- rollback did happen.
-        let maxSlot = getPointSlotNo lastByronPoint + 100_000
-        let onlyInWindow r
-                | getPointSlotNo (createdAt r) <= maxSlot =
-                    Just r { spentAt = Nothing }
-                | otherwise =
-                    Nothing
-        ref <- newIORef ([], [])
-        runSpec env 10 $ do
-            waitSlot (>= maxSlot)
-            xs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag AsReference
-            xs `shouldNotBe` []
-            res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right lastByronPoint)
-            res `shouldBe` True
-            waitSlot (< maxSlot) -- Observe rollback
-            waitSlot (>= maxSlot)
-            ys <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag AsReference
-            (xs \\ ys) `shouldBe` []
-            (sort <$> listPatterns) `shouldReturn`
-                [ MatchDelegation someStakeKey
-                , MatchDelegation someOtherStakeKey
-                ]
-            void $ atomicSwapIORef ref (xs, ys)
-        (xs, ys) <- readIORef ref
-        withSystemTempDirectory "kupo-end-to-end" $ \tmp' -> do
-            (_, env') <- configure $ \defaultCfg -> defaultCfg
-                { databaseLocation = Dir tmp'
-                , since = Just (SincePoint lastByronPoint)
-                , patterns = fromList [MatchDelegation someOtherStakeKey]
-                }
-            runSpec env' 10 $ do
-                waitSlot (>= maxSlot)
-                zs <- mapMaybe onlyInWindow <$> getAllMatches NoStatusFlag AsReference
-                ys \\ zs `shouldBe` xs
-
     endToEnd "Failing to insert patterns (failed to resolve point) doesn't disturb normal operations" $ \(configure, runSpec, HttpClient{..})  -> do
         (_, env) <- configure $ \defaultCfg -> defaultCfg
             { since = Just (SincePoint lastByronPoint)
@@ -576,31 +460,6 @@ spec = skippableContext "End-to-end" $ do
                 connectionStatus `shouldBe` Connected
                 configuration `shouldBe` Nothing
 
-    endToEnd "Dynamically add pattern and restart to a past point when at the tip" $ \(configure, runSpec, HttpClient{..}) -> do
-        tip <- currentNetworkTip
-        (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just (SincePoint tip)
-            , patterns = fromList [MatchAny IncludingBootstrap]
-            }
-        runSpec env 120 $ do
-            waitSlot (>= getPointSlotNo tip)
-            res <- putPatternSince (MatchDelegation someOtherStakeKey) (Right tip)
-            res `shouldBe` True
-
-    endToEnd "Auto-magically restart when reaching the tip (--defer-db-indexes enabled)" $ \(configure, runSpec, HttpClient{..}) -> do
-        tip <- currentNetworkTip
-        (_, env) <- configure $ \defaultCfg -> defaultCfg
-            { since = Just SinceTip
-            , patterns = fromList [MatchAny IncludingBootstrap]
-            , deferIndexes = SkipNonEssentialIndexes
-            }
-        runSpec env 120 $ do
-            waitSlot (>= getPointSlotNo tip)
-            points <- listCheckpoints
-            forM_ points $ \point -> getPointSlotNo point `shouldSatisfy` (>= getPointSlotNo tip)
-            Health{configuration} <- getHealth
-            configuration `shouldBe` (Just InstallIndexesIfNotExist)
-
     endToEnd "Does not synchronize beyond a given point when asked (--until)" $ \(configure, runSpec, HttpClient{..}) -> do
         let maxSlot = 11037873 -- Somewhat after `somePoint`, but close enough. Note that this slot must still exist (i.e. be active)
                                -- if we don't want `waitSlot` down below to be waiting forever!
@@ -618,37 +477,6 @@ spec = skippableContext "End-to-end" $ do
             threadDelay 1
             points' <- listCheckpoints
             forM_ points' $ \point -> getPointSlotNo point `shouldSatisfy` (<= maxSlot)
-
-    endToEnd "Read-only works with read-only permissions" $
-        \(configure, runSpec, HttpClient{..}) -> do
-            withSystemTempDirectory "kupo-end-to-end" $ \tmp -> do
-
-                -- Start first time to create database files
-                (cfg, env) <- configure $ \defaultCfg -> defaultCfg
-                    { databaseLocation = Dir tmp
-                    , since = Just (SincePoint lastByronPoint)
-                    , patterns = fromList [MatchAny OnlyShelley]
-                    , deferIndexes = SkipNonEssentialIndexes
-                    }
-                runSpec env 5 $ do
-                    waitSlot (> 0)
-                    listPatterns `shouldReturn` [MatchAny OnlyShelley]
-
-                -- Change permissions and re-start in replica mode
-                filenames <- listDirectory tmp
-                let paths = map (tmp </>) filenames
-                mapM_ makeUnwritable paths
-                makeUnwritable tmp
-                (_, env') <- configure $ \_ -> cfg
-                    { chainProducer = ReadOnlyReplica }
-                runSpec env' 5 $ do
-                    waitSlot (> 0)
-                    listPatterns `shouldReturn` [MatchAny OnlyShelley]
-
-        where
-           makeUnwritable f = do
-               p <- getPermissions f
-               setPermissions f (p {writable = False})
 
 -- | Create an 'EndToEndContext' around each child specification item within that 'Spec' tree. The
 -- spec items are 'skippable' and only executed if the appropriate environment variables are present.
@@ -828,29 +656,6 @@ withReplica cfg test = do
         withTempFile dir "traces" $ \_fp h -> do
             withTracers h version (defaultTracers (Just Info)) $ \tr -> do
                 race_ (kupo tr `runWith` replicaEnv) (test replicaHttpClient)
-
-currentNetworkTip :: IO Point
-currentNetworkTip = do
-    lookupEnv varCardanoNodeSocket >>= \case
-        Nothing ->
-            fail $ varCardanoNodeSocket <> " not set but necessary for this test."
-        Just socket -> do
-            baseEnv <- getEnvironment
-            let env = Just (("CARDANO_NODE_SOCKET_PATH", socket):baseEnv)
-            let args =
-                    [ "query", "tip"
-                    , "--testnet-magic", "1"
-                    , "--cardano-mode"
-                    ]
-            out <- readCreateProcess ((proc "cardano-cli" args) { env }) ""
-            case Json.eitherDecode @Json.Value (encodeUtf8 out) of
-                Left err ->
-                    fail err
-                Right json -> do
-                    maybe (fail "couldn't decode tip from cardano-cli") pure $ do
-                        slotNo <- json ^? key "slot" . _Integer
-                        headerHash <- json ^? key "hash" ._String
-                        pointFromText (show slotNo <> "." <> headerHash)
 
 shouldThrowTimeout :: forall e. (Exception e) => DiffTime -> (DiffTime -> IO () -> IO ()) -> IO ()
 shouldThrowTimeout t action = do
