@@ -31,8 +31,8 @@ extra-source-files:
     db/v2.2.0/001.sql
 data-files:
     docs/api/nightly.yaml
-    docs/api/v2.10.0.yaml
     docs/api/v2.11.0.yaml
+    docs/api/v2.12.0.yaml
 
 source-repository head
   type: git
