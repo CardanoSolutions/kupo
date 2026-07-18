@@ -17,8 +17,8 @@ import Kupo.Data.Cardano.Address
     )
 import Kupo.Data.Cardano.Datum
     ( Datum
-    , fromConwayDatum
-    , toConwayDatum
+    , fromDijkstraDatum
+    , toDijkstraDatum
     )
 import Kupo.Data.Cardano.Script
     ( ComparableScript
@@ -53,7 +53,7 @@ import qualified Data.Map as Map
 -- Output
 
 type Output =
-    Ledger.Babbage.BabbageTxOut ConwayEra
+    Ledger.Babbage.BabbageTxOut DijkstraEra
 
 mkOutput
     :: Address
@@ -65,7 +65,7 @@ mkOutput address value datum script =
     Ledger.Babbage.BabbageTxOut
         address
         value
-        (toConwayDatum datum)
+        (toDijkstraDatum datum)
         (maybeToStrictMaybe script)
 {-# INLINABLE mkOutput #-}
 
@@ -116,8 +116,22 @@ fromBabbageOutput
     :: Ledger.Core.TxOut BabbageEra
     -> Output
 fromBabbageOutput =
-    Ledger.Core.upgradeTxOut
+    Ledger.Core.upgradeTxOut . Ledger.Core.upgradeTxOut
 {-# INLINABLE fromBabbageOutput #-}
+
+fromConwayOutput
+    :: Ledger.Core.TxOut ConwayEra
+    -> Output
+fromConwayOutput =
+    Ledger.Core.upgradeTxOut
+{-# INLINABLE fromConwayOutput #-}
+
+fromDijkstraOutput
+    :: Ledger.Core.TxOut DijkstraEra
+    -> Output
+fromDijkstraOutput =
+    identity
+{-# INLINABLE fromDijkstraOutput #-}
 
 getAddress
     :: Output
@@ -137,7 +151,7 @@ getDatum
     :: Output
     -> Datum
 getDatum (Ledger.Babbage.BabbageTxOut _address _value datum _refScript) =
-    fromConwayDatum datum
+    fromDijkstraDatum datum
 {-# INLINABLE getDatum #-}
 
 getScript

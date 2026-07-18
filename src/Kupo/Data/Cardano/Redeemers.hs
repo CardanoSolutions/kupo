@@ -7,6 +7,7 @@ import Kupo.Data.Cardano.BinaryData
     , fromAlonzoData
     , fromBabbageData
     , fromConwayData
+    , fromDijkstraData
     )
 import Kupo.Data.Cardano.OutputIndex
     ( InputIndex
@@ -15,12 +16,14 @@ import Kupo.Data.Cardano.OutputIndex
 import qualified Cardano.Ledger.Alonzo.Scripts as Ledger
 import qualified Cardano.Ledger.Alonzo.TxWits as Ledger
 import qualified Cardano.Ledger.Conway.Scripts as Ledger
+import qualified Cardano.Ledger.Dijkstra.Scripts as Ledger
 import qualified Data.Map as Map
 
 data Redeemers
     = RedeemersAlonzo (Ledger.Redeemers AlonzoEra)
     | RedeemersBabbage (Ledger.Redeemers BabbageEra)
     | RedeemersConway (Ledger.Redeemers ConwayEra)
+    | RedeemersDisjkstra (Ledger.Redeemers DijkstraEra)
 
 lookupSpendRedeemer
     :: InputIndex
@@ -36,3 +39,6 @@ lookupSpendRedeemer ix = \case
     RedeemersConway (Ledger.Redeemers redeemers) ->
         let purpose = Ledger.ConwaySpending (Ledger.AsIx (fromIntegral ix))
          in fromConwayData . fst <$> Map.lookup purpose redeemers
+    RedeemersDisjkstra (Ledger.Redeemers redeemers) ->
+        let purpose = Ledger.DijkstraSpending (Ledger.AsIx (fromIntegral ix))
+         in fromDijkstraData . fst <$> Map.lookup purpose redeemers

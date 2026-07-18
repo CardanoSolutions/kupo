@@ -12,7 +12,7 @@ import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 
 type BinaryData =
-    Ledger.BinaryData ConwayEra
+    Ledger.BinaryData DijkstraEra
 
 type BinaryDataHash =
     DatumHash
@@ -54,24 +54,43 @@ unsafeBinaryDataFromBytes =
 {-# INLINABLE unsafeBinaryDataFromBytes #-}
 
 fromAlonzoData
-    :: HasCallStack
-    => Ledger.Data AlonzoEra
+    :: Ledger.Data AlonzoEra
     -> BinaryData
 fromAlonzoData =
-    unsafeBinaryDataFromBytes . Ledger.originalBytes
+    Ledger.dataToBinaryData . Ledger.upgradeData
 {-# INLINEABLE fromAlonzoData #-}
 
 fromBabbageData
     :: Ledger.Data BabbageEra
     -> BinaryData
 fromBabbageData =
-      Ledger.dataToBinaryData
-    . Ledger.upgradeData
+    Ledger.dataToBinaryData . Ledger.upgradeData
 {-# INLINEABLE fromBabbageData #-}
 
 fromConwayData
     :: Ledger.Data ConwayEra
     -> BinaryData
 fromConwayData =
-    Ledger.dataToBinaryData
+    Ledger.dataToBinaryData . Ledger.upgradeData
 {-# INLINEABLE fromConwayData #-}
+
+fromDijkstraData
+    :: Ledger.Data DijkstraEra
+    -> BinaryData
+fromDijkstraData =
+    Ledger.dataToBinaryData
+{-# INLINEABLE fromDijkstraData #-}
+
+fromDijkstraBinaryData
+    :: Ledger.BinaryData DijkstraEra
+    -> BinaryData
+fromDijkstraBinaryData =
+    identity
+{-# INLINEABLE fromDijkstraBinaryData #-}
+
+toDijkstraBinaryData
+    :: BinaryData
+    -> Ledger.BinaryData DijkstraEra
+toDijkstraBinaryData =
+    identity
+{-# INLINEABLE toDijkstraBinaryData #-}

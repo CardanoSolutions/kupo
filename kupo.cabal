@@ -1,6 +1,6 @@
-cabal-version: 1.12
+cabal-version: 3.0
 
--- This file has been generated from package.yaml by hpack version 0.38.2.
+-- This file has been generated from package.yaml by hpack version 0.38.3.
 --
 -- see: https://github.com/sol/hpack
 
@@ -131,6 +131,8 @@ library
       Kupo.Version.TH
   other-modules:
       Paths_kupo
+  autogen-modules:
+      Paths_kupo
   hs-source-dirs:
       src
   default-extensions:
@@ -184,6 +186,7 @@ library
     , bytestring
     , cardano-crypto-class
     , cardano-crypto-wrapper
+    , cardano-diffusion
     , cardano-ledger-allegra
     , cardano-ledger-alonzo
     , cardano-ledger-api
@@ -192,6 +195,7 @@ library
     , cardano-ledger-byron
     , cardano-ledger-conway
     , cardano-ledger-core
+    , cardano-ledger-dijkstra
     , cardano-ledger-mary
     , cardano-ledger-shelley
     , cardano-slotting
@@ -215,12 +219,11 @@ library
     , network-mux
     , optparse-applicative
     , ouroboros-consensus
-    , ouroboros-consensus-cardano
-    , ouroboros-consensus-diffusion
-    , ouroboros-network
-    , ouroboros-network-api
-    , ouroboros-network-framework
-    , ouroboros-network-protocols
+    , ouroboros-consensus:cardano
+    , ouroboros-consensus:diffusion
+    , ouroboros-network:api
+    , ouroboros-network:framework
+    , ouroboros-network:protocols
     , prometheus
     , relude
     , resource-pool
@@ -254,6 +257,8 @@ library
 executable kupo
   main-is: Main.hs
   other-modules:
+      Paths_kupo
+  autogen-modules:
       Paths_kupo
   hs-source-dirs:
       app
@@ -332,6 +337,8 @@ test-suite unit
       Test.Kupo.OptionsSpec
       Test.KupoSpec
       Paths_kupo
+  autogen-modules:
+      Paths_kupo
   hs-source-dirs:
       test
   default-extensions:
@@ -388,14 +395,15 @@ test-suite unit
     , http-media
     , http-types
     , io-classes
+    , io-classes:si-timers
     , io-sim
     , kupo
     , lens-aeson
+    , network
     , openapi3
     , process
     , quickcheck-state-machine
     , relude
-    , si-timers
     , sqlite-simple
     , stm
     , temporary

@@ -37,7 +37,7 @@ import GHC.Generics
     )
 import Kupo
     ( kupoWith
-    , newEnvironment
+    , newEnvironmentWith
     , runWith
     )
 import Kupo.App
@@ -146,6 +146,7 @@ import Network.HTTP.Client
     ( defaultManagerSettings
     , newManager
     )
+import qualified Network.Socket
 import Network.WebSockets
     ( ConnectionException (..)
     )
@@ -176,7 +177,6 @@ import Test.Kupo.Data.Generators
     )
 import Test.QuickCheck
     ( Gen
-    , arbitrary
     , choose
     , counterexample
     , elements
@@ -184,7 +184,6 @@ import Test.QuickCheck
     , frequency
     , label
     , oneof
-    , sized
     )
 import Test.QuickCheck.Monadic
     ( assert
@@ -193,7 +192,8 @@ import Test.QuickCheck.Monadic
     , run
     )
 import Test.QuickCheck.Property
-    ( withMaxSuccess
+    ( ioProperty
+    , withMaxSuccess
     )
 import Test.StateMachine
     ( CommandNames
@@ -243,10 +243,10 @@ spec = do
         <$> runIO (lookupEnv varStateMachineIterations)
 
     prop "State-Machine" $ withMaxSuccess maxSuccess $
-      forAll genInputManagement $ \inputManagement -> do
-        forAll genServerPort $ \serverPort -> do
-           let httpClient = newHttpClientWith manager (serverHost, serverPort) (\_ -> pure ())
-           let stateMachine = StateMachine
+      forAll genInputManagement $ \inputManagement -> ioProperty $ do
+        serverPort <- getFreePort
+        let httpClient = newHttpClientWith manager (serverHost, serverPort) (\_ -> pure ())
+            stateMachine = StateMachine
                 initModel
                 transition
                 (precondition longestRollback)
@@ -257,7 +257,7 @@ spec = do
                 (semantics garbageCollectionInterval httpClient chan)
                 mock
                 (cleanup chan)
-           forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
+        pure $ forAllCommands stateMachine Nothing $ \cmds -> monadicIO $ do
               let config = Configuration
                       { chainProducer = CardanoNode -- NOTE: unused, but must be different than ReadOnlyReplica
                           { nodeSocket = "/dev/null"
@@ -275,7 +275,7 @@ spec = do
                       , garbageCollectionInterval
                       , deferIndexes
                       }
-              env <- run (newEnvironment config)
+              env <- run (newEnvironmentWith throwIO config)
               producer <- run (newMockProducer httpClient <$> atomically (dupTChan chan))
               fetchBlock <- run (newMockFetchBlock <$> atomically (dupTChan chan))
               let fetchTip = throwIO UnusedFetchTipClient
@@ -309,9 +309,12 @@ spec = do
     garbageCollectionInterval = 0.4
     deferIndexes = InstallIndexesIfNotExist
     tracers = configureTracers (defaultTracers Nothing) nullTracer
-    genServerPort = sized $ \n -> do
-        i <- arbitrary
-        pure (1024 + n + i)
+    getFreePort = do
+        sock <- Network.Socket.socket Network.Socket.AF_INET Network.Socket.Stream 0
+        Network.Socket.bind sock (Network.Socket.SockAddrInet 0 (Network.Socket.tupleToHostAddress (127,0,0,1)))
+        port <- Network.Socket.socketPort sock
+        Network.Socket.close sock
+        pure (fromIntegral port)
 
 --------------------------------------------------------------------------------
 ---- Events / Respone
