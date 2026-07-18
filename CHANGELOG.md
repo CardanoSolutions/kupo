@@ -1,14 +1,20 @@
-### [2.12.0] - UNRELEASED
+### [2.12.0] - 2026-07-18
 
 #### Added
 
-N/A
+- Allow controlling return type of asset quantities through a media query. Allowing string instead of integer when using `Accept: application/json:asset-quantity=string`.
+
+- New slot-range index usage for wildcard (*) match queries (see [#194](https://github.com/CardanoSolutions/kupo/issues/194)).
 
 #### Changed
 
-- Bumped internal dependencies to cardano-node==10.5.1
+- Bumped internal dependencies to cardano-node==11.0.1.
 
 - Fixed network synchronisation calculations (see [#191](https://github.com/CardanoSolutions/kupo/issues/191)).
+
+- Rework some integration tests to avoid issues with closed file handles.
+
+- Fixed read-only mode requiring write permissions on the database directory.
 
 #### Removed
 
