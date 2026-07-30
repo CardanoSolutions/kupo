@@ -118,6 +118,7 @@ mkHydraBlock number txs = do
         , PartialBlock
             { blockPoint = BlockPoint slotNo headerHash
             , blockBody  = toList txs
+            , blockNo    = blockNo
             }
         )
 

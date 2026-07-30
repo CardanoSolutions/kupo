@@ -56,15 +56,18 @@ import Kupo.Control.MonadTime
     ( DiffTime
     )
 import Kupo.Data.Cardano
-    ( DatumHash
+    ( Checkpoint (checkpointPoint)
+    , DatumHash
     , IsBlock (..)
     , Point
     , ScriptHash
     , SlotNo (..)
     , binaryDataToJson
+    , checkpointToJson
     , datumHashFromText
     , distanceToSlot
     , foldBlock
+    , getCheckpointSlotNo
     , getPoint
     , getPointHeaderHash
     , getPointSlotNo
@@ -74,7 +77,6 @@ import Kupo.Data.Cardano
     , headerHashToText
     , metadataToJson'
     , pattern GenesisPoint
-    , pointToJson
     , scriptHashFromText
     , scriptToJson
     , slotNoFromText
@@ -453,7 +455,7 @@ cacheOr
 cacheOr readHealth req send handler = do
     health <- readHealth
     let mostRecentHeaderHash =
-            (encodeUtf8 . headerHashToText) <$> (mostRecentCheckpoint health >>= getPointHeaderHash)
+            (encodeUtf8 . headerHashToText) <$> (mostRecentPoint health >>= getPointHeaderHash)
     case L.lookup "if-none-match" (requestHeaders req) of
         Just etag | Just etag == mostRecentHeaderHash ->
             send $ responseLBS status304 (addCacheHeaders Default.headers health) ""
@@ -521,7 +523,7 @@ handleGetHealth reqHeaders forcedStatus resolveNetworkParameters health = do
         Health{..} = health
         d = distanceToSlot
             <$> mostRecentNodeTip
-            <*> (getPointSlotNo <$> mostRecentCheckpoint)
+            <*> (getPointSlotNo <$> mostRecentPoint)
 
     cTextPlain = "text/plain"
     cApplicationJson = "application/json"
@@ -539,9 +541,9 @@ handleGetCheckpoints
     -> Database IO
     -> Response
 handleGetCheckpoints headers Database{..} = do
-    responseStreamJson headers pointToJson $ \yield done -> do
-        points <- runTransaction listCheckpointsDesc
-        mapM_ yield points
+    responseStreamJson headers checkpointToJson $ \yield done -> do
+        checkpoints <- runTransaction listCheckpointsDesc
+        mapM_ yield checkpoints
         done
 
 handleGetCheckpointBySlot
@@ -561,12 +563,12 @@ handleGetCheckpointBySlot headers mSlotNo query Database{..} =
   where
     handleGetCheckpointBySlot' slotNo mode = do
         let successor = next slotNo
-        points <- runTransaction (listAncestorsDesc successor 1)
-        pure $ responseJsonEncoding status200 headers $ case (points, mode) of
-            ([point], GetCheckpointStrict) | getPointSlotNo point == slotNo ->
-                pointToJson point
-            ([point], GetCheckpointClosestAncestor) ->
-                pointToJson point
+        checkpoints <- runTransaction (listAncestorsDesc successor 1)
+        pure $ responseJsonEncoding status200 headers $ case (checkpoints, mode) of
+            ([checkpoint], GetCheckpointStrict) | getCheckpointSlotNo checkpoint == slotNo ->
+                checkpointToJson checkpoint
+            ([checkpoint], GetCheckpointClosestAncestor) ->
+                checkpointToJson checkpoint
             _pointNotFound ->
                 Json.null_
 
@@ -608,12 +610,12 @@ handleGetMatches resHeaders reqHeaders patternQuery queryParams Database{..} = h
         let assertPointExists :: Point -> DBTransaction IO ()
             assertPointExists requested = do
                 let nextSlot = next (getPointSlotNo requested)
-                points <- listAncestorsDesc nextSlot 1
-                case points of
-                    [found] | found == requested ->
+                checkpoints <- listAncestorsDesc nextSlot 1
+                case checkpoints of
+                    [found] | checkpointPoint found == requested ->
                         pure ()
                     [found] ->
-                        throwIO ErrPointMismatch{requested, found}
+                        throwIO ErrPointMismatch{requested, found = checkpointPoint found}
                     _pointNotFound ->
                         throwIO ErrPointNotFound{requested}
         runTransaction $ do
@@ -746,7 +748,7 @@ handleGetMetadata baseHeaders slotArg queryParams Database{..} fetchBlock =
             pure $ responseStreamJson baseHeaders metadataToJson' $ \_yield done -> done
         Just slotNo -> do
             ancestor <- runTransaction (listAncestorsDesc slotNo 1) <&> \case
-                [ancestor]  -> ancestor
+                [ancestor]  -> checkpointPoint ancestor
                 _noAncestor -> GenesisPoint
             case filterMatchesBy queryParams of
                 Just NoFilter ->
@@ -855,7 +857,7 @@ handlePutPatterns headers readHealth forceRollback patternsVar mPointOrSlot quer
             let successor = next $ getPointSlotNo pt
             pts <- runTransaction $ listAncestorsDesc successor 1
             return $ case pts of
-                [pt'] | pt == pt' ->
+                [pt'] | pt == checkpointPoint pt' ->
                     Just pt
                 -- NOTE: It may be possible for clients to rollback to a point
                 -- prior to any point we know, in which case, we keep things
@@ -870,7 +872,7 @@ handlePutPatterns headers readHealth forceRollback patternsVar mPointOrSlot quer
             pts <- runTransaction $ listAncestorsDesc successor 1
             return $ case pts of
                 [pt] ->
-                    Just pt
+                    Just (checkpointPoint pt)
                 _unexpectedPoint ->
                     Nothing
 
@@ -921,7 +923,7 @@ addCacheHeaders
     -> Health
     -> [Http.Header]
 addCacheHeaders defaultHeaders =
-    toHeaders . mostRecentCheckpoint
+    toHeaders . mostRecentPoint
   where
     toHeaders :: Maybe Point -> [Http.Header]
     toHeaders pt =

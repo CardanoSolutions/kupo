@@ -69,14 +69,14 @@ import Kupo.Control.MonadTime
     )
 import Kupo.Data.Cardano
     ( Address
+    , Checkpoint
     , Output
-    , Point
     , PolicyId
     , SlotNo (..)
     , foldrValue
     , getAddress
+    , getCheckpointSlotNo
     , getOutputIndex
-    , getPointSlotNo
     , getValue
     , policyIdToBytes
     , slotNoToText
@@ -91,6 +91,8 @@ import Kupo.Data.Database
     ( SortDirection (..)
     , addressFromRow
     , addressToRow
+    , checkpointFromRow
+    , checkpointToRow
     , datumFromRow
     , datumToRow
     , extendedOutputReferenceFromRow
@@ -99,8 +101,6 @@ import Kupo.Data.Database
     , patternFromRow
     , patternToRow
     , patternToSql
-    , pointFromRow
-    , pointToRow
     , resultFromRow
     , resultToRow
     , scriptReferenceFromRow
@@ -140,13 +140,13 @@ import Test.Kupo.Data.Generators
     ( chooseVector
     , genAddress
     , genBytes
+    , genCheckpoint
+    , genCheckpointBetween
+    , genCheckpointsBetween
     , genDatum
     , genExtendedOutputReference
-    , genNonGenesisPoint
-    , genNonGenesisPointBetween
     , genOutputReference
     , genPattern
-    , genPointsBetween
     , genPolicyId
     , genQueryablePattern
     , genResult
@@ -202,7 +202,7 @@ spec = parallel $ do
         prop "Result" $
             roundtripFromToRow genResult resultToRow resultFromRow
         prop "Checkpoint" $
-            roundtripFromToRow genNonGenesisPoint pointToRow pointFromRow
+            roundtripFromToRow genCheckpoint checkpointToRow checkpointFromRow
         prop "Pattern" $
             roundtripFromToRow genPattern patternToRow patternFromRow
         prop "OutputReference" $
@@ -231,27 +231,27 @@ spec = parallel $ do
             forAllCheckpoints k $ \pts -> monadicIO $ do
                 cps <- withInMemoryDatabase k $ \Database{..} -> do
                     runTransaction $ insertCheckpoints pts
-                    runTransaction $ fmap getPointSlotNo <$> listCheckpointsDesc
+                    runTransaction $ fmap getCheckpointSlotNo <$> listCheckpointsDesc
                 monitor $ counterexample (show cps)
                 assert $ all (uncurry (>)) (zip cps (drop 1 cps))
-                assert $ Prelude.head cps == maximum (getPointSlotNo <$> pts)
+                assert $ Prelude.head cps == maximum (getCheckpointSlotNo <$> pts)
 
         prop "get ancestor of any checkpoint" $
             forAllCheckpoints k $ \pts -> monadicIO $ do
                 oneByOne <- withInMemoryDatabase k $ \Database{..} -> do
                     runTransaction $ insertCheckpoints pts
                     fmap mconcat $ runTransaction $ forM pts $ \pt -> do
-                        listAncestorsDesc (getPointSlotNo pt) 1
+                        listAncestorsDesc (getCheckpointSlotNo pt) 1
 
                 allAtOnce <- withInMemoryDatabase k $ \Database{..} -> do
                     runTransaction $ insertCheckpoints pts
                     fmap reverse $ runTransaction $ do
-                        let slotNo = maximum (getPointSlotNo <$> pts)
+                        let slotNo = maximum (getCheckpointSlotNo <$> pts)
                         listAncestorsDesc slotNo (fromIntegral $ length pts)
 
                 monitor $ counterexample $ toString $ unlines
-                    [ "one-by-one:  " <> show (getPointSlotNo <$> oneByOne)
-                    , "all-at-once: " <> show (getPointSlotNo <$> allAtOnce)
+                    [ "one-by-one:  " <> show (getCheckpointSlotNo <$> oneByOne)
+                    , "all-at-once: " <> show (getCheckpointSlotNo <$> allAtOnce)
                     ]
 
                 assert (Prelude.init pts == oneByOne)
@@ -259,7 +259,7 @@ spec = parallel $ do
 
     context "matches" $ do
         prop "return matches in order" $ do
-            let slot = getPointSlotNo . createdAt
+            let slot = getCheckpointSlotNo . createdAt
             let txIx = snd . outputReference
             let outIx = getOutputIndex . fst . outputReference
 
@@ -282,7 +282,7 @@ spec = parallel $ do
                         property (slot current > slot successor)
 
             let genConflictingResults =
-                    scale (10*) $ listOf1 $ genResultWith (genNonGenesisPointBetween (1, 100))
+                    scale (10*) $ listOf1 $ genResultWith (genCheckpointBetween (1, 100))
 
             let shrinkResults =
                     shrinkList (const [])
@@ -1589,9 +1589,9 @@ withInMemoryDatabase' runInIO deferIndexes k action = do
 forAllCheckpoints
     :: Testable prop
     => Word64
-    -> ([Point] -> prop)
+    -> ([Checkpoint] -> prop)
     -> Property
 forAllCheckpoints k =
     forAllShow
-        (genPointsBetween (0, SlotNo (10 * k)))
-        (show . fmap getPointSlotNo)
+        (genCheckpointsBetween (0, SlotNo (10 * k)))
+        (show . fmap getCheckpointSlotNo)
