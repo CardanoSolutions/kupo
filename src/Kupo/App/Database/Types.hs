@@ -35,6 +35,7 @@ import Kupo.Control.MonadTime
     )
 import Kupo.Data.Cardano
     ( BinaryData
+    , Checkpoint
     , DatumHash
     , InputIndex
     , Point
@@ -122,16 +123,16 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m ()
 
     , insertCheckpoints
-        :: [Point]
+        :: [Checkpoint]
         -> DBTransaction m ()
 
     , listCheckpointsDesc
-        :: DBTransaction m [Point]
+        :: DBTransaction m [Checkpoint]
 
     , listAncestorsDesc
         :: SlotNo
         -> Int64 -- Number of ancestors to retrieve
-        -> DBTransaction m [Point]
+        -> DBTransaction m [Checkpoint]
 
     , insertPatterns
         :: Set Pattern

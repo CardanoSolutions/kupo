@@ -66,9 +66,11 @@ import Kupo.Control.MonadThrow
 import Kupo.Control.MonadTime
     ( DiffTime
     )
+import qualified Kupo.Data.Cardano as Data
 import Kupo.Data.Cardano
     ( BinaryData
     , BlockNo (..)
+    , Checkpoint (checkpointPoint)
     , DatumHash
     , Input
     , Metadata
@@ -174,6 +176,8 @@ import Test.Kupo.Data.Generators
     , genScriptHash
     , genTransactionId
     , generateWith
+    , mkBlockNoFromSlotNo
+    , mkCheckpointFromPoint
     )
 import Test.QuickCheck
     ( Gen
@@ -373,7 +377,7 @@ instance Show (Event r) where
 
 data Response (r :: Type -> Type)
     = Unit !()
-    | Checkpoint !(Maybe Point)
+    | Checkpoint !(Maybe Data.Checkpoint)
     | Utxo !(Set OutputReference)
     | DatumByHash !(Maybe BinaryData)
     | ScriptByHash !(Maybe Script)
@@ -385,8 +389,8 @@ instance Show (Response r) where
     show = \case
         Unit () ->
             "()"
-        Checkpoint pt ->
-            toString $ "(Checkpoint " <> maybe "NULL" showPoint pt <> ")"
+        Checkpoint cp ->
+            toString $ "(Checkpoint " <> maybe "NULL" showCheckpoint cp <> ")"
         Utxo outRefs ->
             toString $ "(Utxo " <> T.intercalate "," (showOutputReference <$> Set.toList outRefs) <> ")"
         DatumByHash bin ->
@@ -735,7 +739,7 @@ genContinuingBlock utxo txs previousTip = do
     blockPoint <- BlockPoint (next (getPointSlotNo previousTip)) <$> genHeaderHash
     (txs', utxo') <- runStateT (genTransactionSublist txs) utxo
     blockBody <- (txs' <>) <$> evalStateT genPartialTransactions utxo'
-    pure PartialBlock { blockPoint, blockBody }
+    pure PartialBlock { blockPoint, blockBody, blockNo = mkBlockNoFromSlotNo (getPointSlotNo blockPoint) }
 
 -- | Generate a list of transactions using and modifying a given utxo. The
 -- generation stops when there's no more utxos or, arbitrarily (1 chance out of
@@ -873,21 +877,21 @@ semantics
     -> IO (Response Concrete)
 semantics pause HttpClient{..} chan = \case
     DoRollForward tip block -> do
-        cp <- getMostRecentCheckpoint
+        cp <- getMostRecentPoint
         atomically $ writeTChan chan (Right $ RollForward tip block)
         fmap Unit $ waitUntilM $ do
-            cp' <- getMostRecentCheckpoint
+            cp' <- getMostRecentPoint
             pure (cp' > cp)
     DoRollBackward tip point -> do
-        cp <- getMostRecentCheckpoint
+        cp <- getMostRecentPoint
         atomically $ writeTChan chan (Right $ RollBackward tip point)
         fmap Unit $ waitUntilM $ do
-            cp' <- getMostRecentCheckpoint
+            cp' <- getMostRecentPoint
             pure (cp' < cp)
     LoseConnection ->
         Unit <$> atomically (writeTChan chan (Left ConnectionClosed))
     GetMostRecentCheckpoint -> do
-        Checkpoint . Just <$> getMostRecentCheckpoint
+        Checkpoint <$> getMostRecentCheckpoint
     GetPreviousCheckpoint sl -> do
         Checkpoint <$> getCheckpointBySlot GetCheckpointClosestAncestor sl
     GetUtxo -> do
@@ -901,10 +905,14 @@ semantics pause HttpClient{..} chan = \case
     Pause -> do
         Unit <$> threadDelay pause
   where
+    getMostRecentCheckpoint :: IO (Maybe Data.Checkpoint)
     getMostRecentCheckpoint =
         listCheckpoints <&> \case
-            [] -> GenesisPoint
-            h:_ -> h
+            [] -> Nothing
+            h:_ -> Just h
+
+    getMostRecentPoint :: IO Point
+    getMostRecentPoint = maybe GenesisPoint checkpointPoint <$> getMostRecentCheckpoint
 
 -- | Here we mock the server behavior using our model; this is used within the
 -- generator itself, to advance the state-machine. Because the model is our
@@ -922,15 +930,18 @@ mock model = \case
         pure (Unit ())
     GetMostRecentCheckpoint ->
         pure $ Checkpoint $ case currentChain model of
-            []  -> Just GenesisPoint
-            h:_ -> Just (blockPoint h)
+            []  -> Nothing
+            h:_ -> do
+                let
+                    point = blockPoint h
+                Just $ mkCheckpointFromPoint point
     GetPreviousCheckpoint sl ->
         let
             search = \case
                 [] -> Nothing
                 (blockPoint -> h):rest ->
                     if getPointSlotNo h <= sl
-                    then Just h
+                    then Just $ mkCheckpointFromPoint h
                     else search rest
          in
             pure $ Checkpoint $ search (currentChain model)
@@ -982,7 +993,7 @@ newMockProducer HttpClient{..} chan callback = do
                         pure (Left e)
                 either
                     (\e -> do
-                        atomically . writeTVar lastKnownTipVar =<< getMostRecentCheckpoint
+                        atomically . writeTVar lastKnownTipVar =<< getMostRecentPoint
                         throwIO e
                     )
                     return
@@ -993,10 +1004,10 @@ newMockProducer HttpClient{..} chan callback = do
     forcedRollbackCallback _point _handler =
         fail "Mock producer cannot force rollback."
 
-    getMostRecentCheckpoint =
+    getMostRecentPoint =
         listCheckpoints <&> \case
             [] -> GenesisPoint
-            h:_ -> h
+            h:_ -> checkpointPoint h
 
 -- | Mock a request to the node which returns the block immediately following the given point.
 newMockFetchBlock
@@ -1029,6 +1040,9 @@ newMockFetchBlock chan callback =
 showPoint :: Point -> Text
 showPoint =
     showSlotNo . getPointSlotNo
+
+showCheckpoint :: Data.Checkpoint -> Text
+showCheckpoint (Data.Checkpoint { checkpointPoint }) = showPoint checkpointPoint
 
 showTip :: Tip -> Text
 showTip =

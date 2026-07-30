@@ -302,17 +302,17 @@ kupoWith tr networkParameters withProducer withFetchBlock fetchTipClient =
                         toggleConnected statusToggle *> idle
                       else
                         withExceptionHandler (tracerKupo tr) statusToggle $ do
-                            (mostRecentCheckpoint, checkpoints) <- startOrResume
+                            (mostRecentPoint, points) <- startOrResume
                                 (tracerConfiguration tr)
                                 config
                                 db
                                 fetchTipClient
 
-                            initializeHealth health mostRecentCheckpoint
+                            initializeHealth health mostRecentPoint
 
                             producer
                                 (tracerChainSync tr)
-                                checkpoints
+                                points
                                 statusToggle
                     )
 

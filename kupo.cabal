@@ -82,6 +82,7 @@ library
       Kupo.Data.Cardano.BinaryData
       Kupo.Data.Cardano.Block
       Kupo.Data.Cardano.BlockNo
+      Kupo.Data.Cardano.Checkpoint
       Kupo.Data.Cardano.Datum
       Kupo.Data.Cardano.DatumHash
       Kupo.Data.Cardano.HeaderHash

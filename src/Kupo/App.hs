@@ -113,7 +113,9 @@ import Kupo.Data.Cardano
     , SlotNo (..)
     , Tip
     , TransactionId
+    , checkpointPoint
     , distanceToTip
+    , getCheckpoint
     , getPoint
     , getPointSlotNo
     , getTipSlotNo
@@ -524,7 +526,7 @@ rollForwardAll tr inputManagement notifyTip Database{..} patterns blks = do
     let Match{consumed, produced, datums, scripts, policies} =
             foldMap (matchBlock codecs patterns . snd) blks
     isNonEmptyBlock <- runTransaction $ do
-        insertCheckpoints (foldr ((:) . getPoint . snd) [] blks)
+        insertCheckpoints (foldr ((:) . getCheckpoint . snd) [] blks)
         insertInputs produced
         insertPolicies policies
         nSpentInputs <- onSpentInputs lastKnownTip lastKnownSlot consumed
@@ -602,11 +604,11 @@ readOnlyConsumer
     -> m Void
 readOnlyConsumer health Database{..} = do
     forever $ do
-        mostRecentCheckpoint <- runTransaction listCheckpointsDesc <&> \case
+        mostRecentPoint <- runTransaction listCheckpointsDesc <&> \case
             []  -> Nothing
-            h:_ -> Just h
+            h:_ -> Just (checkpointPoint h)
         now <- getCurrentTime
-        recordCheckpoint health now (maybe 0 getPointSlotNo mostRecentCheckpoint) mostRecentCheckpoint
+        recordCheckpoint health now (maybe 0 getPointSlotNo mostRecentPoint) mostRecentPoint
         threadDelay 5
 
 -- | Periodically garbage collect the database from entries that aren't of
