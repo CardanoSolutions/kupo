@@ -10,12 +10,14 @@
 
 module Kupo.Data.Cardano
     ( IsBlock (..)
+    , getPoint
     , module Kupo.Data.Cardano.Address
     , module Kupo.Data.Cardano.AssetId
     , module Kupo.Data.Cardano.AssetName
     , module Kupo.Data.Cardano.BinaryData
     , module Kupo.Data.Cardano.Block
     , module Kupo.Data.Cardano.BlockNo
+    , module Kupo.Data.Cardano.Checkpoint
     , module Kupo.Data.Cardano.Datum
     , module Kupo.Data.Cardano.DatumHash
     , module Kupo.Data.Cardano.HeaderHash
@@ -64,9 +66,11 @@ import Ouroboros.Consensus.Ledger.SupportsMempool
     )
 import Ouroboros.Consensus.Shelley.Ledger.Block
     ( ShelleyBlock (..)
+    , getHeader
     )
 import Ouroboros.Network.Block
-    ( blockPoint
+    ( blockNo
+    , blockPoint
     )
 
 import Kupo.Data.Cardano.Address
@@ -75,6 +79,7 @@ import Kupo.Data.Cardano.AssetName
 import Kupo.Data.Cardano.BinaryData
 import Kupo.Data.Cardano.Block
 import Kupo.Data.Cardano.BlockNo
+import Kupo.Data.Cardano.Checkpoint
 import Kupo.Data.Cardano.Datum
 import Kupo.Data.Cardano.DatumHash
 import Kupo.Data.Cardano.HeaderHash
@@ -109,9 +114,9 @@ import qualified Data.Set as Set
 class HasTransactionId (BlockBody block) => IsBlock (block :: Type) where
     type BlockBody block :: Type
 
-    getPoint
+    getCheckpoint
         :: block
-        -> Point
+        -> Checkpoint
 
     foldBlock
         :: (TransactionIndex -> BlockBody block -> result -> result)
@@ -145,11 +150,18 @@ class HasTransactionId (BlockBody block) => IsBlock (block :: Type) where
         -> InputIndex
         -> Maybe BinaryData
 
+getPoint :: forall block. IsBlock block => block -> Point
+getPoint blk = do
+    let
+        checkpoint :: Checkpoint
+        checkpoint = getCheckpoint blk
+    checkpointPoint checkpoint
+
 -- Block
 
 instance IsBlock Void where
     type BlockBody Void = Void
-    getPoint = absurd
+    getCheckpoint = absurd
     foldBlock _ _ = absurd
     spentInputs = absurd
     mapMaybeOutputs _ = absurd
@@ -161,11 +173,12 @@ instance IsBlock Void where
 instance IsBlock Block where
     type BlockBody Block = Transaction
 
-    getPoint
+    getCheckpoint
         :: Block
-        -> Point
-    getPoint =
-        blockPoint
+        -> Checkpoint
+    getCheckpoint block = Checkpoint
+        (blockPoint block)
+        (blockNo (getHeader block))
 
     foldBlock
         :: (TransactionIndex -> Transaction -> result -> result)

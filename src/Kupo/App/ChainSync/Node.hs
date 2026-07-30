@@ -21,8 +21,9 @@ import Kupo.Control.MonadThrow
     )
 import Kupo.Data.Cardano
     ( IsBlock (..)
+    , Checkpoint (..)
     , Point
-    , Tip
+    , Tip,
     )
 import Kupo.Data.ChainSync
     ( DistanceFromTip
@@ -156,7 +157,9 @@ mkChainSyncClient var0 mailbox pts =
         ClientStNext
             { recvMsgRollForward = \block tip -> do
                 atomically (putHighFrequencyMessage mailbox (tip, block))
-                clientStIdle var (mkDistanceFromTip tip (getPoint block)) n
+                let
+                    Checkpoint { checkpointPoint } = getCheckpoint block
+                clientStIdle var (mkDistanceFromTip tip checkpointPoint) n
             , recvMsgRollBackward = \point tip -> do
                 atomically (putIntermittentMessage mailbox (tip, point))
                 clientStIdle var (mkDistanceFromTip tip point) n
