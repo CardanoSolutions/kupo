@@ -46,7 +46,6 @@ import Data.Aeson
     )
 import Data.Maybe
     ( fromJust
-    , fromMaybe
     )
 import Network.HTTP.Client
     ( HttpException
@@ -181,7 +180,7 @@ spec = do
                             getPatterns 1445 `shouldReturn` Just [stakeA]
                             -- Add stakeB pattern forcing rollback to same point
                             putNewPattern 1445 stakeB tip `shouldReturn` True
-                            getPatterns 1445 `shouldReturn` Just [stakeA, stakeB]
+                            getPatterns 1445 `shouldReturn` Just [stakeA,stakeB]
 
         it "Dynamically adds pattern and rolls back (when syncing)" $ do
             let options =
@@ -208,8 +207,9 @@ spec = do
                         [Match 86440 "49ef96" 0 2]
                 -- Add stakeA pattern forcing rollback to last Byron block
                 putNewPattern 1447 stakeA lastByron `shouldReturn` True
+                -- Wait for rollback (checkpoints should go back in time)
                 eventually (hasNotReachedPoint 1447 lastByron136K)
-                eventually $ ((== [stakeA, stakeB]) . fromMaybe []) <$> getPatterns 1447
+                getPatterns 1447 `shouldReturn` Just [stakeA, stakeB]
                 getMatchesInWindow 1447 lastByron lastByron136K
                     `shouldReturn` Just
                         -- now we have both matches together, proving rollback
@@ -245,10 +245,12 @@ spec = do
                         ,"--workdir", dir
                         ]
                 -- Start kupo on fresh dir until reaches pointA
-                withKupo (options ++ ["--port","1450"]) $ eventually (hasReachedPoint 1450 pointA)
+                withKupo (options ++ ["--port","1450"]) $
+                    eventually (hasReachedPoint 1450 pointA)
                 -- Restart kupo on same dir and check that it is immediately
                 -- already at or past same point
-                withKupo (options ++ ["--port","1451"]) $ eventually (hasCheckpointsAllLaterThan 1451 pointA)
+                withKupo (options ++ ["--port","1451"]) $
+                    eventually (hasCheckpointsAllLaterThan 1451 pointA)
 
             it "Cannot restart with later '--since'" $ \dir -> do
                 let options =
@@ -319,7 +321,8 @@ withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
 withKupoH options action = do
     socket <- getEnv "CARDANO_NODE_SOCKET"
     config <- getEnv "CARDANO_NODE_CONFIG"
-    withKupoProcess (["--node-socket", socket ,"--node-config", config] ++ options) action
+    let nodeOptions = ["--node-socket", socket ,"--node-config", config]
+    withKupoProcess (nodeOptions ++ options) action
 
 withKupo :: [String] -> IO a -> IO a
 withKupo options action = do
@@ -378,7 +381,8 @@ hasNotReachedPoint :: Int -> Point -> IO Bool
 hasNotReachedPoint port = checkResponse port "/checkpoints" . hasNotReached
 
 hasCheckpointsAllLaterThan :: Int -> Point -> IO Bool
-hasCheckpointsAllLaterThan port = checkResponse port "/checkpoints" . nonEmptyAndLaterThan
+hasCheckpointsAllLaterThan port =
+    checkResponse port "/checkpoints" . nonEmptyAndLaterThan
 
 exitsWithError :: ProcessHandle -> IO Bool
 exitsWithError h = do
@@ -421,9 +425,10 @@ putNewPattern :: Int -> Pattern -> Point -> IO Bool
 putNewPattern port pattern point = do
     manager  <- newManager defaultManagerSettings
     request' <- request port ("/patterns/" <> pattern)
+    let body = RequestBodyLBS (Aeson.encode (PutPatternBody point))
     let request'' = request'
             { method          = "PUT"
-            , requestBody     = RequestBodyLBS (Aeson.encode (PutPatternBody point))
+            , requestBody     =  body
             , responseTimeout = responseTimeoutNone
             }
     response <- httpLbs request'' manager
