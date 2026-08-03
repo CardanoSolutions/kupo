@@ -6,17 +6,6 @@
 {- Tests for some corner cases that were flaky when run with `cabal test unit`.
  - These tests actually run the executable made with `cabal build`
  - So they are external integration/end-to-end acceptance tests.
- - To run on development server (in current repo):
- -    `cabal build exe:kupo && cabal exec cabal test accept`
- - To run on installed server (in PATH, e.g. with brew install):
- -    `cabal test accept`
- - To run on server in an alternative repo (e.g. different branch):
- -    ```
- -    pushd ../kupo-pr-204
- -    tmpPath=$(dirname $(cabal list-bin exe:kupo))
- -    popd
- -    PATH=$tmpPath:$PATH cabal test accept
- -    ```
  -}
 
 module Test.KupoSpec
@@ -382,7 +371,7 @@ hasNotReachedPoint port = checkResponse port "/checkpoints" . hasNotReached
 
 hasCheckpointsAllLaterThan :: Int -> Point -> IO Bool
 hasCheckpointsAllLaterThan port =
-    checkResponse port "/checkpoints" . nonEmptyAndLaterThan
+    checkResponse port "/checkpoints" . laterThan
 
 exitsWithError :: ProcessHandle -> IO Bool
 exitsWithError h = do
@@ -469,30 +458,16 @@ currentNetworkTip = do
     pure (Aeson.decode out)
 
 containsCheckpoints :: ResponseCheck
-containsCheckpoints status body =
-    status == status200 && hasSlots (Aeson.decode body :: Maybe [Slot])
-    where
-        hasSlots Nothing   = False
-        hasSlots (Just []) = False
-        hasSlots (Just _ ) = True
+containsCheckpoints = checkpoints (const True)
 
 hasReached :: Point -> ResponseCheck
-hasReached (Point slot _) status body =
-    status == status200 && hasReached' slot (Aeson.decode body :: Maybe [Slot])
-    where
-        hasReached' _ Nothing      = False
-        hasReached' _ (Just [])    = False
-        hasReached' x (Just (y:_)) = y >= x
+hasReached (Point slot _) = checkpoints ((>= slot) . head)
 
 hasNotReached :: Point -> ResponseCheck
-hasNotReached (Point slot _) status body =
-    status ==
-        status200
-        && hasNotReached' slot (Aeson.decode body :: Maybe [Slot])
-    where
-        hasNotReached' _ Nothing      = False
-        hasNotReached' _ (Just [])    = False
-        hasNotReached' x (Just (y:_)) = y < x
+hasNotReached (Point slot _) = checkpoints ((< slot) . head)
+
+laterThan :: Point -> ResponseCheck
+laterThan (Point slot _) = checkpoints (all (>= slot))
 
 isHealthy :: ResponseCheck
 isHealthy status _ = status == status202 || status == status200
@@ -502,20 +477,13 @@ hasIndexesInstalled status body =
     (status == status200 || status == status202)
     && (indexesFlag body) == Just (Indexes "installed")
 
-laterThan :: Point -> ResponseCheck
-laterThan (Point slot _) status body =
-    status == status200 && laterThanSlot (Aeson.decode body :: Maybe [Slot])
+checkpoints :: ([Slot] -> Bool) -> ResponseCheck
+checkpoints f status body =
+    status == status200 && hasSlotsThat (Aeson.decode body :: Maybe [Slot])
     where
-        laterThanSlot Nothing      = False
-        laterThanSlot (Just slots) = all (>= slot) slots
-
-nonEmptyAndLaterThan :: Point -> ResponseCheck
-nonEmptyAndLaterThan (Point slot _) status body =
-    status == status200 && laterThanSlot (Aeson.decode body :: Maybe [Slot])
-    where
-        laterThanSlot Nothing      = False
-        laterThanSlot (Just []   ) = False
-        laterThanSlot (Just slots) = all (>= slot) slots
+        hasSlotsThat Nothing       = False
+        hasSlotsThat (Just [])     = False
+        hasSlotsThat (Just slots ) = f slots
 
 indexesFlag :: BL.ByteString -> Maybe Indexes
 indexesFlag = Aeson.decode
