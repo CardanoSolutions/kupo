@@ -208,8 +208,8 @@ spec = do
                         [Match 86440 "49ef96" 0 2]
                 -- Add stakeA pattern forcing rollback to last Byron block
                 putNewPattern 1447 stakeA lastByron `shouldReturn` True
+                eventually (hasNotReachedPoint 1447 lastByron136K)
                 eventually $ ((== [stakeA, stakeB]) . fromMaybe []) <$> getPatterns 1447
-                eventually (hasReachedPoint 1447 lastByron136K)
                 getMatchesInWindow 1447 lastByron lastByron136K
                     `shouldReturn` Just
                         -- now we have both matches together, proving rollback
@@ -374,6 +374,9 @@ hasIndexes port point = do
 hasReachedPoint :: Int -> Point -> IO Bool
 hasReachedPoint port = checkResponse port "/checkpoints" . hasReached
 
+hasNotReachedPoint :: Int -> Point -> IO Bool
+hasNotReachedPoint port = checkResponse port "/checkpoints" . hasNotReached
+
 hasCheckpointsAllLaterThan :: Int -> Point -> IO Bool
 hasCheckpointsAllLaterThan port = checkResponse port "/checkpoints" . nonEmptyAndLaterThan
 
@@ -475,6 +478,16 @@ hasReached (Point slot _) status body =
         hasReached' _ Nothing      = False
         hasReached' _ (Just [])    = False
         hasReached' x (Just (y:_)) = y >= x
+
+hasNotReached :: Point -> ResponseCheck
+hasNotReached (Point slot _) status body =
+    status ==
+        status200
+        && hasNotReached' slot (Aeson.decode body :: Maybe [Slot])
+    where
+        hasNotReached' _ Nothing      = False
+        hasNotReached' _ (Just [])    = False
+        hasNotReached' x (Just (y:_)) = y < x
 
 isHealthy :: ResponseCheck
 isHealthy status _ = status == status202 || status == status200
