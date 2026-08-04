@@ -221,7 +221,7 @@ spec = do
                 -- Change permissions on database's directory
                 makeUnwritable dir
                 -- Start a read-only kupo on dir and check that it's also ready
-                withKupoNoDefault
+                withKupoUnconnected
                     ["--port"   , "1449"
                     ,"--read-only"
                     ,"--workdir", dir
@@ -294,17 +294,17 @@ withKupoProcess options action = do
                     HSpec.annotate
                         ("Kupo logs:\n" <> T.unpack logs)
                         (throwIO err)
-  where
-    stopProcess :: ProcessHandle -> IO ()
-    stopProcess h = do
-        exitCode <- getProcessExitCode h
-        case exitCode of
-            Just _ ->
-                pure ()
-            Nothing -> do
-                terminateProcess h
-                _ <- waitForProcess h
-                pure ()
+
+stopProcess :: ProcessHandle -> IO ()
+stopProcess h = do
+    exitCode <- getProcessExitCode h
+    case exitCode of
+        Just _ ->
+            pure ()
+        Nothing -> do
+            terminateProcess h
+            _ <- waitForProcess h
+            pure ()
 
 withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
 withKupoH options action = do
@@ -317,8 +317,8 @@ withKupo :: [String] -> IO a -> IO a
 withKupo options action = do
     withKupoH options (const action)
 
-withKupoNoDefault :: [String] -> IO a -> IO a
-withKupoNoDefault options action =
+withKupoUnconnected :: [String] -> IO a -> IO a
+withKupoUnconnected options action =
     withKupoProcess options (const action)
 
 withDir :: (FilePath -> IO ()) -> IO ()
