@@ -4,7 +4,10 @@
 -}
 
 {- Tests for some corner cases that were flaky when run with `cabal test unit`.
- - These tests actually run the executable made with `cabal build`
+ - These tests:
+ -   * run the executable made with `cabal build`;
+ -   * only interact with it via its HTTP API;
+ -   * have no dependency on the Kupo codebase.
  - So they are external integration/end-to-end acceptance tests.
  -}
 
@@ -35,6 +38,7 @@ import Data.Aeson
     )
 import Data.Maybe
     ( fromJust
+    , isJust
     )
 import Network.HTTP.Client
     ( HttpException
@@ -68,6 +72,7 @@ import System.Directory
     )
 import System.Environment
     ( getEnv
+    , lookupEnv
     )
 import System.Exit
     ( ExitCode (..)
@@ -90,6 +95,8 @@ import Test.Hspec
     , around
     , describe
     , it
+    , runIO
+    , shouldBe
     , shouldReturn
     )
 
@@ -105,13 +112,11 @@ type ResponseCheck = Status -> BL.ByteString -> Bool
 
 newtype Slot = Slot Integer deriving (Eq, Ord, Read, Show)
 
-data Point = Point Slot String
-    deriving (Eq, Ord, Read, Show)
+data Point = Point Slot String deriving (Eq, Ord, Read, Show)
 
 -- Wrapper type needed to have a separate FromJSON instance
 -- since the cardano-cli formats slot/hash differently from Kupo
-newtype CliPoint = CliPoint Point
-    deriving (Eq, Ord, Read, Show)
+newtype CliPoint = CliPoint Point deriving (Eq, Ord, Read, Show)
 
 -- Wrapper type useful to have a specific ToJSON instance
 newtype PutPatternBody = PutPatternBody Point
@@ -120,13 +125,67 @@ newtype Indexes = Indexes String deriving (Eq, Ord, Show)
 
 type Pattern = String
 
-data Match = Match Integer String Int Int
-    deriving (Eq, Ord, Read, Show)
+data Match = Match Integer String Int Int deriving (Eq, Ord, Read, Show)
 
 spec :: Spec
 spec = do
+    mSocket <- runIO $ lookupEnv "CARDANO_NODE_SOCKET"
+    case mSocket of
+        Just socket -> do
+            specWithSocket socket
+        Nothing ->
+            describe "Needs environment variables" $ do
+                it "Needs CARDANO_NODE_SOCKET" $ do
+                    isJust mSocket `shouldBe` True
 
-    describe "Kupo server start/restart corner cases (in-memory DB)" $ do
+specWithSocket :: String -> Spec
+specWithSocket socket = do
+    mConfig <- runIO $ lookupEnv "CARDANO_NODE_CONFIG"
+    mOgHost <- runIO $ lookupEnv "OGMIOS_HOST"
+    mOgPort <- runIO $ lookupEnv "OGMIOS_PORT"
+    let connectOptions' = (nodeOpts socket mConfig, ogmiosOpts mOgHost mOgPort)
+    case connectOptions' of
+        (Nothing, Nothing) ->
+            describe "Needs environment variables" $ do
+                it "Needs CARDANO_NODE_CONFIG" $ do
+                    isJust mConfig `shouldBe` True
+                it "Needs OGMIOS_HOST" $ do
+                    isJust mOgHost `shouldBe` True
+                it "Needs OGMIOS_PORT" $ do
+                    isJust mOgPort `shouldBe` True
+        (Nothing, Just ogmios) ->
+            specWithConnection "Ogmios" ogmios
+        (Just node, Nothing) ->
+            specWithConnection "Node" node
+        (Just node, Just ogmios) -> do
+            specWithConnection "Node" node
+            specWithConnection "Ogmios" ogmios
+
+nodeOpts :: String -> Maybe String -> Maybe [String]
+nodeOpts _ Nothing = Nothing
+nodeOpts socket (Just config) = Just
+    ["--node-socket", socket
+    ,"--node-config", config
+    ]
+
+ogmiosOpts :: Maybe String -> Maybe String -> Maybe [String]
+ogmiosOpts _ Nothing = Nothing
+ogmiosOpts Nothing _ = Nothing
+ogmiosOpts (Just host) (Just port) = Just
+    ["--ogmios-host", host
+    ,"--ogmios-port", port
+    ]
+
+description :: String -> String -> String
+description prefix postfix =
+    "[" ++ prefix ++ "]: "
+    ++ "Kupo server start/restart corner cases "
+    ++ "(" ++ postfix ++ ")"
+
+specWithConnection :: String -> [String] -> Spec
+specWithConnection prefix connectOptions = do
+
+    describe (description prefix "inMemory DB") $ do
 
         it "Can connect" $ do
             -- Start a kupo and check that it eventually has checkpoints
@@ -208,7 +267,7 @@ spec = do
 
     around withDir $ do
 
-        describe "Kupo server start/restart corner cases (file DB)" $ do
+        describe (description prefix "file DB") $ do
 
             it "Can start in readonly mode on readonly DB" $ \dir -> do
                 -- Start a kupo on fresh database until it's ready
@@ -279,6 +338,19 @@ spec = do
                         ]
                 withKupoH optionsB $ \h -> eventually (exitsWithError h)
 
+    where
+        withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
+        withKupoH options action = do
+            withKupoProcess (connectOptions ++ options) action
+
+        withKupo :: [String] -> IO a -> IO a
+        withKupo options action = do
+            withKupoH options (const action)
+
+withKupoUnconnected :: [String] -> IO a -> IO a
+withKupoUnconnected options action =
+    withKupoProcess options (const action)
+
 withKupoProcess :: [String] -> (ProcessHandle -> IO a) -> IO a
 withKupoProcess options action = do
     process <- kupo options
@@ -305,21 +377,6 @@ stopProcess h = do
             terminateProcess h
             _ <- waitForProcess h
             pure ()
-
-withKupoH :: [String] -> (ProcessHandle -> IO a) -> IO a
-withKupoH options action = do
-    socket <- getEnv "CARDANO_NODE_SOCKET"
-    config <- getEnv "CARDANO_NODE_CONFIG"
-    let nodeOptions = ["--node-socket", socket ,"--node-config", config]
-    withKupoProcess (nodeOptions ++ options) action
-
-withKupo :: [String] -> IO a -> IO a
-withKupo options action = do
-    withKupoH options (const action)
-
-withKupoUnconnected :: [String] -> IO a -> IO a
-withKupoUnconnected options action =
-    withKupoProcess options (const action)
 
 withDir :: (FilePath -> IO ()) -> IO ()
 withDir = bracket (createTempDirectory "." "test-tmp") removePathForcibly
