@@ -25,7 +25,6 @@ import Control.Concurrent.Async
     )
 import Control.Exception
     ( SomeException
-    , assert
     , bracket
     , try
     )
@@ -97,6 +96,7 @@ import Test.Hspec
     ( Spec
     , around
     , describe
+    , expectationFailure
     , it
     , runIO
     , shouldReturn
@@ -360,7 +360,7 @@ setWritable x path = do
     setPermissions path (p {writable = x})
 
 eventually :: IO Bool -> IO ()
-eventually p = go (0::Int) >>= flip assert (pure ())
+eventually p = go (0::Int) >>= expect
     where
         go attempt
             | attempt > 20 = pure False
@@ -373,6 +373,8 @@ eventually p = go (0::Int) >>= flip assert (pure ())
         wait attempt = do
             threadDelay 1_000_000  -- 1s between retries
             go (attempt + 1)
+        expect True = pure ()
+        expect False = expectationFailure "eventually failed after 20 attempts"
 
 isConnected :: Int -> IO Bool
 isConnected port = checkResponse port "/checkpoints" containsCheckpoints
