@@ -169,6 +169,7 @@ tests:
     - async
     - base
     - bytestring
+    - containers
     - directory
     - hspec
     - hspec-expectations

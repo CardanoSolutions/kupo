@@ -36,9 +36,12 @@ import Data.Aeson
     ( (.:)
     , (.=)
     )
+import Data.Map.Strict
+    ( Map
+    )
 import Data.Maybe
-    ( fromJust
-    , isJust
+    ( catMaybes
+    , fromJust
     )
 import Network.HTTP.Client
     ( HttpException
@@ -96,12 +99,12 @@ import Test.Hspec
     , describe
     , it
     , runIO
-    , shouldBe
     , shouldReturn
     )
 
 import qualified Control.Concurrent.Async as Async
 import qualified Data.Aeson as Aeson
+import qualified Data.Map.Strict as Map
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -127,63 +130,26 @@ type Pattern = String
 
 data Match = Match Integer String Int Int deriving (Eq, Ord, Read, Show)
 
+type EnvVarName = String
+type EnvVarValue = String
+data EnvVar = EnvVar EnvVarName EnvVarValue deriving (Eq, Ord, Read, Show)
+type Env = Map EnvVarName EnvVarValue
+
+data EnvRule = Has EnvVarName | All [EnvRule] | Some [EnvRule]
+    deriving (Read, Show)
+
 spec :: Spec
 spec = do
-    mSocket <- runIO $ lookupEnv "CARDANO_NODE_SOCKET"
-    case mSocket of
-        Just socket -> do
-            specWithSocket socket
+    mVars <- runIO $ lookupRule envRule
+    case mVars of
         Nothing ->
-            describe "Needs environment variables" $ do
-                it "Needs CARDANO_NODE_SOCKET" $ do
-                    isJust mSocket `shouldBe` True
+            error ("Needs environment: " ++ show envRule)
+        Just vars -> do
+            let connections' = connections (fromEnvVars vars)
+            mapM_ specWithConnection connections'
 
-specWithSocket :: String -> Spec
-specWithSocket socket = do
-    mConfig <- runIO $ lookupEnv "CARDANO_NODE_CONFIG"
-    mOgHost <- runIO $ lookupEnv "OGMIOS_HOST"
-    mOgPort <- runIO $ lookupEnv "OGMIOS_PORT"
-    let connectOptions' = (nodeOpts socket mConfig, ogmiosOpts mOgHost mOgPort)
-    case connectOptions' of
-        (Nothing, Nothing) ->
-            describe "Needs environment variables" $ do
-                it "Needs CARDANO_NODE_CONFIG" $ do
-                    isJust mConfig `shouldBe` True
-                it "Needs OGMIOS_HOST" $ do
-                    isJust mOgHost `shouldBe` True
-                it "Needs OGMIOS_PORT" $ do
-                    isJust mOgPort `shouldBe` True
-        (Nothing, Just ogmios) ->
-            specWithConnection "Ogmios" ogmios
-        (Just node, Nothing) ->
-            specWithConnection "Node" node
-        (Just node, Just ogmios) -> do
-            specWithConnection "Node" node
-            specWithConnection "Ogmios" ogmios
-
-nodeOpts :: String -> Maybe String -> Maybe [String]
-nodeOpts _ Nothing = Nothing
-nodeOpts socket (Just config) = Just
-    ["--node-socket", socket
-    ,"--node-config", config
-    ]
-
-ogmiosOpts :: Maybe String -> Maybe String -> Maybe [String]
-ogmiosOpts _ Nothing = Nothing
-ogmiosOpts Nothing _ = Nothing
-ogmiosOpts (Just host) (Just port) = Just
-    ["--ogmios-host", host
-    ,"--ogmios-port", port
-    ]
-
-description :: String -> String -> String
-description prefix postfix =
-    "[" ++ prefix ++ "]: "
-    ++ "Kupo server start/restart corner cases "
-    ++ "(" ++ postfix ++ ")"
-
-specWithConnection :: String -> [String] -> Spec
-specWithConnection prefix connectOptions = do
+specWithConnection :: (String, [String]) -> Spec
+specWithConnection (prefix, connectOptions) = do
 
     describe (description prefix "inMemory DB") $ do
 
@@ -640,3 +606,74 @@ stakeA =
 stakeB :: Pattern
 stakeB =
     "*/f130204b518f70c19995449e3737eded3d9ffc31cb50ec0e45010ba3"
+
+envRule :: EnvRule
+envRule =
+    All
+        [ Has "CARDANO_NODE_SOCKET"
+        , Some
+            [ Has "CARDANO_NODE_CONFIG"
+            , All
+                [ Has "OGMIOS_HOST"
+                , Has "OGMIOS_PORT"
+                ]
+            ]
+        ]
+
+connections :: Env -> [(String, [String])]
+connections env = nodeConnection env ++ ogmiosConnection env
+
+nodeConnection :: Env -> [(String, [String])]
+nodeConnection env =
+    let
+        mSocket = Map.lookup "CARDANO_NODE_SOCKET" env
+        mConfig = Map.lookup "CARDANO_NODE_CONFIG" env
+    in case (mSocket, mConfig) of
+        (Just socket, Just config) ->
+            [( "Node"
+             , ["--node-socket", socket
+               ,"--node-config", config
+               ]
+            )]
+        _ ->
+            []
+
+ogmiosConnection :: Env -> [(String, [String])]
+ogmiosConnection env =
+    let
+        mHost = Map.lookup "OGMIOS_HOST" env
+        mPort = Map.lookup "OGMIOS_PORT" env
+    in case (mHost, mPort) of
+        (Just host, Just port) ->
+            [( "Ogmios"
+             , ["--ogmios-host", host
+               ,"--ogmios-port", port
+               ]
+            )]
+        _ ->
+            []
+
+description :: String -> String -> String
+description prefix postfix =
+    "[" ++ prefix ++ "]: "
+    ++ "Kupo server start/restart corner cases "
+    ++ "(" ++ postfix ++ ")"
+
+lookupRule :: EnvRule -> IO (Maybe [EnvVar])
+lookupRule (Has name) = do
+    mValue <- lookupEnv name
+    let mVar = pure EnvVar <*> Just name <*> mValue
+    pure $ sequence [mVar]
+lookupRule (All rules) = do
+    maybes <- traverse lookupRule rules
+    pure $ pure mconcat <*> sequence maybes
+lookupRule (Some rules) = do
+    maybes <- traverse lookupRule rules
+    let justs = catMaybes maybes
+    if null justs then pure Nothing else pure $ Just $ mconcat justs
+
+fromEnvVars :: [EnvVar] -> Env
+fromEnvVars = foldl insertVar Map.empty
+
+insertVar :: Env -> EnvVar -> Env
+insertVar env (EnvVar name value) = Map.insert name value env
