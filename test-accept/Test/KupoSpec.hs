@@ -239,10 +239,10 @@ specWithConnection (prefix, connectOptions) = do
                 -- Start a kupo on fresh database until it's ready
                 withKupo
                     ["--port"   , "1448"
-                    ,"--since"  , fromPoint pointA
+                    ,"--since"  , fromPoint pointB
                     ,"--match"  , "*/*"
                     ,"--workdir", dir
-                    ] $ eventually (hasReachedPoint 1448 pointB)
+                    ] $ eventually (hasReachedPoint 1448 pointC)
                 -- Change permissions on database's directory
                 makeUnwritable dir
                 -- Start a read-only kupo on dir and check that it's also ready
@@ -582,6 +582,13 @@ pointB =
     Point
         (Slot 36492716)
         "d51095ef5405d83e7a1c82b98d12b357ba6b95f070f684bb38ab47ef90b21688"
+
+-- A point that exists on-chain. Later than pointB.
+pointC :: Point
+pointC =
+    Point
+        (Slot 36629840)
+        "31fc3812e327536370cd4786ac48e2c3a51114ba233aae7b031346013009a063"
 
 -- A point that exists on-chain. Last Byron block.
 lastByron :: Point
