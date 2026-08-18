@@ -164,6 +164,7 @@ specWithConnection (prefix, connectOptions) = do
                 $ eventually (isConnected 1443)
 
         it "Auto-magically restarts when --defer-db-indexes is enabled)" $ do
+            refreshRecent
             -- Read from file a valid point recent but before tip
             point <- recentPoint
             -- Start kupo since that point and with --defer-db-indexes
@@ -524,6 +525,19 @@ request port = parseRequest . (url port <>)
 
 recentPoint :: IO Point
 recentPoint = fmap read (readFile "test-accept/point-recent.dat")
+
+refreshRecent :: IO ()
+refreshRecent = do
+    oldTip::Point <- fmap read (readFile "test-accept/point-tip.dat")
+    mNewTip <- currentNetworkTip
+    case mNewTip of
+        Nothing -> pure ()
+        Just (CliPoint newTip) -> do
+            if newTip > oldTip then
+                do
+                    writeFile "test-accept/point-recent.dat" (show oldTip)
+                    writeFile "test-accept/point-tip.dat"    (show newTip)
+            else pure ()
 
 fromPoint :: Point -> String
 fromPoint (Point (Slot slot) hash) = show slot ++ "." ++ hash
