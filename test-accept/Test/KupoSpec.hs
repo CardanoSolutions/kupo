@@ -178,6 +178,8 @@ specWithConnection (prefix, connectOptions) = do
                 $ eventually (hasIndexes 1444 point)
 
         it "Dynamically adds pattern and rolls back (when at tip)" $ do
+            refreshRecent
+            recent <- recentPoint
             maybeTip <- currentNetworkTip
             case maybeTip of
                 Nothing -> fail "Need to be able to use cardano-cli to get tip"
@@ -185,7 +187,7 @@ specWithConnection (prefix, connectOptions) = do
                     -- Start a kupo since "tip" and matching on stakeA
                     withKupo
                         ["--port"       , "1445"
-                        ,"--since"      , fromPoint tip
+                        ,"--since"      , fromPoint recent
                         ,"--match"      , stakeA
                         ,"--in-memory"
                         ]
@@ -194,7 +196,7 @@ specWithConnection (prefix, connectOptions) = do
                             eventually (hasReachedPoint 1445 tip)
                             getPatterns 1445 `shouldReturn` Just [stakeA]
                             -- Add stakeB pattern forcing rollback to same point
-                            putNewPattern 1445 stakeB tip `shouldReturn` True
+                            putNewPattern 1445 stakeB recent `shouldReturn` True
                             getPatterns 1445 `shouldReturn` Just [stakeA,stakeB]
 
         it "Dynamically adds pattern and rolls back (when syncing)" $ do
