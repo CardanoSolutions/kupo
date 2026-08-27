@@ -366,7 +366,7 @@ eventually :: IO Bool -> IO ()
 eventually p = go (0::Int) >>= expect
     where
         go attempt
-            | attempt > 20 = pure False
+            | attempt > 200 = pure False  -- total 20 s
             | otherwise    = check attempt
         check attempt = do
             ready <- tryHttp p
@@ -374,7 +374,7 @@ eventually p = go (0::Int) >>= expect
                 Right True -> pure True
                 _          -> wait attempt
         wait attempt = do
-            threadDelay 1_000_000  -- 1s between retries
+            threadDelay 100_000  -- 0.1 s between retries
             go (attempt + 1)
         expect True = pure ()
         expect False = expectationFailure "eventually failed after 20 attempts"
