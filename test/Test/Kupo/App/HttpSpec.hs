@@ -52,7 +52,8 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
 import Kupo.Data.Cardano
-    ( SlotNo (..)
+    ( Checkpoint (..)
+    , SlotNo (..)
     , getPointSlotNo
     , pattern BlockPoint
     , unsafeHeaderHashFromBytes
@@ -105,9 +106,9 @@ import Test.Hspec.QuickCheck
     )
 import Test.Kupo.Data.Generators
     ( genBinaryData
+    , genCheckpoint
     , genHeaderHash
     , genMetadata
-    , genNonGenesisPoint
     , genOutputReference
     , genPattern
     , genPolicyId
@@ -115,6 +116,7 @@ import Test.Kupo.Data.Generators
     , genScript
     , genTransactionId
     , generateWith
+    , mkCheckpointFromPoint
     )
 import Test.Kupo.Data.Pattern.Fixture
     ( patterns
@@ -527,7 +529,7 @@ newStubbedApplication defaultPatterns = do
                 reply Nothing
             else do
                 reply $ Just $ generateWith 42 $ do
-                    blockPoint <- genNonGenesisPoint
+                    Checkpoint { checkpointBlockNo, checkpointPoint } <- genCheckpoint
                     blockBody <- vectorOf 10 $ do
                         id <- genTransactionId
                         metadata <- oneof [pure Nothing, Just <$> genMetadata]
@@ -540,7 +542,11 @@ newStubbedApplication defaultPatterns = do
                             , spendRedeemers = mempty
                             , metadata
                             }
-                    pure $ PartialBlock { blockPoint, blockBody }
+                    pure $ PartialBlock
+                        { blockPoint = checkpointPoint
+                        , blockBody
+                        , blockNo = checkpointBlockNo
+                        }
         )
         patternsVar
         healthStub
@@ -549,7 +555,7 @@ healthStub :: IO Health
 healthStub =
     pure $ Health
         { connectionStatus = Connected
-        , mostRecentCheckpoint = Just $ BlockPoint 42 (generateWith 42 genHeaderHash)
+        , mostRecentPoint = Just $ BlockPoint 42 (generateWith 42 genHeaderHash)
         , mostRecentNodeTip = Just 42
         , mostRecentClockTick = Nothing
         , configuration = Just InstallIndexesIfNotExist
@@ -586,16 +592,16 @@ databaseStub = Database
     , insertCheckpoints =
         \_ -> return ()
     , listCheckpointsDesc = lift $ do
-        generate (listOf1 genNonGenesisPoint)
+        generate (listOf1 genCheckpoint)
     , listAncestorsDesc = \sl n -> lift $ do
         case n of
             1 -> do
                 let headerHash = unsafeHeaderHashFromBytes $ unsafeDecodeBase16
                         "0000000000000000000000000000000000000000000000000000000000000000"
-                let point = BlockPoint (prev sl) headerHash
-                pure [point]
+                let checkpoint = mkCheckpointFromPoint $ BlockPoint (prev sl) headerHash
+                pure [checkpoint]
             _otherwise -> do
-                generate (listOf1 genNonGenesisPoint)
+                generate (listOf1 genCheckpoint)
     , insertPatterns =
         \_ -> return ()
     , deletePattern =

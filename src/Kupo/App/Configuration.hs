@@ -55,6 +55,7 @@ import Kupo.Control.MonadThrow
 import Kupo.Data.Cardano
     ( Point
     , SlotNo (..)
+    , checkpointPoint
     , getPointSlotNo
     , pointFromTip
     )
@@ -190,7 +191,7 @@ startOrResume
     -> FetchTipClient m
     -> m (Maybe Point, [Point])
 startOrResume tr configuration Database{..} fetchTip = do
-    checkpoints <- runTransaction listCheckpointsDesc
+    checkpoints <- runTransaction listCheckpointsDesc <&> map checkpointPoint
 
     let slots = unSlotNo . getPointSlotNo <$> checkpoints
     logWith tr $ ConfigurationCheckpointsForIntersection { slots }
@@ -200,18 +201,18 @@ startOrResume tr configuration Database{..} fetchTip = do
             logWith tr (ConfigurationInvalidOrMissingOption errNoStartingPoint)
             throwIO (NoStartingPointException errNoStartingPoint)
 
-        (Just (SincePoint point), mostRecentCheckpoint:_) -> do
-            if getPointSlotNo point > getPointSlotNo mostRecentCheckpoint then do
+        (Just (SincePoint point), mostRecentPoint:_) -> do
+            if getPointSlotNo point > getPointSlotNo mostRecentPoint then do
                 logWith tr (ConfigurationInvalidOrMissingOption errConflictingSinceOptions)
                 throwIO (ConflictingOptionsException errConflictingSinceOptions)
             else do
                 pure
-                    ( Just mostRecentCheckpoint
+                    ( Just mostRecentPoint
                     , sortOn (Down . getPointSlotNo) (point : checkpoints)
                     )
 
-        (Nothing, pts@(mostRecentCheckpoint:_)) -> do
-            pure (Just mostRecentCheckpoint, pts)
+        (Nothing, pts@(mostRecentPoint:_)) -> do
+            pure (Just mostRecentPoint, pts)
 
         (Just (SincePoint pt), []) ->
             pure (Nothing, [pt])
@@ -220,8 +221,8 @@ startOrResume tr configuration Database{..} fetchTip = do
             tip <- pointFromTip <$> fetchTip
             pure (Just tip, [tip])
 
-        (Just SinceTip, pts@(mostRecentCheckpoint:_)) -> do
-            pure (Just mostRecentCheckpoint, pts)
+        (Just SinceTip, pts@(mostRecentPoint:_)) -> do
+            pure (Just mostRecentPoint, pts)
   where
     Configuration{since} = configuration
 

@@ -34,9 +34,11 @@ import Kupo.Data.Cardano
     , unsafeScriptHashFromBytes
     , unsafeTransactionIdFromBytes
     )
+import qualified Kupo.Data.Database as DB
 import Kupo.Data.Database
-    ( Checkpoint (..)
-    , pointFromRow
+    ( pointFromRow
+    , pointHeaderHash
+    , pointSlotNo
     )
 
 eraBoundaries :: [(String, Point)]
@@ -51,93 +53,93 @@ eraBoundaries =
 
 -- | Last point of the Byron era
 lastByronPoint :: Point
-lastByronPoint = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+lastByronPoint = pointFromRow $ DB.Point
+    { pointSlotNo =
         84242
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "45899e8002b27df291e09188bfe3aeb5397ac03546a7d0ead93aa2500860f1af"
     }
 
 -- | Last point of the Shelley era
 lastShelleyPoint :: Point
-lastShelleyPoint = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+lastShelleyPoint = pointFromRow $ DB.Point
+    { pointSlotNo =
         518360
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "f9d8b6c77fedd60c3caf5de0ce63a0aeb9d1753269c9c07503d9aa09d5144481"
     }
 
 -- | Last point of the Allegra era
 lastAllegraPoint :: Point
-lastAllegraPoint = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+lastAllegraPoint = pointFromRow $ DB.Point
+    { pointSlotNo =
         950340
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "74c03af754bcde9cd242c5a168689edcab1756a3f7ae4d5dca1a31d86839c7b1"
     }
 
 -- | Last point of the Mary era
 lastMaryPoint :: Point
-lastMaryPoint = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+lastMaryPoint = pointFromRow $ DB.Point
+    { pointSlotNo =
         1382348
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "af5fddc7d16a349e1a2af8ba89f4f5d3273955a13095b3709ef6e3db576a0b33"
     }
 
 -- | Last point of the Alonzo era
 lastAlonzoPoint :: Point
-lastAlonzoPoint = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+lastAlonzoPoint = pointFromRow $ DB.Point
+    { pointSlotNo =
         3542390
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "f93e682d5b91a94d8660e748aef229c19cb285bfb9830db48941d6a78183d81f"
     }
 
 -- | Some point that actually doesn't exist on chain. Useful to test failures to find
 -- intersection.
 someNonExistingPoint :: Point
-someNonExistingPoint = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+someNonExistingPoint = pointFromRow $ DB.Point
+    { pointSlotNo =
         14141414
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "0000000000000000000000000000000000000000000000000000000000000000"
     }
 
 -- | A point that exists on-chain. There's nothing special about it other than, it exists.
 somePoint :: Point
-somePoint = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+somePoint = pointFromRow $ DB.Point
+    { pointSlotNo =
         11017324
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "195908564a66d713bd2b71a9b1f290be6853cb31085fe7371276a35a2f8f7e62"
     }
 
 -- | The direct ancestor of 'somePoint'.
 somePointAncestor :: Point
-somePointAncestor = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+somePointAncestor = pointFromRow $ DB.Point
+    { pointSlotNo =
         11017254
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "97349562d7dc20b95e81e3bc5d4c5aab6cb8fdfd6fc846fcea4bcb364dca7045"
     }
 
 -- | The direct successor of 'somePoint'.
 somePointSuccessor :: Point
-somePointSuccessor = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+somePointSuccessor = pointFromRow $ DB.Point
+    { pointSlotNo =
         11017333
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "28f9e744c21c5ebdcfe53e2f1dc2e996066fbc93faf8203c404b2bbd87a28306"
     }
 
 -- | Another point that exists on-chain that is different from 'somePoint' and is located MANY blocks
 -- after 'somePoint'.
 someOtherPoint :: Point
-someOtherPoint = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+someOtherPoint = pointFromRow $ DB.Point
+    { pointSlotNo =
         36492716
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "d51095ef5405d83e7a1c82b98d12b357ba6b95f070f684bb38ab47ef90b21688"
     }
 
@@ -172,10 +174,10 @@ someDatumInOutputHash = fromJust $ hashDatum $ Inline $ Right someDatumInOutput
 -- - 'somescriptInMetadata'
 -- - 'someScriptInOutput'
 somePointNearScripts :: Point
-somePointNearScripts = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+somePointNearScripts = pointFromRow $ DB.Point
+    { pointSlotNo =
         12123866
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "61220259a295f31c1b3d1e7ac0afab51801e96848f9e63c13c2094dff4618533"
     }
 
@@ -447,9 +449,9 @@ somePhase2FailedTransactionIdWithReturn = unsafeTransactionIdFromBytes $ unsafeD
 
 -- | An ancestor point near 'somePhase2FailedTransactionIdWithReturn'.
 somePointNearPhase2Failure :: Point
-somePointNearPhase2Failure = pointFromRow $ Checkpoint
-    { checkpointSlotNo =
+somePointNearPhase2Failure = pointFromRow $ DB.Point
+    { pointSlotNo =
         12912834
-    , checkpointHeaderHash = unsafeDecodeBase16
+    , pointHeaderHash = unsafeDecodeBase16
         "0f1df0ab66fb5fa4b12409ad4abde5d7509e134442ad0d5356160650a42540d6"
     }

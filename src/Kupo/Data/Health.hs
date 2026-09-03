@@ -86,7 +86,7 @@ import qualified Data.Scientific as Scientific
 data Health = Health
     { connectionStatus :: !ConnectionStatus
         -- ^ Condition of the connection with the underlying node.
-    , mostRecentCheckpoint :: !(Maybe Point)
+    , mostRecentPoint :: !(Maybe Point)
         -- ^ Absolute slot number of the most recent database checkpoint.
     , mostRecentNodeTip :: !(Maybe SlotNo)
         -- ^ Absolute slot number of the tip of the node
@@ -111,7 +111,7 @@ instance ToJSON SerialisableHealth where
             (toEncoding connectionStatus)
         , Json.pair
             "most_recent_checkpoint"
-            (maybe Json.null_ (slotNoToJson . getPointSlotNo) mostRecentCheckpoint)
+            (maybe Json.null_ (slotNoToJson . getPointSlotNo) mostRecentPoint)
         , Json.pair
             "most_recent_node_tip"
             (maybe Json.null_ slotNoToJson mostRecentNodeTip)
@@ -123,7 +123,7 @@ instance ToJSON SerialisableHealth where
             (maybe Json.null_ toEncoding
                 (liftA2 (mkNetworkSynchronization now)
                     optNetworkParameters
-                    (getPointSlotNo <$> mostRecentCheckpoint)
+                    (getPointSlotNo <$> mostRecentPoint)
                 )
             )
          , Json.pair
@@ -152,7 +152,7 @@ nominalDiffTimeToInteger =
 emptyHealth :: Health
 emptyHealth = Health
     { connectionStatus = Disconnected
-    , mostRecentCheckpoint = Nothing
+    , mostRecentPoint = Nothing
     , mostRecentNodeTip = Nothing
     , mostRecentClockTick = Nothing
     , configuration = Nothing
@@ -266,7 +266,7 @@ mkPrometheusMetrics now optNetworkParameters Health{..} =
     networkSynchronization = liftA2
         (mkNetworkSynchronization now)
         optNetworkParameters
-        (getPointSlotNo <$> mostRecentCheckpoint)
+        (getPointSlotNo <$> mostRecentPoint)
 
     prometheusMetrics :: [(Text, MetricSample)]
     prometheusMetrics = mconcat
@@ -279,7 +279,7 @@ mkPrometheusMetrics now optNetworkParameters Health{..} =
 
         , [ ( "most_recent_checkpoint"
             , mkCounter $ fromEnum $ unSlotNo $ getPointSlotNo s
-            ) | Just s <- [mostRecentCheckpoint]
+            ) | Just s <- [mostRecentPoint]
           ]
 
         , [ ( "most_recent_node_tip"

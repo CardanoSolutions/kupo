@@ -39,6 +39,7 @@ import Kupo.Data.Cardano
     ( Address
     , AssetId
     , BinaryData
+    , Checkpoint
     , Datum (..)
     , DatumHash
     , ExtendedOutputReference
@@ -47,7 +48,6 @@ import Kupo.Data.Cardano
     , Metadata
     , Output
     , OutputReference
-    , Point
     , PolicyId
     , Script
     , ScriptHash
@@ -62,14 +62,16 @@ import Kupo.Data.Cardano
     , assetNameFromText
     , assetNameToText
     , binaryDataToJson
+    , blockNoToJson
+    , checkpointBlockNo
     , datumHashToJson
     , foldrValue
     , getAddress
+    , getCheckpointSlotNo
     , getDatum
     , getDelegationPartBytes
     , getOutputIndex
     , getPaymentPartBytes
-    , getPointSlotNo
     , getScript
     , getTransactionId
     , getValue
@@ -94,7 +96,7 @@ import Kupo.Data.Cardano
     , transactionIdToJson
     , transactionIdToText
     , transactionIndexToJson
-    , unsafeGetPointHeaderHash
+    , unsafeGetCheckpointHeaderHash
     , valueToJson
     )
 import Kupo.Data.Http.QuantityEncoding
@@ -438,8 +440,8 @@ data Result = Result
     , value :: !Value
     , datum :: !Datum
     , scriptReference :: !ScriptReference
-    , createdAt :: !Point
-    , spentAt :: !(Maybe Point)
+    , createdAt :: !Checkpoint
+    , spentAt :: !(Maybe Checkpoint)
     , spentBy :: !(Maybe OutputReference)
     , spentWith :: !(Maybe BinaryData)
     } deriving (Show, Eq)
@@ -477,20 +479,24 @@ resultToJson referenceFlag quantityEncoding Result{..} = Json.pairs $ mconcat
     , Json.pair "created_at"
         (Json.pairs $ mconcat
             [ Json.pair "slot_no"
-                (slotNoToJson (getPointSlotNo createdAt))
+                (slotNoToJson (getCheckpointSlotNo createdAt))
             , Json.pair "header_hash"
-                (headerHashToJson (unsafeGetPointHeaderHash createdAt))
+                (headerHashToJson (unsafeGetCheckpointHeaderHash createdAt))
+            , Json.pair "block_no"
+                (blockNoToJson (checkpointBlockNo createdAt))
             ]
         )
     , Json.pair "spent_at"
         (case spentAt of
             Nothing -> Json.null_
-            Just point ->
+            Just checkpoint ->
                 Json.pairs $ mconcat
                     [ Json.pair "slot_no"
-                        (slotNoToJson (getPointSlotNo point))
+                        (slotNoToJson (getCheckpointSlotNo checkpoint))
                     , Json.pair "header_hash"
-                        (headerHashToJson (unsafeGetPointHeaderHash point))
+                        (headerHashToJson (unsafeGetCheckpointHeaderHash checkpoint))
+                    , Json.pair "block_no"
+                        (blockNoToJson (checkpointBlockNo checkpoint))
                     , Json.pair "transaction_id"
                         (maybe Json.null_ (transactionIdToJson . getTransactionId) spentBy)
                     , Json.pair "input_index"
@@ -568,10 +574,10 @@ matchBlock
     -> block
     -> Match result bin script policy
 matchBlock Codecs{..} patterns blk =
-    let pt = getPoint blk in foldBlock (fn pt) mempty blk
+    let pt = getCheckpoint blk in foldBlock (fn pt) mempty blk
   where
     fn
-        :: Point
+        :: Checkpoint
         -> TransactionIndex
         -> BlockBody block
         -> Match result bin script policy
@@ -583,7 +589,7 @@ matchBlock Codecs{..} patterns blk =
                 (fromMaybe mempty st, 0)
                 (spentInputs @block tx)
             )
-            (getTransactionId tx, getPointSlotNo pt)
+            (getTransactionId tx, getCheckpointSlotNo pt)
             consumed
 
         , produced =
@@ -614,7 +620,7 @@ matchBlock Codecs{..} patterns blk =
                 patterns
 
     match
-        :: Point
+        :: Checkpoint
         -> TransactionIndex
         -> Pattern
         -> OutputReference

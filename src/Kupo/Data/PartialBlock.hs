@@ -11,6 +11,8 @@ import Kupo.Prelude
 
 import Kupo.Data.Cardano
     ( BinaryData
+    , BlockNo
+    , Checkpoint (..)
     , DatumHash
     , HasTransactionId (..)
     , Input
@@ -24,7 +26,7 @@ import Kupo.Data.Cardano
     , Script
     , ScriptHash
     , TransactionId
-    , emptyMetadata
+    , emptyMetadata,
     )
 
 import qualified Data.Map.Strict as Map
@@ -35,6 +37,7 @@ import qualified Data.Set as Set
 data PartialBlock = PartialBlock
     { blockPoint :: !Point
     , blockBody :: ![PartialTransaction]
+    , blockNo :: !BlockNo
     } deriving (Eq, Show)
 
 -- | A partial transaction, analogous to 'PartialBlock', trimmed down to the
@@ -55,8 +58,10 @@ instance HasTransactionId PartialTransaction where
 instance IsBlock PartialBlock where
     type BlockBody PartialBlock = PartialTransaction
 
-    getPoint =
-        blockPoint
+    getCheckpoint blk =
+        Checkpoint
+            (blockPoint blk)
+            (blockNo blk)
 
     spentInputs =
         Set.fromList . inputs

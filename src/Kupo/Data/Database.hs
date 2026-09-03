@@ -11,13 +11,16 @@
 module Kupo.Data.Database
     ( -- * Point / Checkpoint
       Checkpoint (..)
-    , pointToRow
-    , pointFromRow
+    , checkpointToRow
+    , checkpointFromRow
 
       -- * Result / Input
     , Input (..)
     , resultToRow
     , resultFromRow
+
+    , Point (..)
+    , pointFromRow
 
       -- * Policy
     , Policy (..)
@@ -112,29 +115,34 @@ import qualified Kupo.Data.Pattern as App
 data Checkpoint = Checkpoint
     { checkpointHeaderHash :: !ByteString
     , checkpointSlotNo :: !Word64
+    , checkpointBlockNo :: !Word64
     } deriving (Show)
 
-pointFromRow
+checkpointFromRow
     :: Checkpoint
-    -> App.Point
-pointFromRow row = App.BlockPoint
-    (App.SlotNo (checkpointSlotNo row))
-    (fromShortRawHash (Proxy @App.Block) $ toShort $ checkpointHeaderHash row)
-{-# INLINABLE pointFromRow #-}
+    -> App.Checkpoint
+checkpointFromRow row = do
+    let
+        point = App.BlockPoint
+            (App.SlotNo (checkpointSlotNo row))
+            (fromShortRawHash (Proxy @App.Block) $ toShort $ checkpointHeaderHash row)
+    App.Checkpoint point (App.BlockNo (checkpointBlockNo row))
+{-# INLINABLE checkpointFromRow #-}
 
-pointToRow
+checkpointToRow
     :: HasCallStack
-    => App.Point
+    => App.Checkpoint
     -> Checkpoint
-pointToRow = \case
+checkpointToRow (App.Checkpoint point blockNo) = case point of
     App.GenesisPoint -> error "pointToRow: genesis point."
     App.BlockPoint slotNo headerHash -> Checkpoint
         { checkpointHeaderHash = toRawHash proxy headerHash
         , checkpointSlotNo = App.unSlotNo slotNo
+        , checkpointBlockNo = App.unBlockNo blockNo
         }
   where
     proxy = Proxy @App.Block
-{-# INLINABLE pointToRow #-}
+{-# INLINABLE checkpointToRow #-}
 
 --
 -- Result
@@ -148,8 +156,10 @@ data Input = Input
     , datumInfo :: !(Maybe ByteString)
     , refScript :: !(Maybe ScriptReference)
     , refScriptHash :: !(Maybe ByteString)
+    , createdAtBlockNo :: !Word64
     , createdAtSlotNo :: !Word64
     , createdAtHeaderHash :: !ByteString
+    , spentAtBlockNo :: !(Maybe Word64)
     , spentAtSlotNo :: !(Maybe Word64)
     , spentAtHeaderHash :: !(Maybe ByteString)
     , spentBy :: !(Maybe ByteString)
@@ -171,9 +181,9 @@ resultFromRow row = App.Result
     , App.scriptReference =
         scriptReferenceFromRow (refScriptHash row) (refScript row)
     , App.createdAt =
-        pointFromRow (Checkpoint (createdAtHeaderHash row) (createdAtSlotNo row))
+        checkpointFromRow (Checkpoint (createdAtHeaderHash row) (createdAtSlotNo row) (createdAtBlockNo row))
     , App.spentAt =
-        pointFromRow <$> (Checkpoint <$> spentAtHeaderHash row <*> spentAtSlotNo row)
+        checkpointFromRow <$> (Checkpoint <$> spentAtHeaderHash row <*> spentAtSlotNo row <*> spentAtBlockNo row)
     , App.spentBy =
         outputReferenceFromRow <$> spentBy row
     , App.spentWith =
@@ -201,19 +211,36 @@ resultToRow x =
     (refScriptHash, refScript) =
         scriptReferenceToRow (App.scriptReference x)
 
-    (createdAtSlotNo, createdAtHeaderHash) =
-        let row = pointToRow (App.createdAt x)
-         in (checkpointSlotNo row, checkpointHeaderHash row)
+    (createdAtSlotNo, createdAtHeaderHash, createdAtBlockNo) =
+        let row = checkpointToRow (App.createdAt x)
+         in (checkpointSlotNo row, checkpointHeaderHash row, checkpointBlockNo row)
 
-    (spentAtSlotNo, spentAtHeaderHash) =
-        let row = pointToRow <$> (App.spentAt x)
-         in (checkpointSlotNo <$> row, checkpointHeaderHash <$> row)
+    (spentAtSlotNo, spentAtHeaderHash, spentAtBlockNo) =
+        let row = checkpointToRow <$> (App.spentAt x)
+         in (checkpointSlotNo <$> row, checkpointHeaderHash <$> row, checkpointBlockNo <$> row)
 
     spentBy =
         outputReferenceToRow <$> App.spentBy x
 
     spentWith =
         redeemerToRow <$> App.spentWith x
+
+--
+-- Point
+--
+
+data Point = Point
+    { pointHeaderHash :: !ByteString
+    , pointSlotNo :: !Word64
+    } deriving (Show)
+
+pointFromRow
+    :: Point
+    -> App.Point
+pointFromRow row = App.BlockPoint
+    (App.SlotNo (pointSlotNo row))
+    (fromShortRawHash (Proxy @App.Block) $ toShort $ pointHeaderHash row)
+{-# INLINABLE pointFromRow #-}
 
 --
 -- Policy

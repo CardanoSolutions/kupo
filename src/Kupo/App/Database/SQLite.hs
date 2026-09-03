@@ -668,8 +668,10 @@ mkDatabase tr mode longestRollback bracketConnection = Database
              , matchMaybeBytes -> refScriptHash
              , SQLInteger (fromIntegral -> createdAtSlotNo)
              , SQLBlob createdAtHeaderHash
+             , SQLInteger (fromIntegral -> createdAtBlockNo)
              , matchMaybeWord64 -> spentAtSlotNo
              , matchMaybeBytes -> spentAtHeaderHash
+             , matchMaybeWord64 -> spentAtBlockNo
              , matchMaybeBytes -> spentBy
              , matchMaybeBytes -> spentWith
              , matchMaybeBytes -> datumBinaryData
@@ -714,10 +716,11 @@ mkDatabase tr mode longestRollback bracketConnection = Database
 
     , insertCheckpoints = \cps -> ReaderT $ \conn -> do
         mapM_
-            (\(DB.pointToRow -> DB.Checkpoint{..}) ->
+            (\(DB.checkpointToRow -> DB.Checkpoint{..}) ->
                 insertRow @"checkpoints" conn
                     [ SQLBlob checkpointHeaderHash
                     , SQLInteger (fromIntegral checkpointSlotNo)
+                    , SQLInteger (fromIntegral checkpointBlockNo)
                     ]
             )
             cps
@@ -730,16 +733,16 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                 [ k `div` (2 ^ e) | (e :: Integer) <- [ n-1, n-2 .. 0 ] ]
               where
                 n = ceiling (log (fromIntegral @_ @Double k))
-        fmap (fmap DB.pointFromRow . nubOn DB.checkpointSlotNo . mconcat) $ forM points $ \pt ->
+        fmap (fmap DB.checkpointFromRow . nubOn DB.checkpointSlotNo . mconcat) $ forM points $ \pt ->
             Sqlite.fold conn listCheckpointsQry [SQLInteger pt] [] $
-                \xs (checkpointHeaderHash, checkpointSlotNo) ->
+                \xs (checkpointHeaderHash, checkpointSlotNo, checkpointBlockNo) ->
                     pure (DB.Checkpoint{..} : xs)
 
     , listAncestorsDesc = \(SlotNo slotNo) n -> ReaderT $ \conn -> do
         fmap reverse $
             Sqlite.fold conn listAncestorQry (SQLInteger <$> [fromIntegral slotNo, n]) [] $
-                \xs (checkpointHeaderHash, checkpointSlotNo) ->
-                    pure ((DB.pointFromRow DB.Checkpoint{..}) : xs)
+                \xs (checkpointHeaderHash, checkpointSlotNo, checkpointBlockNo) ->
+                    pure ((DB.checkpointFromRow DB.Checkpoint{..}) : xs)
 
     , insertBinaryData = \bin -> ReaderT $ \conn -> do
         mapM_
@@ -814,8 +817,8 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                         traceExecute tr conn rollbackQryUpdateInputs [ minSlotNo ]
                         traceExecute tr conn rollbackQryDeleteCheckpoints [ minSlotNo ]
         query_ conn selectMaxCheckpointQry >>= \case
-            [[SQLInteger (fromIntegral -> checkpointSlotNo), SQLBlob checkpointHeaderHash]] ->
-                return $ Just (DB.pointFromRow DB.Checkpoint{..})
+            [[SQLInteger (fromIntegral -> pointSlotNo), SQLBlob pointHeaderHash]] ->
+                return $ Just (DB.pointFromRow DB.Point{..})
             [[SQLNull, SQLNull]] ->
                 return Nothing
             xs ->
@@ -930,8 +933,8 @@ foldInputsQry pattern_ slotRange statusFlag referenceFlag sortDirection =
     Query $ "SELECT \
       \inputs.ext_output_reference, inputs.address, inputs.value, \
       \inputs.datum_info, inputs.script_hash, \
-      \inputs.created_at, createdAt.header_hash, \
-      \inputs.spent_at, spentAt.header_hash, \
+      \inputs.created_at, createdAt.header_hash, createdAt.block_no, \
+      \inputs.spent_at, spentAt.header_hash, spentAt.block_no, \
       \inputs.spent_by, inputs.spent_with"
     <> case referenceFlag of
          AsReference -> ", NULL as datum, NULL as script"
@@ -1306,6 +1309,7 @@ migrations =
         , $(embedFile "db/v2.1.0/003.sql")
         , $(embedFile "db/v2.2.0/001.sql")
         , $(embedFile "db/v2.10.0/001.sql")
+        , $(embedFile "db/v2.13.0/001.sql")
         ]
     ]
   where

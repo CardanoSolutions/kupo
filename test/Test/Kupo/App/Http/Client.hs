@@ -30,6 +30,8 @@ import Kupo.Control.MonadDelay
 import Kupo.Data.Cardano
     ( Address
     , BinaryData
+    , BlockNo (..)
+    , Checkpoint (..)
     , Datum (..)
     , DatumHash
     , ExtendedOutputReference
@@ -46,7 +48,7 @@ import Kupo.Data.Cardano
     , binaryDataFromBytes
     , datumHashFromBytes
     , datumHashToText
-    , getPointSlotNo
+    , getCheckpointSlotNo
     , metadataFromText
     , metadataHashFromText
     , mkOutputReference
@@ -127,9 +129,9 @@ data HttpClient (m :: Type -> Type) = HttpClient
     , lookupMetadataBySlotNo
         :: SlotNo -> Maybe TransactionId -> m [(MetadataHash, Metadata)]
     , listCheckpoints
-        :: m [Point]
+        :: m [Checkpoint]
     , getCheckpointBySlot
-        :: GetCheckpointMode -> SlotNo -> m (Maybe Point)
+        :: GetCheckpointMode -> SlotNo -> m (Maybe Checkpoint)
     , getAllMatches
         :: StatusFlag
         -> ReferenceFlag
@@ -211,24 +213,24 @@ newHttpClientWith manager (serverHost, serverPort) log =
                 log "waitSlot: no checkpoint"
                 threadDelay 0.05
                 _waitSlot predicate
-            (maximum . fmap getPointSlotNo -> sl) -> do
+            (maximum . fmap getCheckpointSlotNo -> sl) -> do
                 log $ "waitSlot (" <> slotNoToText sl <> "): " <> show (predicate sl)
                 unless (predicate sl) $ do
                     threadDelay 0.05
                     _waitSlot predicate
 
-    _listCheckpoints :: IO [Point]
+    _listCheckpoints :: IO [Checkpoint]
     _listCheckpoints = do
         req <- parseRequest (baseUrl <> "/checkpoints")
         res <- httpLbs req manager
         let body = responseBody res
-        case eitherDecodeJson (Json.listParser decodePoint) body of
+        case eitherDecodeJson (Json.listParser decodeCheckpoint) body of
             Left e ->
                 fail (show body <> " ----> " <> show e)
             Right xs ->
                 pure xs
 
-    _getCheckpointBySlot :: GetCheckpointMode -> SlotNo -> IO (Maybe Point)
+    _getCheckpointBySlot :: GetCheckpointMode -> SlotNo -> IO (Maybe Checkpoint)
     _getCheckpointBySlot mode (SlotNo slot) = do
         let qry = case mode of
                 GetCheckpointStrict -> "?strict"
@@ -236,7 +238,7 @@ newHttpClientWith manager (serverHost, serverPort) log =
         req <- parseRequest (baseUrl <> "/checkpoints/" <> show slot <> qry)
         res <- httpLbs req manager
         let body = responseBody res
-        pure $ either (const Nothing) Just (eitherDecodeJson decodePoint body)
+        pure $ either (const Nothing) Just (eitherDecodeJson decodeCheckpoint body)
 
     _getAllMatches :: StatusFlag -> ReferenceFlag -> IO [Result]
     _getAllMatches st ref = do
@@ -387,6 +389,16 @@ newHttpClientWith manager (serverHost, serverPort) log =
 -- Decoders
 --
 
+decodeCheckpoint :: Json.Value -> Json.Parser Checkpoint
+decodeCheckpoint =
+    Json.withObject "Checkpoint" $ \o -> do
+        point <- decodePoint (Json.Object o)
+        blockNo <- o .: "block_no"
+        pure $ Checkpoint
+            { checkpointPoint = point
+            , checkpointBlockNo = BlockNo blockNo
+            }
+
 decodeHealth :: Json.Value -> Json.Parser Health
 decodeHealth = Json.withObject "Health" $ \o -> do
     connectionStatus <- o .: "connection_status" >>= decodeConnectionStatus
@@ -398,7 +410,7 @@ decodeHealth = Json.withObject "Health" $ \o -> do
         , mostRecentNodeTip = Just (SlotNo mostRecentNodeTip)
         -- NOTE: We only have the point's slot number here. No test should rely on that.
         , mostRecentClockTick = Nothing
-        , mostRecentCheckpoint = Nothing
+        , mostRecentPoint = Nothing
         }
   where
     decodeConnectionStatus = Json.withText "ConnectionStatus" $ \case
@@ -591,8 +603,8 @@ decodeResult = Json.withObject "Result" $ \o -> Result
     <*> (decodeValue =<< (o .: "value"))
     <*> join (liftA3 decodeDatum (o .:? "datum_type") (o .:? "datum_hash") (o .:? "datum"))
     <*> join (liftA2 decodeScriptReference (o .:? "script_hash") (o .:? "script"))
-    <*> (decodePoint =<< (o .: "created_at"))
-    <*> (traverse decodePoint =<< (o .:? "spent_at"))
+    <*> (decodeCheckpoint =<< (o .: "created_at"))
+    <*> (traverse decodeCheckpoint =<< (o .:? "spent_at"))
     <*> (traverse decodeInputReference =<< (o .:? "spent_at"))
     <*> (do
             spentAt <- o .:? "spent_at"

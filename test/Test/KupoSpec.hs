@@ -61,6 +61,8 @@ import Kupo.Control.MonadTime
 import Kupo.Data.Cardano
     ( Datum (..)
     , ScriptReference (..)
+    , checkpointPoint
+    , getCheckpointSlotNo
     , getPointSlotNo
     , hasPolicyId
     , mkOutputReference
@@ -224,7 +226,7 @@ spec = skippableContext "End-to-end" $ do
                 , deferIndexes = SkipNonEssentialIndexes
                 }
             runSpec env 5 $ do
-                cp <- maximum . (<> [0]) . fmap getPointSlotNo <$> listCheckpoints
+                cp <- maximum . (<> [0]) . fmap getCheckpointSlotNo <$> listCheckpoints
                 waitSlot (> (cp + 1_000))
                 healthCheck (serverHost cfg) (serverPort cfg)
 
@@ -300,16 +302,18 @@ spec = skippableContext "End-to-end" $ do
             }
         let slot = getPointSlotNo
         runSpec env 5 $ do
+            let
+                getPointBySlot mode slotNo = getCheckpointBySlot mode slotNo <&> fmap checkpointPoint
             waitSlot (> (getPointSlotNo somePointSuccessor))
-            getCheckpointBySlot GetCheckpointStrict (slot somePoint)
+            getPointBySlot GetCheckpointStrict (slot somePoint)
                 `shouldReturn` Just somePoint
-            getCheckpointBySlot GetCheckpointStrict (prev (slot somePoint))
+            getPointBySlot GetCheckpointStrict (prev (slot somePoint))
                 `shouldReturn` Nothing
-            getCheckpointBySlot GetCheckpointStrict (slot somePointSuccessor)
+            getPointBySlot GetCheckpointStrict (slot somePointSuccessor)
                 `shouldReturn` Just somePointSuccessor
-            getCheckpointBySlot GetCheckpointStrict  (prev (slot somePointSuccessor))
+            getPointBySlot GetCheckpointStrict  (prev (slot somePointSuccessor))
                 `shouldReturn` Nothing
-            getCheckpointBySlot GetCheckpointClosestAncestor (prev (slot somePointSuccessor))
+            getPointBySlot GetCheckpointClosestAncestor (prev (slot somePointSuccessor))
                 `shouldReturn` Just somePoint
 
     endToEnd "Retrieve datums associated with datum hashes" $ \(configure, runSpec, HttpClient{..}) -> do
@@ -371,9 +375,9 @@ spec = skippableContext "End-to-end" $ do
         runSpec env 10 $ do
             let maxSlot = getPointSlotNo lastByronPoint + 10_000
             waitSlot (>= maxSlot)
-            slot <- maximum . fmap getPointSlotNo <$> listCheckpoints
+            slot <- maximum . fmap getCheckpointSlotNo <$> listCheckpoints
             res <- putPatternSince (MatchDelegation someOtherStakeKey) (Left (maxSlot - 20_000))
-            slot' <- maximum . fmap getPointSlotNo <$> listCheckpoints
+            slot' <- maximum . fmap getCheckpointSlotNo <$> listCheckpoints
             res `shouldBe` False
             listPatterns `shouldReturn` [MatchAny OnlyShelley]
             slot' `shouldSatisfy` (>= slot)
@@ -386,11 +390,11 @@ spec = skippableContext "End-to-end" $ do
         runSpec env 5 $ do
             let maxSlot = getPointSlotNo lastByronPoint + 10_000
             waitSlot (>= maxSlot)
-            slot <- maximum . fmap getPointSlotNo <$> listCheckpoints
+            slot <- maximum . fmap getCheckpointSlotNo <$> listCheckpoints
             res <- putPatternSince
                 (MatchDelegation someOtherStakeKey)
                 (Right someNonExistingPoint)
-            slot' <- maximum . fmap getPointSlotNo <$> listCheckpoints
+            slot' <- maximum . fmap getCheckpointSlotNo <$> listCheckpoints
             res `shouldBe` False
             listPatterns `shouldReturn` [MatchAny OnlyShelley]
             slot' `shouldSatisfy` (>= slot)
@@ -454,8 +458,8 @@ spec = skippableContext "End-to-end" $ do
         runSpec env 5 $ do
             waitSlot httpClient (> (getPointSlotNo lastAlonzoPoint))
             withReplica cfg $ \replicaHttpClient -> do
-                mostRecentCheckpoint <- Prelude.head <$> listCheckpoints httpClient
-                waitSlot replicaHttpClient (>= (getPointSlotNo mostRecentCheckpoint))
+                mostRecentPoint <- Prelude.head <$> listCheckpoints httpClient
+                waitSlot replicaHttpClient (>= (getCheckpointSlotNo mostRecentPoint))
                 Health{connectionStatus, configuration} <- getHealth replicaHttpClient
                 connectionStatus `shouldBe` Connected
                 configuration `shouldBe` Nothing
@@ -472,11 +476,11 @@ spec = skippableContext "End-to-end" $ do
         runSpec env 30 $ do
             waitSlot (>= maxSlot)
             points <- listCheckpoints
-            forM_ points $ \point -> getPointSlotNo point `shouldSatisfy` (<= maxSlot)
+            forM_ points $ \point -> getCheckpointSlotNo point `shouldSatisfy` (<= maxSlot)
             -- Ensures that even if we let time pass, we're not synchronizing beyond --until
             threadDelay 1
             points' <- listCheckpoints
-            forM_ points' $ \point -> getPointSlotNo point `shouldSatisfy` (<= maxSlot)
+            forM_ points' $ \point -> getCheckpointSlotNo point `shouldSatisfy` (<= maxSlot)
 
 -- | Create an 'EndToEndContext' around each child specification item within that 'Spec' tree. The
 -- spec items are 'skippable' and only executed if the appropriate environment variables are present.

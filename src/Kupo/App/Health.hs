@@ -64,10 +64,10 @@ recordCheckpoint
     -> SlotNo
     -> Maybe Point
     -> m ()
-recordCheckpoint health (Just -> mostRecentClockTick) (Just -> mostRecentNodeTip) mostRecentCheckpoint =
+recordCheckpoint health (Just -> mostRecentClockTick) (Just -> mostRecentNodeTip) mostRecentPoint =
     atomically $ modifyTVar' health $ \h -> h
         { mostRecentNodeTip
-        , mostRecentCheckpoint
+        , mostRecentPoint
         , mostRecentClockTick
         }
 
@@ -79,8 +79,8 @@ initializeHealth
     => TVar m Health
     -> Maybe Point
     -> m ()
-initializeHealth health mostRecentCheckpoint' =
+initializeHealth health mostRecentPoint' =
     atomically $ modifyTVar' health $ \h -> h
-        { mostRecentCheckpoint =
-            max (mostRecentCheckpoint h) mostRecentCheckpoint'
+        { mostRecentPoint =
+            max (mostRecentPoint h) mostRecentPoint'
         }

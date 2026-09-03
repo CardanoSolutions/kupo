@@ -2,6 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE PatternSynonyms #-}
 
 module Kupo.Data.Ogmios
@@ -196,11 +197,13 @@ decodeBlock
     -> Json.Parser PartialBlock
 decodeBlock = Json.withObject "Block" $ \o -> do
     id <- o .: "id" >>= decodeOneEraHash
+    height <- o.: "height"
     slot <- o .:? "slot" >>= \case
         Just slot -> pure slot
-        Nothing -> o .: "height"
+        Nothing -> pure height
     txs <- o .:? "transactions" .!= []
-    PartialBlock (BlockPoint (SlotNo slot) id) <$> traverse decodePartialTransaction txs
+    traverse decodePartialTransaction txs <&> \pTxs -> do
+        PartialBlock (BlockPoint (SlotNo slot) id) pTxs (BlockNo height)
 
 decodePartialTransaction
     :: Json.Value
