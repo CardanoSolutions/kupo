@@ -114,6 +114,7 @@ import Kupo.Data.Configuration
     , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
+    , NodeConfig (..)
     , LongestRollback (..)
     , Since (..)
     , mailboxCapacity
@@ -261,7 +262,7 @@ spec = do
               let config = Configuration
                       { chainProducer = CardanoNode -- NOTE: unused, but must be different than ReadOnlyReplica
                           { nodeSocket = "/dev/null"
-                          , nodeConfig = "/dev/null"
+                          , nodeConfig = NodeConfigFile "/dev/null"
                           , networkParameters = ()
                           }
                       , databaseLocation = InMemory Nothing

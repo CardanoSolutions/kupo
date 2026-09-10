@@ -76,6 +76,7 @@ import Kupo.Data.Configuration
     , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
+    , NodeConfig (..)
     )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..)
@@ -497,10 +498,10 @@ skippableContext prefix skippableSpec = do
     ref <- runIO $ newTVarIO 1442
     let cardanoNode = prefix <> " (cardano-node)"
     runIO ((,) <$> lookupEnv varCardanoNodeSocket <*> lookupEnv varCardanoNodeConfig) >>= \case
-        (Just nodeSocket, Just nodeConfig) -> do
+        (Just nodeSocket, Just nodeConfigFile) -> do
             manager <- runIO $ newManager defaultManagerSettings
             let defaultCfg = Configuration
-                    { chainProducer = CardanoNode { nodeSocket, nodeConfig, networkParameters = () }
+                    { chainProducer = CardanoNode { nodeSocket, nodeConfig = NodeConfigFile nodeConfigFile, networkParameters = () }
                     , databaseLocation = InMemory Nothing
                     , serverHost = "127.0.0.1"
                     , serverPort = 0

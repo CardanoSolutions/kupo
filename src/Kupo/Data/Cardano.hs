@@ -22,6 +22,7 @@ module Kupo.Data.Cardano
     , module Kupo.Data.Cardano.Metadata
     , module Kupo.Data.Cardano.MetadataHash
     , module Kupo.Data.Cardano.NativeScript
+    , module Kupo.Data.Cardano.Network
     , module Kupo.Data.Cardano.Output
     , module Kupo.Data.Cardano.OutputReference
     , module Kupo.Data.Cardano.OutputIndex
@@ -81,6 +82,7 @@ import Kupo.Data.Cardano.HeaderHash
 import Kupo.Data.Cardano.Metadata
 import Kupo.Data.Cardano.MetadataHash
 import Kupo.Data.Cardano.NativeScript
+import Kupo.Data.Cardano.Network
 import Kupo.Data.Cardano.Output
 import Kupo.Data.Cardano.OutputIndex
 import Kupo.Data.Cardano.OutputReference

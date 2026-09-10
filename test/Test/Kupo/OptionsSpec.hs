@@ -23,7 +23,8 @@ import Kupo.Control.MonadLog
     , defaultTracers
     )
 import Kupo.Data.Cardano
-    ( mkOutputReference
+    ( Network (..)
+    , mkOutputReference
     , pattern GenesisPoint
     , unsafeAssetNameFromBytes
     , unsafePolicyIdFromBytes
@@ -34,6 +35,7 @@ import Kupo.Data.Configuration
     , Configuration (..)
     , DatabaseLocation (..)
     , InputManagement (..)
+    , NodeConfig (..)
     , Since (..)
     )
 import Kupo.Data.Pattern
@@ -98,11 +100,20 @@ spec = parallel $ do
         , ( [ "--hydra-port", "4001" ]
           , shouldFail
           )
+        , ( [ "--amaru-host", "3001" ]
+          , shouldFail
+          )
+        , ( [ "--amaru-port", "3001" ]
+          , shouldFail
+          )
+        , ( [ "--network", "mainnet" ]
+          , shouldFail
+          )
         , ( defaultArgs
           , shouldParseAppConfiguration $ defaultConfiguration
             { chainProducer = CardanoNode
                 { nodeSocket = "./node.socket"
-                , nodeConfig = "./node.config"
+                , nodeConfig = NodeConfigFile "./node.config"
                 , networkParameters = ()
                 }
             , databaseLocation = InMemory Nothing
@@ -123,6 +134,16 @@ spec = parallel $ do
             { chainProducer = Hydra
                 { hydraHost = "localhost"
                 , hydraPort = 4001
+                }
+            , databaseLocation = InMemory Nothing
+            }
+          )
+        , ( defaultArgs'''
+          , shouldParseAppConfiguration $ defaultConfiguration
+            { chainProducer = CardanoNode
+                { nodeSocket = "./node.socket"
+                , nodeConfig = NodeConfigNetwork Preprod
+                , networkParameters = ()
                 }
             , databaseLocation = InMemory Nothing
             }
@@ -392,6 +413,13 @@ defaultArgs'' :: [String]
 defaultArgs'' =
     [ "--hydra-host", "localhost"
     , "--hydra-port", "4001"
+    , "--in-memory"
+    ]
+
+defaultArgs''' :: [String]
+defaultArgs''' =
+    [ "--node-socket", "./node.socket"
+    , "--network", "preprod"
     , "--in-memory"
     ]
 

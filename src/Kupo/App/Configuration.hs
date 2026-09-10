@@ -53,7 +53,8 @@ import Kupo.Control.MonadThrow
     ( MonadThrow (..)
     )
 import Kupo.Data.Cardano
-    ( Point
+    ( Network (..)
+    , Point
     , SlotNo (..)
     , getPointSlotNo
     , pointFromTip
@@ -61,10 +62,14 @@ import Kupo.Data.Cardano
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
+    , EpochSlots (..)
+    , NetworkMagic (..)
     , NetworkParameters (..)
     , NetworkParametersFromOgmios (..)
     , NetworkParametersFromOnDiskConfig (..)
+    , NodeConfig (..)
     , Since (..)
+    , mkSystemStart
     )
 import Kupo.Data.FetchTip
     ( FetchTipClient
@@ -121,7 +126,7 @@ resolveNetworkParameters = \case
         atomically (tryTakeTMVar networkParameters) >>= \case
             Nothing -> do
                 handle (\(_ :: SomeException) -> pure Nothing) $ do
-                    params <- parseNetworkParameters nodeConfig
+                    params <- getNetworkParameters nodeConfig
                     atomically (putTMVar networkParameters params) $> Just params
             Just params -> do
                 pure $ Just params
@@ -146,6 +151,24 @@ fetchNetworkParameters ws = do
     WS.sendJson ws $ encodeQueryNetworkGenesisConfiguration "byron"
     FromOgmios networkParameters <- WS.receiveJson ws Json.parseJSON
     pure networkParameters
+
+getNetworkParameters :: NodeConfig -> IO NetworkParameters
+getNetworkParameters (NodeConfigFile path) = parseNetworkParameters path
+getNetworkParameters (NodeConfigNetwork Mainnet) = pure $ NetworkParameters
+    { networkMagic = NetworkMagic 764824073
+    , systemStart = mkSystemStart 1506203091
+    , slotsPerEpoch = EpochSlots 21600
+    }
+getNetworkParameters (NodeConfigNetwork Preview) = pure $ NetworkParameters
+    { networkMagic = NetworkMagic 2
+    , systemStart = mkSystemStart 1666656000
+    , slotsPerEpoch = EpochSlots 4320
+    }
+getNetworkParameters (NodeConfigNetwork Preprod) = pure $ NetworkParameters
+    { networkMagic = NetworkMagic 1
+    , systemStart = mkSystemStart 1654041600
+    , slotsPerEpoch = EpochSlots 21600
+    }
 
 parseNetworkParameters :: FilePath -> IO NetworkParameters
 parseNetworkParameters configFile = runOrDie $ do
@@ -307,7 +330,7 @@ data TraceConfiguration where
         :: { hydraHost :: String, hydraPort :: Int }
         -> TraceConfiguration
     ConfigurationCardanoNode
-        :: { nodeSocket :: FilePath, nodeConfig :: FilePath }
+        :: { nodeSocket :: FilePath, nodeConfig :: NodeConfig }
         -> TraceConfiguration
     ConfigurationPatterns
         :: { patterns :: Set Text }

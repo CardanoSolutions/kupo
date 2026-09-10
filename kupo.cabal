@@ -88,6 +88,7 @@ library
       Kupo.Data.Cardano.Metadata
       Kupo.Data.Cardano.MetadataHash
       Kupo.Data.Cardano.NativeScript
+      Kupo.Data.Cardano.Network
       Kupo.Data.Cardano.Output
       Kupo.Data.Cardano.OutputIndex
       Kupo.Data.Cardano.OutputReference

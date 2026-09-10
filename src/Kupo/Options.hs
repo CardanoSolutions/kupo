@@ -64,7 +64,8 @@ import Kupo.Control.MonadTime
     , secondsToDiffTime
     )
 import Kupo.Data.Cardano
-    ( pointFromText
+    ( networkFromString
+    , pointFromText
     , slotNoFromText
     )
 import Kupo.Data.Configuration
@@ -73,6 +74,7 @@ import Kupo.Data.Configuration
     , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
+    , NodeConfig (..)
     , Since (..)
     , Until (..)
     )
@@ -195,13 +197,22 @@ nodeSocketOption = option str $ mempty
     <> help "Path to the node socket."
     <> completer (bashCompleter "file")
 
--- | --node-config=FILEPATH
-nodeConfigOption :: Parser FilePath
-nodeConfigOption = option str $ mempty
-    <> long "node-config"
-    <> metavar "FILEPATH"
-    <> help "Path to the node configuration file."
-    <> completer (bashCompleter "file")
+-- | --node-config=FILEPATH | --network=[mainnet|preprod|preview]
+nodeConfigOption :: Parser NodeConfig
+nodeConfigOption = configFileOption <|> configNetworkOption
+    where
+        configFileOption = fmap NodeConfigFile $ option str $ mempty
+            <> long "node-config"
+            <> metavar "FILEPATH"
+            <> help "Path to the node configuration file."
+            <> completer (bashCompleter "file")
+
+        configNetworkOption = fmap NodeConfigNetwork $
+            option (maybeReader networkFromString) $ mempty
+                <> long "network"
+                <> metavar "NETWORK"
+                <> help "[mainnet|preprod|preview]"
+                <> completer (listCompleter ["mainnet","preview","preprod"])
 
 -- | --workdir=DIR | --in-memory | --postgres-url=URL
 databaseLocationOption :: Parser DatabaseLocation
