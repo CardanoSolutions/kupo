@@ -33,7 +33,6 @@ module Kupo.Data.Configuration
     , NetworkParameters (..)
     , NetworkParametersFromOnDiskConfig (..)
     , NetworkParametersFromOgmios (..)
-    , NodeConfig (..)
 
     -- ** Parameters Components
     , NetworkMagic (..)
@@ -127,9 +126,6 @@ isReadOnlyReplica Configuration{chainProducer} =
         ReadOnlyReplica{} -> True
         _                 -> False
 
-data NodeConfig = NodeConfigNetwork Network | NodeConfigFile FilePath
-    deriving (Generic, Eq, Show)
-
 -- | Where does kupo pulls its data from. Both 'cardano-node' and 'ogmios' are
 -- equivalent in the capabilities and information they offer; a cardano-node
 -- will have to be through a local connection (domain socket) whereas ogmios can
@@ -139,7 +135,13 @@ data NodeConfig = NodeConfigNetwork Network | NodeConfigFile FilePath
 data ChainProducer params
     = CardanoNode
         { nodeSocket :: !FilePath
-        , nodeConfig :: NodeConfig
+        , nodeConfig :: !FilePath
+        , networkParameters :: params
+        }
+      | CardanoNodeToNode
+        { nodeHost :: !String
+        , nodePort :: !Int
+        , nodeNetwork :: Network
         , networkParameters :: params
         }
 --    | Amaru
@@ -273,7 +275,6 @@ data NetworkParameters = NetworkParameters
 deriving newtype instance ToJSON EpochSlots
 deriving newtype instance ToJSON NetworkMagic
 deriving instance ToJSON Network
-deriving instance ToJSON NodeConfig
 
 newtype NetworkParametersFromOnDiskConfig = FromOnDiskConfig NetworkParameters
 

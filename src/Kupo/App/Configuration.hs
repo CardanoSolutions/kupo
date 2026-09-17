@@ -11,6 +11,7 @@ module Kupo.App.Configuration
     , resolveNetworkParameters
     , parseNetworkParameters
     , nodeToClientVMin
+    , nodeToNodeVMin
 
     -- * Application Setup
     , startOrResume
@@ -46,6 +47,9 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadOuroboros
     ( NodeToClientVersion (..)
     )
+import Kupo.Control.MonadOuroborosNtoN
+    ( NodeToNodeVersion (..)
+    )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
@@ -67,7 +71,6 @@ import Kupo.Data.Configuration
     , NetworkParameters (..)
     , NetworkParametersFromOgmios (..)
     , NetworkParametersFromOnDiskConfig (..)
-    , NodeConfig (..)
     , Since (..)
     , mkSystemStart
     )
@@ -102,11 +105,24 @@ import qualified Network.WebSockets.Tls as WSS
 nodeToClientVMin :: NodeToClientVersion
 nodeToClientVMin = NodeToClientV_16
 
+nodeToNodeVMin :: NodeToNodeVersion
+nodeToNodeVMin = NodeToNodeV_14
+
 hydrateChainProducer :: ChainProducer () -> IO (ChainProducer (TMVar IO NetworkParameters))
 hydrateChainProducer = \case
     CardanoNode{nodeSocket, nodeConfig} -> do
         networkParameters <- liftIO newEmptyTMVarIO
         let chainProducer = CardanoNode{nodeSocket, nodeConfig, networkParameters}
+        resolveNetworkParameters chainProducer $> chainProducer
+
+    CardanoNodeToNode{nodeHost, nodePort, nodeNetwork} -> do
+        networkParameters <- liftIO newEmptyTMVarIO
+        let chainProducer = CardanoNodeToNode
+                { nodeHost
+                , nodePort
+                , nodeNetwork
+                , networkParameters
+                }
         resolveNetworkParameters chainProducer $> chainProducer
 
     Ogmios{ogmiosHost, ogmiosPort} -> do
@@ -126,7 +142,16 @@ resolveNetworkParameters = \case
         atomically (tryTakeTMVar networkParameters) >>= \case
             Nothing -> do
                 handle (\(_ :: SomeException) -> pure Nothing) $ do
-                    params <- getNetworkParameters nodeConfig
+                    params <- parseNetworkParameters nodeConfig
+                    atomically (putTMVar networkParameters params) $> Just params
+            Just params -> do
+                pure $ Just params
+
+    CardanoNodeToNode{nodeNetwork, networkParameters} -> do
+        atomically (tryTakeTMVar networkParameters) >>= \case
+            Nothing -> do
+                handle (\(_ :: SomeException) -> pure Nothing) $ do
+                    let params = getNetworkParameters nodeNetwork
                     atomically (putTMVar networkParameters params) $> Just params
             Just params -> do
                 pure $ Just params
@@ -152,19 +177,18 @@ fetchNetworkParameters ws = do
     FromOgmios networkParameters <- WS.receiveJson ws Json.parseJSON
     pure networkParameters
 
-getNetworkParameters :: NodeConfig -> IO NetworkParameters
-getNetworkParameters (NodeConfigFile path) = parseNetworkParameters path
-getNetworkParameters (NodeConfigNetwork Mainnet) = pure $ NetworkParameters
+getNetworkParameters :: Network -> NetworkParameters
+getNetworkParameters Mainnet = NetworkParameters
     { networkMagic = NetworkMagic 764824073
     , systemStart = mkSystemStart 1506203091
     , slotsPerEpoch = EpochSlots 21600
     }
-getNetworkParameters (NodeConfigNetwork Preview) = pure $ NetworkParameters
+getNetworkParameters Preview = NetworkParameters
     { networkMagic = NetworkMagic 2
     , systemStart = mkSystemStart 1666656000
     , slotsPerEpoch = EpochSlots 4320
     }
-getNetworkParameters (NodeConfigNetwork Preprod) = pure $ NetworkParameters
+getNetworkParameters Preprod = NetworkParameters
     { networkMagic = NetworkMagic 1
     , systemStart = mkSystemStart 1654041600
     , slotsPerEpoch = EpochSlots 21600
@@ -330,7 +354,10 @@ data TraceConfiguration where
         :: { hydraHost :: String, hydraPort :: Int }
         -> TraceConfiguration
     ConfigurationCardanoNode
-        :: { nodeSocket :: FilePath, nodeConfig :: NodeConfig }
+        :: { nodeSocket :: FilePath, nodeConfig :: FilePath }
+        -> TraceConfiguration
+    ConfigurationCardanoNodeToNode
+        :: { nodeHost :: String, nodePort :: Int, nodeNetwork :: Network }
         -> TraceConfiguration
     ConfigurationPatterns
         :: { patterns :: Set Text }
@@ -352,11 +379,5 @@ instance ToJSON TraceConfiguration where
 
 instance HasSeverityAnnotation TraceConfiguration where
     getSeverityAnnotation = \case
-        ConfigurationNetwork{} -> Info
-        ConfigurationOgmios{} -> Info
-        ConfigurationHydra{} -> Info
-        ConfigurationCardanoNode{} -> Info
-        ConfigurationPatterns{} -> Info
-        ConfigurationCheckpointsForIntersection{} -> Info
-        ConfigurationMaxConcurrency{} -> Info
         ConfigurationInvalidOrMissingOption{} -> Error
+        _ -> Info

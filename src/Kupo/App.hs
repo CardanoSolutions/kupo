@@ -2,6 +2,7 @@
 --  License, v. 2.0. If a copy of the MPL was not distributed with this
 --  file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -60,6 +61,7 @@ import Kupo.App.ChainSync
 import Kupo.App.Configuration
     ( TraceConfiguration (..)
     , nodeToClientVMin
+    , nodeToNodeVMin
     , resolveNetworkParameters
     )
 import Kupo.App.Database.Types
@@ -95,6 +97,10 @@ import Kupo.Control.MonadLog
 import Kupo.Control.MonadOuroboros
     ( MonadOuroboros (..)
     , NodeToClientVersion
+    )
+import Kupo.Control.MonadOuroborosNtoN
+    ( MonadOuroborosNtoN (..)
+    , NodeToNodeVersion
     )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
@@ -191,7 +197,9 @@ import qualified Network.Mux as Mux
 import qualified Ouroboros.Network.Protocol.Handshake as Handshake
 
 withExceptionHandler
-    :: Tracer IO TraceKupo
+    :: forall v.
+        (Show v, Typeable v)
+    => Tracer IO TraceKupo
     -> ConnectionStatusToggle IO
     -> IO ()
     -> IO Void
@@ -200,7 +208,7 @@ withExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
   where
     handleExceptions :: IO DiffTime -> IO DiffTime
     handleExceptions
-        = handle onHandshakeException
+        = handle (onHandshakeException @v)
         . handle (onRetryableException 5 isRetryableIOException)
         . handle (onRetryableException 5 isRetryableMuxError)
         . handle (onRetryableException 5 isRetryableConnectionException)
@@ -245,7 +253,10 @@ withExceptionHandler tr ConnectionStatusToggle{toggleDisconnected} io =
 
 -- | Show better errors when failing to handshake with the cardano-node. This is generally
 -- because users have misconfigured their instance.
-onHandshakeException :: HandshakeProtocolError NodeToClientVersion -> IO a
+onHandshakeException
+    :: forall v a. (Show v, Typeable v)
+    => HandshakeProtocolError v
+    -> IO a
 onHandshakeException = \case
     HandshakeError (Handshake.Refused _version reason) -> do
         let hint = case T.splitOn "/=" reason of
@@ -403,6 +414,33 @@ newProducer tr chainProducer callback = do
                             throwIO e
                     )
 
+        CardanoNodeToNode{nodeHost, nodePort, nodeNetwork} -> do
+            logWith tr ConfigurationCardanoNodeToNode { nodeHost, nodePort, nodeNetwork }
+            whenJust networkParameters $ logWith tr . ConfigurationNetwork
+            mailbox <- atomically (newMailbox mailboxCapacity)
+
+            magic <- networkMagicOrThrow networkParameters
+            slots <- slotsPerEpochOrThrow networkParameters
+
+            callback forcedRollbackCallback mailbox $ \tracerChainSync checkpoints statusToggle -> do
+                withChainSyncServerNtoN
+                  statusToggle
+                  [ nodeToNodeVMin .. maxBound ]
+                  magic
+                  slots
+                  nodeHost
+                  nodePort
+                  (Node.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
+                  & handle
+                    (\case
+                        e@IntersectionNotFound{requestedPoints = points} -> do
+                            logWith tracerChainSync ChainSyncIntersectionNotFound{points}
+                            throwIO e
+                        e@ForcedIntersectionNotFound{point} -> do
+                            logWith tracerChainSync $ ChainSyncIntersectionNotFound [point]
+                            throwIO e
+                    )
+
 -- | A background client that answers on-demand requests to fetch specific block. It evolved on a
 -- completely different connection than the main chain producer to not conflict with one another.
 --
@@ -428,7 +466,7 @@ withFetchBlockClient chainProducer callback = do
             (chainSyncClient, fetchBlockClient) <- Node.newFetchBlockClient
             race_
                 (callback fetchBlockClient)
-                (withExceptionHandler nullTracer noConnectionStatusToggle $ do
+                (withExceptionHandler @NodeToClientVersion nullTracer noConnectionStatusToggle $ do
                     networkParameters <- resolveNetworkParameters chainProducer
                     magic <- networkMagicOrThrow networkParameters
                     slots <- slotsPerEpochOrThrow networkParameters
@@ -438,6 +476,23 @@ withFetchBlockClient chainProducer callback = do
                         magic
                         slots
                         nodeSocket
+                        chainSyncClient
+                )
+        CardanoNodeToNode{nodeHost, nodePort} -> do
+            (chainSyncClient, fetchBlockClient) <- Node.newFetchBlockClient
+            race_
+                (callback fetchBlockClient)
+                (withExceptionHandler @NodeToNodeVersion nullTracer noConnectionStatusToggle $ do
+                    networkParameters <- resolveNetworkParameters chainProducer
+                    magic <- networkMagicOrThrow networkParameters
+                    slots <- slotsPerEpochOrThrow networkParameters
+                    withChainSyncServerNtoN
+                        noConnectionStatusToggle
+                        [ nodeToNodeVMin .. maxBound ]
+                        magic
+                        slots
+                        nodeHost
+                        nodePort
                         chainSyncClient
                 )
 
@@ -464,6 +519,23 @@ newFetchTipClient = \case
             magic
             slots
             nodeSocket
+            (Node.newFetchTipClient response)
+
+        atomically $ takeTMVar response
+    chainProducer@CardanoNodeToNode{nodeHost, nodePort} -> do
+        networkParameters <- resolveNetworkParameters chainProducer
+        magic <- networkMagicOrThrow networkParameters
+        slots <- slotsPerEpochOrThrow networkParameters
+
+        response <- newEmptyTMVarIO
+
+        withChainSyncServerNtoN
+            noConnectionStatusToggle
+            [ nodeToNodeVMin .. maxBound ]
+            magic
+            slots
+            nodeHost
+            nodePort
             (Node.newFetchTipClient response)
 
         atomically $ takeTMVar response

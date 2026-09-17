@@ -250,6 +250,12 @@ spec = skippableContext "End-to-end" $ do
                             , nodeConfig
                             , networkParameters = ()
                             }
+                    CardanoNodeToNode{nodeConfig} ->
+                        CardanoNodeToNode
+                            { nodeHost = "/dev/null"
+                            , nodeConfig
+                            , networkParameters = ()
+                            }
                     Ogmios{ogmiosPort} ->
                         Ogmios
                             { ogmiosHost = "/dev/null"
@@ -498,22 +504,21 @@ skippableContext prefix skippableSpec = do
     ref <- runIO $ newTVarIO 1442
     let cardanoNode = prefix <> " (cardano-node)"
     runIO ((,) <$> lookupEnv varCardanoNodeSocket <*> lookupEnv varCardanoNodeConfig) >>= \case
-        (Just nodeSocket, Just nodeConfigFile) -> do
+        (Just socket, Just cfgFile) -> do
             manager <- runIO $ newManager defaultManagerSettings
-            let defaultCfg = Configuration
-                    { chainProducer = CardanoNode { nodeSocket, nodeConfig = NodeConfigFile nodeConfigFile, networkParameters = () }
-                    , databaseLocation = InMemory Nothing
-                    , serverHost = "127.0.0.1"
-                    , serverPort = 0
-                    , since = Nothing
-                    , until = Nothing
-                    , patterns = fromList []
-                    , inputManagement = MarkSpentInputs
-                    , longestRollback = 43200
-                    , garbageCollectionInterval = 180
-                    , deferIndexes = InstallIndexesIfNotExist
-                    }
-            context cardanoNode $ around (withTempDirectory manager ref defaultCfg) skippableSpec
+            let cp = CardanoNode {socket, cfgFile, ()}
+            let cfg = defaultConfiguration cp
+            context cardanoNode $ around (withTempDirectory manager ref cfg) skippableSpec
+        _skipOtherwise ->
+            xcontext cardanoNode (pure ())
+
+    let cardanoNodeToNode = prefix <> " (cardano-nodeToNode)"
+    runIO ((,) <$> lookupEnv varCardanoNodeHost <*> lookupEnv varCardanoNodePort <*> lookupEnv varNetwork) >>= \case
+        (Just host, Just port, Just network) -> do
+            manager <- runIO $ newManager defaultManagerSettings
+            let cp = CardanoNodeToNode { host, port, network, () }
+            let cfg = defaultConfiguration cp
+            context cardanoNode $ around (withTempDirectory manager ref cfg) skippableSpec
         _skipOtherwise ->
             xcontext cardanoNode (pure ())
 
@@ -522,20 +527,9 @@ skippableContext prefix skippableSpec = do
         (Just ogmiosHost, Just (Prelude.read -> ogmiosPort)) -> do
             manager <- runIO $ newManager $
                 defaultManagerSettings { managerResponseTimeout = responseTimeoutNone }
-            let defaultCfg = Configuration
-                    { chainProducer = Ogmios { ogmiosHost, ogmiosPort, networkParameters = () }
-                    , databaseLocation = InMemory Nothing
-                    , serverHost = "127.0.0.1"
-                    , serverPort = 0
-                    , since = Nothing
-                    , until = Nothing
-                    , patterns = fromList []
-                    , inputManagement = MarkSpentInputs
-                    , longestRollback = 43200
-                    , garbageCollectionInterval = 180
-                    , deferIndexes = InstallIndexesIfNotExist
-                    }
-            context ogmios $ around (withTempDirectory manager ref defaultCfg) skippableSpec
+            let cp = Ogmios { ogmiosHost, ogmiosPort, networkParameters = () }
+            let cfg = defaultConfiguration cp
+            context ogmios $ around (withTempDirectory manager ref cfg) skippableSpec
         _skipOtherwise ->
             xcontext ogmios (pure ())
 
@@ -544,20 +538,9 @@ skippableContext prefix skippableSpec = do
         (Just hydraHost, Just (Prelude.read -> hydraPort)) -> do
             manager <- runIO $ newManager $
                 defaultManagerSettings { managerResponseTimeout = responseTimeoutNone }
-            let defaultCfg = Configuration
-                    { chainProducer = Hydra {hydraHost, hydraPort}
-                    , databaseLocation = InMemory Nothing
-                    , serverHost = "127.0.0.1"
-                    , serverPort = 0
-                    , since = Nothing
-                    , until = Nothing
-                    , patterns = fromList []
-                    , inputManagement = MarkSpentInputs
-                    , longestRollback = 43200
-                    , garbageCollectionInterval = 180
-                    , deferIndexes = InstallIndexesIfNotExist
-                    }
-            context hydra $ around (withTempDirectory manager ref defaultCfg) skippableSpec
+            let cp = Hydra {hydraHost, hydraPort}
+            let cfg = defaultConfiguration cp
+            context hydra $ around (withTempDirectory manager ref cfg) skippableSpec
         _skipOtherwise ->
             xcontext hydra (pure ())
   where
@@ -622,6 +605,20 @@ skippableContext prefix skippableSpec = do
                 (1 :: Word, mempty)
             & snd
 
+defaultConfiguration :: ChainProducer -> Configuration
+defaultConfiguration cp = Configuration
+    { chainProducer = cp
+    , databaseLocation = InMemory Nothing
+    , serverHost = "127.0.0.1"
+    , serverPort = 0
+    , since = Nothing
+    , until = Nothing
+    , patterns = fromList []
+    , inputManagement = MarkSpentInputs
+    , longestRollback = 43200
+    , garbageCollectionInterval = 180
+    , deferIndexes = InstallIndexesIfNotExist
+    }
 
 data EndToEndException = EndToEndException
     { httpClientLogs :: Text

@@ -92,6 +92,7 @@ library:
     - lens
     - lens-aeson
     - modern-uri
+    - network
     - network-mux
     - optparse-applicative
     - cardano-diffusion
