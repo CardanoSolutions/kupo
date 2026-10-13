@@ -103,6 +103,10 @@ import Ouroboros.Network.PeerSelection.PeerSharing.Codec
 import Ouroboros.Network.Point
     ( WithOrigin (..)
     )
+import Ouroboros.Network.Protocol.BlockFetch.Client
+    ( BlockFetchClientPipelined (..)
+    , blockFetchClientPeerPipelined
+    )
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
     ( ChainSyncClientPipelined (..)
     , chainSyncClientPeerPipelined
@@ -136,6 +140,12 @@ class MonadThrow m => MonadOuroborosNtoN (m :: Type -> Type) where
             (Tip (BlockT m))
             IO
             ()
+        -> BlockFetchClientPipelined
+            (Header (BlockT m))
+            (Point (BlockT m))
+            (Tip (BlockT m))
+            IO
+            ()
         -> m ()
 
 instance MonadOuroborosNtoN IO where
@@ -147,7 +157,8 @@ instance MonadOuroborosNtoN IO where
         slotsPerEpoch
         host
         port
-        client =
+        chainSyncClient
+        blockFetchClient =
             withIOManager $ \iocp -> do
                 addr <- resolve
                 result <- connectTo
@@ -195,7 +206,7 @@ instance MonadOuroborosNtoN IO where
             OuroborosApplication
                 [ MiniProtocol
                     { miniProtocolNum =
-                        MiniProtocolNum 5
+                        MiniProtocolNum 2 -- node-to-node chain sync
                     , miniProtocolStart =
                         StartEagerly
                     , miniProtocolLimits =
@@ -203,9 +214,26 @@ instance MonadOuroborosNtoN IO where
                     , miniProtocolRun =
                         InitiatorProtocolOnly $ MiniProtocolCb $ \_ channel ->
                             let
-                                peer = chainSyncClientPeerPipelined client
+                                peer = chainSyncClientPeerPipelined chainSyncClient
                                 codec =
                                     cChainSyncCodec
+                                        (codecs slotsPerEpoch version)
+                             in
+                                runPipelinedPeer nullTracer codec channel peer
+                    }
+                , MiniProtocol
+                    { miniProtocolNum =
+                        MiniProtocolNum 3 -- node-to-node block fetch
+                    , miniProtocolStart =
+                        StartEagerly
+                    , miniProtocolLimits =
+                        MiniProtocolLimits (fromIntegral $ maxBound @Word32)
+                    , miniProtocolRun =
+                        InitiatorProtocolOnly $ MiniProtocolCb $ \_ channel ->
+                            let
+                                peer = blockFetchClientPeerPipelined blockFetchClient
+                                codec =
+                                    cBlockFetchCodec
                                         (codecs slotsPerEpoch version)
                              in
                                 runPipelinedPeer nullTracer codec channel peer

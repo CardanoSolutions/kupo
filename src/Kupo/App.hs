@@ -431,6 +431,7 @@ newProducer tr chainProducer callback = do
                   nodeHost
                   nodePort
                   (Node.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
+                  -- TODO BLOCK FETCH CLIENT
                   & handle
                     (\case
                         e@IntersectionNotFound{requestedPoints = points} -> do
