@@ -62,7 +62,7 @@ import Ouroboros.Consensus.Cardano.Block
     ( CodecConfig (..)
     )
 import Ouroboros.Consensus.Network.NodeToNode
-    ( Codecs (cChainSyncCodec)
+    ( Codecs (cChainSyncCodec, cBlockFetchCodec)
     , defaultCodecs
     )
 import Ouroboros.Consensus.Node.NetworkProtocolVersion
@@ -141,9 +141,8 @@ class MonadThrow m => MonadOuroborosNtoN (m :: Type -> Type) where
             IO
             ()
         -> BlockFetchClientPipelined
-            (Header (BlockT m))
+            (BlockT m)
             (Point (BlockT m))
-            (Tip (BlockT m))
             IO
             ()
         -> m ()

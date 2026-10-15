@@ -190,6 +190,7 @@ import qualified Kupo.App.ChainSync.Hydra as Hydra
 import qualified Kupo.App.ChainSync.Node as Node
 import qualified Kupo.App.ChainSync.Ogmios as Ogmios
 import qualified Kupo.App.FetchBlock.Node as Node
+import qualified Kupo.App.FetchBlock.NodeToNode as NodeToNode
 import qualified Kupo.App.FetchBlock.Ogmios as Ogmios
 import qualified Kupo.App.FetchTip.Node as Node
 import qualified Kupo.App.FetchTip.Ogmios as Ogmios
@@ -417,7 +418,8 @@ newProducer tr chainProducer callback = do
         CardanoNodeToNode{nodeHost, nodePort, nodeNetwork} -> do
             logWith tr ConfigurationCardanoNodeToNode { nodeHost, nodePort, nodeNetwork }
             whenJust networkParameters $ logWith tr . ConfigurationNetwork
-            mailbox <- atomically (newMailbox mailboxCapacity)
+            blockMailbox <- atomically (newMailbox mailboxCapacity)
+            headerMailbox <- atomically (newMailbox mailboxCapacity)
 
             magic <- networkMagicOrThrow networkParameters
             slots <- slotsPerEpochOrThrow networkParameters
@@ -430,8 +432,8 @@ newProducer tr chainProducer callback = do
                   slots
                   nodeHost
                   nodePort
-                  (Node.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
-                  -- TODO BLOCK FETCH CLIENT
+                  (Node.mkChainSyncClient forcedRollbackVar headerMailbox checkpoints)
+                  (NodeToNode.newFetchBlockClient headerMailbox blockMailbox)
                   & handle
                     (\case
                         e@IntersectionNotFound{requestedPoints = points} -> do

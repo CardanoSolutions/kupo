@@ -238,7 +238,7 @@ The database is not just a passive store. It is also part of the state machine:
 
 ---
 
-## 8. The gardener and maintenance cycle
+## The gardener and maintenance cycle
 
 In addition to the main consumer, Kupo runs a `gardener` process to clean up and optimize the database.
 
