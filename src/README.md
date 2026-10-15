@@ -18,7 +18,7 @@ flowchart TB
       Node([cardano-node])
       Ogmios([Ogmios])
       Hydra([Hydra])
-    END
+    end
 
     subgraph Kupo
       Producer[Chain producer]
@@ -26,11 +26,11 @@ flowchart TB
       Consumer
       DB[(Database)]
       HTTP[HTTP server]
-    END
+    end
 
     subgraph App
       Client(HTTP client)
-    END
+    end
 
     Producer --> Blockchain
     Producer --> Mailbox
@@ -38,7 +38,6 @@ flowchart TB
     Consumer --> DB
     HTTP --> DB
     Client --> HTTP
-END
 ```
 
 The codebase is organized in layers, with the following major modules:
