@@ -424,7 +424,7 @@ newProducer tr chainProducer callback = do
             magic <- networkMagicOrThrow networkParameters
             slots <- slotsPerEpochOrThrow networkParameters
 
-            callback forcedRollbackCallback mailbox $ \tracerChainSync checkpoints statusToggle -> do
+            callback forcedRollbackCallback blockMailbox $ \tracerChainSync checkpoints statusToggle -> do
                 withChainSyncServerNtoN
                   statusToggle
                   [ nodeToNodeVMin .. maxBound ]

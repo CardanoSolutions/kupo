@@ -5,8 +5,7 @@
 {-# LANGUAGE PatternSynonyms #-} -- TODO not necessary for using?
 
 module Kupo.App.FetchBlock.NodeToNode
-    ( FetchBlockClient
-    , newFetchBlockClient
+    ( newFetchBlockClient
     ) where
 
 import Kupo.Prelude
@@ -23,11 +22,11 @@ import Kupo.Data.Cardano
     , Tip
     , pattern GenesisPoint
     )
-import Kupo.Data.FetchBlock
-    ( FetchBlockClient
-    )
 import Network.TypedProtocol
     ( N (..)
+    )
+import Ouroboros.Consensus.Block.Abstract
+    ( Header
     )
 import Ouroboros.Network.Protocol.BlockFetch.Client
     ( BlockFetchClientPipelined (..)
@@ -41,4 +40,9 @@ newFetchBlockClient
     => Mailbox m (Tip, (Header (block))) (Tip, Point)
     -> Mailbox m (Tip, block) (Tip, Point)
     -> BlockFetchClientPipelined block Point m ()
-newFetchBlockClient headerMailbox blockMailbox = _ -- TODO continue from here
+newFetchBlockClient headerMailbox blockMailbox =
+    BlockFetchClientPipelined $ clientStIdle headerMailbox blockMailbox
+
+clientStIdle headerMailbox blockMailbox = _
+
+
