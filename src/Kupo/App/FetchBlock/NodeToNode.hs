@@ -19,15 +19,16 @@ import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
 import Kupo.Data.Cardano
-    ( Point
+    ( Block
+    , Point
     , Tip
-    , getPoint
     )
 import Network.TypedProtocol
     ( Nat(..)
     )
 import Ouroboros.Consensus.Block.Abstract
     ( Header
+    , headerPoint
     )
 import Ouroboros.Network.Protocol.BlockFetch.Client
     ( BlockFetchClientPipelined (..)
@@ -39,8 +40,13 @@ import Ouroboros.Network.Protocol.BlockFetch.Type
 import qualified Data.List.NonEmpty as NE
 
 
-rangesFromHeaders :: [(Tip,Header block)] -> [(Tip,ChainRange Point)]
-rangesFromHeaders _ = []
+ranges
+    :: NE.NonEmpty (Tip, Header Block)
+    -> NE.NonEmpty (Tip, ChainRange Point)
+ranges hs = (tip, ChainRange pt pt) :| []
+  where
+    (tip,hdr) = NE.head hs
+    pt = headerPoint hdr
 
 -- | Pipeline node-to-node block fetch client
 -- Reads headers from the header mailbox
@@ -50,35 +56,33 @@ rangesFromHeaders _ = []
 newFetchBlockClient
     :: forall m block.
        MonadSTM m
-    => Mailbox m (Tip, Header block) (Tip, Point)
+    => Mailbox m (Tip, Header Block) (Tip, Point)
     -> Mailbox m (Tip, block) (Tip, Point)
     -> m (BlockFetchClientPipelined block Point m ())
 newFetchBlockClient headerMailbox blockMailbox = do
-    ranges <- nextRanges
-    pure $ BlockFetchClientPipelined $ fetchBlocks ranges Zero
+    BlockFetchClientPipelined <$> fetchBlocks Zero <$> nextRanges
         where
-            nextRanges = do
-                messages <- atomically (flushHighFrequency headerMailbox)
-                pure $ rangesFromHeaders (NE.toList messages)
+            nextRanges = ranges <$> atomically (flushHighFrequency headerMailbox)
 
-            fetchBlocks [] _ = error "Should not happen"
-
-            fetchBlocks ((tip,r):rs) n =
+            fetchBlocks n rs =
                 SendMsgRequestRangePipelined
                     r
-                    rs
+                    rest
                     (handleBlock tip)
                     (collectBlocks (Succ n))
+                where
+                    (tip,r) = NE.head rs
+                    rest = NE.fromList (NE.tail rs)
 
             collectBlocks (Succ n) =
                 CollectBlocksPipelined
                     Nothing
-                    (\rs -> fetchBlocks rs n)
+                    (\rs -> fetchBlocks n rs)
 
             handleBlock tip (Just b) rs = do
                 atomically $ putHighFrequencyMessage blockMailbox (tip, b)
                 pure rs
 
             handleBlock _ Nothing rs = do
-                ranges <- nextRanges
-                pure (ranges <> rs)
+                nextRs <- nextRanges
+                pure (rs <> nextRs)
