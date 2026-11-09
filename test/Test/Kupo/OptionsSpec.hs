@@ -35,7 +35,6 @@ import Kupo.Data.Configuration
     , Configuration (..)
     , DatabaseLocation (..)
     , InputManagement (..)
-    , NodeConfig (..)
     , Since (..)
     )
 import Kupo.Data.Pattern
@@ -113,7 +112,7 @@ spec = parallel $ do
           , shouldParseAppConfiguration $ defaultConfiguration
             { chainProducer = CardanoNode
                 { nodeSocket = "./node.socket"
-                , nodeConfig = NodeConfigFile "./node.config"
+                , nodeConfig = "./node.config"
                 , networkParameters = ()
                 }
             , databaseLocation = InMemory Nothing
@@ -140,9 +139,10 @@ spec = parallel $ do
           )
         , ( defaultArgs'''
           , shouldParseAppConfiguration $ defaultConfiguration
-            { chainProducer = CardanoNode
-                { nodeSocket = "./node.socket"
-                , nodeConfig = NodeConfigNetwork Preprod
+            { chainProducer = CardanoNodeToNode
+                { nodeHost = "localhost"
+                , nodePort = 3001
+                , nodeNetwork = Preprod
                 , networkParameters = ()
                 }
             , databaseLocation = InMemory Nothing

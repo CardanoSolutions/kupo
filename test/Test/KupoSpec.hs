@@ -21,6 +21,9 @@ import Control.Monad.Trans.Writer
 import Data.List
     ( maximum
     )
+import Data.Maybe
+    ( fromJust
+    )
 import Kupo
     ( Env
     , Kupo
@@ -70,13 +73,15 @@ import Kupo.Data.Cardano
 import Kupo.Data.ChainSync
     ( IntersectionNotFoundException
     )
+import Kupo.Data.Cardano
+    ( networkFromString
+    )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
     , Configuration (..)
     , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
-    , NodeConfig (..)
     )
 import Kupo.Data.Http.GetCheckpointMode
     ( GetCheckpointMode (..)
@@ -182,6 +187,15 @@ varCardanoNodeSocket = "CARDANO_NODE_SOCKET"
 varCardanoNodeConfig :: String
 varCardanoNodeConfig = "CARDANO_NODE_CONFIG"
 
+varCardanoNodeHost :: String
+varCardanoNodeHost = "CARDANO_NODE_HOST"
+
+varCardanoNodePort :: String
+varCardanoNodePort = "CARDANO_NODE_PORT"
+
+varCardanoNetwork :: String
+varCardanoNetwork = "CARDANO_NETWORK"
+
 varOgmiosHost :: String
 varOgmiosHost = "OGMIOS_HOST"
 
@@ -250,10 +264,11 @@ spec = skippableContext "End-to-end" $ do
                             , nodeConfig
                             , networkParameters = ()
                             }
-                    CardanoNodeToNode{nodeConfig} ->
+                    CardanoNodeToNode{nodePort, nodeNetwork} ->
                         CardanoNodeToNode
                             { nodeHost = "/dev/null"
-                            , nodeConfig
+                            , nodePort
+                            , nodeNetwork
                             , networkParameters = ()
                             }
                     Ogmios{ogmiosPort} ->
@@ -506,21 +521,30 @@ skippableContext prefix skippableSpec = do
     runIO ((,) <$> lookupEnv varCardanoNodeSocket <*> lookupEnv varCardanoNodeConfig) >>= \case
         (Just socket, Just cfgFile) -> do
             manager <- runIO $ newManager defaultManagerSettings
-            let cp = CardanoNode {socket, cfgFile, ()}
+            let cp = CardanoNode
+                        { nodeSocket = socket
+                        , nodeConfig = cfgFile
+                        , networkParameters = ()
+                        }
             let cfg = defaultConfiguration cp
             context cardanoNode $ around (withTempDirectory manager ref cfg) skippableSpec
         _skipOtherwise ->
             xcontext cardanoNode (pure ())
 
     let cardanoNodeToNode = prefix <> " (cardano-nodeToNode)"
-    runIO ((,) <$> lookupEnv varCardanoNodeHost <*> lookupEnv varCardanoNodePort <*> lookupEnv varNetwork) >>= \case
+    runIO ((,,) <$> lookupEnv varCardanoNodeHost <*> lookupEnv varCardanoNodePort <*> lookupEnv varCardanoNetwork) >>= \case
         (Just host, Just port, Just network) -> do
             manager <- runIO $ newManager defaultManagerSettings
-            let cp = CardanoNodeToNode { host, port, network, () }
+            let cp = CardanoNodeToNode
+                         { nodeHost = host
+                         , nodePort = Prelude.read port
+                         , nodeNetwork = fromJust (networkFromString network)
+                         , networkParameters = ()
+                         }
             let cfg = defaultConfiguration cp
-            context cardanoNode $ around (withTempDirectory manager ref cfg) skippableSpec
+            context cardanoNodeToNode $ around (withTempDirectory manager ref cfg) skippableSpec
         _skipOtherwise ->
-            xcontext cardanoNode (pure ())
+            xcontext cardanoNodeToNode (pure ())
 
     let ogmios = prefix <> " (ogmios)"
     runIO ((,) <$> lookupEnv varOgmiosHost <*> lookupEnv varOgmiosPort) >>= \case
@@ -605,7 +629,7 @@ skippableContext prefix skippableSpec = do
                 (1 :: Word, mempty)
             & snd
 
-defaultConfiguration :: ChainProducer -> Configuration
+defaultConfiguration :: ChainProducer () -> Configuration
 defaultConfiguration cp = Configuration
     { chainProducer = cp
     , databaseLocation = InMemory Nothing
