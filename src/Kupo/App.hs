@@ -420,6 +420,8 @@ newProducer tr chainProducer callback = do
             whenJust networkParameters $ logWith tr . ConfigurationNetwork
             blockMailbox <- atomically (newMailbox mailboxCapacity)
             headerMailbox <- atomically (newMailbox mailboxCapacity)
+            fetchBlockClient <-
+                NodeToNode.newFetchBlockClient headerMailbox blockMailbox
 
             magic <- networkMagicOrThrow networkParameters
             slots <- slotsPerEpochOrThrow networkParameters
@@ -433,7 +435,7 @@ newProducer tr chainProducer callback = do
                   nodeHost
                   nodePort
                   (Node.mkChainSyncClient forcedRollbackVar headerMailbox checkpoints)
-                  (NodeToNode.newFetchBlockClient headerMailbox blockMailbox)
+                  fetchBlockClient
                   & handle
                     (\case
                         e@IntersectionNotFound{requestedPoints = points} -> do
@@ -482,6 +484,7 @@ withFetchBlockClient chainProducer callback = do
                         chainSyncClient
                 )
         CardanoNodeToNode{nodeHost, nodePort} -> do
+            -- TODO
             (chainSyncClient, fetchBlockClient) <- Node.newFetchBlockClient
             race_
                 (callback fetchBlockClient)
