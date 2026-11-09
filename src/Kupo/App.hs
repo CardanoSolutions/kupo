@@ -175,6 +175,9 @@ import Kupo.Data.Pattern
 import Network.WebSockets
     ( ConnectionException (..)
     )
+import Ouroboros.Consensus.Block.Abstract
+    ( headerPoint
+    )
 import Ouroboros.Network.Protocol.Handshake
     ( HandshakeProtocolError (..)
     )
@@ -404,7 +407,7 @@ newProducer tr chainProducer callback = do
                   magic
                   slots
                   nodeSocket
-                  (Node.mkChainSyncClient forcedRollbackVar mailbox checkpoints)
+                  (Node.mkChainSyncClient getPoint forcedRollbackVar mailbox checkpoints)
                   & handle
                     (\case
                         e@IntersectionNotFound{requestedPoints = points} -> do
@@ -434,8 +437,8 @@ newProducer tr chainProducer callback = do
                   slots
                   nodeHost
                   nodePort
-                  (Node.mkChainSyncClient forcedRollbackVar headerMailbox checkpoints)
-                  fetchBlockClient
+                  (Node.mkChainSyncClient headerPoint forcedRollbackVar headerMailbox checkpoints)
+                  (Just fetchBlockClient)
                   & handle
                     (\case
                         e@IntersectionNotFound{requestedPoints = points} -> do
@@ -484,22 +487,27 @@ withFetchBlockClient chainProducer callback = do
                         chainSyncClient
                 )
         CardanoNodeToNode{nodeHost, nodePort} -> do
-            -- TODO
-            (chainSyncClient, fetchBlockClient) <- Node.newFetchBlockClient
+            requests <- newEmptyTMVarIO
+            let fetchBlockClient point respond =
+                    atomically $ putTMVar requests (point, respond)
+
+            blockFetchClient <-
+                NodeToNode.newOnDemandFetchBlockClient requests
+
             race_
                 (callback fetchBlockClient)
                 (withExceptionHandler @NodeToNodeVersion nullTracer noConnectionStatusToggle $ do
                     networkParameters <- resolveNetworkParameters chainProducer
                     magic <- networkMagicOrThrow networkParameters
                     slots <- slotsPerEpochOrThrow networkParameters
-                    withChainSyncServerNtoN
+                    withBlockFetchServerNtoN
                         noConnectionStatusToggle
                         [ nodeToNodeVMin .. maxBound ]
                         magic
                         slots
                         nodeHost
                         nodePort
-                        chainSyncClient
+                        blockFetchClient
                 )
 
 newFetchTipClient
@@ -543,6 +551,7 @@ newFetchTipClient = \case
             nodeHost
             nodePort
             (Node.newFetchTipClient response)
+            Nothing
 
         atomically $ takeTMVar response
 

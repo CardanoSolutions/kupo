@@ -64,7 +64,8 @@ import Kupo.Control.MonadTime
     , secondsToDiffTime
     )
 import Kupo.Data.Cardano
-    ( networkFromString
+    ( Network
+    , networkFromString
     , pointFromText
     , slotNoFromText
     )
@@ -74,7 +75,6 @@ import Kupo.Data.Configuration
     , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
     , InputManagement (..)
-    , NodeConfig (..)
     , Since (..)
     , Until (..)
     )
@@ -173,11 +173,21 @@ parserInfo = info (helper <*> parser) $ mempty
 
 chainProducerOption :: Parser (ChainProducer ())
 chainProducerOption =
-    cardanoNodeOptions <|> ogmiosOptions <|> hydraOptions <|> readOnlyReplicaFlag
+    cardanoNodeOptions
+      <|> cardanoNodeToNodeOptions
+      <|> ogmiosOptions
+      <|> hydraOptions
+      <|> readOnlyReplicaFlag
   where
     cardanoNodeOptions = CardanoNode
         <$> nodeSocketOption
         <*> nodeConfigOption
+        <*> pure ()
+
+    cardanoNodeToNodeOptions = CardanoNodeToNode
+        <$> nodeHostOption
+        <*> nodePortOption
+        <*> nodeNetworkOption
         <*> pure ()
 
     ogmiosOptions = Ogmios
@@ -197,22 +207,36 @@ nodeSocketOption = option str $ mempty
     <> help "Path to the node socket."
     <> completer (bashCompleter "file")
 
--- | --node-config=FILEPATH | --network=[mainnet|preprod|preview]
-nodeConfigOption :: Parser NodeConfig
-nodeConfigOption = configFileOption <|> configNetworkOption
-    where
-        configFileOption = fmap NodeConfigFile $ option str $ mempty
-            <> long "node-config"
-            <> metavar "FILEPATH"
-            <> help "Path to the node configuration file."
-            <> completer (bashCompleter "file")
+-- | --node-config=FILEPATH
+nodeConfigOption :: Parser FilePath
+nodeConfigOption = option str $ mempty
+    <> long "node-config"
+    <> metavar "FILEPATH"
+    <> help "Path to the node configuration file."
+    <> completer (bashCompleter "file")
 
-        configNetworkOption = fmap NodeConfigNetwork $
-            option (maybeReader networkFromString) $ mempty
-                <> long "network"
-                <> metavar "NETWORK"
-                <> help "[mainnet|preprod|preview]"
-                <> completer (listCompleter ["mainnet","preview","preprod"])
+-- | [--node-host=IPv4]
+nodeHostOption :: Parser String
+nodeHostOption = option str $ mempty
+    <> long "node-host"
+    <> metavar "IPv4"
+    <> help "Node's host address."
+    <> completer (bashCompleter "hostname")
+
+-- | [--node-port=TCP/PORT]
+nodePortOption :: Parser Int
+nodePortOption = option auto $ mempty
+    <> long "node-port"
+    <> metavar "TCP/PORT"
+    <> help "Node's port."
+
+-- | --network=[mainnet|preprod|preview]
+nodeNetworkOption :: Parser Network
+nodeNetworkOption = option (maybeReader networkFromString) $ mempty
+    <> long "network"
+    <> metavar "NETWORK"
+    <> help "[mainnet|preprod|preview]"
+    <> completer (listCompleter ["mainnet","preview","preprod"])
 
 -- | --workdir=DIR | --in-memory | --postgres-url=URL
 databaseLocationOption :: Parser DatabaseLocation

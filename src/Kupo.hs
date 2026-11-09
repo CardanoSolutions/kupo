@@ -98,6 +98,12 @@ import Kupo.Control.MonadLog
     , traceWith
     , withTracers
     )
+import Kupo.Control.MonadOuroboros
+    ( NodeToClientVersion
+    )
+import Kupo.Control.MonadOuroborosNtoN
+    ( NodeToNodeVersion
+    )
 import Kupo.Control.MonadSTM
     ( MonadSTM (..)
     )
@@ -114,7 +120,8 @@ import Kupo.Data.ChainSync
     ( ForcedRollbackHandler
     )
 import Kupo.Data.Configuration
-    ( Configuration (..)
+    ( ChainProducer (..)
+    , Configuration (..)
     , DeferIndexesInstallation (..)
     , NetworkParameters
     , NodeTipHasBeenReachedException (..)
@@ -208,7 +215,8 @@ kupoWith tr networkParameters withProducer withFetchBlock fetchTipClient =
     Env { health
         , crashWith
         , configuration = config@Configuration
-            { serverHost
+            { chainProducer
+            , serverHost
             , serverPort
             , databaseLocation
             , inputManagement
@@ -301,19 +309,29 @@ kupoWith tr networkParameters withProducer withFetchBlock fetchTipClient =
                     ( if isReadOnlyReplica config then
                         toggleConnected statusToggle *> idle
                       else
-                        withExceptionHandler (tracerKupo tr) statusToggle $ do
-                            (mostRecentCheckpoint, checkpoints) <- startOrResume
-                                (tracerConfiguration tr)
-                                config
-                                db
-                                fetchTipClient
+                        let producerAction = do
+                                (mostRecentCheckpoint, checkpoints) <- startOrResume
+                                    (tracerConfiguration tr)
+                                    config
+                                    db
+                                    fetchTipClient
 
-                            initializeHealth health mostRecentCheckpoint
+                                initializeHealth health mostRecentCheckpoint
 
-                            producer
-                                (tracerChainSync tr)
-                                checkpoints
-                                statusToggle
+                                producer
+                                    (tracerChainSync tr)
+                                    checkpoints
+                                    statusToggle
+                         in case chainProducer of
+                            CardanoNode{} ->
+                                withExceptionHandler @NodeToClientVersion
+                                    (tracerKupo tr) statusToggle producerAction
+                            CardanoNodeToNode{} ->
+                                withExceptionHandler @NodeToNodeVersion
+                                    (tracerKupo tr) statusToggle producerAction
+                            _ ->
+                                withExceptionHandler @NodeToClientVersion
+                                    (tracerKupo tr) statusToggle producerAction
                     )
 
   where

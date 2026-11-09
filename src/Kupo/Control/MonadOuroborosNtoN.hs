@@ -140,6 +140,22 @@ class MonadThrow m => MonadOuroborosNtoN (m :: Type -> Type) where
             (Tip (BlockT m))
             IO
             ()
+        -> Maybe
+            (BlockFetchClientPipelined
+              (BlockT m)
+              (Point (BlockT m))
+              IO
+              ()
+            )
+        -> m ()
+    withBlockFetchServerNtoN
+        :: (StandardHash (BlockT m), Typeable (BlockT m))
+        => ConnectionStatusToggle m
+        -> [NodeToNodeVersion]
+        -> NetworkMagic
+        -> EpochSlots
+        -> String
+        -> Int
         -> BlockFetchClientPipelined
             (BlockT m)
             (Point (BlockT m))
@@ -157,6 +173,125 @@ instance MonadOuroborosNtoN IO where
         host
         port
         chainSyncClient
+        mBlockFetchClient =
+            withIOManager $ \iocp -> do
+                addr <- resolve
+                result <- connectTo
+                    (mkSocketSnocket iocp)
+                    tracers
+                    versions
+                    Nothing
+                    (addrAddress addr)
+                case result of
+                    Left err ->
+                        throwIO err
+                    Right _ ->
+                        pure ()
+
+      where
+        resolve = do
+            let hints = defaultHints { addrSocketType = Stream }
+            NE.head <$> getAddrInfo (Just hints) (Just host) (Just (show port))
+
+        tracers = NetworkConnectTracers
+            { nctMuxTracers = Network.Mux.nullTracers
+            , nctHandshakeTracer = nullTracer
+            }
+
+        mkSocketSnocket iocp =
+            let snocket = socketSnocket iocp
+             in snocket
+                    { connect = \fd addr -> do
+                        connect snocket fd addr
+                        toggleConnected
+                    }
+
+        versions = combineVersions
+            [ simpleSingletonVersions v vData (mkOuroborosApplication v)
+            | v <- wantedVersions
+            ]
+              where
+                vData = NodeToNodeVersionData
+                            networkMagic
+                            InitiatorOnlyDiffusionMode
+                            PeerSharingDisabled
+                            False
+
+        mkOuroborosApplication version _versionData =
+            OuroborosApplication
+                ([ MiniProtocol
+                    { miniProtocolNum =
+                        MiniProtocolNum 2 -- node-to-node chain sync
+                    , miniProtocolStart =
+                        StartEagerly
+                    , miniProtocolLimits =
+                        MiniProtocolLimits (fromIntegral $ maxBound @Word32)
+                    , miniProtocolRun =
+                        InitiatorProtocolOnly $ MiniProtocolCb $ \_ channel ->
+                            let
+                                peer = chainSyncClientPeerPipelined chainSyncClient
+                                codec =
+                                    cChainSyncCodec
+                                        (codecs slotsPerEpoch version)
+                            in
+                                runPipelinedPeer nullTracer codec channel peer
+                    }
+                 ] ++ mkOuroborosBlockFetch version
+                )
+
+        mkOuroborosBlockFetch version =
+          case mBlockFetchClient of
+              (Just blockFetchClient) ->
+                [ MiniProtocol
+                    { miniProtocolNum =
+                        MiniProtocolNum 3 -- node-to-node block fetch
+                    , miniProtocolStart =
+                        StartEagerly
+                    , miniProtocolLimits =
+                        MiniProtocolLimits (fromIntegral $ maxBound @Word32)
+                    , miniProtocolRun =
+                        InitiatorProtocolOnly $ MiniProtocolCb $ \_ channel ->
+                            let
+                                peer = blockFetchClientPeerPipelined blockFetchClient
+                                codec =
+                                    cBlockFetchCodec
+                                        (codecs slotsPerEpoch version)
+                            in
+                                runPipelinedPeer nullTracer codec channel peer
+                    }
+                ]
+              Nothing -> []
+
+        codecs epochSlots nodeToNodeV =
+            defaultCodecs
+                (cfg epochSlots)
+                (supportedVersions ! nodeToNodeV)
+                encodeRemoteAddress
+                decodeRemoteAddress
+                nodeToNodeV
+
+        supportedVersions = supportedNodeToNodeVersions (Proxy @(BlockT IO))
+
+        cfg slts =
+            CardanoCodecConfig
+                (byron slts) shelley allegra mary alonzo babbage conway dijkstra
+
+        byron slts = ByronCodecConfig slts
+        shelley    = ShelleyCodecConfig
+        allegra    = ShelleyCodecConfig
+        mary       = ShelleyCodecConfig
+        alonzo     = ShelleyCodecConfig
+        babbage    = ShelleyCodecConfig
+        conway     = ShelleyCodecConfig
+        dijkstra   = ShelleyCodecConfig
+
+    withBlockFetchServerNtoN
+        ConnectionStatusToggle{..}
+        wantedVersions
+        networkMagic
+        slotsPerEpoch
+        host
+        port
         blockFetchClient =
             withIOManager $ \iocp -> do
                 addr <- resolve
@@ -205,23 +340,6 @@ instance MonadOuroborosNtoN IO where
             OuroborosApplication
                 [ MiniProtocol
                     { miniProtocolNum =
-                        MiniProtocolNum 2 -- node-to-node chain sync
-                    , miniProtocolStart =
-                        StartEagerly
-                    , miniProtocolLimits =
-                        MiniProtocolLimits (fromIntegral $ maxBound @Word32)
-                    , miniProtocolRun =
-                        InitiatorProtocolOnly $ MiniProtocolCb $ \_ channel ->
-                            let
-                                peer = chainSyncClientPeerPipelined chainSyncClient
-                                codec =
-                                    cChainSyncCodec
-                                        (codecs slotsPerEpoch version)
-                             in
-                                runPipelinedPeer nullTracer codec channel peer
-                    }
-                , MiniProtocol
-                    { miniProtocolNum =
                         MiniProtocolNum 3 -- node-to-node block fetch
                     , miniProtocolStart =
                         StartEagerly
@@ -234,7 +352,7 @@ instance MonadOuroborosNtoN IO where
                                 codec =
                                     cBlockFetchCodec
                                         (codecs slotsPerEpoch version)
-                             in
+                            in
                                 runPipelinedPeer nullTracer codec channel peer
                     }
                 ]
@@ -261,3 +379,5 @@ instance MonadOuroborosNtoN IO where
         babbage    = ShelleyCodecConfig
         conway     = ShelleyCodecConfig
         dijkstra   = ShelleyCodecConfig
+
+-- TODO remove all this copy/paste duplication

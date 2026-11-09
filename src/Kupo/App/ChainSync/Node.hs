@@ -20,8 +20,7 @@ import Kupo.Control.MonadThrow
     ( MonadThrow (..)
     )
 import Kupo.Data.Cardano
-    ( IsBlock (..)
-    , Point
+    ( Point
     , Tip
     )
 import Kupo.Data.ChainSync
@@ -50,15 +49,15 @@ import Ouroboros.Network.Protocol.ChainSync.ClientPipelined
 -- defer handling of requests to callbacks.
 mkChainSyncClient
     :: forall m block.
-        ( IsBlock block
-        , MonadThrow m
+        ( MonadThrow m
         , MonadSTM m
         )
-    => TMVar m (Point, ForcedRollbackHandler m)
+    => (block -> Point)
+    -> TMVar m (Point, ForcedRollbackHandler m)
     -> Mailbox m (Tip, block) (Tip, Point)
     -> [Point]
     -> ChainSyncClientPipelined block Point Tip m ()
-mkChainSyncClient var0 mailbox pts =
+mkChainSyncClient pointOf var0 mailbox pts =
     ChainSyncClientPipelined $ pure $
         -- /!\ NOTE:
         -- We inline and embed 'var0' with each sub-function call here instead
@@ -156,7 +155,7 @@ mkChainSyncClient var0 mailbox pts =
         ClientStNext
             { recvMsgRollForward = \block tip -> do
                 atomically (putHighFrequencyMessage mailbox (tip, block))
-                clientStIdle var (mkDistanceFromTip tip (getPoint block)) n
+                clientStIdle var (mkDistanceFromTip tip (pointOf block)) n
             , recvMsgRollBackward = \point tip -> do
                 atomically (putIntermittentMessage mailbox (tip, point))
                 clientStIdle var (mkDistanceFromTip tip point) n

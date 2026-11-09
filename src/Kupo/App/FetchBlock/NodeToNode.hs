@@ -6,6 +6,7 @@
 
 module Kupo.App.FetchBlock.NodeToNode
     ( newFetchBlockClient
+    , newOnDemandFetchBlockClient
     ) where
 
 import Kupo.Prelude
@@ -52,7 +53,6 @@ ranges hs = (tip, ChainRange pt pt) :| []
 -- Reads headers from the header mailbox
 -- Requests corresponding blocks
 -- Puts blocks from replies into block mailbox
-
 newFetchBlockClient
     :: forall m block.
        MonadSTM m
@@ -86,3 +86,34 @@ newFetchBlockClient headerMailbox blockMailbox = do
             handleBlock _ Nothing rs = do
                 nextRs <- nextRanges
                 pure (rs <> nextRs)
+
+
+-- | Build a node-to-node block-fetch client for individual on-demand requests.
+-- The request queue contains the point to fetch and the callback to receive the
+-- result. A point is requested as a singleton range; the callback receives
+-- Nothing when the node has no block for that range.
+newOnDemandFetchBlockClient
+    :: forall m.
+        MonadSTM m
+    => TMVar m (Point, Maybe Block -> m ())
+    -> m (BlockFetchClientPipelined Block Point m ())
+newOnDemandFetchBlockClient requests =
+    BlockFetchClientPipelined <$> fetchBlocks Zero <$> nextRequest
+  where
+    nextRequest = atomically $ takeTMVar requests
+
+    fetchBlocks n (point, respond) =
+        SendMsgRequestRangePipelined
+            (ChainRange point point)
+            (point,respond)
+            (handleBlock respond)
+            (collectBlocks (Succ n))
+
+    collectBlocks (Succ n) =
+        CollectBlocksPipelined
+            Nothing
+            (\r -> fetchBlocks n r)
+
+    handleBlock respond mBlock _ = do
+        respond mBlock
+        nextRequest
