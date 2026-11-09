@@ -418,7 +418,8 @@ defaultArgs'' =
 
 defaultArgs''' :: [String]
 defaultArgs''' =
-    [ "--node-socket", "./node.socket"
+    [ "--node-host", "localhost"
+    , "--node-port", "3001"
     , "--network", "preprod"
     , "--in-memory"
     ]
