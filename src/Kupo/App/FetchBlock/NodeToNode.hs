@@ -42,13 +42,20 @@ import Ouroboros.Network.Protocol.BlockFetch.Type
 import qualified Data.List.NonEmpty as NE
 
 
+-- TODO group common tips into a single range ?
 ranges
     :: NE.NonEmpty (Tip, Header Block)
-    -> [(Tip, ChainRange Point)]
-ranges = map op . toList
+    -> NE.NonEmpty (Tip, ChainRange Point)
+ranges = NE.map op
   where
     op (tip, hdr) = (tip, ChainRange pt pt)
         where pt = headerPoint hdr
+
+data FetchState
+  = NoMore Tip
+  | WithMore Tip (NE.NonEmpty (Tip, ChainRange Point))
+  | More (NE.NonEmpty (Tip, ChainRange Point))
+    deriving Show
 
 -- | Pipeline node-to-node block fetch client
 -- Reads headers from the header mailbox
@@ -73,32 +80,37 @@ newFetchBlockClient headerMailbox blockMailbox = do
                         atomically $ putIntermittentMessage blockMailbox rollback
                         nextRanges
 
-            fetchBlocks _ [] = error "Should not happen"
+            fetchBlocks n ((tip,r) :| []) =
+                request n r (NoMore tip)
 
-            fetchBlocks n ((tip,r):rs) =
+            fetchBlocks n ((tip,r) :| rs) =
+                request n r (WithMore tip (NE.fromList rs))
+
+            request n r st =
                 SendMsgRequestRangePipelined
                     r
-                    rs
-                    (handleBlock tip)
+                    st
+                    handleBlock
                     (collectBlocks (Succ n))
+
+            handleBlock (Just b) (NoMore tip) = do
+                atomically $ putHighFrequencyMessage blockMailbox (tip, b)
+                More <$> nextRanges
+
+            handleBlock (Just b) (WithMore tip rs) = do
+                atomically $ putHighFrequencyMessage blockMailbox (tip, b)
+                pure (More rs)
+
+            handleBlock Nothing (NoMore _) = do
+                More <$> nextRanges
+
+            handleBlock Nothing (WithMore _ rs) = do
+                pure (More rs)
 
             collectBlocks (Succ n) =
                 CollectBlocksPipelined
                     Nothing
-                    (\rs -> fetchBlocks n rs)
-
-            handleBlock tip (Just b) [r] = do
-                atomically $ putHighFrequencyMessage blockMailbox (tip, b)
-                rs <- nextRanges
-                pure (r:rs)
-
-            handleBlock tip (Just b) rs = do
-                atomically $ putHighFrequencyMessage blockMailbox (tip, b)
-                pure rs
-
-            handleBlock _ Nothing rs = do
-                pure rs
-
+                    (\(More rs) -> fetchBlocks n rs)
 
 -- | Build a node-to-node block-fetch client for individual on-demand requests.
 -- The request queue contains the point to fetch and the callback to receive the
