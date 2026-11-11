@@ -423,13 +423,13 @@ newProducer tr chainProducer callback = do
             whenJust networkParameters $ logWith tr . ConfigurationNetwork
             blockMailbox <- atomically (newMailbox mailboxCapacity)
             headerMailbox <- atomically (newMailbox mailboxCapacity)
-            fetchBlockClient <-
-                NodeToNode.newFetchBlockClient headerMailbox blockMailbox
 
             magic <- networkMagicOrThrow networkParameters
             slots <- slotsPerEpochOrThrow networkParameters
 
             callback forcedRollbackCallback blockMailbox $ \tracerChainSync checkpoints statusToggle -> do
+                fetchBlockClient <-
+                    NodeToNode.newFetchBlockClient headerMailbox blockMailbox
                 withChainSyncServerNtoN
                   statusToggle
                   [ nodeToNodeVMin .. maxBound ]
@@ -491,12 +491,11 @@ withFetchBlockClient chainProducer callback = do
             let fetchBlockClient point respond =
                     atomically $ putTMVar requests (point, respond)
 
-            blockFetchClient <-
-                NodeToNode.newOnDemandFetchBlockClient requests
-
             race_
                 (callback fetchBlockClient)
                 (withExceptionHandler @NodeToNodeVersion nullTracer noConnectionStatusToggle $ do
+                    blockFetchClient <-
+                        NodeToNode.newOnDemandFetchBlockClient requests
                     networkParameters <- resolveNetworkParameters chainProducer
                     magic <- networkMagicOrThrow networkParameters
                     slots <- slotsPerEpochOrThrow networkParameters

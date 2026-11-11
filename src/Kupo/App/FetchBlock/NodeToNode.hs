@@ -13,7 +13,8 @@ import Kupo.Prelude
 
 import Kupo.App.Mailbox
     ( Mailbox
-    , flushHighFrequency
+    , flushMailbox
+    , putIntermittentMessage
     , putHighFrequencyMessage
     )
 import Kupo.Control.MonadSTM
@@ -62,7 +63,15 @@ newFetchBlockClient
 newFetchBlockClient headerMailbox blockMailbox = do
     BlockFetchClientPipelined <$> fetchBlocks Zero <$> nextRanges
         where
-            nextRanges = ranges <$> atomically (flushHighFrequency headerMailbox)
+            --nextRanges = ranges <$> atomically (flushHighFrequency headerMailbox)
+            nextRanges = do
+                msg <- atomically (flushMailbox headerMailbox)
+                case msg of
+                    Left headers ->
+                        pure $ ranges headers
+                    Right rollback -> do
+                        atomically $ putIntermittentMessage blockMailbox rollback
+                        nextRanges
 
             fetchBlocks n rs =
                 SendMsgRequestRangePipelined

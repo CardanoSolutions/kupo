@@ -15,7 +15,6 @@ module Kupo.App.Mailbox
     , newMailbox
     , putHighFrequencyMessage
     , putIntermittentMessage
-    , flushHighFrequency
     , flushMailbox
     ) where
 
@@ -82,13 +81,3 @@ flushMailbox Mailbox{highFrequencyMessages, intermittentMessages} = do
         Right b -> do
             pure (Right b)
 {-# INLINEABLE flushMailbox #-}
-
-flushHighFrequency
-    :: (MonadSTM m)
-    => Mailbox m a b
-    -> STM m (NonEmpty a)
-flushHighFrequency Mailbox{highFrequencyMessages} = do
-    a <- readTBQueue highFrequencyMessages
-    rest <- flushTBQueue highFrequencyMessages
-    pure (a :| rest)
-{-# INLINEABLE flushHighFrequency #-}
