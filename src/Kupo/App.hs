@@ -428,8 +428,6 @@ newProducer tr chainProducer callback = do
             slots <- slotsPerEpochOrThrow networkParameters
 
             callback forcedRollbackCallback blockMailbox $ \tracerChainSync checkpoints statusToggle -> do
-                fetchBlockClient <-
-                    NodeToNode.newFetchBlockClient headerMailbox blockMailbox
                 withChainSyncServerNtoN
                   statusToggle
                   [ nodeToNodeVMin .. maxBound ]
@@ -438,7 +436,7 @@ newProducer tr chainProducer callback = do
                   nodeHost
                   nodePort
                   (Node.mkChainSyncClient headerPoint forcedRollbackVar headerMailbox checkpoints)
-                  (Just fetchBlockClient)
+                  (Just (NodeToNode.newFetchBlockClient headerMailbox blockMailbox))
                   & handle
                     (\case
                         e@IntersectionNotFound{requestedPoints = points} -> do

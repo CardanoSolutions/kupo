@@ -141,12 +141,12 @@ class MonadThrow m => MonadOuroborosNtoN (m :: Type -> Type) where
             IO
             ()
         -> Maybe
-            (BlockFetchClientPipelined
-              (BlockT m)
-              (Point (BlockT m))
-              IO
-              ()
-            )
+            (m (BlockFetchClientPipelined
+                   (BlockT m)
+                   (Point (BlockT m))
+                   IO
+                   ()
+            ))
         -> m ()
     withBlockFetchServerNtoN
         :: (StandardHash (BlockT m), Typeable (BlockT m))
@@ -241,7 +241,7 @@ instance MonadOuroborosNtoN IO where
 
         mkOuroborosBlockFetch version =
           case mBlockFetchClient of
-              (Just blockFetchClient) ->
+              (Just blockFetchClientF) ->
                 [ MiniProtocol
                     { miniProtocolNum =
                         MiniProtocolNum 3 -- node-to-node block fetch
@@ -250,14 +250,14 @@ instance MonadOuroborosNtoN IO where
                     , miniProtocolLimits =
                         MiniProtocolLimits (fromIntegral $ maxBound @Word32)
                     , miniProtocolRun =
-                        InitiatorProtocolOnly $ MiniProtocolCb $ \_ channel ->
+                        InitiatorProtocolOnly $ MiniProtocolCb $ \_ channel -> do
+                            blockFetchClient <- blockFetchClientF
                             let
                                 peer = blockFetchClientPeerPipelined blockFetchClient
                                 codec =
                                     cBlockFetchCodec
                                         (codecs slotsPerEpoch version)
-                            in
-                                runPipelinedPeer nullTracer codec channel peer
+                            runPipelinedPeer nullTracer codec channel peer
                     }
                 ]
               Nothing -> []

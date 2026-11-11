@@ -44,11 +44,11 @@ import qualified Data.List.NonEmpty as NE
 
 ranges
     :: NE.NonEmpty (Tip, Header Block)
-    -> NE.NonEmpty (Tip, ChainRange Point)
-ranges hs = (tip, ChainRange pt pt) :| []
+    -> [(Tip, ChainRange Point)]
+ranges = map op . toList
   where
-    (tip,hdr) = NE.head hs
-    pt = headerPoint hdr
+    op (tip, hdr) = (tip, ChainRange pt pt)
+        where pt = headerPoint hdr
 
 -- | Pipeline node-to-node block fetch client
 -- Reads headers from the header mailbox
@@ -73,28 +73,31 @@ newFetchBlockClient headerMailbox blockMailbox = do
                         atomically $ putIntermittentMessage blockMailbox rollback
                         nextRanges
 
-            fetchBlocks n rs =
+            fetchBlocks _ [] = error "Should not happen"
+
+            fetchBlocks n ((tip,r):rs) =
                 SendMsgRequestRangePipelined
                     r
-                    rest
+                    rs
                     (handleBlock tip)
                     (collectBlocks (Succ n))
-                where
-                    (tip,r) = NE.head rs
-                    rest = NE.fromList (NE.tail rs)
 
             collectBlocks (Succ n) =
                 CollectBlocksPipelined
                     Nothing
                     (\rs -> fetchBlocks n rs)
 
+            handleBlock tip (Just b) [r] = do
+                atomically $ putHighFrequencyMessage blockMailbox (tip, b)
+                rs <- nextRanges
+                pure (r:rs)
+
             handleBlock tip (Just b) rs = do
                 atomically $ putHighFrequencyMessage blockMailbox (tip, b)
                 pure rs
 
             handleBlock _ Nothing rs = do
-                nextRs <- nextRanges
-                pure (rs <> nextRs)
+                pure rs
 
 
 -- | Build a node-to-node block-fetch client for individual on-demand requests.
