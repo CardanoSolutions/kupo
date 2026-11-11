@@ -12,12 +12,23 @@ import Kupo.Data.Cardano
     ( ComparableOutput
     , ExtendedOutputReference
     , Output
+    , OutputReference
     , emptyMetadata
+    , getPointSlotNo
     , toComparableOutput
+    , unsafeBinaryDataFromBytes
+    )
+import Kupo.Data.PartialBlock
+    ( PartialBlock (..)
+    , PartialTransaction (..)
     )
 import Kupo.Data.Pattern
-    ( Pattern (..)
+    ( Codecs (..)
+    , Match (consumed)
+    , MatchBootstrap (..)
+    , Pattern (..)
     , includes
+    , matchBlock
     , matching
     , overlaps
     , patternFromText
@@ -32,18 +43,29 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
     ( prop
     )
+import Test.Kupo.Data.Generators
+    ( genNonGenesisPoint
+    , genOutputReference
+    , genTransactionId
+    )
 import Test.Kupo.Data.Pattern.Fixture
     ( matches
     , patterns
     )
 import Test.QuickCheck
     ( Gen
+    , choose
     , counterexample
     , elements
     , forAll
+    , shuffle
+    , vectorOf
+    , (===)
     , (==>)
     )
 
+import qualified Data.ByteString as BS
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 spec :: Spec
@@ -91,6 +113,35 @@ spec = parallel $ do
                 p1 `includes` p2 ==>
                     p1 `overlaps` (Set.singleton p2)
 
+    context "matchBlock" $ do
+        prop "numbers spent inputs and their redeemers in ascending input order" $
+            forAll ((,,) <$> genNonGenesisPoint <*> genTransactionId <*> genSpentInputs) $
+                \(pt, txId, spent) -> do
+                    let ascending = zip [0 ..] (Set.toAscList (Set.fromList spent))
+                    let redeemer ix = unsafeBinaryDataFromBytes $ BS.pack [fromIntegral ix]
+                    let tx = PartialTransaction
+                            { id = txId
+                            , inputs = spent
+                            , outputs = []
+                            , datums = mempty
+                            , spendRedeemers = Map.fromList [(ix, redeemer ix) | (ix, _) <- ascending]
+                            , scripts = mempty
+                            , metadata = Nothing
+                            }
+                    let blk = PartialBlock { blockPoint = pt, blockBody = [tx], isDijkstraBlock = False }
+                    let codecs = Codecs
+                            { toResult = identity
+                            , toBinaryData = \_ _ -> ()
+                            , toScript = \_ _ -> ()
+                            , toPolicy = \_ _ -> ()
+                            }
+                    let patterns' = Set.singleton (MatchAny IncludingBootstrap)
+                    let got = Map.lookup (txId, getPointSlotNo pt) $ consumed $ matchBlock codecs patterns' blk
+                    got === Just
+                        [ (MatchOutputReference ref, ix, Just (redeemer ix))
+                        | (ix, ref) <- ascending
+                        ]
+
 --
 -- Helper
 --
@@ -108,3 +159,10 @@ matchAll p xs =
 genPattern :: Gen Pattern
 genPattern =
     elements [ p | (_, p, _) <- patterns ]
+
+genSpentInputs :: Gen [OutputReference]
+genSpentInputs = do
+    -- At most 20 inputs, so each redeemer byte stays below 24 (one CBOR byte).
+    n <- choose (1, 20)
+    refs <- vectorOf n genOutputReference
+    shuffle (Set.toList (Set.fromList refs))
