@@ -132,8 +132,8 @@ spec = parallel $ do
             let keys = idOrder . migrationId <$> migrations
             and (zipWith (<) keys (drop 1 keys)) `shouldBe` True
 
-        specify "the known migrations are all automatic" $
-            migrationKind <$> migrations `shouldBe` (AutomaticKind <$ knownIds)
+        specify "the known migrations are automatic, apart from the spent input repair" $
+            migrationKind <$> migrations `shouldBe` (AutomaticKind <$ take 11 knownIds) <> [RepairKind]
 
         specify "a repair names an earlier migration as the one that introduced its data" $
             [ repairId
@@ -249,17 +249,19 @@ spec = parallel $ do
             userVersion conn `shouldReturn` [10]
             addCheckpoint conn
             runMigrations nullTracer conn migrations
-            userVersion conn `shouldReturn` [11]
+            userVersion conn `shouldReturn` [12]
             -- Backfilled rows have no kupo_version and no applied_at.
             registryRows conn `shouldReturn`
                 [ (migrationId, "applied", isRegistry, isRegistry)
-                | Migration{migrationId} <- migrations
+                | Migration{migrationId} <- take 11 migrations
                 , let isRegistry = migrationId == "v2.12.0/001"
                 ]
+                <> [("v2.12.0/002", "pending", True, False)]
 
         specify "a fresh database records repairs as skipped" $ withDatabase $ \conn -> do
             runMigrations nullTracer conn (migrations <> [synthetic RepairKind "test/repair"])
-            userVersion conn `shouldReturn` [12]
+            userVersion conn `shouldReturn` [13]
+            registryRow conn "v2.12.0/002" `shouldReturn` [("skipped", Nothing)]
             registryRow conn "test/repair" `shouldReturn` [("skipped", Nothing)]
 
         specify "an existing database registers repairs as pending, with a cutoff slot" $
@@ -268,7 +270,7 @@ spec = parallel $ do
                 addCheckpoint conn
                 runMigrations nullTracer conn $
                     migrations <> [synthetic RepairKind "test/repair", syntheticTable Automatic "after"]
-                userVersion conn `shouldReturn` [13]
+                userVersion conn `shouldReturn` [14]
                 registryRow conn "test/repair" `shouldReturn` [("pending", Just 42)]
                 registryRow conn "test/after" `shouldReturn` [("applied", Nothing)]
                 syntheticTables conn `shouldReturn` ["synthetic_after"]
@@ -284,7 +286,7 @@ spec = parallel $ do
                         ]
                 runMigrations nullTracer conn extended
                     `shouldThrow` isMigrationRequiredFor ["test/blocking", "test/after"]
-                userVersion conn `shouldReturn` [12]
+                userVersion conn `shouldReturn` [13]
                 syntheticTables conn `shouldReturn` ["synthetic_before"]
                 registryRow conn "test/before" `shouldReturn` [("applied", Nothing)]
                 registryRow conn "test/blocking" `shouldReturn` []
@@ -506,8 +508,9 @@ spec = parallel $ do
             snapshot conn `shouldReturn` before
             reportBlocked `shouldBe` ["test/blocking"]
             reportUnknown `shouldBe` []
+            -- The database was fresh when Kupo registered the spent input repair.
             statusState <$> reportMigrations
-                `shouldBe` (Just Applied <$ migrations) <> [Just Pending, Nothing]
+                `shouldBe` (Just Applied <$ take 11 migrations) <> [Just Skipped, Just Pending, Nothing]
             drop (length migrations) reportMigrations `shouldBe`
                 [ MigrationStatus
                     { statusId = "test/repair"
@@ -671,6 +674,7 @@ knownIds =
     , "v2.2.0/001"
     , "v2.10.0/001"
     , "v2.12.0/001"
+    , "v2.12.0/002"
     ]
 
 -- Sorts ids such as @v1.0.0-beta/001@ by version, a pre-release before its release, then by

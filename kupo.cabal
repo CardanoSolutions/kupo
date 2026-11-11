@@ -71,6 +71,7 @@ library
       Kupo.App.Database.Migration.V2_0_0_beta_001
       Kupo.App.Database.Migration.V2_10_0_001
       Kupo.App.Database.Migration.V2_12_0_001
+      Kupo.App.Database.Migration.V2_12_0_002
       Kupo.App.Database.Migration.V2_1_0_001
       Kupo.App.Database.Migration.V2_1_0_002
       Kupo.App.Database.Migration.V2_1_0_003
@@ -335,6 +336,7 @@ test-suite unit
   main-is: Spec.hs
   other-modules:
       Test.Kupo.App.ConfigurationSpec
+      Test.Kupo.App.Database.Migration.V2_12_0_002Spec
       Test.Kupo.App.Database.MigrationSpec
       Test.Kupo.App.Http.Client
       Test.Kupo.App.HttpSpec
