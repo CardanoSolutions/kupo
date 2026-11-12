@@ -59,6 +59,7 @@ library
       Kupo.App.Configuration
       Kupo.App.Database
       Kupo.App.Database.Migration.Definition
+      Kupo.App.Database.Migration.Plan
       Kupo.App.Database.SQLite.Transaction
       Kupo.App.Database.Types
       Kupo.App.FetchBlock.Node
@@ -318,6 +319,7 @@ test-suite unit
   main-is: Spec.hs
   other-modules:
       Test.Kupo.App.ConfigurationSpec
+      Test.Kupo.App.Database.MigrationSpec
       Test.Kupo.App.Http.Client
       Test.Kupo.App.HttpSpec
       Test.Kupo.App.MailboxSpec

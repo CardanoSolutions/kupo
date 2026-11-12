@@ -38,6 +38,8 @@ data MigrationAction
     -- ^ Applied at startup on a fresh database only; otherwise Kupo refuses to start.
     | Repair !BatchRepair
     -- ^ Fixes existing data: never applied at startup, and Kupo still starts.
+    -- A repair changes rows only, never the schema: it does not run on a fresh database, so a
+    -- schema change belongs in an 'Automatic' or 'Blocking' migration.
 
 -- | The kind of a 'MigrationAction', which logs and reports name.
 data MigrationKind
