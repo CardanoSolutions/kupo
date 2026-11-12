@@ -62,6 +62,7 @@ library
       Kupo.App.Database.Migration
       Kupo.App.Database.Migration.Definition
       Kupo.App.Database.Migration.Plan
+      Kupo.App.Database.Migration.Status
       Kupo.App.Database.Migration.V1_0_0_001
       Kupo.App.Database.Migration.V1_0_0_002
       Kupo.App.Database.Migration.V1_0_0_beta_001

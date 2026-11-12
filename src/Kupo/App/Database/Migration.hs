@@ -12,6 +12,9 @@ module Kupo.App.Database.Migration
     , checkMigrations
     , migrateDatabase
 
+      -- * Status
+    , readStatus
+
       -- * Exceptions
     , UnexpectedUserVersionException (..)
     , UnexpectedMigrationStateException (..)
@@ -49,6 +52,7 @@ import Kupo.App.Database.Migration.Definition
     , Migration (..)
     , MigrationAction (..)
     , RepairContext (..)
+    , migrationKind
     )
 import Kupo.App.Database.Migration.Plan
     ( Caller (..)
@@ -66,7 +70,12 @@ import Kupo.App.Database.Migration.Plan
     , migrationRequiredHint
     , migrationStateToText
     , planMigrations
+    , registryState
     , unknownMigrationsHint
+    )
+import Kupo.App.Database.Migration.Status
+    ( MigrationStatus (..)
+    , StatusReport (..)
     )
 import Kupo.App.Database.SQLite.Transaction
     ( withTransaction
@@ -192,6 +201,51 @@ migrateDatabase tr conn isCompleteIndexConfirmed knownMigrations = do
     when (null leftPending) $
         traceWith tr DatabaseUpToDate
     pure leftPending
+
+-- | What @kupo db status@ reports, read in one transaction. Repairs that are not done also get an
+-- estimate of the work left.
+readStatus
+    :: Connection
+    -- ^ A connection to the database, which may be read-only.
+    -> [Migration]
+    -- ^ All known migrations, oldest first.
+    -> IO StatusReport
+readStatus conn knownMigrations =
+    withTransaction conn ReadOnly $ do
+        currentVersion <- databaseVersion conn
+        databaseState <- readDatabaseState conn
+        registry <- readRegistry conn currentVersion
+        progress <- readRepairProgress conn
+        latestSlot <- runMaybeT $ latestCheckpoint conn
+        let Plan{planBlocked, planUnknown} = planMigrations Startup databaseState registry knownMigrations
+        reportUnknown <- forM planUnknown $ \migrationId ->
+            UnknownMigration migrationId <$> readKupoVersion conn migrationId
+        reportMigrations <- forM (zip [1 ..] knownMigrations) $ \(position, migration) ->
+            migrationStatus (registryState registry position migration) progress latestSlot migration
+        pure StatusReport
+            { reportMigrations
+            , reportBlocked = migrationId <$> planBlocked
+            , reportUnknown
+            }
+  where
+    migrationStatus statusState progress latestSlot migration = do
+        let Migration{migrationId, migrationSummary, migrationAction} = migration
+        let repairProgress = Map.lookup migrationId progress
+        when (statusState == Just Pending) . void $ pendingRepairOf migration
+        statusEstimate <- runMaybeT $ do
+            Repair BatchRepair{repairEstimate} <- pure migrationAction
+            guard $ statusState `elem` [Nothing, Just Pending]
+            -- A repair registered now would get the latest checkpoint as its cutoff.
+            repairCutoffSlot <- hoistMaybe $ (progressCutoffSlot <$> repairProgress) <|> latestSlot
+            lift $ repairEstimate conn RepairContext{repairCutoffSlot, repairCompleteIndexConfirmed = False}
+        pure MigrationStatus
+            { statusId = migrationId
+            , statusKind = migrationKind migration
+            , statusState
+            , statusSummary = migrationSummary
+            , statusEstimate
+            , statusCursor = progressCursor =<< repairProgress
+            }
 
 -- Run what the plan allows, once sure that no newer Kupo migrated the database.
 applyMigrations :: Tracer IO TraceDatabase -> Connection -> Caller -> [Migration] -> IO Plan
@@ -436,6 +490,12 @@ registerRepaired conn migrationId =
           <> unixNow <> " WHERE id = ?"
         )
         (migrationStateToText Applied, Kupo.version, migrationId)
+
+latestCheckpoint :: MonadIO m => Connection -> MaybeT m SlotNo
+latestCheckpoint conn = do
+    guard =<< liftIO (hasTable conn "checkpoints")
+    rows <- liftIO $ query_ conn "SELECT MAX(slot_no) FROM checkpoints"
+    SlotNo <$> hoistMaybe (fromOnly =<< listToMaybe rows)
 
 --
 -- Exceptions

@@ -35,6 +35,7 @@ import Kupo.App.Database.Migration
     , checkMigrations
     , migrateDatabase
     , migrations
+    , readStatus
     , runMigrations
     )
 import Kupo.App.Database.Migration.Definition
@@ -58,6 +59,12 @@ import Kupo.App.Database.Migration.Plan
     , UnknownMigration (..)
     , UnknownMigrationsException (..)
     , planMigrations
+    )
+import Kupo.App.Database.Migration.Status
+    ( MigrationStatus (..)
+    , StatusReport (..)
+    , renderStatus
+    , statusExitCode
     )
 import Kupo.App.Database.Types
     ( DBPool (..)
@@ -97,6 +104,7 @@ import Test.Hspec
     , context
     , parallel
     , shouldBe
+    , shouldContain
     , shouldReturn
     , shouldThrow
     , specify
@@ -480,6 +488,121 @@ spec = parallel $ do
                 migrateDatabase nullTracer conn False migrations
                     `shouldThrow` isUnexpectedPendingMigration "v2.10.0/001"
 
+    context "readStatus" $ do
+        specify "reports every migration, without writing" $ withRepairTarget $ \conn -> do
+            batches <- newIORef []
+            let extended = migrations <> [countingRepair batches, syntheticTable Blocking "blocking"]
+            runMigrations nullTracer conn extended
+                `shouldThrow` isMigrationRequiredFor ["test/blocking"]
+            execute_ conn "UPDATE migrations SET cursor = CAST('3' AS BLOB) WHERE id = 'test/repair'"
+            before <- snapshot conn
+            StatusReport{reportMigrations, reportBlocked, reportUnknown} <- readStatus conn extended
+            snapshot conn `shouldReturn` before
+            reportBlocked `shouldBe` ["test/blocking"]
+            reportUnknown `shouldBe` []
+            statusState <$> reportMigrations
+                `shouldBe` (Just Applied <$ migrations) <> [Just Pending, Nothing]
+            drop (length migrations) reportMigrations `shouldBe`
+                [ MigrationStatus
+                    { statusId = "test/repair"
+                    , statusKind = RepairKind
+                    , statusState = Just Pending
+                    , statusSummary = "A synthetic migration"
+                    , statusEstimate = Just "9 rows up to slot 42"
+                    , statusCursor = Just "3"
+                    }
+                , MigrationStatus
+                    { statusId = "test/blocking"
+                    , statusKind = BlockingKind
+                    , statusState = Nothing
+                    , statusSummary = "A synthetic migration"
+                    , statusEstimate = Nothing
+                    , statusCursor = Nothing
+                    }
+                ]
+
+        specify "lists the ids it does not know, instead of refusing" $ withDatabase $ \conn -> do
+            runMigrations nullTracer conn migrations
+            addUnknownMigration conn
+            reportUnknown <$> readStatus conn migrations
+                `shouldReturn` [UnknownMigration "v9.9.9/001" (Just "v9.9.9")]
+
+        specify "names the version that recorded each unknown id" $ withDatabase $ \conn -> do
+            runMigrations nullTracer conn migrations
+            execute_ conn
+                "INSERT INTO migrations (id, state, kupo_version, registered_at) \
+                \VALUES ('v9.9.9/001', 'applied', 'v9.9.9+abc123', 0), ('v9.9.9/002', 'applied', NULL, 0)"
+            report <- readStatus conn migrations
+            reportUnknown report `shouldBe`
+                [ UnknownMigration "v9.9.9/001" (Just "v9.9.9+abc123")
+                , UnknownMigration "v9.9.9/002" Nothing
+                ]
+            T.lines (renderStatus report) `shouldContain`
+                [ "  v9.9.9/001 (recorded by Kupo v9.9.9+abc123)"
+                , "  v9.9.9/002"
+                ]
+
+        specify "on an empty database, nothing is applied and nothing blocks" $
+            withDatabase $ \conn -> do
+                StatusReport{reportMigrations, reportBlocked} <-
+                    readStatus conn (migrations <> [syntheticTable Blocking "blocking"])
+                all (isNothing . statusState) reportMigrations `shouldBe` True
+                reportBlocked `shouldBe` []
+
+    context "renderStatus" $ do
+        specify "aligns columns, details repairs, and ends with hints" $
+            renderStatus StatusReport
+                { reportMigrations =
+                    [ MigrationStatus "v1.0.0/001" AutomaticKind (Just Applied) "Create a table" Nothing Nothing
+                    , MigrationStatus "test/repair" RepairKind (Just Pending) "Fix rows" (Just "9 rows") (Just "3")
+                    , MigrationStatus "test/blocking" BlockingKind Nothing "Rewrite rows" Nothing Nothing
+                    ]
+                , reportBlocked = ["test/blocking"]
+                , reportUnknown = [UnknownMigration "v9.9.9/001" (Just "v9.9.9+abc123")]
+                }
+                `shouldBe` T.unlines
+                    [ "v1.0.0/001     automatic  applied          Create a table"
+                    , "test/repair    repair     pending          Fix rows"
+                    , "    estimate: 9 rows"
+                    , "    resume cursor: 33"
+                    , "test/blocking  blocking   not yet applied  Rewrite rows"
+                    , ""
+                    , "Unknown migrations:"
+                    , "  v9.9.9/001 (recorded by Kupo v9.9.9+abc123)"
+                    , ""
+                    , "This database was migrated by a newer Kupo. Run that version, or a later one, instead."
+                    , "The database needs migrations that Kupo does not apply on its own. \
+                      \Run 'kupo db migrate' to apply them, then start Kupo again."
+                    , "Data repairs are pending. Run 'kupo db migrate' to apply them."
+                    ]
+
+        specify "says when the database is up to date" $
+            renderStatus StatusReport
+                { reportMigrations =
+                    [ MigrationStatus "v1.0.0/001" AutomaticKind (Just Applied) "Create a table" Nothing Nothing
+                    , MigrationStatus "test/repair" RepairKind (Just Skipped) "Fix rows" Nothing Nothing
+                    ]
+                , reportBlocked = []
+                , reportUnknown = []
+                }
+                `shouldBe` T.unlines
+                    [ "v1.0.0/001   automatic  applied          Create a table"
+                    , "test/repair  repair     skipped          Fix rows"
+                    , ""
+                    , "The database is up to date."
+                    ]
+
+    context "statusExitCode" $ do
+        specify "succeeds when Kupo would start" $
+            statusExitCode (statusReport [] []) `shouldBe` ExitSuccess
+
+        specify "exits with 3 when a blocking migration is pending" $
+            statusExitCode (statusReport ["test/blocking"] []) `shouldBe` ExitFailure 3
+
+        specify "exits with 1 when a newer Kupo migrated the database, as Kupo does" $ do
+            statusExitCode (statusReport [] [UnknownMigration "v9.9.9/001" Nothing]) `shouldBe` ExitFailure 1
+            statusExitCode (statusReport ["test/blocking"] [UnknownMigration "v9.9.9/001" Nothing]) `shouldBe` ExitFailure 1
+
 knownIds :: [Text]
 knownIds =
     [ "v1.0.0-beta/001"
@@ -510,6 +633,10 @@ summarise Plan{planSteps, planBlocked, planPendingRepairs} =
     , migrationId <$> planBlocked
     , migrationId <$> planPendingRepairs
     )
+
+statusReport :: [Text] -> [UnknownMigration] -> StatusReport
+statusReport reportBlocked reportUnknown =
+    StatusReport{reportMigrations = [], reportBlocked, reportUnknown}
 
 -- A tracer that records the repair id and summary of every applied repair.
 recordSummaries :: IO (Tracer IO TraceDatabase, IO [(Text, Text)])
