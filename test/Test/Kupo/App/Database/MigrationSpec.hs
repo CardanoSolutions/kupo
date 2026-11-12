@@ -17,6 +17,7 @@ import Database.SQLite.Simple
     , Only (..)
     , SQLData
     , SQLError (..)
+    , execute
     , execute_
     , query
     , query_
@@ -30,7 +31,9 @@ import Kupo.App.Database
     ( newDBPool
     )
 import Kupo.App.Database.Migration
-    ( checkMigrations
+    ( UnexpectedPendingMigrationException (..)
+    , checkMigrations
+    , migrateDatabase
     , migrations
     , runMigrations
     )
@@ -40,6 +43,7 @@ import Kupo.App.Database.Migration.Definition
     , Migration (..)
     , MigrationAction (..)
     , MigrationKind (..)
+    , RepairContext (..)
     , migrationKind
     )
 import Kupo.App.Database.Migration.Plan
@@ -61,6 +65,12 @@ import Kupo.App.Database.Types
     )
 import Kupo.Control.MonadLog
     ( nullTracer
+    )
+import Kupo.Control.MonadThrow
+    ( MonadThrow (..)
+    )
+import Kupo.Data.Cardano.SlotNo
+    ( SlotNo (..)
     )
 import Kupo.Data.Configuration
     ( ChainProducer (..)
@@ -382,6 +392,94 @@ spec = parallel $ do
                 checkMigrations nullTracer conn (migrations <> [synthetic RepairKind "test/repair"])
                 ((,) <$> userVersion conn <*> schema conn) `shouldReturn` before
 
+    context "migrateDatabase" $ do
+        specify "applies a blocking migration, after which Kupo starts" $ withDatabase $ \conn -> do
+            runMigrations nullTracer conn migrations
+            addCheckpoint conn
+            let extended = migrations <> [syntheticTable Blocking "blocking"]
+            runMigrations nullTracer conn extended
+                `shouldThrow` isMigrationRequiredFor ["test/blocking"]
+            migrateDatabase nullTracer conn False extended `shouldReturn` []
+            syntheticTables conn `shouldReturn` ["synthetic_blocking"]
+            registryRow conn "test/blocking" `shouldReturn` [("applied", Nothing)]
+            runMigrations nullTracer conn extended
+
+        specify "runs a pending repair batch by batch, then marks it applied" $
+            withRepairTarget $ \conn -> do
+                batches <- newIORef []
+                let extended = migrations <> [countingRepair batches]
+                runMigrations nullTracer conn extended
+                migrateDatabase nullTracer conn False extended `shouldReturn` []
+                readIORef batches `shouldReturn` [Nothing, Just "3", Just "6"]
+                repairTarget conn `shouldReturn` replicate 9 1
+                repairRow conn `shouldReturn` [("applied", Nothing, True, True)]
+
+        specify "logs the summary of a repair once it is done" $ withRepairTarget $ \conn -> do
+            batches <- newIORef []
+            (tr, readSummaries) <- recordSummaries
+            migrateDatabase tr conn False (migrations <> [countingRepair batches]) `shouldReturn` []
+            readSummaries `shouldReturn` [("test/repair", "9 rows")]
+
+        specify "resumes after a crash, without repeating a batch" $
+            withRepairTarget $ \conn -> do
+                batches <- newIORef []
+                migrateDatabase nullTracer conn False (migrations <> [crashingRepair batches])
+                    `shouldThrow` (== SimulatedCrash)
+                repairRow conn `shouldReturn` [("pending", Just "3", True, False)]
+                repairTarget conn `shouldReturn` replicate 3 1 <> replicate 6 0
+                writeIORef batches []
+                migrateDatabase nullTracer conn False (migrations <> [countingRepair batches])
+                    `shouldReturn` []
+                readIORef batches `shouldReturn` [Just "3", Just "6"]
+                repairTarget conn `shouldReturn` replicate 9 1
+                repairRow conn `shouldReturn` [("applied", Nothing, True, True)]
+
+        specify "logs the repair whose batch fails" $ withRepairTarget $ \conn -> do
+            batches <- newIORef []
+            (tr, readFailures) <- recordFailures
+            migrateDatabase tr conn False (migrations <> [crashingRepair batches])
+                `shouldThrow` (== SimulatedCrash)
+            readFailures `shouldReturn` ["test/repair"]
+
+        specify "running twice changes nothing" $ withRepairTarget $ \conn -> do
+            batches <- newIORef []
+            let extended = migrations <> [countingRepair batches]
+            migrateDatabase nullTracer conn False extended `shouldReturn` []
+            before <- (,) <$> snapshot conn <*> repairTarget conn
+            writeIORef batches []
+            migrateDatabase nullTracer conn False extended `shouldReturn` []
+            readIORef batches `shouldReturn` []
+            ((,) <$> snapshot conn <*> repairTarget conn) `shouldReturn` before
+
+        specify "leaves a repair pending while its precondition fails" $
+            withRepairTarget $ \conn -> do
+                contexts <- newIORef []
+                let extended = migrations <> [confirmingRepair contexts]
+                migrateDatabase nullTracer conn False extended `shouldReturn` ["test/repair"]
+                repairRow conn `shouldReturn` [("pending", Nothing, True, False)]
+                repairTarget conn `shouldReturn` replicate 9 0
+                migrateDatabase nullTracer conn True extended `shouldReturn` []
+                repairRow conn `shouldReturn` [("applied", Nothing, True, True)]
+                repairTarget conn `shouldReturn` replicate 9 1
+                readIORef contexts `shouldReturn` [(42, False), (42, True)]
+
+        specify "refuses a database that a newer Kupo migrated, without writing" $
+            withDatabase $ \conn -> do
+                runMigrations nullTracer conn migrations
+                addCheckpoint conn
+                addUnknownMigration conn
+                before <- snapshot conn
+                migrateDatabase nullTracer conn False (migrations <> [syntheticTable Blocking "blocking"])
+                    `shouldThrow` isUnknownMigrations ["v9.9.9/001"]
+                snapshot conn `shouldReturn` before
+
+        specify "refuses a pending registry row of a migration that is not a repair" $
+            withDatabase $ \conn -> do
+                runMigrations nullTracer conn migrations
+                execute_ conn "UPDATE migrations SET state = 'pending', cutoff_slot = 42 WHERE id = 'v2.10.0/001'"
+                migrateDatabase nullTracer conn False migrations
+                    `shouldThrow` isUnexpectedPendingMigration "v2.10.0/001"
+
 knownIds :: [Text]
 knownIds =
     [ "v1.0.0-beta/001"
@@ -413,12 +511,22 @@ summarise Plan{planSteps, planBlocked, planPendingRepairs} =
     , migrationId <$> planPendingRepairs
     )
 
+-- A tracer that records the repair id and summary of every applied repair.
+recordSummaries :: IO (Tracer IO TraceDatabase, IO [(Text, Text)])
+recordSummaries = do
+    summaries <- newIORef []
+    let record = \case
+            DatabaseRepairApplied{repair, summary} -> modifyIORef' summaries (<> [(repair, summary)])
+            _otherEvent -> pass
+    pure (Tracer $ emit record, readIORef summaries)
+
 -- A tracer that records the id of every migration or repair whose failure it gets.
 recordFailures :: IO (Tracer IO TraceDatabase, IO [Text])
 recordFailures = do
     failures <- newIORef []
     let record = \case
             DatabaseMigrationFailed{failedMigration} -> modifyIORef' failures (<> [failedMigration])
+            DatabaseRepairFailed{repair} -> modifyIORef' failures (<> [repair])
             _otherEvent -> pass
     pure (Tracer $ emit record, readIORef failures)
 
@@ -438,6 +546,10 @@ isMigrationRequiredFor ids (MigrationRequiredException pendingMigrations) =
 isUnknownMigrations :: [Text] -> Selector UnknownMigrationsException
 isUnknownMigrations ids (UnknownMigrationsException unknownMigrations) =
     (unknownId <$> unknownMigrations) == ids
+
+isUnexpectedPendingMigration :: Text -> Selector UnexpectedPendingMigrationException
+isUnexpectedPendingMigration expectedId (UnexpectedPendingMigration migrationId) =
+    migrationId == expectedId
 
 withDatabase :: (Connection -> IO a) -> IO a
 withDatabase =
@@ -481,6 +593,27 @@ snapshot :: Connection -> IO ([Int], [[SQLData]], [[SQLData]])
 snapshot conn =
     (,,) <$> userVersion conn <*> schema conn <*> query_ conn "SELECT * FROM migrations ORDER BY id"
 
+-- The state of @test/repair@, its cursor, and whether it records a version and an apply time.
+repairRow :: Connection -> IO [(Text, Maybe ByteString, Bool, Bool)]
+repairRow conn =
+    query_ conn
+        "SELECT state, cursor, kupo_version IS NOT NULL, applied_at IS NOT NULL \
+        \FROM migrations WHERE id = 'test/repair'"
+
+-- A database with a checkpoint and nine rows for a synthetic repair to fix.
+withRepairTarget :: (Connection -> IO a) -> IO a
+withRepairTarget action = withDatabase $ \conn -> do
+    runMigrations nullTracer conn migrations
+    addCheckpoint conn
+    execute_ conn "CREATE TABLE repair_target (k INTEGER PRIMARY KEY, n INTEGER NOT NULL)"
+    forM_ [1 .. 9 :: Int] $ \k ->
+        execute conn "INSERT INTO repair_target (k, n) VALUES (?, 0)" (Only k)
+    action conn
+
+repairTarget :: Connection -> IO [Int]
+repairTarget conn =
+    fmap fromOnly <$> query_ conn "SELECT n FROM repair_target ORDER BY k"
+
 registry :: [(Text, MigrationState)] -> Registry
 registry =
     RegistryRows . fromList
@@ -518,3 +651,59 @@ idleRepair introducedBy =
         , repairEstimate = \_ _ -> pure ""
         , repairBatch = \_ _ _ -> pure $ RepairDone ""
         }
+
+-- The repair @test/repair@, which adds 1 to three rows of @repair_target@ per batch, so that a
+-- batch run twice shows. It records the cursor of every batch it runs.
+countingRepair :: IORef [Maybe ByteString] -> Migration
+countingRepair batches =
+    syntheticRepair (\_ _ -> pure $ Right ()) $ \conn cursor -> do
+        modifyIORef' batches (<> [cursor])
+        incrementRows conn cursor
+
+-- Like 'countingRepair', but its second batch crashes after its work, before it commits.
+crashingRepair :: IORef [Maybe ByteString] -> Migration
+crashingRepair batches =
+    syntheticRepair (\_ _ -> pure $ Right ()) $ \conn cursor -> do
+        modifyIORef' batches (<> [cursor])
+        result <- incrementRows conn cursor
+        when (cursor == Just "3") $ throwIO SimulatedCrash
+        pure result
+
+-- Like 'countingRepair', but it needs the operator to confirm a complete index. It records the
+-- cutoff slot and the confirmation that each precondition check gets.
+confirmingRepair :: IORef [(Word64, Bool)] -> Migration
+confirmingRepair contexts =
+    syntheticRepair precondition incrementRows
+  where
+    precondition _ RepairContext{repairCutoffSlot, repairCompleteIndexConfirmed} = do
+        modifyIORef' contexts (<> [(unSlotNo repairCutoffSlot, repairCompleteIndexConfirmed)])
+        pure $ if repairCompleteIndexConfirmed then Right () else Left "The index may be incomplete."
+
+syntheticRepair
+    :: (Connection -> RepairContext -> IO (Either Text ()))
+    -> (Connection -> Maybe ByteString -> IO BatchResult)
+    -> Migration
+syntheticRepair precondition doBatch =
+    (synthetic RepairKind "test/repair")
+        { migrationAction =
+            Repair BatchRepair
+                { repairDataIntroducedBy = "v1.0.0-beta/001"
+                , repairPrecondition = precondition
+                , repairEstimate = \_ RepairContext{repairCutoffSlot} ->
+                    pure $ "9 rows up to slot " <> show (unSlotNo repairCutoffSlot)
+                , repairBatch = const . doBatch
+                }
+        }
+
+-- The cursor is the last row done, in decimal.
+incrementRows :: Connection -> Maybe ByteString -> IO BatchResult
+incrementRows conn cursor = do
+    let lastDone = fromMaybe 0 $ readMaybe . decodeUtf8 =<< cursor
+    let nextDone = lastDone + 3 :: Int
+    execute conn "UPDATE repair_target SET n = n + 1 WHERE k > ? AND k <= ?" (lastDone, nextDone)
+    pure $ if nextDone >= 9 then RepairDone "9 rows" else NextBatch (show nextDone)
+
+data SimulatedCrash = SimulatedCrash
+    deriving (Eq, Show)
+
+instance Exception SimulatedCrash

@@ -10,10 +10,12 @@ module Kupo.App.Database.Migration
     , refuseUnknownMigrations
     , runMigrations
     , checkMigrations
+    , migrateDatabase
 
       -- * Exceptions
     , UnexpectedUserVersionException (..)
     , UnexpectedMigrationStateException (..)
+    , UnexpectedPendingMigrationException (..)
     ) where
 
 import Kupo.Prelude
@@ -42,7 +44,11 @@ import Database.SQLite.Simple
     , withStatement
     )
 import Kupo.App.Database.Migration.Definition
-    ( Migration (..)
+    ( BatchRepair (..)
+    , BatchResult (..)
+    , Migration (..)
+    , MigrationAction (..)
+    , RepairContext (..)
     )
 import Kupo.App.Database.Migration.Plan
     ( Caller (..)
@@ -72,7 +78,11 @@ import Kupo.App.Database.Types
 import Kupo.Control.MonadThrow
     ( MonadThrow (..)
     )
+import Kupo.Data.Cardano.SlotNo
+    ( SlotNo (..)
+    )
 
+import qualified Data.Map as Map
 import qualified Database.SQLite3 as Sqlite3
 import qualified Kupo.App.Database.Migration.V1_0_0_001 as V1_0_0_001
 import qualified Kupo.App.Database.Migration.V1_0_0_002 as V1_0_0_002
@@ -157,6 +167,31 @@ checkMigrations tr conn knownMigrations = do
             , hint = "The writer has not run these migrations yet. The replica carries on meanwhile."
             }
     enforceGate tr plan
+
+-- | Run, in order, what 'planMigrations' allows to an operator, 'Blocking' migrations included.
+-- Then run each pending repair from its stored cursor, unless its precondition fails. Return the
+-- ids of the repairs that stay pending.
+migrateDatabase
+    :: Tracer IO TraceDatabase
+    -- ^ Where to log progress.
+    -> Connection
+    -- ^ A read-write connection that holds an exclusive lock on the database.
+    -> Bool
+    -- ^ Whether the operator confirms that the index matches @*@ from origin.
+    -> [Migration]
+    -- ^ All known migrations, oldest first.
+    -> IO [Text]
+migrateDatabase tr conn isCompleteIndexConfirmed knownMigrations = do
+    void $ applyMigrations tr conn Operator knownMigrations
+    progress <- readRepairProgress conn
+    outcomes <- forM knownMigrations $ \migration@Migration{migrationId} ->
+        forM (Map.lookup migrationId progress) $ \repairProgress -> do
+            batchRepair <- pendingRepairOf migration
+            (migrationId,) <$> runRepair tr conn isCompleteIndexConfirmed migrationId batchRepair repairProgress
+    let leftPending = [ migrationId | (migrationId, Postponed) <- catMaybes outcomes ]
+    when (null leftPending) $
+        traceWith tr DatabaseUpToDate
+    pure leftPending
 
 -- Run what the plan allows, once sure that no newer Kupo migrated the database.
 applyMigrations :: Tracer IO TraceDatabase -> Connection -> Caller -> [Migration] -> IO Plan
@@ -243,6 +278,60 @@ traceFailure tr toEvent action =
         traceWith tr . toEvent . toText $ displayException failure
 
 --
+-- Repairs
+--
+
+data RepairOutcome
+    = Repaired
+    | Postponed
+    deriving (Eq, Show)
+
+-- Run a pending repair to the end, from its stored cursor, unless its precondition fails.
+runRepair :: Tracer IO TraceDatabase -> Connection -> Bool -> Text -> BatchRepair -> RepairProgress -> IO RepairOutcome
+runRepair tr conn isCompleteIndexConfirmed repair batchRepair RepairProgress{progressCutoffSlot, progressCursor} = do
+    let BatchRepair{repairPrecondition, repairBatch} = batchRepair
+    let context = RepairContext
+            { repairCutoffSlot = progressCutoffSlot
+            , repairCompleteIndexConfirmed = isCompleteIndexConfirmed
+            }
+    repairPrecondition conn context >>= \case
+        Left unmetPrecondition -> do
+            traceWith tr DatabaseRepairPostponed { repair, unmetPrecondition }
+            pure Postponed
+        Right () -> do
+            traceWith tr DatabaseRepairStarted { repair, resumeFrom = encodeBase16 <$> progressCursor }
+            summary <- runBatches (repairBatch conn context) 1 progressCursor
+            traceWith tr DatabaseRepairApplied { repair, summary }
+            pure Repaired
+  where
+    -- A batch commits together with its cursor, or with the end of the repair: none runs twice.
+    runBatches doBatch batch cursor = do
+        result <- traceFailure tr (DatabaseRepairFailed repair) . withTransaction conn ReadWrite $ do
+            result <- doBatch cursor
+            case result of
+                NextBatch nextCursor -> storeCursor conn repair nextCursor
+                RepairDone{} -> registerRepaired conn repair
+            pure result
+        case result of
+            NextBatch nextCursor -> do
+                traceWith tr DatabaseRepairBatch { repair, batch, cursor = Just (encodeBase16 nextCursor) }
+                runBatches doBatch (batch + 1) (Just nextCursor)
+            RepairDone summary -> do
+                traceWith tr DatabaseRepairBatch { repair, batch, cursor = Nothing }
+                pure summary
+
+-- Only a repair can be pending in the registry.
+pendingRepairOf :: Migration -> IO BatchRepair
+pendingRepairOf Migration{migrationId, migrationAction} =
+    case migrationAction of
+        Repair batchRepair ->
+            pure batchRepair
+        Automatic{} ->
+            throwIO $ UnexpectedPendingMigration migrationId
+        Blocking{} ->
+            throwIO $ UnexpectedPendingMigration migrationId
+
+--
 -- Registry
 --
 
@@ -314,6 +403,40 @@ hasTable conn name = do
     rows <- query conn "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?" (Only name)
     pure . not $ null (rows :: [Only Int])
 
+-- Where a pending repair stands.
+data RepairProgress = RepairProgress
+    { progressCutoffSlot :: !SlotNo
+    , progressCursor :: !(Maybe ByteString)
+    }
+
+readRepairProgress :: Connection -> IO (Map Text RepairProgress)
+readRepairProgress conn = do
+    hasRegistry <- hasTable conn "migrations"
+    if hasRegistry then do
+        rows <- query conn
+            "SELECT id, cutoff_slot, cursor FROM migrations WHERE state = ?"
+            (Only $ migrationStateToText Pending)
+        pure . fromList $ toProgress <$> rows
+    else
+        pure mempty
+  where
+    toProgress :: (Text, Word64, Maybe ByteString) -> (Text, RepairProgress)
+    toProgress (migrationId, cutoffSlot, progressCursor) =
+        (migrationId, RepairProgress{progressCutoffSlot = SlotNo cutoffSlot, progressCursor})
+
+storeCursor :: Connection -> Text -> ByteString -> IO ()
+storeCursor conn migrationId cursor =
+    execute conn "UPDATE migrations SET cursor = ? WHERE id = ?" (cursor, migrationId)
+
+-- A repair that is done needs no cursor any more.
+registerRepaired :: Connection -> Text -> IO ()
+registerRepaired conn migrationId =
+    execute conn
+        ( "UPDATE migrations SET state = ?, cursor = NULL, kupo_version = ?, applied_at = "
+          <> unixNow <> " WHERE id = ?"
+        )
+        (migrationStateToText Applied, Kupo.version, migrationId)
+
 --
 -- Exceptions
 --
@@ -334,3 +457,13 @@ instance Exception UnexpectedMigrationStateException where
     displayException (UnexpectedMigrationState migrationId migrationState) =
         "The registry records migration " <> toString migrationId <> " as '" <> toString migrationState
         <> "', a state that this version of Kupo does not know."
+
+-- | The registry records a migration as pending, although only a data repair can be.
+newtype UnexpectedPendingMigrationException
+    = UnexpectedPendingMigration Text
+    deriving Show
+
+instance Exception UnexpectedPendingMigrationException where
+    displayException (UnexpectedPendingMigration migrationId) =
+        "The registry row of migration " <> toString migrationId <> " is pending, although it is not \
+        \a data repair."

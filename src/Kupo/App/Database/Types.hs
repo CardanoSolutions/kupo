@@ -250,6 +250,23 @@ data TraceDatabase where
     DatabaseMigratedByNewerKupo
         :: { unknownMigrations :: [Text], hint :: Text }
         -> TraceDatabase
+    DatabaseRepairPostponed
+        :: { repair :: Text, unmetPrecondition :: Text }
+        -> TraceDatabase
+    DatabaseRepairStarted
+        :: { repair :: Text, resumeFrom :: Maybe Text }
+        -> TraceDatabase
+    DatabaseRepairBatch
+        :: { repair :: Text, batch :: Word, cursor :: Maybe Text }
+        -> TraceDatabase
+    DatabaseRepairFailed
+        :: { repair :: Text, errorMessage :: Text }
+        -> TraceDatabase
+    DatabaseRepairApplied
+        :: { repair :: Text, summary :: Text }
+        -> TraceDatabase
+    DatabaseUpToDate
+        :: TraceDatabase
     DatabaseCreateIndex
         :: { newIndex :: Text }
         -> TraceDatabase
@@ -304,6 +321,12 @@ instance HasSeverityAnnotation TraceDatabase where
         DatabasePendingRepairs{}       -> Warning
         DatabaseReplicaNotMigrated{}   -> Warning
         DatabaseMigratedByNewerKupo{}  -> Error
+        DatabaseRepairPostponed{}      -> Warning
+        DatabaseRepairStarted{}        -> Notice
+        DatabaseRepairBatch{}          -> Info
+        DatabaseRepairFailed{}         -> Error
+        DatabaseRepairApplied{}        -> Notice
+        DatabaseUpToDate{}             -> Notice
         DatabaseRunningInMemory{}      -> Warning
         DatabaseCreateIndex{}          -> Notice
         DatabaseIndexAlreadyExists{}   -> Debug
