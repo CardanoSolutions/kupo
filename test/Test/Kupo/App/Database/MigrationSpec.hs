@@ -23,7 +23,8 @@ import Database.SQLite.Simple
     , withConnection
     )
 import Kupo.App.Database.Migration
-    ( migrations
+    ( checkMigrations
+    , migrations
     , runMigrations
     )
 import Kupo.App.Database.Migration.Definition
@@ -248,6 +249,24 @@ spec = parallel $ do
             registryRow conn "test/before" `shouldReturn` [("applied", Nothing)]
             registryRow conn "test/failing" `shouldReturn` []
             registryRow conn "test/after" `shouldReturn` []
+
+    context "checkMigrations" $ do
+        specify "refuses a blocked database, without writing" $ withDatabase $ \conn -> do
+            runMigrations nullTracer conn migrations
+            addCheckpoint conn
+            before <- snapshot conn
+            checkMigrations nullTracer conn
+                (migrations <> [synthetic RepairKind "test/repair", syntheticTable Blocking "blocking"])
+                `shouldThrow` isMigrationRequiredFor ["test/blocking"]
+            snapshot conn `shouldReturn` before
+
+        specify "carries on, without writing, when the writer has not migrated yet" $
+            withDatabase $ \conn -> do
+                runMigrations nullTracer conn (take 10 migrations)
+                addCheckpoint conn
+                before <- (,) <$> userVersion conn <*> schema conn
+                checkMigrations nullTracer conn (migrations <> [synthetic RepairKind "test/repair"])
+                ((,) <$> userVersion conn <*> schema conn) `shouldReturn` before
 
 knownIds :: [Text]
 knownIds =

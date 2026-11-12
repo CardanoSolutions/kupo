@@ -8,6 +8,7 @@ module Kupo.App.Database.Migration
 
       -- * Runner
     , runMigrations
+    , checkMigrations
 
       -- * Exceptions
     , UnexpectedUserVersionException (..)
@@ -113,6 +114,27 @@ runMigrations
     -> IO ()
 runMigrations tr conn knownMigrations =
     applyMigrations tr conn Startup knownMigrations >>= enforceGate tr
+
+-- | Plan like 'runMigrations' without writing anything, for read-only replicas.
+checkMigrations
+    :: Tracer IO TraceDatabase
+    -- ^ Where to log the outcome.
+    -> Connection
+    -- ^ A read-only connection to the database.
+    -> [Migration]
+    -- ^ All known migrations, oldest first.
+    -> IO ()
+checkMigrations tr conn knownMigrations = do
+    (currentVersion, plan@Plan{planSteps}) <- withTransaction conn ReadOnly $ do
+        userVersion <- databaseVersion conn
+        (userVersion,) <$> readPlan conn Startup userVersion knownMigrations
+    traceWith tr (DatabaseCurrentVersion currentVersion)
+    unless (null planSteps) $
+        traceWith tr DatabaseReplicaNotMigrated
+            { unappliedMigrations = describeMigration . stepMigration <$> planSteps
+            , hint = "The writer has not run these migrations yet. The replica carries on meanwhile."
+            }
+    enforceGate tr plan
 
 -- Run what the plan allows.
 applyMigrations :: Tracer IO TraceDatabase -> Connection -> Caller -> [Migration] -> IO Plan

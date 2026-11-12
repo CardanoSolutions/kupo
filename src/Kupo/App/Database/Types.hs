@@ -244,6 +244,9 @@ data TraceDatabase where
     DatabasePendingRepairs
         :: { pendingRepairs :: [Text], hint :: Text }
         -> TraceDatabase
+    DatabaseReplicaNotMigrated
+        :: { unappliedMigrations :: [Text], hint :: Text }
+        -> TraceDatabase
     DatabaseCreateIndex
         :: { newIndex :: Text }
         -> TraceDatabase
@@ -296,6 +299,7 @@ instance HasSeverityAnnotation TraceDatabase where
         DatabaseMigrationFailed{}      -> Error
         DatabaseMigrationRequired{}    -> Error
         DatabasePendingRepairs{}       -> Warning
+        DatabaseReplicaNotMigrated{}   -> Warning
         DatabaseRunningInMemory{}      -> Warning
         DatabaseCreateIndex{}          -> Notice
         DatabaseIndexAlreadyExists{}   -> Debug

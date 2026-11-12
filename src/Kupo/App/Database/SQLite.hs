@@ -83,7 +83,8 @@ import GHC.TypeLits
     , symbolVal
     )
 import Kupo.App.Database.Migration
-    ( migrations
+    ( checkMigrations
+    , migrations
     , runMigrations
     )
 import Kupo.App.Database.SQLite.Transaction
@@ -391,6 +392,10 @@ newDBPool
     -> IO (DBPool IO)
 newDBPool tr isReadOnly dbLocation longestRollback = do
     dbFile <- newDatabaseFile tr isReadOnly dbLocation
+    -- Replicas never migrate, but they refuse the same databases as the writer does.
+    when isReadOnly $ do
+        let (str, flags) = mkConnectionString dbFile ReadOnly
+        withConnection' str flags $ \conn -> checkMigrations tr conn migrations
     lock <- liftIO newLock
 
     (maxConcurrentWriters, maxConcurrentReaders) <-
