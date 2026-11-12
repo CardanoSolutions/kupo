@@ -85,6 +85,7 @@ import GHC.TypeLits
 import Kupo.App.Database.Migration
     ( checkMigrations
     , migrations
+    , refuseUnknownMigrations
     , runMigrations
     )
 import Kupo.App.Database.SQLite.Transaction
@@ -362,6 +363,8 @@ withLongLivedConnection
 withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes action = do
     let (str, flags) = mkConnectionString file ReadWrite
     withConnection' str flags $ \conn -> do
+        -- journal_mode and optimize may write to the file, so refuse a newer Kupo's database first.
+        refuseUnknownMigrations tr conn migrations
         execute_ conn "PRAGMA page_size = 32768"
         execute_ conn "PRAGMA cache_size = 1024"
         execute_ conn "PRAGMA synchronous = NORMAL"

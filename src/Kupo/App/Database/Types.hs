@@ -247,6 +247,9 @@ data TraceDatabase where
     DatabaseReplicaNotMigrated
         :: { unappliedMigrations :: [Text], hint :: Text }
         -> TraceDatabase
+    DatabaseMigratedByNewerKupo
+        :: { unknownMigrations :: [Text], hint :: Text }
+        -> TraceDatabase
     DatabaseCreateIndex
         :: { newIndex :: Text }
         -> TraceDatabase
@@ -300,6 +303,7 @@ instance HasSeverityAnnotation TraceDatabase where
         DatabaseMigrationRequired{}    -> Error
         DatabasePendingRepairs{}       -> Warning
         DatabaseReplicaNotMigrated{}   -> Warning
+        DatabaseMigratedByNewerKupo{}  -> Error
         DatabaseRunningInMemory{}      -> Warning
         DatabaseCreateIndex{}          -> Notice
         DatabaseIndexAlreadyExists{}   -> Debug

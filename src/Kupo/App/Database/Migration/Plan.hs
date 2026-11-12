@@ -20,6 +20,10 @@ module Kupo.App.Database.Migration.Plan
       -- * Startup gate
     , MigrationRequiredException (..)
     , migrationRequiredHint
+    , UnknownMigrationsException (..)
+    , UnknownMigration (..)
+    , unknownMigrationsHint
+    , describeUnknownMigration
     , describeMigration
     ) where
 
@@ -57,6 +61,7 @@ planMigrations caller databaseState registry knownMigrations = Plan
         , registryState registry position migration == Just Pending
             || position `elem` newlyPending
         ]
+    , planUnknown = unknownIds registry
     }
   where
     indexed = zip [1 ..] knownMigrations
@@ -80,6 +85,10 @@ planMigrations caller databaseState registry knownMigrations = Plan
     -- The plan applies the migration that introduced the data to repair, so there is none yet.
     hasNoDataToRepair BatchRepair{repairDataIntroducedBy} =
         repairDataIntroducedBy `elem` newlyApplied
+
+    unknownIds = \case
+        UserVersionOnly{} -> []
+        RegistryRows rows -> filter (`notElem` (migrationId <$> knownMigrations)) $ Map.keys rows
 
 -- | Who runs the migrations.
 data Caller
@@ -105,6 +114,8 @@ data Plan = Plan
     -- ^ The first pending 'Blocking' migration and every unprocessed one after it; none of them runs.
     , planPendingRepairs :: ![Migration]
     -- ^ Repairs that are still pending once the steps have run.
+    , planUnknown :: ![Text]
+    -- ^ Registry ids this version does not know: a newer Kupo migrated the database.
     }
 
 data PlannedStep = PlannedStep
@@ -156,6 +167,35 @@ migrationRequiredHint :: Text
 migrationRequiredHint =
     "The database needs migrations that Kupo does not apply on its own. \
     \Run 'kupo db migrate' to apply them, then start Kupo again."
+
+-- | Kupo refuses the database: its registry lists migrations that this version does not know.
+newtype UnknownMigrationsException = UnknownMigrationsException [UnknownMigration]
+    deriving (Eq, Show)
+
+instance Exception UnknownMigrationsException where
+    displayException (UnknownMigrationsException unknownMigrations) =
+        toString . T.unlines $ unknownMigrationsHint : "Unknown migrations:"
+            : fmap (("  " <>) . describeUnknownMigration) unknownMigrations
+
+-- | A registry row that this version of Kupo does not know.
+data UnknownMigration = UnknownMigration
+    { unknownId :: !Text
+    , unknownKupoVersion :: !(Maybe Text)
+    -- ^ The version of Kupo that recorded the row, if the row holds one.
+    }
+    deriving (Generic, Eq, Show)
+
+unknownMigrationsHint :: Text
+unknownMigrationsHint =
+    "This database was migrated by a newer Kupo. Run that version, or a later one, instead."
+
+-- | One line naming an unknown migration, and the version of Kupo that recorded it when known.
+describeUnknownMigration
+    :: UnknownMigration
+    -- ^ The migration to name.
+    -> Text
+describeUnknownMigration UnknownMigration{unknownId, unknownKupoVersion} =
+    unknownId <> maybe "" (\kupoVersion -> " (recorded by Kupo " <> kupoVersion <> ")") unknownKupoVersion
 
 -- | One line naming a migration: its id, kind and summary.
 describeMigration

@@ -97,6 +97,8 @@ The `migrations` table records the state of each migration.
 The migration that creates the table also adds an `applied` row for each earlier migration.
 These rows have no `kupo_version` and no `applied_at`.
 
+Kupo refuses a database whose registry holds an id that it does not know, because a newer Kupo migrated that database.
+
 `kupo copy` clones the registry with the database, pending repairs included, and refuses the same databases as Kupo does at startup.
 
 ## Changelog

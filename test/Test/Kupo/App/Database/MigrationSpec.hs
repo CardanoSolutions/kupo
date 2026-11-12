@@ -22,6 +22,9 @@ import Database.SQLite.Simple
     , query_
     , withConnection
     )
+import Kupo.App.Database
+    ( newDBPool
+    )
 import Kupo.App.Database.Migration
     ( checkMigrations
     , migrations
@@ -44,13 +47,29 @@ import Kupo.App.Database.Migration.Plan
     , PlannedAction (..)
     , PlannedStep (..)
     , Registry (..)
+    , UnknownMigration (..)
+    , UnknownMigrationsException (..)
     , planMigrations
     )
 import Kupo.App.Database.Types
-    ( TraceDatabase (..)
+    ( DBPool (..)
+    , TraceDatabase (..)
     )
 import Kupo.Control.MonadLog
     ( nullTracer
+    )
+import Kupo.Data.Configuration
+    ( DatabaseLocation (..)
+    , DeferIndexesInstallation (..)
+    )
+import System.Directory
+    ( doesFileExist
+    )
+import System.FilePath
+    ( (</>)
+    )
+import System.IO.Temp
+    ( withSystemTempDirectory
     )
 import Test.Hspec
     ( Selector
@@ -160,6 +179,36 @@ spec = parallel $ do
                     [ synthetic AutomaticKind "a", synthetic RepairKind "r", synthetic BlockingKind "x" ])
                     `shouldBe` ([], [], [])
 
+            specify "names the ids it does not know" $
+                planUnknown (planMigrations Startup ExistingDatabase (registry [("a", Applied), ("v9.9.9/001", Applied)])
+                    [ synthetic AutomaticKind "a", synthetic AutomaticKind "b" ])
+                    `shouldBe` ["v9.9.9/001"]
+
+    context "withDatabaseExclusiveWriter" $ do
+        specify "refuses a database that a newer Kupo migrated, before a PRAGMA changes its file" $
+            withSystemTempDirectory "kupo-migration" $ \dir -> do
+                let databaseFile = dir </> "kupo.sqlite3"
+                withConnection databaseFile $ \conn -> do
+                    runMigrations nullTracer conn migrations
+                    addUnknownMigration conn
+                before <- readFileBS databaseFile
+                pool <- newDBPool nullTracer False (Dir dir) 43200
+                withDatabaseExclusiveWriter pool InstallIndexesIfNotExist (const pass)
+                    `shouldThrow` isUnknownMigrations ["v9.9.9/001"]
+                readFileBS databaseFile `shouldReturn` before
+                doesFileExist (databaseFile <> "-wal") `shouldReturn` False
+                withConnection databaseFile $ \conn -> do
+                    fmap fromOnly <$> query_ conn "PRAGMA journal_mode" `shouldReturn` ["delete" :: Text]
+                    fmap fromOnly <$> query_ conn "SELECT name FROM sqlite_master WHERE name = 'sqlite_stat1'"
+                        `shouldReturn` ([] :: [Text])
+
+        specify "creates a new database with 32 KiB pages" $
+            withSystemTempDirectory "kupo-migration" $ \dir -> do
+                pool <- newDBPool nullTracer False (Dir dir) 43200
+                withDatabaseExclusiveWriter pool InstallIndexesIfNotExist (const pass)
+                withConnection (dir </> "kupo.sqlite3") $ \conn ->
+                    fmap fromOnly <$> query_ conn "PRAGMA page_size" `shouldReturn` [32768 :: Int]
+
     context "runMigrations" $ do
         specify "an upgrade from user_version 10 backfills the registry" $ withDatabase $ \conn -> do
             runMigrations nullTracer conn (take 10 migrations)
@@ -220,6 +269,31 @@ spec = parallel $ do
             runMigrations nullTracer conn extended
             snapshot conn `shouldReturn` before
 
+        specify "refuses a database that a newer Kupo migrated, without writing, and names that Kupo" $
+            withDatabase $ \conn -> do
+                runMigrations nullTracer conn migrations
+                addCheckpoint conn
+                addUnknownMigration conn
+                before <- snapshot conn
+                (tr, readRefusals) <- recordRefusals
+                runMigrations tr conn (migrations <> [syntheticTable Automatic "after"])
+                    `shouldThrow` (== UnknownMigrationsException [UnknownMigration "v9.9.9/001" (Just "v9.9.9")])
+                readRefusals `shouldReturn` [["v9.9.9/001 (recorded by Kupo v9.9.9)"]]
+                snapshot conn `shouldReturn` before
+
+        specify "lists each unknown migration with the version of Kupo that recorded it, when known" $
+            displayException
+                (UnknownMigrationsException
+                    [ UnknownMigration "v9.9.9/001" (Just "v9.9.9+abcdef")
+                    , UnknownMigration "v9.9.9/002" Nothing
+                    ])
+                `shouldBe` toString (T.unlines
+                    [ "This database was migrated by a newer Kupo. Run that version, or a later one, instead."
+                    , "Unknown migrations:"
+                    , "  v9.9.9/001 (recorded by Kupo v9.9.9+abcdef)"
+                    , "  v9.9.9/002"
+                    ])
+
         specify "runs a statement that holds a ';', such as a trigger body" $ withDatabase $ \conn -> do
             let trigger = (synthetic AutomaticKind "test/trigger")
                     { migrationAction = Automatic
@@ -259,6 +333,12 @@ spec = parallel $ do
                 (migrations <> [synthetic RepairKind "test/repair", syntheticTable Blocking "blocking"])
                 `shouldThrow` isMigrationRequiredFor ["test/blocking"]
             snapshot conn `shouldReturn` before
+
+        specify "refuses a database that a newer Kupo migrated" $ withDatabase $ \conn -> do
+            runMigrations nullTracer conn migrations
+            addUnknownMigration conn
+            checkMigrations nullTracer conn migrations
+                `shouldThrow` (== UnknownMigrationsException [UnknownMigration "v9.9.9/001" (Just "v9.9.9")])
 
         specify "carries on, without writing, when the writer has not migrated yet" $
             withDatabase $ \conn -> do
@@ -308,9 +388,22 @@ recordFailures = do
             _otherEvent -> pass
     pure (Tracer $ emit record, readIORef failures)
 
+-- A tracer that records the unknown migrations of every refusal it gets.
+recordRefusals :: IO (Tracer IO TraceDatabase, IO [[Text]])
+recordRefusals = do
+    refusals <- newIORef []
+    let record = \case
+            DatabaseMigratedByNewerKupo{unknownMigrations} -> modifyIORef' refusals (<> [unknownMigrations])
+            _otherEvent -> pass
+    pure (Tracer $ emit record, readIORef refusals)
+
 isMigrationRequiredFor :: [Text] -> Selector MigrationRequiredException
 isMigrationRequiredFor ids (MigrationRequiredException pendingMigrations) =
     (T.takeWhile (/= ' ') <$> pendingMigrations) == ids
+
+isUnknownMigrations :: [Text] -> Selector UnknownMigrationsException
+isUnknownMigrations ids (UnknownMigrationsException unknownMigrations) =
+    (unknownId <$> unknownMigrations) == ids
 
 withDatabase :: (Connection -> IO a) -> IO a
 withDatabase =
@@ -319,6 +412,13 @@ withDatabase =
 addCheckpoint :: Connection -> IO ()
 addCheckpoint conn =
     execute_ conn "INSERT INTO checkpoints (header_hash, slot_no) VALUES (x'00', 42)"
+
+-- As if a newer Kupo had applied a migration this version does not know.
+addUnknownMigration :: Connection -> IO ()
+addUnknownMigration conn =
+    execute_ conn
+        "INSERT INTO migrations (id, state, kupo_version, registered_at) \
+        \VALUES ('v9.9.9/001', 'applied', 'v9.9.9', 0)"
 
 userVersion :: Connection -> IO [Int]
 userVersion conn =

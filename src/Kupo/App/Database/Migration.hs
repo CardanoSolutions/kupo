@@ -7,6 +7,7 @@ module Kupo.App.Database.Migration
       migrations
 
       -- * Runner
+    , refuseUnknownMigrations
     , runMigrations
     , checkMigrations
 
@@ -52,10 +53,14 @@ import Kupo.App.Database.Migration.Plan
     , PlannedAction (..)
     , PlannedStep (..)
     , Registry (..)
+    , UnknownMigration (..)
+    , UnknownMigrationsException (..)
     , describeMigration
+    , describeUnknownMigration
     , migrationRequiredHint
     , migrationStateToText
     , planMigrations
+    , unknownMigrationsHint
     )
 import Kupo.App.Database.SQLite.Transaction
     ( withTransaction
@@ -102,6 +107,22 @@ migrations =
     , V2_12_0_001.migration
     ]
 
+-- | Throw 'UnknownMigrationsException' if a newer Kupo migrated the database. It only reads, so it
+-- can run before statements that may write to the database file, such as @PRAGMA journal_mode@.
+refuseUnknownMigrations
+    :: Tracer IO TraceDatabase
+    -- ^ Where to log a refusal.
+    -> Connection
+    -- ^ A connection to the database, which may be read-only.
+    -> [Migration]
+    -- ^ All known migrations, oldest first.
+    -> IO ()
+refuseUnknownMigrations tr conn knownMigrations = do
+    plan <- withTransaction conn ReadOnly $ do
+        currentVersion <- databaseVersion conn
+        readPlan conn Startup currentVersion knownMigrations
+    refuseUnknown tr conn plan
+
 -- | Run, in order, what 'planMigrations' allows. Then throw 'MigrationRequiredException' if a
 -- 'Blocking' migration is pending, and warn about pending repairs.
 runMigrations
@@ -129,6 +150,7 @@ checkMigrations tr conn knownMigrations = do
         userVersion <- databaseVersion conn
         (userVersion,) <$> readPlan conn Startup userVersion knownMigrations
     traceWith tr (DatabaseCurrentVersion currentVersion)
+    refuseUnknown tr conn plan
     unless (null planSteps) $
         traceWith tr DatabaseReplicaNotMigrated
             { unappliedMigrations = describeMigration . stepMigration <$> planSteps
@@ -136,12 +158,13 @@ checkMigrations tr conn knownMigrations = do
             }
     enforceGate tr plan
 
--- Run what the plan allows.
+-- Run what the plan allows, once sure that no newer Kupo migrated the database.
 applyMigrations :: Tracer IO TraceDatabase -> Connection -> Caller -> [Migration] -> IO Plan
 applyMigrations tr conn caller knownMigrations = do
     currentVersion <- databaseVersion conn
     traceWith tr (DatabaseCurrentVersion currentVersion)
     plan@Plan{planSteps} <- readPlan conn caller currentVersion knownMigrations
+    refuseUnknown tr conn plan
     if null planSteps then
         traceWith tr DatabaseNoMigrationNeeded
     else do
@@ -157,6 +180,16 @@ readPlan conn caller currentVersion knownMigrations = do
     databaseState <- readDatabaseState conn
     registry <- readRegistry conn currentVersion
     pure $ planMigrations caller databaseState registry knownMigrations
+
+-- An older Kupo must not touch what a newer one migrated.
+refuseUnknown :: Tracer IO TraceDatabase -> Connection -> Plan -> IO ()
+refuseUnknown tr conn Plan{planUnknown} =
+    unless (null planUnknown) $ do
+        unknown <- forM planUnknown $ \migrationId ->
+            UnknownMigration migrationId <$> readKupoVersion conn migrationId
+        traceWith tr DatabaseMigratedByNewerKupo
+            { unknownMigrations = describeUnknownMigration <$> unknown, hint = unknownMigrationsHint }
+        throwIO $ UnknownMigrationsException unknown
 
 -- Warn about pending repairs, and refuse to go past a pending 'Blocking' migration.
 enforceGate :: Tracer IO TraceDatabase -> Plan -> IO ()
@@ -231,6 +264,12 @@ decodeMigrationState migrationId = \case
     "pending" -> pure Pending
     "skipped" -> pure Skipped
     migrationState -> throwIO $ UnexpectedMigrationState migrationId migrationState
+
+-- The version of Kupo that recorded a registry row, if the row holds one.
+readKupoVersion :: Connection -> Text -> IO (Maybe Text)
+readKupoVersion conn migrationId = do
+    rows <- query conn "SELECT kupo_version FROM migrations WHERE id = ?" (Only migrationId)
+    pure $ fromOnly =<< listToMaybe rows
 
 registerApplied :: Connection -> Migration -> IO ()
 registerApplied conn Migration{migrationId} =
