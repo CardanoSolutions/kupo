@@ -156,11 +156,12 @@ class MonadThrow m => MonadOuroborosNtoN (m :: Type -> Type) where
         -> EpochSlots
         -> String
         -> Int
-        -> BlockFetchClientPipelined
-            (BlockT m)
-            (Point (BlockT m))
-            IO
-            ()
+        -> m (BlockFetchClientPipelined
+                 (BlockT m)
+                 (Point (BlockT m))
+                 IO
+                 ()
+           )
         -> m ()
 
 instance MonadOuroborosNtoN IO where
@@ -292,7 +293,7 @@ instance MonadOuroborosNtoN IO where
         slotsPerEpoch
         host
         port
-        blockFetchClient =
+        blockFetchClientF =
             withIOManager $ \iocp -> do
                 addr <- resolve
                 result <- connectTo
@@ -346,14 +347,14 @@ instance MonadOuroborosNtoN IO where
                     , miniProtocolLimits =
                         MiniProtocolLimits (fromIntegral $ maxBound @Word32)
                     , miniProtocolRun =
-                        InitiatorProtocolOnly $ MiniProtocolCb $ \_ channel ->
+                        InitiatorProtocolOnly $ MiniProtocolCb $ \_ channel -> do
+                            blockFetchClient <- blockFetchClientF
                             let
                                 peer = blockFetchClientPeerPipelined blockFetchClient
                                 codec =
                                     cBlockFetchCodec
                                         (codecs slotsPerEpoch version)
-                            in
-                                runPipelinedPeer nullTracer codec channel peer
+                            runPipelinedPeer nullTracer codec channel peer
                     }
                 ]
 

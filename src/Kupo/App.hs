@@ -492,8 +492,6 @@ withFetchBlockClient chainProducer callback = do
             race_
                 (callback fetchBlockClient)
                 (withExceptionHandler @NodeToNodeVersion nullTracer noConnectionStatusToggle $ do
-                    blockFetchClient <-
-                        NodeToNode.newOnDemandFetchBlockClient requests
                     networkParameters <- resolveNetworkParameters chainProducer
                     magic <- networkMagicOrThrow networkParameters
                     slots <- slotsPerEpochOrThrow networkParameters
@@ -504,7 +502,7 @@ withFetchBlockClient chainProducer callback = do
                         slots
                         nodeHost
                         nodePort
-                        blockFetchClient
+                        (NodeToNode.newOnDemandFetchBlockClient requests)
                 )
 
 newFetchTipClient
