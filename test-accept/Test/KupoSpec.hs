@@ -642,11 +642,18 @@ envRule =
                 [ Has "OGMIOS_HOST"
                 , Has "OGMIOS_PORT"
                 ]
+            , All
+                [ Has "CARDANO_NODE_HOST"
+                , Has "CARDANO_NODE_PORT"
+                ]
             ]
         ]
 
 connections :: Env -> [(String, [String])]
-connections env = nodeConnection env ++ ogmiosConnection env
+connections env =
+    nodeConnection env
+        ++ nodeToNodeConnection env
+        ++ ogmiosConnection env
 
 nodeConnection :: Env -> [(String, [String])]
 nodeConnection env =
@@ -658,6 +665,22 @@ nodeConnection env =
             [( "Node"
              , ["--node-socket", socket
                ,"--node-config", config
+               ]
+            )]
+        _ ->
+            []
+
+nodeToNodeConnection :: Env -> [(String, [String])]
+nodeToNodeConnection env =
+    let
+        mHost = Map.lookup "CARDANO_NODE_HOST" env
+        mPort = Map.lookup "CARDANO_NODE_PORT" env
+    in case (mHost, mPort) of
+        (Just host, Just port) ->
+            [( "NodeToNode"
+             , ["--node-host", host
+               ,"--node-port", port
+               ,"--network",   "preprod"
                ]
             )]
         _ ->
