@@ -58,6 +58,7 @@ library
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
       Kupo.App.Database
+      Kupo.App.Database.Migration.Definition
       Kupo.App.Database.SQLite.Transaction
       Kupo.App.Database.Types
       Kupo.App.FetchBlock.Node
