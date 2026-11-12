@@ -6,6 +6,13 @@
 
 - A Dijkstra transaction that carries sub-transactions is not indexed yet. Kupo stops with an error that names the transaction.
 
+- Kupo now records database migrations in a `migrations` table, and no longer runs heavy or breaking migrations silently at startup:
+  - When the database needs a blocking migration, Kupo refuses to start and exits with code 3. Run `kupo db migrate`, then start Kupo again.
+  - When a data repair is pending, Kupo starts but logs a warning. Run `kupo db migrate` when it suits you. An interrupted repair resumes where it stopped.
+  - The new `kupo db status --workdir DIRECTORY` command lists every migration and its state, without writing to the database. Like Kupo at startup, it exits with code 3 when the database needs a blocking migration, and with code 1 when a newer version of Kupo migrated the database.
+  - The new `kupo db migrate --workdir DIRECTORY` command applies the pending migrations and data repairs. Stop Kupo first. Some repairs need `--confirm-complete-index`, which confirms that the index matches `*` and was synchronised from origin.
+  - Kupo, read-only replicas, `kupo copy` and `kupo db migrate` refuse a database that a newer version of Kupo has migrated.
+
 #### Changed
 
 - Kupo now requires cardano-node 11.1 or later. It talks to the node over node-to-client version 23 only, so older nodes are no longer supported.
