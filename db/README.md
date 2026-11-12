@@ -66,10 +66,47 @@ CREATE TABLE `scripts` (
 CREATE TABLE `patterns` (
   `pattern` TEXT PRIMARY KEY NOT NULL
 );
+
+CREATE TABLE `migrations` (
+  `id` TEXT PRIMARY KEY NOT NULL,
+  `state` TEXT NOT NULL,
+  `cutoff_slot` INTEGER,
+  `cursor` BLOB,
+  `kupo_version` TEXT,
+  `registered_at` INTEGER NOT NULL,
+  `applied_at` INTEGER
+);
 ```
 </details>
 
+## Migrations
+
+The `migrations` table records the state of each migration.
+`PRAGMA user_version` still holds the position of the last migration that Kupo processed.
+
+| Column | Description |
+| --- | --- |
+| `id` | The path of the migration file under `db/`, without `.sql`. For example, `v2.10.0/001`. |
+| `state` | `applied`; `pending` for a data repair that has not run yet; or `skipped` for a data repair on a database that had no data to repair. |
+| `cutoff_slot` | For a data repair, the slot of the most recent checkpoint when Kupo registered the repair. |
+| `cursor` | The progress of a data repair that runs in batches. |
+| `kupo_version` | The version of Kupo that wrote the row. |
+| `registered_at` | When Kupo wrote the row, in seconds since the Unix epoch. |
+| `applied_at` | When Kupo applied the migration, in seconds since the Unix epoch. |
+
+The migration that creates the table also adds an `applied` row for each earlier migration.
+These rows have no `kupo_version` and no `applied_at`.
+
+`kupo copy` clones the registry with the database, pending repairs included, and refuses the same databases as Kupo does at startup.
+
 ## Changelog
+
+<p align="right"><code>v2.12.0</code></p>
+<hr/>
+
+### Migration to `version=11`
+
+- Add a `migrations` table that records the state of each migration.
 
 <p align="right"><code>v2.10.0</code></p>
 <hr/>

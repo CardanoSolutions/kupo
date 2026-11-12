@@ -8,8 +8,23 @@ module Test.Kupo.App.Database.MigrationSpec
 
 import Kupo.Prelude
 
+import Control.Tracer
+    ( Tracer (..)
+    , emit
+    )
+import Database.SQLite.Simple
+    ( Connection
+    , Only (..)
+    , SQLData
+    , SQLError (..)
+    , execute_
+    , query
+    , query_
+    , withConnection
+    )
 import Kupo.App.Database.Migration
     ( migrations
+    , runMigrations
     )
 import Kupo.App.Database.Migration.Definition
     ( BatchRepair (..)
@@ -22,6 +37,7 @@ import Kupo.App.Database.Migration.Definition
 import Kupo.App.Database.Migration.Plan
     ( Caller (..)
     , DatabaseState (..)
+    , MigrationRequiredException (..)
     , MigrationState (..)
     , Plan (..)
     , PlannedAction (..)
@@ -29,11 +45,20 @@ import Kupo.App.Database.Migration.Plan
     , Registry (..)
     , planMigrations
     )
+import Kupo.App.Database.Types
+    ( TraceDatabase (..)
+    )
+import Kupo.Control.MonadLog
+    ( nullTracer
+    )
 import Test.Hspec
-    ( Spec
+    ( Selector
+    , Spec
     , context
     , parallel
     , shouldBe
+    , shouldReturn
+    , shouldThrow
     , specify
     )
 
@@ -134,6 +159,96 @@ spec = parallel $ do
                     [ synthetic AutomaticKind "a", synthetic RepairKind "r", synthetic BlockingKind "x" ])
                     `shouldBe` ([], [], [])
 
+    context "runMigrations" $ do
+        specify "an upgrade from user_version 10 backfills the registry" $ withDatabase $ \conn -> do
+            runMigrations nullTracer conn (take 10 migrations)
+            userVersion conn `shouldReturn` [10]
+            addCheckpoint conn
+            runMigrations nullTracer conn migrations
+            userVersion conn `shouldReturn` [11]
+            -- Backfilled rows have no kupo_version and no applied_at.
+            registryRows conn `shouldReturn`
+                [ (migrationId, "applied", isRegistry, isRegistry)
+                | Migration{migrationId} <- migrations
+                , let isRegistry = migrationId == "v2.12.0/001"
+                ]
+
+        specify "a fresh database records repairs as skipped" $ withDatabase $ \conn -> do
+            runMigrations nullTracer conn (migrations <> [synthetic RepairKind "test/repair"])
+            userVersion conn `shouldReturn` [12]
+            registryRow conn "test/repair" `shouldReturn` [("skipped", Nothing)]
+
+        specify "an existing database registers repairs as pending, with a cutoff slot" $
+            withDatabase $ \conn -> do
+                runMigrations nullTracer conn migrations
+                addCheckpoint conn
+                runMigrations nullTracer conn $
+                    migrations <> [synthetic RepairKind "test/repair", syntheticTable Automatic "after"]
+                userVersion conn `shouldReturn` [13]
+                registryRow conn "test/repair" `shouldReturn` [("pending", Just 42)]
+                registryRow conn "test/after" `shouldReturn` [("applied", Nothing)]
+                syntheticTables conn `shouldReturn` ["synthetic_after"]
+
+        specify "a blocking migration on an existing database stops the runner" $
+            withDatabase $ \conn -> do
+                runMigrations nullTracer conn migrations
+                addCheckpoint conn
+                let extended = migrations <>
+                        [ syntheticTable Automatic "before"
+                        , syntheticTable Blocking "blocking"
+                        , syntheticTable Automatic "after"
+                        ]
+                runMigrations nullTracer conn extended
+                    `shouldThrow` isMigrationRequiredFor ["test/blocking", "test/after"]
+                userVersion conn `shouldReturn` [12]
+                syntheticTables conn `shouldReturn` ["synthetic_before"]
+                registryRow conn "test/before" `shouldReturn` [("applied", Nothing)]
+                registryRow conn "test/blocking" `shouldReturn` []
+
+        specify "applies a blocking migration on a fresh database" $ withDatabase $ \conn -> do
+            runMigrations nullTracer conn (migrations <> [syntheticTable Blocking "blocking"])
+            syntheticTables conn `shouldReturn` ["synthetic_blocking"]
+            registryRow conn "test/blocking" `shouldReturn` [("applied", Nothing)]
+
+        specify "running twice changes nothing" $ withDatabase $ \conn -> do
+            runMigrations nullTracer conn migrations
+            addCheckpoint conn
+            let extended = migrations <> [synthetic RepairKind "test/repair", syntheticTable Automatic "after"]
+            runMigrations nullTracer conn extended
+            before <- snapshot conn
+            runMigrations nullTracer conn extended
+            snapshot conn `shouldReturn` before
+
+        specify "runs a statement that holds a ';', such as a trigger body" $ withDatabase $ \conn -> do
+            let trigger = (synthetic AutomaticKind "test/trigger")
+                    { migrationAction = Automatic
+                        "CREATE TABLE synthetic_trigger (x INTEGER); \
+                        \CREATE TRIGGER double_x AFTER INSERT ON synthetic_trigger \
+                        \BEGIN UPDATE synthetic_trigger SET x = 2 * x; END;"
+                    }
+            runMigrations nullTracer conn (migrations <> [trigger])
+            execute_ conn "INSERT INTO synthetic_trigger VALUES (21)"
+            fmap fromOnly <$> query_ conn "SELECT x FROM synthetic_trigger" `shouldReturn` [42 :: Int]
+
+        specify "a failing migration rolls back, and the runner logs it and stops" $ withDatabase $ \conn -> do
+            (tr, readFailures) <- recordFailures
+            let failing = (synthetic AutomaticKind "test/failing")
+                    { migrationAction = Automatic
+                        "CREATE TABLE synthetic_failing (x INTEGER); \
+                        \INSERT INTO synthetic_failing VALUES (1); \
+                        \SELECT * FROM no_such_table;"
+                    }
+            let extended = migrations <> [syntheticTable Automatic "before", failing, syntheticTable Automatic "after"]
+            runMigrations tr conn extended
+                `shouldThrow` \SQLError{} -> True
+            readFailures `shouldReturn` ["test/failing"]
+            -- As the step before the failing one left it.
+            userVersion conn `shouldReturn` [length migrations + 1]
+            syntheticTables conn `shouldReturn` ["synthetic_before"]
+            registryRow conn "test/before" `shouldReturn` [("applied", Nothing)]
+            registryRow conn "test/failing" `shouldReturn` []
+            registryRow conn "test/after" `shouldReturn` []
+
 knownIds :: [Text]
 knownIds =
     [ "v1.0.0-beta/001"
@@ -146,6 +261,7 @@ knownIds =
     , "v2.1.0/003"
     , "v2.2.0/001"
     , "v2.10.0/001"
+    , "v2.12.0/001"
     ]
 
 -- Sorts ids such as @v1.0.0-beta/001@ by version, a pre-release before its release, then by
@@ -164,6 +280,54 @@ summarise Plan{planSteps, planBlocked, planPendingRepairs} =
     , migrationId <$> planPendingRepairs
     )
 
+-- A tracer that records the id of every migration or repair whose failure it gets.
+recordFailures :: IO (Tracer IO TraceDatabase, IO [Text])
+recordFailures = do
+    failures <- newIORef []
+    let record = \case
+            DatabaseMigrationFailed{failedMigration} -> modifyIORef' failures (<> [failedMigration])
+            _otherEvent -> pass
+    pure (Tracer $ emit record, readIORef failures)
+
+isMigrationRequiredFor :: [Text] -> Selector MigrationRequiredException
+isMigrationRequiredFor ids (MigrationRequiredException pendingMigrations) =
+    (T.takeWhile (/= ' ') <$> pendingMigrations) == ids
+
+withDatabase :: (Connection -> IO a) -> IO a
+withDatabase =
+    withConnection ":memory:"
+
+addCheckpoint :: Connection -> IO ()
+addCheckpoint conn =
+    execute_ conn "INSERT INTO checkpoints (header_hash, slot_no) VALUES (x'00', 42)"
+
+userVersion :: Connection -> IO [Int]
+userVersion conn =
+    fmap fromOnly <$> query_ conn "PRAGMA user_version"
+
+registryRows :: Connection -> IO [(Text, Text, Bool, Bool)]
+registryRows conn =
+    query_ conn
+        "SELECT id, state, kupo_version IS NOT NULL, applied_at IS NOT NULL \
+        \FROM migrations ORDER BY rowid"
+
+registryRow :: Connection -> Text -> IO [(Text, Maybe Int)]
+registryRow conn migrationId =
+    query conn "SELECT state, cutoff_slot FROM migrations WHERE id = ?" (Only migrationId)
+
+syntheticTables :: Connection -> IO [Text]
+syntheticTables conn =
+    fmap fromOnly <$> query_ conn
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'synthetic%' ORDER BY name"
+
+schema :: Connection -> IO [[SQLData]]
+schema conn =
+    query_ conn "SELECT type, name, sql FROM sqlite_master ORDER BY name"
+
+snapshot :: Connection -> IO ([Int], [[SQLData]], [[SQLData]])
+snapshot conn =
+    (,,) <$> userVersion conn <*> schema conn <*> query_ conn "SELECT * FROM migrations ORDER BY id"
+
 registry :: [(Text, MigrationState)] -> Registry
 registry =
     RegistryRows . fromList
@@ -180,6 +344,12 @@ synthetic kind migrationId =
                 BlockingKind -> Blocking ""
                 RepairKind -> Repair $ idleRepair "test/none"
         }
+
+-- A synthetic migration with id @test/<name>@ that creates the table @synthetic_<name>@.
+syntheticTable :: (ByteString -> MigrationAction) -> Text -> Migration
+syntheticTable toAction name =
+    (synthetic AutomaticKind $ "test/" <> name)
+        { migrationAction = toAction . encodeUtf8 $ "CREATE TABLE synthetic_" <> name <> " (x INTEGER)" }
 
 -- The repair @r@ of the data that the migration @introducedBy@ introduced.
 repairOfDataFrom :: Text -> Migration

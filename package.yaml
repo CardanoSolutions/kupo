@@ -135,6 +135,7 @@ tests:
     - bytestring
     - cardano-crypto-class
     - containers
+    - contra-tracer
     - directory
     - filepath
     - hspec
