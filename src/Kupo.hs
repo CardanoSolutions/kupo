@@ -13,6 +13,8 @@ module Kupo
     , version
     , healthCheck
     , copyDatabase
+    , databaseStatus
+    , databaseMigrate
 
     -- * Kupo
     , Kupo (..)
@@ -31,6 +33,7 @@ module Kupo
     -- * Tracers
     , Tracers(..)
     , TracersCopy(..)
+    , TracersMigrate(..)
     , Severity(..)
     , withTracers
     , defaultTracers
@@ -67,6 +70,10 @@ import Kupo.App.Configuration
 import Kupo.App.Database
     ( copyDatabase
     , newDBPool
+    )
+import Kupo.App.Database.Migration.Command
+    ( databaseMigrate
+    , databaseStatus
     )
 import Kupo.App.Database.Migration.Plan
     ( MigrationRequiredException
@@ -140,6 +147,7 @@ import Kupo.Options
     ( Command (..)
     , Tracers (..)
     , TracersCopy (..)
+    , TracersMigrate (..)
     , parseOptions
     )
 import Kupo.Version

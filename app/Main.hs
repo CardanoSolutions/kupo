@@ -18,5 +18,10 @@ main = parseOptions >>= \case
             copyDatabase (tracerCopy tr, tracerProgress tr) from into patterns
     HealthCheck host port -> do
         healthCheck host port
+    DbStatus workdir -> do
+        databaseStatus workdir >>= exitWith
+    DbMigrate workdir isCompleteIndexConfirmed -> do
+        withTracers stdout version (defaultTracers @TracersMigrate (Just Info)) $ \tr -> do
+            databaseMigrate (tracerMigrate tr) workdir isCompleteIndexConfirmed >>= exitWith
     Version -> do
         putTextLn version

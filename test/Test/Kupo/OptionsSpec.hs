@@ -335,6 +335,21 @@ spec = parallel $ do
         , ( [ "copy", "--from", "foo" ]
           , shouldFail
           )
+        , ( [ "db", "status", "--workdir", "foo" ]
+          , flip shouldBe $ Right $ DbStatus "foo"
+          )
+        , ( [ "db", "migrate", "--workdir", "foo" ]
+          , flip shouldBe $ Right $ DbMigrate "foo" False
+          )
+        , ( [ "db", "migrate", "--workdir", "foo", "--confirm-complete-index" ]
+          , flip shouldBe $ Right $ DbMigrate "foo" True
+          )
+        , ( [ "db", "migrate", "--in-memory" ]
+          , shouldFail
+          )
+        , ( [ "db", "status" ]
+          , shouldFail
+          )
         , ( [ "version" ], flip shouldBe $ Right Version )
         , ( [ "-v" ], flip shouldBe $ Right Version )
         , ( [ "--version" ], flip shouldBe $ Right Version )
