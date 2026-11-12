@@ -4,9 +4,7 @@
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Kupo.App.Database.SQLite
     (
@@ -56,9 +54,6 @@ import Control.Tracer
     ( Tracer
     , traceWith
     )
-import Data.FileEmbed
-    ( embedFile
-    )
 import Data.Scientific
     ( scientific
     )
@@ -79,15 +74,17 @@ import Database.SQLite.Simple
     , execute
     , execute_
     , fold_
-    , nextRow
     , query_
     , totalChanges
     , withConnection'
-    , withStatement
     )
 import GHC.TypeLits
     ( KnownSymbol
     , symbolVal
+    )
+import Kupo.App.Database.Migration
+    ( migrations
+    , runMigrations
     )
 import Kupo.App.Database.SQLite.Transaction
     ( withTransaction
@@ -369,7 +366,7 @@ withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes act
         execute_ conn "PRAGMA synchronous = NORMAL"
         execute_ conn "PRAGMA journal_mode = WAL"
         execute_ conn "PRAGMA optimize"
-        databaseVersion conn >>= runMigrations tr conn
+        runMigrations tr conn migrations
         installIndexes tr conn deferIndexes
         execute_ conn "PRAGMA foreign_keys = ON"
         action (mkDatabase (contramap DatabaseConnection tr) ReadWrite k (bracketConnection conn))
@@ -440,13 +437,14 @@ newDBPool tr isReadOnly dbLocation longestRollback = do
 -- It is therefore also the connection from which we check for and run database migrations when
 -- needed. Note that this bracket will also create the database if it doesn't exist.
 withWriteOnlyConnection
-    :: DatabaseFile
+    :: Tracer IO TraceDatabase
+    -> DatabaseFile
     -> (Sqlite.Connection -> Database IO -> IO a)
     -> IO a
-withWriteOnlyConnection file action = do
+withWriteOnlyConnection tr file action = do
     let (str, flags) = mkConnectionString file WriteOnly
     withConnection' str flags $ \conn -> do
-        databaseVersion conn >>= runMigrations nullTracer conn
+        runMigrations tr conn migrations
         installIndexes nullTracer conn SkipNonEssentialIndexes
         execute_ conn "PRAGMA synchronous = OFF"
         execute_ conn "PRAGMA journal_mode = OFF"
@@ -495,7 +493,7 @@ copyDatabase (tr, progress) fromDir intoDir patterns = do
         copyFile fromFile intoFile
         lock <- newLock
         withShortLivedConnection tr ReadOnly lock longestRollback (OnDisk fromFile) $ \from -> do
-            withWriteOnlyConnection (OnDisk intoFile) $ \conn into -> do
+            withWriteOnlyConnection tr (OnDisk intoFile) $ \conn into -> do
                 execute_ conn "PRAGMA foreign_keys = OFF"
                 mapM_ (cleanup conn) ["inputs", "policies", "patterns"]
                 runTransaction into (insertPatterns into patterns)
@@ -1216,73 +1214,8 @@ dropIndexIfExists tr conn indexName wasTemporary = do
         ]
 
 --
--- Migrations
---
-
-type MigrationRevision = Int
-
-type Migration = [Query]
-
-databaseVersion :: Connection -> IO MigrationRevision
-databaseVersion conn =
-    withStatement conn "PRAGMA user_version" $ \stmt -> do
-        nextRow stmt >>= \case
-            Just (Only version) ->
-                pure version
-            _unexpectedVersion ->
-                throwIO UnexpectedUserVersion
-
-runMigrations :: Tracer IO TraceDatabase -> Connection -> MigrationRevision -> IO ()
-runMigrations tr conn currentVersion = do
-    let missingMigrations = drop currentVersion migrations
-    traceWith tr (DatabaseCurrentVersion currentVersion)
-    if null missingMigrations then
-        traceWith tr DatabaseNoMigrationNeeded
-    else do
-        let targetVersion = currentVersion + length missingMigrations
-        traceWith tr $ DatabaseRunningMigration currentVersion targetVersion
-        executeMigrations missingMigrations
-  where
-    executeMigrations = \case
-        [] -> do
-            pure ()
-        (instructions):rest -> do
-            void $ withTransaction conn ReadWrite $ traverse (execute_ conn) instructions
-            executeMigrations rest
-
-migrations :: [Migration]
-migrations =
-    [ mkMigration ix (decodeUtf8 migration)
-    | (ix, migration) <- zip
-        [1..]
-        [ $(embedFile "db/v1.0.0-beta/001.sql")
-        , $(embedFile "db/v1.0.0/001.sql")
-        , $(embedFile "db/v1.0.0/002.sql")
-        , $(embedFile "db/v1.0.1/001.sql")
-        , $(embedFile "db/v2.0.0-beta/001.sql")
-        , $(embedFile "db/v2.1.0/001.sql")
-        , $(embedFile "db/v2.1.0/002.sql")
-        , $(embedFile "db/v2.1.0/003.sql")
-        , $(embedFile "db/v2.2.0/001.sql")
-        , $(embedFile "db/v2.10.0/001.sql")
-        ]
-    ]
-  where
-    mkMigration :: Int -> Text -> Migration
-    mkMigration i sql =
-        ("PRAGMA user_version = " <> show i <> ";")
-        : (fmap Query . filter (not . T.null . T.strip) . T.splitOn ";") sql
-
---
 -- Exceptions
 --
-
--- | Somehow, a 'PRAGMA user_version' didn't yield a number but, either nothing
--- or something else?
-data UnexpectedUserVersionException
-    = UnexpectedUserVersion
-    deriving Show
-instance Exception UnexpectedUserVersionException
 
 -- | Something went wrong when unmarshalling data from the database.
 data UnexpectedRowException

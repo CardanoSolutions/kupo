@@ -14,7 +14,13 @@ module Kupo.App.Database.Migration.Plan
       -- * Registry
     , Registry (..)
     , MigrationState (..)
+    , migrationStateToText
     , registryState
+
+      -- * Startup gate
+    , MigrationRequiredException (..)
+    , migrationRequiredHint
+    , describeMigration
     ) where
 
 import Kupo.Prelude
@@ -25,9 +31,11 @@ import Kupo.App.Database.Migration.Definition
     , MigrationAction (..)
     , MigrationKind (..)
     , migrationKind
+    , migrationKindToText
     )
 
 import qualified Data.Map as Map
+import qualified Data.Text as T
 
 -- | Decide what runs, in list order. Migrations already in the registry are skipped.
 planMigrations
@@ -128,6 +136,34 @@ data MigrationState
     | Pending
     | Skipped
     deriving (Generic, Eq, Show, Enum, Bounded)
+
+migrationStateToText :: MigrationState -> Text
+migrationStateToText = \case
+    Applied -> "applied"
+    Pending -> "pending"
+    Skipped -> "skipped"
+
+-- | Kupo refuses to start: the listed migrations, rendered by 'describeMigration', need
+-- @kupo db migrate@.
+newtype MigrationRequiredException = MigrationRequiredException [Text]
+    deriving (Show)
+
+instance Exception MigrationRequiredException where
+    displayException (MigrationRequiredException pendingMigrations) =
+        toString . T.unlines $ migrationRequiredHint : "Pending migrations:" : fmap ("  " <>) pendingMigrations
+
+migrationRequiredHint :: Text
+migrationRequiredHint =
+    "The database needs migrations that Kupo does not apply on its own. \
+    \Run 'kupo db migrate' to apply them, then start Kupo again."
+
+-- | One line naming a migration: its id, kind and summary.
+describeMigration
+    :: Migration
+    -- ^ The migration to name.
+    -> Text
+describeMigration migration@Migration{migrationId, migrationSummary} =
+    migrationId <> " (" <> migrationKindToText (migrationKind migration) <> "): " <> migrationSummary
 
 -- | What the registry records about the migration at a one-based position, if anything.
 registryState :: Registry -> Int -> Migration -> Maybe MigrationState

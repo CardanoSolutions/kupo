@@ -235,6 +235,15 @@ data TraceDatabase where
     DatabaseRunningMigration
         :: { from :: Int, to :: Int }
         -> TraceDatabase
+    DatabaseMigrationFailed
+        :: { failedMigration :: Text, errorMessage :: Text }
+        -> TraceDatabase
+    DatabaseMigrationRequired
+        :: { pendingMigrations :: [Text], hint :: Text }
+        -> TraceDatabase
+    DatabasePendingRepairs
+        :: { pendingRepairs :: [Text], hint :: Text }
+        -> TraceDatabase
     DatabaseCreateIndex
         :: { newIndex :: Text }
         -> TraceDatabase
@@ -284,6 +293,9 @@ instance HasSeverityAnnotation TraceDatabase where
         DatabaseCurrentVersion{}       -> Info
         DatabaseNoMigrationNeeded{}    -> Debug
         DatabaseRunningMigration{}     -> Notice
+        DatabaseMigrationFailed{}      -> Error
+        DatabaseMigrationRequired{}    -> Error
+        DatabasePendingRepairs{}       -> Warning
         DatabaseRunningInMemory{}      -> Warning
         DatabaseCreateIndex{}          -> Notice
         DatabaseIndexAlreadyExists{}   -> Debug
