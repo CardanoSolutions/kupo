@@ -22,6 +22,10 @@ import Database.SQLite.Simple
     , query_
     , withConnection
     )
+import Kupo
+    ( Env (..)
+    , newEnvironment
+    )
 import Kupo.App.Database
     ( newDBPool
     )
@@ -59,11 +63,17 @@ import Kupo.Control.MonadLog
     ( nullTracer
     )
 import Kupo.Data.Configuration
-    ( DatabaseLocation (..)
+    ( ChainProducer (..)
+    , Configuration (..)
+    , DatabaseLocation (..)
     , DeferIndexesInstallation (..)
+    , InputManagement (..)
     )
 import System.Directory
     ( doesFileExist
+    )
+import System.Exit
+    ( ExitCode (..)
     )
 import System.FilePath
     ( (</>)
@@ -323,6 +333,30 @@ spec = parallel $ do
             registryRow conn "test/before" `shouldReturn` [("applied", Nothing)]
             registryRow conn "test/failing" `shouldReturn` []
             registryRow conn "test/after" `shouldReturn` []
+
+    context "startup exit code" $ do
+        specify "a blocked startup exits with code 3, any other failure with 1" $ do
+            env <- newEnvironment Configuration
+                { chainProducer = CardanoNode
+                    { nodeSocket = "/dev/null"
+                    , nodeConfig = "/dev/null"
+                    , networkParameters = ()
+                    }
+                , databaseLocation = InMemory Nothing
+                , serverHost = "127.0.0.1"
+                , serverPort = 0
+                , since = Nothing
+                , until = Nothing
+                , patterns = fromList []
+                , inputManagement = MarkSpentInputs
+                , longestRollback = 43200
+                , garbageCollectionInterval = 180
+                , deferIndexes = InstallIndexesIfNotExist
+                }
+            crashWith env (toException $ MigrationRequiredException ["test/blocking"])
+                `shouldThrow` (== ExitFailure 3)
+            crashWith env (toException $ UnknownMigrationsException [UnknownMigration "v9.9.9/001" (Just "v9.9.9")])
+                `shouldThrow` (== ExitFailure 1)
 
     context "checkMigrations" $ do
         specify "refuses a blocked database, without writing" $ withDatabase $ \conn -> do

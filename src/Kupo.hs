@@ -68,6 +68,11 @@ import Kupo.App.Database
     ( copyDatabase
     , newDBPool
     )
+import Kupo.App.Database.Migration.Plan
+    ( MigrationRequiredException
+    , UnknownMigrationsException
+    , exitCodeMigrationRequired
+    )
 import Kupo.App.Database.Types
     ( ConnectionType (..)
     , DBPool (..)
@@ -218,11 +223,14 @@ kupoWith tr networkParameters withProducer withFetchBlock fetchTipClient =
             }
         } <- ask
 
-    dbPool@DBPool { maxConcurrentReaders, maxConcurrentWriters } <- liftIO $ newDBPool
-        (tracerDatabase tr)
-        (isReadOnlyReplica config)
-        databaseLocation
-        longestRollback
+    dbPool@DBPool { maxConcurrentReaders, maxConcurrentWriters } <- liftIO $
+        handle (onDatabaseRefused @MigrationRequiredException crashWith)
+        . handle (onDatabaseRefused @UnknownMigrationsException crashWith)
+        $ newDBPool
+            (tracerDatabase tr)
+            (isReadOnlyReplica config)
+            databaseLocation
+            longestRollback
 
     liftIO $ logWith (tracerConfiguration tr) $
       ConfigurationMaxConcurrency
@@ -321,9 +329,18 @@ kupoWith tr networkParameters withProducer withFetchBlock fetchTipClient =
     onUnknownException crashWith e
         | isAsyncException e = do
             throwIO e
+        | isDatabaseRefused e = do
+            -- The database layer has logged it already.
+            crashWith e
         | otherwise = do
             logWith (tracerKupo tr) $ KupoUnexpectedError (toText (displayException e))
             crashWith e
+
+    -- Replicas check migrations when creating the pool, before 'onUnknownException' applies.
+    onDatabaseRefused :: Exception e => (SomeException -> IO ()) -> e -> IO a
+    onDatabaseRefused crashWith e = do
+        crashWith (toException e)
+        throwIO e
 
 --
 -- Environment
@@ -343,7 +360,8 @@ newEnvironment
     :: Configuration
     -> IO (Env Kupo)
 newEnvironment =
-    newEnvironmentWith (const (exitWith (ExitFailure 1)))
+    newEnvironmentWith $ \e -> exitWith . ExitFailure $
+        if isMigrationRequired e then exitCodeMigrationRequired else 1
 
 newEnvironmentWith
     :: (SomeException -> IO ())
@@ -352,3 +370,12 @@ newEnvironmentWith
 newEnvironmentWith crashWith configuration = do
     health <- newTVarIO emptyHealth
     pure Env{configuration, health, crashWith}
+
+isMigrationRequired :: SomeException -> Bool
+isMigrationRequired =
+    isJust . fromException @MigrationRequiredException
+
+-- The database layer logs why it refuses a database.
+isDatabaseRefused :: SomeException -> Bool
+isDatabaseRefused e =
+    isMigrationRequired e || isJust (fromException @UnknownMigrationsException e)
