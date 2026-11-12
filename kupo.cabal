@@ -58,8 +58,19 @@ library
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
       Kupo.App.Database
+      Kupo.App.Database.Migration
       Kupo.App.Database.Migration.Definition
       Kupo.App.Database.Migration.Plan
+      Kupo.App.Database.Migration.V1_0_0_001
+      Kupo.App.Database.Migration.V1_0_0_002
+      Kupo.App.Database.Migration.V1_0_0_beta_001
+      Kupo.App.Database.Migration.V1_0_1_001
+      Kupo.App.Database.Migration.V2_0_0_beta_001
+      Kupo.App.Database.Migration.V2_10_0_001
+      Kupo.App.Database.Migration.V2_1_0_001
+      Kupo.App.Database.Migration.V2_1_0_002
+      Kupo.App.Database.Migration.V2_1_0_003
+      Kupo.App.Database.Migration.V2_2_0_001
       Kupo.App.Database.SQLite.Transaction
       Kupo.App.Database.Types
       Kupo.App.FetchBlock.Node

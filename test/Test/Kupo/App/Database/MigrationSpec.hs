@@ -8,12 +8,16 @@ module Test.Kupo.App.Database.MigrationSpec
 
 import Kupo.Prelude
 
+import Kupo.App.Database.Migration
+    ( migrations
+    )
 import Kupo.App.Database.Migration.Definition
     ( BatchRepair (..)
     , BatchResult (..)
     , Migration (..)
     , MigrationAction (..)
     , MigrationKind (..)
+    , migrationKind
     )
 import Kupo.App.Database.Migration.Plan
     ( Caller (..)
@@ -33,8 +37,32 @@ import Test.Hspec
     , specify
     )
 
+import qualified Data.Text as T
+
 spec :: Spec
 spec = parallel $ do
+    context "migrations" $ do
+        -- Append only: never reorder, edit the id of, or remove an entry.
+        specify "ids are exactly the known ones, in order" $
+            migrationId <$> migrations `shouldBe` knownIds
+
+        specify "ids are unique" $
+            ordNub (migrationId <$> migrations) `shouldBe` migrationId <$> migrations
+
+        specify "ids increase along the list" $ do
+            let keys = idOrder . migrationId <$> migrations
+            and (zipWith (<) keys (drop 1 keys)) `shouldBe` True
+
+        specify "the known migrations are all automatic" $
+            migrationKind <$> migrations `shouldBe` (AutomaticKind <$ knownIds)
+
+        specify "a repair names an earlier migration as the one that introduced its data" $
+            [ repairId
+            | (position, Migration{migrationId = repairId, migrationAction = Repair repair}) <- zip [0 ..] migrations
+            , repairDataIntroducedBy repair `notElem` (migrationId <$> take position migrations)
+            ]
+                `shouldBe` []
+
     context "planMigrations" $ do
         context "on a fresh database" $ do
             specify "applies automatic and blocking migrations, and skips repairs" $
@@ -105,6 +133,29 @@ spec = parallel $ do
                 summarise (planMigrations Startup ExistingDatabase (registry [("a", Applied), ("r", Skipped), ("x", Applied)])
                     [ synthetic AutomaticKind "a", synthetic RepairKind "r", synthetic BlockingKind "x" ])
                     `shouldBe` ([], [], [])
+
+knownIds :: [Text]
+knownIds =
+    [ "v1.0.0-beta/001"
+    , "v1.0.0/001"
+    , "v1.0.0/002"
+    , "v1.0.1/001"
+    , "v2.0.0-beta/001"
+    , "v2.1.0/001"
+    , "v2.1.0/002"
+    , "v2.1.0/003"
+    , "v2.2.0/001"
+    , "v2.10.0/001"
+    ]
+
+-- Sorts ids such as @v1.0.0-beta/001@ by version, a pre-release before its release, then by
+-- sequence number.
+idOrder :: Text -> ([Int], Bool, Text)
+idOrder migrationId =
+    (mapMaybe (readMaybe . toString) (T.splitOn "." numbers), T.null preRelease, sequenceNumber)
+  where
+    (version, sequenceNumber) = T.breakOn "/" migrationId
+    (numbers, preRelease) = T.breakOn "-" (T.drop 1 version)
 
 summarise :: Plan -> ([(Text, PlannedAction)], [Text], [Text])
 summarise Plan{planSteps, planBlocked, planPendingRepairs} =
