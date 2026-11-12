@@ -38,6 +38,12 @@ import Kupo.App.Database.Migration
     , readStatus
     , runMigrations
     )
+import Kupo.App.Database.Migration.Command
+    ( DatabaseCommandException (..)
+    , databaseMigrate
+    , withExclusiveDatabase
+    , withReadOnlyDatabase
+    )
 import Kupo.App.Database.Migration.Definition
     ( BatchRepair (..)
     , BatchResult (..)
@@ -602,6 +608,55 @@ spec = parallel $ do
         specify "exits with 1 when a newer Kupo migrated the database, as Kupo does" $ do
             statusExitCode (statusReport [] [UnknownMigration "v9.9.9/001" Nothing]) `shouldBe` ExitFailure 1
             statusExitCode (statusReport ["test/blocking"] [UnknownMigration "v9.9.9/001" Nothing]) `shouldBe` ExitFailure 1
+
+    context "database access" $ do
+        specify "reading never creates the database" $
+            withSystemTempDirectory "kupo-migration" $ \dir -> do
+                withReadOnlyDatabase dir (const pass)
+                    `shouldThrow` (== DatabaseNotFound (dir </> "kupo.sqlite3"))
+                doesFileExist (dir </> "kupo.sqlite3") `shouldReturn` False
+
+        specify "the exclusive lock fails while another connection holds a write lock" $
+            withSystemTempDirectory "kupo-migration" $ \dir ->
+                withConnection (dir </> "kupo.sqlite3") $ \conn -> do
+                    runMigrations nullTracer conn migrations
+                    execute_ conn "BEGIN IMMEDIATE"
+                    execute_ conn "INSERT INTO patterns (pattern) VALUES ('*')"
+                    withExclusiveDatabase dir (const pass) `shouldThrow` (== DatabaseBusy)
+                    execute_ conn "ROLLBACK"
+
+        specify "the exclusive lock fails while another connection is open in WAL mode" $
+            withSystemTempDirectory "kupo-migration" $ \dir ->
+                withConnection (dir </> "kupo.sqlite3") $ \conn -> do
+                    execute_ conn "PRAGMA journal_mode = WAL"
+                    runMigrations nullTracer conn migrations
+                    withExclusiveDatabase dir (const pass) `shouldThrow` (== DatabaseBusy)
+
+        specify "the exclusive lock keeps other connections out until it is released" $
+            withSystemTempDirectory "kupo-migration" $ \dir -> do
+                withConnection (dir </> "kupo.sqlite3") $ \conn ->
+                    runMigrations nullTracer conn migrations
+                withExclusiveDatabase dir $ \_ ->
+                    withReadOnlyDatabase dir (`readStatus` migrations)
+                        `shouldThrow` (== DatabaseLocked)
+                withExclusiveDatabase dir (\conn -> migrateDatabase nullTracer conn False migrations)
+                    `shouldReturn` []
+
+        specify "migrating refuses a database that a newer Kupo migrated, without writing" $
+            withSystemTempDirectory "kupo-migration" $ \dir -> do
+                let databaseFile = dir </> "kupo.sqlite3"
+                withConnection databaseFile $ \conn -> do
+                    runMigrations nullTracer conn migrations
+                    addUnknownMigration conn
+                before <- readFileBS databaseFile
+                (tr, readRefusals) <- recordRefusals
+                databaseMigrate tr dir False `shouldReturn` ExitFailure 1
+                readRefusals `shouldReturn` [["v9.9.9/001 (recorded by Kupo v9.9.9)"]]
+                readFileBS databaseFile `shouldReturn` before
+                doesFileExist (databaseFile <> "-wal") `shouldReturn` False
+                doesFileExist (databaseFile <> "-journal") `shouldReturn` False
+                withConnection databaseFile $ \conn ->
+                    fmap fromOnly <$> query_ conn "PRAGMA journal_mode" `shouldReturn` ["delete" :: Text]
 
 knownIds :: [Text]
 knownIds =
