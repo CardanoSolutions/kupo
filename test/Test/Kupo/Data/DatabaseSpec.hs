@@ -17,6 +17,7 @@ import Database.SQLite.Simple
     ( Connection
     , Query (..)
     , SQLData (..)
+    , execute
     , executeMany
     , execute_
     , query_
@@ -78,6 +79,7 @@ import Kupo.Data.Cardano
     , getOutputIndex
     , getPointSlotNo
     , getValue
+    , mkOutputReference
     , policyIdToBytes
     , slotNoToText
     )
@@ -88,7 +90,8 @@ import Kupo.Data.Configuration
     , getLongestRollback
     )
 import Kupo.Data.Database
-    ( SortDirection (..)
+    ( Input (..)
+    , SortDirection (..)
     , addressFromRow
     , addressToRow
     , datumFromRow
@@ -190,6 +193,7 @@ import Test.QuickCheck.Property
     ( Testable
     )
 
+import qualified Data.ByteString as BS
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Prelude
@@ -224,6 +228,62 @@ spec = parallel $ do
                     , whereClause
                     ]
                 sort (rowToAddress <$> rows) `shouldBe` results
+
+    context "sub-transaction columns" $ do
+        specify "stores non-NULL values and lets markInputsQry write the spending top-level transaction" $ do
+            result <- generate genResult
+            let topLevel = BS.replicate 32 0xaa
+            let spender = BS.replicate 32 0xbb
+            let respender = BS.replicate 32 0xcc
+            let row = (resultToRow result)
+                    { subTransactionIndex = Just 3
+                    , topLevelTransactionId = Just topLevel
+                    , spentByTopLevelTransactionId = Just spender
+                    }
+            let selectColumns =
+                    "SELECT sub_transaction_index, top_level_transaction_id, \
+                    \spent_by_top_level_transaction_id FROM inputs"
+            (stored, marked) <- withInMemoryDatabase' identity InstallIndexesIfNotExist 10 $ \Database{..} -> do
+                runTransaction $ do
+                    insertCheckpoints [createdAt result]
+                    insertInputs [row]
+                runTransaction $ ReaderT $ \conn -> do
+                    stored <- query_ conn selectColumns
+                    execute conn (markInputsQry $ MatchOutputReference $ fst $ outputReference result)
+                        [ SQLInteger 1, SQLNull, SQLNull, SQLBlob respender ]
+                    marked <- query_ conn selectColumns
+                    pure (stored, marked)
+            stored `shouldBe` [[SQLInteger 3, SQLBlob topLevel, SQLBlob spender]]
+            marked `shouldBe` [[SQLInteger 3, SQLBlob topLevel, SQLBlob respender]]
+
+        specify "markInputs records the top-level transaction of a spending sub-transaction only" $ do
+            result <- generate genResult
+            (spentBySub, spentByTop) <- generate ((,) <$> genOutputReference <*> genOutputReference)
+            (spender, topLevel) <- generate ((,) <$> genTransactionId <*> genTransactionId)
+            let unspent ref = resultToRow result
+                    { outputReference = (ref, snd (outputReference result))
+                    , spentAt = Nothing
+                    , spentBy = Nothing
+                    , spentWith = Nothing
+                    , spentByTopLevelTransactionId = Nothing
+                    }
+            let slotNo = getPointSlotNo (createdAt result)
+            spends <- withInMemoryDatabase' identity InstallIndexesIfNotExist 10 $ \Database{..} -> do
+                runTransaction $ do
+                    insertCheckpoints [createdAt result]
+                    insertInputs (unspent <$> [spentBySub, spentByTop])
+                    void $ markInputs (spender, Just topLevel, slotNo) [(MatchOutputReference spentBySub, 1, Nothing)]
+                    void $ markInputs (topLevel, Nothing, slotNo) [(MatchOutputReference spentByTop, 0, Nothing)]
+                acc <- newIORef []
+                runTransaction $ foldInputs (MatchAny IncludingBootstrap) Whole NoStatusFlag AsReference Asc
+                    (\Result{outputReference = (ref, _), spentBy = by, spentByTopLevelTransactionId = byTopLevel} ->
+                        modifyIORef' acc ((ref, by, byTopLevel) :)
+                    )
+                readIORef acc
+            sort spends `shouldBe` sort
+                [ (spentBySub, Just (mkOutputReference spender 1), Just topLevel)
+                , (spentByTop, Just (mkOutputReference topLevel 0), Nothing)
+                ]
 
     context "checkpoints" $ do
         let k = 100
@@ -262,6 +322,7 @@ spec = parallel $ do
             let slot = getPointSlotNo . createdAt
             let txIx = snd . outputReference
             let outIx = getOutputIndex . fst . outputReference
+            let subIx = fmap snd . subTransactionOf
 
             let oldestFirst current successor
                     | slot current == slot successor =
@@ -288,12 +349,13 @@ spec = parallel $ do
                     shrinkList (const [])
 
             let showResults xs = toString $ unlines
-                    [ "sl/tx/out"
-                    , "---------"
+                    [ "sl/tx/sub/out"
+                    , "-------------"
                     , T.intercalate "\n" $ fmap (\x ->
                             T.intercalate "/"
                                 [ slotNoToText (slot x)
                                 , show (txIx x)
+                                , maybe "-" show (subIx x)
                                 , show (outIx x)
                                 ]
                         ) xs

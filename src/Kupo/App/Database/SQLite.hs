@@ -114,6 +114,7 @@ import Kupo.Data.Cardano
     ( SlotNo (..)
     , mkOutputReference
     , slotNoToText
+    , transactionIdToBytes
     )
 import Kupo.Data.Configuration
     ( DeferIndexesInstallation (..)
@@ -625,6 +626,9 @@ mkDatabase tr mode longestRollback bracketConnection = Database
                     , maybe SQLNull (SQLInteger . fromIntegral) spentAtSlotNo
                     , SQLNull
                     , SQLNull
+                    , maybe SQLNull (SQLInteger . fromIntegral) subTransactionIndex
+                    , maybe SQLNull SQLBlob topLevelTransactionId
+                    , maybe SQLNull SQLBlob spentByTopLevelTransactionId
                     ]
                 case datum of
                     Nothing ->
@@ -649,13 +653,14 @@ mkDatabase tr mode longestRollback bracketConnection = Database
         withTotalChanges conn $
             mapM_ (execute_ conn . deleteInputsQry) refs
 
-    , markInputs = \(parentRef, fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> do
+    , markInputs = \(parentRef, topLevelRef, fromIntegral . unSlotNo -> slotNo) refs -> ReaderT $ \conn -> do
         withTotalChanges conn $
             forM_ refs $ \(ref, ix, redeemer)  -> do
                 execute conn (markInputsQry ref)
                     [ SQLInteger slotNo
                     , SQLBlob (outputReferenceToRow $ mkOutputReference parentRef ix)
                     , maybe SQLNull (SQLBlob . redeemerToRow) redeemer
+                    , maybe SQLNull (SQLBlob . transactionIdToBytes) topLevelRef
                     ]
 
     , pruneInputs = ReaderT $ \conn -> do
@@ -676,6 +681,9 @@ mkDatabase tr mode longestRollback bracketConnection = Database
              , matchMaybeBytes -> spentAtHeaderHash
              , matchMaybeBytes -> spentBy
              , matchMaybeBytes -> spentWith
+             , matchMaybeWord64 -> subTransactionIndex
+             , matchMaybeBytes -> topLevelTransactionId
+             , matchMaybeBytes -> spentByTopLevelTransactionId
              , matchMaybeBytes -> datumBinaryData
              , matchMaybeBytes -> scriptBinaryData
              ] ->
@@ -864,7 +872,7 @@ deleteInputsQry pattern_ =
 markInputsQry :: Pattern -> Query
 markInputsQry pattern_ =
     Query $ unwords
-        [ "UPDATE inputs SET spent_at = ?, spent_by = ?, spent_with = ?"
+        [ "UPDATE inputs SET spent_at = ?, spent_by = ?, spent_with = ?, spent_by_top_level_transaction_id = ?"
         , additionalJoin
         , "WHERE"
         , whereClause
@@ -936,7 +944,9 @@ foldInputsQry pattern_ slotRange statusFlag referenceFlag sortDirection =
       \inputs.datum_info, inputs.script_hash, \
       \inputs.created_at, createdAt.header_hash, \
       \inputs.spent_at, spentAt.header_hash, \
-      \inputs.spent_by, inputs.spent_with"
+      \inputs.spent_by, inputs.spent_with, \
+      \inputs.sub_transaction_index, inputs.top_level_transaction_id, \
+      \inputs.spent_by_top_level_transaction_id"
     <> case referenceFlag of
          AsReference -> ", NULL as datum, NULL as script"
          InlineAll -> ", datums.binary_data as datum, scripts.script as script"

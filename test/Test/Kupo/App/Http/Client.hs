@@ -599,3 +599,12 @@ decodeResult = Json.withObject "Result" $ \o -> Result
             redeemer <- traverse decodeRedeemer spentAt
             pure (join redeemer)
         )
+    <*> (do
+            subTransactionIndex <- o .:? "sub_transaction_index"
+            parent <- traverse decodeTransactionId =<< o .:? "top_level_transaction_id"
+            pure (liftA2 (flip (,)) subTransactionIndex parent)
+        )
+    <*> (do
+            spentAt <- o .:? "spent_at"
+            join <$> traverse (\spent -> traverse decodeTransactionId =<< spent .:? "top_level_transaction_id") spentAt
+        )

@@ -127,6 +127,22 @@ class HasTransactionId (BlockBody block) => IsBlock (block :: Type) where
         :: block
         -> Either UnsupportedSubTransactions ()
 
+    -- | The sub-transactions of a top-level transaction, in the order the ledger applies them.
+    -- None by default.
+    subTransactions
+        :: BlockBody block
+        -> [BlockBody block]
+    subTransactions =
+        const []
+
+    -- | The sub-transactions of a phase-2 invalid top-level transaction, which the ledger discards.
+    -- None by default.
+    discardedSubTransactions
+        :: BlockBody block
+        -> [BlockBody block]
+    discardedSubTransactions =
+        const []
+
     spentInputs
         :: BlockBody block
         -> Set Input
@@ -178,6 +194,8 @@ instance IsBlock Void where
     getPoint = absurd
     foldBlock _ _ = absurd
     checkSubTransactions = absurd
+    subTransactions = absurd
+    discardedSubTransactions = absurd
     spentInputs = absurd
     mapMaybeOutputs _ = absurd
     witnessedDatums = absurd

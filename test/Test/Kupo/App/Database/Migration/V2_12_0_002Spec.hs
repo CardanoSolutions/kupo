@@ -196,7 +196,7 @@ spec = parallel $ context "v2.12.0/002" $ do
         let before = storedRows FromLastInput firstSpend <> [unmatched] <> storedRows FromLastInput secondSpend
         withSpends 42_000 ["*"] before $ \conn -> do
             crashing <- crashingInSecondBatch
-            migrateDatabase nullTracer conn True (take 11 migrations <> [crashing])
+            migrateDatabase nullTracer conn True (take 11 migrations <> [crashing] <> drop 12 migrations)
                 `shouldThrow` (== SimulatedCrash)
             repairRow conn `shouldReturn` [("pending", Just $ cursorBytes (100 + windowSlots - 1) 1 1)]
             spentRows conn `shouldReturn`
