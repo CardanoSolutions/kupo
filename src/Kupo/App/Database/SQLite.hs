@@ -965,6 +965,8 @@ foldInputsQry pattern_ slotRange statusFlag referenceFlag sortDirection =
     <> " ORDER BY \
        \inputs.created_at " <> ordering <> ", \
        \inputs.transaction_index " <> ordering <> ", \
+       \(inputs.sub_transaction_index IS NULL) " <> ordering <> ", \
+       \inputs.sub_transaction_index " <> ordering <> ", \
        \inputs.output_index " <> ordering
   where
     inputs = "SELECT * FROM inputs "

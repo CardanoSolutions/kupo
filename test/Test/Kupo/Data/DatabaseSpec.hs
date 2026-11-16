@@ -285,6 +285,35 @@ spec = parallel $ do
                 , (spentByTop, Just (mkOutputReference topLevel 0), Nothing)
                 ]
 
+        specify "orders sub-transaction outputs before top-level ones, and reverses it when descending" $ do
+            result <- generate genResult
+            let mkRow txId outputIndex subTransaction = (resultToRow result)
+                    { extendedOutputReference = BS.replicate 32 txId <> BS.pack [0, outputIndex, 0, 7]
+                    , spentAtSlotNo = Nothing
+                    , spentAtHeaderHash = Nothing
+                    , spentBy = Nothing
+                    , spentWith = Nothing
+                    , subTransactionIndex = subTransaction
+                    , topLevelTransactionId = BS.replicate 32 0xee <$ subTransaction
+                    }
+            let topLevel = mkRow 1 0 Nothing
+            let subOne = mkRow 2 0 (Just 1)
+            let subZeroLate = mkRow 3 5 (Just 0)
+            let subZeroEarly = mkRow 4 1 (Just 0)
+            let foldReferences direction Database{..} = do
+                    ref <- newIORef []
+                    runTransaction $ foldInputs (MatchAny IncludingBootstrap) Whole NoStatusFlag AsReference direction
+                        (\r -> modifyIORef' ref (extendedOutputReferenceToRow (outputReference r) :))
+                    reverse <$> readIORef ref
+            (asc, desc) <- withInMemoryDatabase' identity InstallIndexesIfNotExist 10 $ \db@Database{..} -> do
+                runTransaction $ do
+                    insertCheckpoints [createdAt result]
+                    insertInputs [topLevel, subOne, subZeroLate, subZeroEarly]
+                (,) <$> foldReferences Asc db <*> foldReferences Desc db
+            let expected = extendedOutputReference <$> [subZeroEarly, subZeroLate, subOne, topLevel]
+            asc `shouldBe` expected
+            desc `shouldBe` reverse expected
+
     context "checkpoints" $ do
         let k = 100
         prop "list checkpoints after inserting them" $
@@ -323,11 +352,13 @@ spec = parallel $ do
             let txIx = snd . outputReference
             let outIx = getOutputIndex . fst . outputReference
             let subIx = fmap snd . subTransactionOf
+            -- Outputs of sub-transactions come first, by sub-transaction index.
+            let batchIx x = (isNothing (subIx x), subIx x, outIx x)
 
             let oldestFirst current successor
                     | slot current == slot successor =
                         if txIx current == txIx successor then
-                            label "same transaction index" (outIx current <= outIx successor)
+                            label "same transaction index" (batchIx current <= batchIx successor)
                         else
                             property (txIx current < txIx successor)
                     | otherwise =
@@ -336,7 +367,7 @@ spec = parallel $ do
             let mostRecentFirst current successor
                     | slot current == slot successor =
                         if txIx current == txIx successor then
-                            label "same transaction index" (outIx current >= outIx successor)
+                            label "same transaction index" (batchIx current >= batchIx successor)
                         else
                             property (txIx current >= txIx successor)
                     | otherwise =
