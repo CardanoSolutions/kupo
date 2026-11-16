@@ -1201,6 +1201,7 @@ components:
         - slot_no
         - header_hash
         - transaction_id
+        - top_level_transaction_id
         - input_index
         - redeemer
       properties:
@@ -1212,6 +1213,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/TransactionId"
             - type: "null"
+        top_level_transaction_id:
+          description: The id of the top-level transaction carrying the sub-transaction that spent this output. `null` unless the spending transaction is a sub-transaction, in which case `transaction_id` is the id of the sub-transaction itself.
+          oneOf:
+            - $ref: "#/components/schemas/TransactionId"
+            - type: "null"
         input_index:
           oneOf:
             - $ref: "#/components/schemas/InputIndex"
@@ -1220,6 +1226,12 @@ components:
           oneOf:
             - $ref: "#/components/schemas/BinaryData"
             - type: "null"
+
+    SubTransactionIndex:
+      type: integer
+      description: The position of a sub-transaction among the sub-transactions of its top-level transaction, starting at 0.
+      minimum: 0
+      example: 1
 
     TransactionId:
       type: string
@@ -1297,6 +1309,8 @@ components:
         - transaction_index
         - transaction_id
         - output_index
+        - sub_transaction_index
+        - top_level_transaction_id
         - address
         - value
         - datum_hash
@@ -1310,6 +1324,16 @@ components:
           $ref: "#/components/schemas/TransactionId"
         output_index:
           $ref: "#/components/schemas/OutputIndex"
+        sub_transaction_index:
+          description: The position of the sub-transaction that created this output among the sub-transactions of its top-level transaction, starting at 0. `null` for an output of a top-level transaction.
+          oneOf:
+            - $ref: "#/components/schemas/SubTransactionIndex"
+            - type: "null"
+        top_level_transaction_id:
+          description: The id of the top-level transaction carrying the sub-transaction that created this output. `null` for an output of a top-level transaction. For an output of a sub-transaction, `transaction_id` is the id of the sub-transaction itself.
+          oneOf:
+            - $ref: "#/components/schemas/TransactionId"
+            - type: "null"
         address:
           $ref: "#/components/schemas/Address"
         value:
@@ -1349,6 +1373,8 @@ components:
         - transaction_index
         - transaction_id
         - output_index
+        - sub_transaction_index
+        - top_level_transaction_id
         - address
         - value
         - datum_hash
@@ -1362,6 +1388,16 @@ components:
           $ref: "#/components/schemas/TransactionId"
         output_index:
           $ref: "#/components/schemas/OutputIndex"
+        sub_transaction_index:
+          description: The position of the sub-transaction that created this output among the sub-transactions of its top-level transaction, starting at 0. `null` for an output of a top-level transaction.
+          oneOf:
+            - $ref: "#/components/schemas/SubTransactionIndex"
+            - type: "null"
+        top_level_transaction_id:
+          description: The id of the top-level transaction carrying the sub-transaction that created this output. `null` for an output of a top-level transaction. For an output of a sub-transaction, `transaction_id` is the id of the sub-transaction itself.
+          oneOf:
+            - $ref: "#/components/schemas/TransactionId"
+            - type: "null"
         address:
           $ref: "#/components/schemas/Address"
         value:

@@ -461,6 +461,10 @@ resultToJson referenceFlag quantityEncoding Result{..} = Json.pairs $ mconcat
         (transactionIdToJson (getTransactionId $ fst outputReference))
     , Json.pair "output_index"
         (outputIndexToJson (getOutputIndex $ fst outputReference))
+    , Json.pair "sub_transaction_index"
+        (maybe Json.null_ (toEncoding . snd) subTransactionOf)
+    , Json.pair "top_level_transaction_id"
+        (maybe Json.null_ (transactionIdToJson . fst) subTransactionOf)
     , Json.pair "address"
         (addressToJson address)
     , Json.pair "value"
@@ -498,6 +502,8 @@ resultToJson referenceFlag quantityEncoding Result{..} = Json.pairs $ mconcat
                         (headerHashToJson (unsafeGetPointHeaderHash point))
                     , Json.pair "transaction_id"
                         (maybe Json.null_ (transactionIdToJson . getTransactionId) spentBy)
+                    , Json.pair "top_level_transaction_id"
+                        (maybe Json.null_ transactionIdToJson spentByTopLevelTransactionId)
                     , Json.pair "input_index"
                         (maybe Json.null_ (outputIndexToJson . getOutputIndex) spentBy)
                     , Json.pair "redeemer"

@@ -6,6 +6,8 @@
 
 - Kupo now indexes Dijkstra sub-transactions when it is connected directly to cardano-node, instead of stopping at the first transaction that carries them. Kupo records the outputs that each sub-transaction creates and the inputs that it spends under the sub-transaction's own id, with the index of its top-level transaction in the block. A `*@<transaction id>` pattern matches the outputs of that transaction only, so the id of a top-level transaction does not match the outputs of its sub-transactions. When a top-level transaction fails phase-2 validation, its sub-transactions create and spend nothing.
 
+- Each match returned by `/matches` now carries `sub_transaction_index` and `top_level_transaction_id`. For an output created by a Dijkstra sub-transaction, they give the position of the sub-transaction among those of its top-level transaction, starting at 0, and the id of that top-level transaction; `transaction_id` stays the id of the sub-transaction itself. Both are `null` for an output of a top-level transaction. The `spent_at` object of a match gains `top_level_transaction_id`: the id of the top-level transaction when a sub-transaction spent the output, `null` otherwise. Existing fields keep their meaning, and `transaction_index` is still the position of the top-level transaction in the block.
+
 - Kupo now records database migrations in a `migrations` table, and no longer runs heavy or breaking migrations silently at startup:
   - When the database needs a blocking migration, Kupo refuses to start and exits with code 3. Run `kupo db migrate`, then start Kupo again.
   - When a data repair is pending, Kupo starts but logs a warning. Run `kupo db migrate` when it suits you. An interrupted repair resumes where it stopped.
