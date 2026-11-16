@@ -10,6 +10,8 @@
 
 - `/matches` accepts a new `top_level_transaction_id` query filter. It returns the outputs created by the Dijkstra sub-transactions of that top-level transaction, and not the outputs of the top-level transaction itself, which `*@<transaction id>` and `transaction_id` still return. Like `transaction_id`, it cannot be combined with `policy_id`, `asset_name` or `output_index`, nor given twice, and `transaction_id` and `top_level_transaction_id` exclude each other; Kupo then answers with a 400 error. The `transaction_id` filter and the `*@<transaction id>` and `<output index>@<transaction id>` patterns accept the id of a sub-transaction.
 
+- `/metadata/{slot}` includes the metadata of Dijkstra sub-transactions. Each entry gains `transaction_id`, the id of the transaction that carries the metadata, and `top_level_transaction_id`, the id of the top-level transaction for a sub-transaction and `null` otherwise. The metadata of the sub-transactions of a transaction comes first, in the order the ledger applies them, followed by the metadata of the transaction itself. The `transaction_id` filter accepts the id of a sub-transaction. The sub-transactions of a transaction that fails phase-2 validation have no entry.
+
 - Kupo now records database migrations in a `migrations` table, and no longer runs heavy or breaking migrations silently at startup:
   - When the database needs a blocking migration, Kupo refuses to start and exits with code 3. Run `kupo db migrate`, then start Kupo again.
   - When a data repair is pending, Kupo starts but logs a warning. Run `kupo db migrate` when it suits you. An interrupted repair resumes where it stopped.

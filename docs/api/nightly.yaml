@@ -894,10 +894,21 @@ components:
       type: object
       additionalProperties: false
       required:
+        - transaction_id
+        - top_level_transaction_id
         - hash
         - schema
         - raw
       properties:
+        transaction_id:
+          $ref: "#/components/schemas/TransactionId"
+
+        top_level_transaction_id:
+          description: The id of the top-level transaction carrying the sub-transaction that holds this metadata. `null` when the metadata belongs to a top-level transaction.
+          oneOf:
+            - $ref: "#/components/schemas/TransactionId"
+            - type: "null"
+
         hash:
           type: string
           description: A blake2b-256 hash digest of the raw serialized data
@@ -2301,11 +2312,11 @@ paths:
       description: |
         Retrieve all metadata data seen in a block at the given slot, possibly filtered by transaction id.
 
-        Metadata are ordered according to their respective transaction's order in the block.
+        Metadata are ordered according to their respective transaction's order in the block. The metadata of the sub-transactions of a Dijkstra transaction come first, in the order the ledger applies them, followed by the metadata of the transaction itself. Each entry names the transaction that carries the metadata. The sub-transactions of a transaction that fails phase-2 validation are not applied and have no entry.
       parameters:
         - <<: *transaction-id
           description: |
-            Filters results by transaction id to retrieve items originating from that transaction only.
+            Filters results by transaction id to retrieve items originating from that transaction only. The id of a sub-transaction selects the metadata of that sub-transaction alone.
       responses:
         200:
           description: OK

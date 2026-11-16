@@ -16,6 +16,7 @@ import Cardano.Ledger.Alonzo.TxWits
     )
 import Cardano.Ledger.BaseTypes
     ( StrictMaybe (..)
+    , strictMaybe
     )
 import Cardano.Ledger.Plutus.Data
     ( binaryDataToData
@@ -28,6 +29,7 @@ import Control.Lens
     )
 import Data.Aeson.Lens
     ( key
+    , _String
     )
 import Kupo.App.Database
     ( newDBPool
@@ -51,18 +53,23 @@ import Kupo.Data.Cardano
     , DatumHash
     , HasTransactionId (..)
     , IsBlock (..)
+    , Metadata
     , Output
     , OutputReference
     , Point
     , Script
     , ScriptHash
+    , SlotNo (..)
     , SubTransactionIndex
     , Transaction (..)
     , TransactionId
     , getPointSlotNo
     , hashBinaryData
+    , hashMetadata
     , hashScript
+    , metadataHashToText
     , mkOutputReference
+    , slotNoToText
     , transactionIdToText
     )
 import Kupo.Data.Configuration
@@ -110,6 +117,7 @@ import Test.Kupo.App.HttpSpec
     )
 import Test.Kupo.Data.Generators
     ( genBinaryData
+    , genMetadata
     , genNonGenesisPoint
     , genNonGenesisPointBetween
     , genOutput
@@ -423,6 +431,22 @@ spec = parallel $ do
                 (after ^? key "spent_at" . key "top_level_transaction_id")
                     `shouldBe` Just Json.Null
 
+        specify "lists the metadata of sub-transactions before that of their top-level transaction" $ do
+            withMetadataBlock $ \(MetadataBlock plain sub0 sub2 top invalidSub) slot application -> do
+                entriesAt application slot "" `shouldReturn`
+                    [ entry (topLevelId plain) Nothing plain
+                    , entry (subId sub0) (Just (topLevelId top)) sub0
+                    , entry (subId sub2) (Just (topLevelId top)) sub2
+                    , entry (topLevelId top) Nothing top
+                    ]
+                entriesAt application slot ("?transaction_id=" <> transactionIdToText (subId sub2))
+                    `shouldReturn` [entry (subId sub2) (Just (topLevelId top)) sub2]
+                entriesAt application slot ("?transaction_id=" <> transactionIdToText (topLevelId top))
+                    `shouldReturn` [entry (topLevelId top) Nothing top]
+                -- The sub-transactions of a phase-2 invalid transaction are not applied.
+                entriesAt application slot ("?transaction_id=" <> transactionIdToText (subId invalidSub))
+                    `shouldReturn` []
+
 --
 -- Helpers
 --
@@ -567,6 +591,39 @@ withIndexedBlocks action = do
         application <- newApplication database (DijkstraBlock pt2 [top])
         action (Indexed funding sub0 sub1 top) application
 
+-- | A block with metadata on a transaction, on two of the three
+-- sub-transactions of another one, and on the sub-transaction of a phase-2
+-- invalid transaction.
+data MetadataBlock = MetadataBlock
+    !(Ledger.Tx Ledger.TopTx DijkstraEra)
+    !(Ledger.Tx Ledger.SubTx DijkstraEra)
+    !(Ledger.Tx Ledger.SubTx DijkstraEra)
+    !(Ledger.Tx Ledger.TopTx DijkstraEra)
+    !(Ledger.Tx Ledger.SubTx DijkstraEra)
+
+withMetadataBlock
+    :: (MetadataBlock -> SlotNo -> Wai.Application -> IO a)
+    -> IO a
+withMetadataBlock action = do
+    pt <- generate genNonGenesisPoint
+    [plainInput, subInput0, subInput1, subInput2, input, invalidInput, invalidSubInput] <-
+        generate (vectorOf 7 genOutputReference)
+    [plainMeta, meta0, meta2, topMeta, invalidSubMeta] <- generate (vectorOf 5 (snd <$> genMetadata))
+    let plain = mkTransaction [plainInput] [] & withMetadata plainMeta
+    let sub0 = mkTransaction [subInput0] [] & withMetadata meta0
+    let sub1 = mkTransaction [subInput1] []
+    let sub2 = mkTransaction [subInput2] [] & withMetadata meta2
+    let top = mkTransaction [input] []
+            & withMetadata topMeta
+            & withSubTransactions [sub0, sub1, sub2]
+    let invalidSub = mkTransaction [invalidSubInput] [] & withMetadata invalidSubMeta
+    let invalid = mkTransaction [invalidInput] []
+            & withSubTransactions [invalidSub]
+            & Ledger.isPhase2ValidTxL .~ Ledger.Phase2Invalid
+    withInMemoryDatabase $ \database -> do
+        application <- newApplication database (DijkstraBlock pt [plain, top, invalid])
+        action (MetadataBlock plain sub0 sub2 top invalidSub) (getPointSlotNo pt) application
+
 newApplication
     :: Database IO
     -> DijkstraBlock
@@ -613,6 +670,37 @@ creatorsAt application path = do
         [ (getTransactionId (fst outputReference), subTransactionOf)
         | Result{outputReference, subTransactionOf} <- results
         ]
+
+-- | The transaction id, top-level transaction id and metadata hash of each /metadata entry.
+entriesAt
+    :: Wai.Application
+    -> SlotNo
+    -> Text
+    -> IO [(Maybe Text, Maybe Json.Value, Maybe Text)]
+entriesAt application slot query = do
+    entries <- getJson application ("/metadata/" <> slotNoToText slot <> query)
+    pure
+        [ (item ^? key "transaction_id" . _String, item ^? key "top_level_transaction_id", item ^? key "hash" . _String)
+        | item <- entries
+        ]
+
+entry
+    :: TransactionId
+    -> Maybe TransactionId
+    -> Ledger.Tx level DijkstraEra
+    -> (Maybe Text, Maybe Json.Value, Maybe Text)
+entry transactionId topLevel tx =
+    ( Just (transactionIdToText transactionId)
+    , Just (maybe Json.Null (Json.String . transactionIdToText) topLevel)
+    , strictMaybe Nothing (Just . metadataHashToText . hashMetadata) (tx ^. Ledger.auxDataTxL)
+    )
+
+withMetadata
+    :: Metadata
+    -> Ledger.Tx level DijkstraEra
+    -> Ledger.Tx level DijkstraEra
+withMetadata metadata =
+    Ledger.auxDataTxL .~ SJust metadata
 
 --
 -- Generators
