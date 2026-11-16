@@ -134,6 +134,9 @@ tests:
     - base
     - bytestring
     - cardano-crypto-class
+    - cardano-ledger-alonzo
+    - cardano-ledger-core
+    - cardano-ledger-dijkstra
     - containers
     - contra-tracer
     - directory
@@ -145,6 +148,7 @@ tests:
     - io-classes
     - io-sim
     - kupo
+    - lens
     - lens-aeson
     - openapi3
     - process

@@ -358,6 +358,7 @@ test-suite unit
       Test.Kupo.Data.OgmiosSpec
       Test.Kupo.Data.Pattern.Fixture
       Test.Kupo.Data.PatternSpec
+      Test.Kupo.Data.SubTransactionSpec
       Test.Kupo.Data.UtxoConstraint
       Test.Kupo.Fixture
       Test.Kupo.OptionsSpec
@@ -413,6 +414,9 @@ test-suite unit
     , base
     , bytestring
     , cardano-crypto-class
+    , cardano-ledger-alonzo
+    , cardano-ledger-core
+    , cardano-ledger-dijkstra
     , containers
     , contra-tracer
     , directory
@@ -425,6 +429,7 @@ test-suite unit
     , io-classes:si-timers
     , io-sim
     , kupo
+    , lens
     , lens-aeson
     , openapi3
     , process
