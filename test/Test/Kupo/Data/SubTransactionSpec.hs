@@ -10,19 +10,57 @@ module Test.Kupo.Data.SubTransactionSpec
 
 import Kupo.Prelude
 
+import Cardano.Crypto.DSIGN
+    ( deriveVerKeyDSIGN
+    , genKeyDSIGN
+    , signedDSIGN
+    )
+import Cardano.Crypto.KES
+    ( unsoundPureDeriveVerKeyKES
+    , unsoundPureGenKeyKES
+    , unsoundPureSignedKES
+    )
+import Cardano.Crypto.Seed
+    ( mkSeedFromBytes
+    )
+import Cardano.Crypto.VRF
+    ( deriveVerKeyVRF
+    , evalCertified
+    , genKeyVRF
+    )
 import Cardano.Ledger.Alonzo.TxWits
     ( Redeemers (..)
     , TxDats (..)
     )
 import Cardano.Ledger.BaseTypes
-    ( StrictMaybe (..)
+    ( Nonce (..)
+    , ProtVer (..)
+    , StrictMaybe (..)
     , strictMaybe
+    )
+import Cardano.Ledger.Keys
+    ( VKey (..)
     )
 import Cardano.Ledger.Plutus.Data
     ( binaryDataToData
     )
 import Cardano.Ledger.Plutus.ExUnits
     ( ExUnits (..)
+    )
+import Cardano.Protocol.Praos.BlockHeader
+    ( Header (Header)
+    , HeaderBody (..)
+    )
+import Cardano.Protocol.Praos.VRF
+    ( mkInputVRF
+    )
+import Cardano.Protocol.TPraos.BlockHeader
+    ( PrevHash (..)
+    )
+import Cardano.Protocol.TPraos.OCert
+    ( KESPeriod (..)
+    , OCert (..)
+    , OCertSignable (..)
     )
 import Control.Lens
     ( (.~)
@@ -50,6 +88,7 @@ import Kupo.Control.MonadSTM
 import Kupo.Data.Cardano
     ( BinaryData
     , Block
+    , BlockNo (..)
     , DatumHash
     , HasTransactionId (..)
     , IsBlock (..)
@@ -101,6 +140,12 @@ import Kupo.Data.Pattern
     , Result (..)
     , matchBlock
     )
+import Ouroboros.Consensus.Cardano.Block
+    ( HardForkBlock (..)
+    )
+import Ouroboros.Consensus.Shelley.Ledger.Block
+    ( mkShelleyBlock
+    )
 import Test.Hspec
     ( Spec
     , context
@@ -131,9 +176,11 @@ import Test.QuickCheck
     , vectorOf
     )
 
+import qualified Cardano.Ledger.Block as Ledger
 import qualified Cardano.Ledger.Dijkstra.Core as Ledger
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Types as Json
+import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import qualified Data.Text as T
 import qualified Network.HTTP.Types.Status as Http
@@ -142,6 +189,60 @@ import qualified Network.Wai.Test as Wai
 
 spec :: Spec
 spec = parallel $ do
+    context "IsBlock Block" $ do
+        specify "points at the slot of a Dijkstra block" $ do
+            SubTransactionBlock slot block _ _ _ _ _ _ <- newSubTransactionBlock
+            getPointSlotNo (getPoint block) `shouldBe` slot
+
+        specify "folds over the top-level transactions of a Dijkstra block only, in block order" $ do
+            SubTransactionBlock _ block plain parent _ invalid _ _ <- newSubTransactionBlock
+            foldBlock (\ix tx -> ((ix, getTransactionId tx) :)) [] block
+                `shouldBe`
+                [ (0, topLevelId plain)
+                , (1, topLevelId parent)
+                , (2, topLevelId invalid)
+                ]
+
+        specify "lists the sub-transactions of a phase-2 valid transaction in ledger order, and those of an invalid one as discarded" $ do
+            SubTransactionBlock _ block plain parent subs invalid invalidSubs _ <- newSubTransactionBlock
+            let listed tx =
+                    ( getTransactionId tx
+                    , getTransactionId <$> subTransactions @Block tx
+                    , getTransactionId <$> discardedSubTransactions @Block tx
+                    )
+            foldBlock (\_ tx -> (listed tx :)) [] block
+                `shouldBe`
+                [ (topLevelId plain, [], [])
+                , (topLevelId parent, subId <$> subs, [])
+                , (topLevelId invalid, [], subId <$> invalidSubs)
+                ]
+
+        specify "accepts a Dijkstra block with sub-transactions" $ do
+            SubTransactionBlock _ block _ _ _ _ _ _ <- newSubTransactionBlock
+            first displayException (checkSubTransactions block) `shouldBe` Right ()
+
+        specify "matches the outputs and spends of sub-transactions, and only the collateral of an invalid transaction" $ do
+            SubTransactionBlock slot block plain parent [sub0, sub1] invalid _ collateral <- newSubTransactionBlock
+            let Match{consumed, produced} = matchBlock codecs matchAll block
+            [ (outputReference, subTransactionOf) | Result{outputReference, subTransactionOf} <- produced ]
+                `shouldBe`
+                [ ((mkOutputReference (topLevelId plain) 0, 0), Nothing)
+                , ((mkOutputReference (subId sub0) 0, 1), Just (topLevelId parent, 0))
+                , ((mkOutputReference (subId sub1) 0, 1), Just (topLevelId parent, 1))
+                , ((mkOutputReference (topLevelId parent) 0, 1), Nothing)
+                -- The collateral return, indexed after the single output of the invalid transaction.
+                , ((mkOutputReference (topLevelId invalid) 1, 2), Nothing)
+                ]
+            Map.keys consumed `shouldBe` sort
+                [ (topLevelId plain, Nothing, slot)
+                , (subId sub0, Just (topLevelId parent), slot)
+                , (subId sub1, Just (topLevelId parent), slot)
+                , (topLevelId parent, Nothing, slot)
+                , (topLevelId invalid, Nothing, slot)
+                ]
+            Map.lookup (topLevelId invalid, Nothing, slot) consumed
+                `shouldBe` Just [(MatchOutputReference collateral, 0, Nothing)]
+
     context "matchBlock" $ do
         specify "matches the outputs of sub-transactions, in ledger order, before those of their top-level transaction" $ do
             pt <- generate genNonGenesisPoint
@@ -481,6 +582,76 @@ subId =
 --
 -- Fixtures
 --
+
+-- | A 'Block' at a slot, with a plain transaction, a transaction with two
+-- sub-transactions, and a phase-2 invalid transaction with two sub-transactions,
+-- in this order, and the collateral input of the invalid transaction.
+data SubTransactionBlock = SubTransactionBlock
+    !SlotNo
+    !Block
+    !(Ledger.Tx Ledger.TopTx DijkstraEra)
+    !(Ledger.Tx Ledger.TopTx DijkstraEra)
+    ![Ledger.Tx Ledger.SubTx DijkstraEra]
+    !(Ledger.Tx Ledger.TopTx DijkstraEra)
+    ![Ledger.Tx Ledger.SubTx DijkstraEra]
+    !OutputReference
+
+newSubTransactionBlock :: IO SubTransactionBlock
+newSubTransactionBlock = do
+    slot <- getPointSlotNo <$> generate genNonGenesisPoint
+    [plainInput, input, subInput0, subInput1, invalidInput, collateral, invalidSubInput0, invalidSubInput1] <-
+        generate (vectorOf 8 genOutputReference)
+    [plainOutput, output, subOutput0, subOutput1, invalidOutput, collateralReturn, invalidSubOutput0, invalidSubOutput1] <-
+        generate (vectorOf 8 genOutput)
+    let plain = mkTransaction [plainInput] [plainOutput]
+    -- Descending ids, so that the ledger order of the sub-transactions is not their id order.
+    let subs = sortOn (Down . subId)
+            [ mkTransaction [subInput0] [subOutput0]
+            , mkTransaction [subInput1] [subOutput1]
+            ]
+    let parent = mkTransaction [input] [output] & withSubTransactions subs
+    let invalidSubs =
+            [ mkTransaction [invalidSubInput0] [invalidSubOutput0]
+            , mkTransaction [invalidSubInput1] [invalidSubOutput1]
+            ]
+    let invalid = mkTransaction [invalidInput] [invalidOutput]
+            & withSubTransactions invalidSubs
+            & Ledger.isPhase2ValidTxL .~ Ledger.Phase2Invalid
+            & Ledger.bodyTxL . Ledger.collateralInputsTxBodyL .~ fromList [collateral]
+            & Ledger.bodyTxL . Ledger.collateralReturnTxBodyL .~ SJust collateralReturn
+    let block = mkDijkstraBlock slot [plain, parent, invalid]
+    pure $ SubTransactionBlock slot block plain parent subs invalid invalidSubs collateral
+
+-- | A Dijkstra 'Block' as cardano-node serves it. Its header is signed with keys
+-- derived from fixed seeds, since Kupo does not verify headers.
+mkDijkstraBlock
+    :: SlotNo
+    -> [Ledger.Tx Ledger.TopTx DijkstraEra]
+    -> Block
+mkDijkstraBlock slot txs =
+    BlockDijkstra . mkShelleyBlock $ Ledger.Block (Header headerBody signature) body
+  where
+    body = Ledger.mkBasicBlockBody & Ledger.txSeqBlockBodyL .~ fromList txs
+    protocolVersion = ProtVer (Ledger.eraProtVerLow @DijkstraEra) 0
+    coldKey = genKeyDSIGN (seed 0)
+    vrfKey = genKeyVRF (seed 1)
+    kesKey = unsoundPureGenKeyKES (seed 2)
+    hotKey = unsoundPureDeriveVerKeyKES kesKey
+    headerBody = HeaderBody
+        { hbBlockNo = BlockNo (unSlotNo slot)
+        , hbSlotNo = slot
+        , hbPrev = GenesisHash
+        , hbVk = VKey (deriveVerKeyDSIGN coldKey)
+        , hbVrfVk = deriveVerKeyVRF vrfKey
+        , hbVrfRes = evalCertified () (mkInputVRF slot NeutralNonce) vrfKey
+        , hbBodySize = fromIntegral (Ledger.blockBodySize protocolVersion body)
+        , hbBodyHash = Ledger.hashBlockBody body
+        , hbOCert = OCert hotKey 0 (KESPeriod 0) $
+            signedDSIGN () (OCertSignable hotKey 0 (KESPeriod 0)) coldKey
+        , hbProtVer = protocolVersion
+        }
+    signature = unsoundPureSignedKES () 0 headerBody kesKey
+    seed = mkSeedFromBytes . BS.replicate 32
 
 -- | A Dijkstra block reduced to its point and transactions, read like a 'Block'.
 data DijkstraBlock = DijkstraBlock

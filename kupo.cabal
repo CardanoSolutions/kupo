@@ -416,6 +416,7 @@ test-suite unit
     , cardano-ledger-alonzo
     , cardano-ledger-core
     , cardano-ledger-dijkstra
+    , cardano-protocol
     , containers
     , contra-tracer
     , directory
@@ -431,6 +432,7 @@ test-suite unit
     , lens
     , lens-aeson
     , openapi3
+    , ouroboros-consensus:cardano
     , process
     , quickcheck-state-machine
     , relude

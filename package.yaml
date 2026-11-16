@@ -136,6 +136,7 @@ tests:
     - cardano-ledger-alonzo
     - cardano-ledger-core
     - cardano-ledger-dijkstra
+    - cardano-protocol
     - containers
     - contra-tracer
     - directory
@@ -150,6 +151,7 @@ tests:
     - lens
     - lens-aeson
     - openapi3
+    - ouroboros-consensus:cardano
     - process
     - QuickCheck
     - quickcheck-state-machine
