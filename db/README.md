@@ -1,11 +1,62 @@
 ## Overview
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./schema-dark.png">
-    <img alt="Database schema." src="./schema-light.png">
-  </picture>
-</p>
+The diagram below is maintained by hand and must be updated with each migration.
+
+```mermaid
+erDiagram
+    inputs {
+        BLOB ext_output_reference PK
+        TEXT address
+        BLOB value
+        BLOB datum_info "nullable"
+        BLOB script_hash "nullable"
+        INTEGER created_at
+        INTEGER spent_at "nullable"
+        BLOB spent_by "nullable"
+        BLOB spent_with "nullable"
+        INTEGER sub_transaction_index "nullable"
+        BLOB top_level_transaction_id "nullable"
+        BLOB spent_by_top_level_transaction_id "nullable"
+        BLOB output_reference UK "virtual"
+        BLOB output_index "virtual"
+        BLOB transaction_index "virtual"
+        BLOB datum_hash "virtual, nullable"
+        TEXT payment_credential "virtual, nullable"
+    }
+    policies {
+        BLOB output_reference PK, FK
+        BLOB policy_id PK
+    }
+    checkpoints {
+        BLOB header_hash
+        INTEGER slot_no PK
+    }
+    binary_data {
+        BLOB binary_data_hash PK
+        BLOB binary_data
+    }
+    scripts {
+        BLOB script_hash PK
+        BLOB script
+    }
+    patterns {
+        TEXT pattern PK
+    }
+    migrations {
+        TEXT id PK
+        TEXT state
+        INTEGER cutoff_slot "nullable"
+        BLOB cursor "nullable"
+        TEXT kupo_version "nullable"
+        INTEGER registered_at
+        INTEGER applied_at "nullable"
+    }
+    inputs ||--o{ policies : "output_reference, ON DELETE CASCADE"
+    checkpoints ||..o{ inputs : "created_at, lookup, no FK"
+    checkpoints |o..o{ inputs : "spent_at, lookup, no FK"
+    binary_data |o..o{ inputs : "datum_hash, lookup, no FK"
+    scripts |o..o{ inputs : "script_hash, lookup, no FK"
+```
 
 <details>
   <summary>See complete definition</summary>
@@ -29,7 +80,7 @@ CREATE TABLE `inputs` (
   `output_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -4, 2)) VIRTUAL,
   `transaction_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -2)) VIRTUAL,
   `datum_hash` BLOB GENERATED ALWAYS AS (substr(`datum_info`, 2)) VIRTUAL,
-  `payment_credential` TEXT COLLATE NOCASE NOT NULL GENERATED ALWAYS AS (substr(`address`, -56)) VIRTUAL,
+  `payment_credential` TEXT COLLATE NOCASE GENERATED ALWAYS AS (substr(`address`, -56)) VIRTUAL,
 
   PRIMARY KEY (`ext_output_reference`)
 );
@@ -37,6 +88,7 @@ CREATE TABLE `inputs` (
 CREATE UNIQUE INDEX `inputsByOutputReference` ON `inputs` (`output_reference`);
 
 CREATE INDEX `inputsByAddress` ON `inputs` (`address` COLLATE NOCASE);
+CREATE INDEX `inputsByDatumHash` ON `inputs` (`datum_hash`);
 CREATE INDEX `inputsByPaymentCredential` ON `inputs` (`payment_credential` COLLATE NOCASE);
 CREATE INDEX `inputsByCreatedAt` ON `inputs` (`created_at`);
 CREATE INDEX `inputsBySpentAt` ON `inputs` (`spent_at`);
@@ -50,6 +102,8 @@ CREATE TABLE `policies` (
     REFERENCES inputs(`output_reference`)
     ON DELETE CASCADE
 );
+
+CREATE INDEX `policiesByPolicyId` ON `policies` (`policy_id`);
 
 CREATE TABLE `checkpoints` (
   `header_hash` BLOB NOT NULL,
