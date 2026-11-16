@@ -6,6 +6,7 @@
 
 module Test.Kupo.App.HttpSpec
     ( spec
+    , healthStub
     ) where
 
 import Data.Aeson
@@ -311,6 +312,13 @@ spec = do
             res <- Wai.request $ Wai.defaultRequest
                 { Wai.requestMethod = "GET" }
                 & flip Wai.setPath "/metadata/42?transaction_id=309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635"
+            res & Wai.assertStatus (Http.statusCode Http.status200)
+            res & assertJson True schema
+
+        session specification get "/matches?top_level_transaction_id=309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635" $ \assertJson endpoint -> do
+            let schema = findSchema specification endpoint Http.status200
+            res <- Wai.request $ Wai.defaultRequest
+                & flip Wai.setPath "/matches?top_level_transaction_id=309706b92ad8340cd6a5d31bf9d2e682fdab9fc8865ee3de14e09dedf9b1b635"
             res & Wai.assertStatus (Http.statusCode Http.status200)
             res & assertJson True schema
 

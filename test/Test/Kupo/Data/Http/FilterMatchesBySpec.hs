@@ -124,6 +124,60 @@ spec = parallel $ do
                     ]
                   , Nothing
                   )
+                , ( [ "top_level_transaction_id" .= transactionIdToText someTransactionId
+                    ]
+                  , Just (FilterByTopLevelTransactionId someTransactionId)
+                  )
+                , ( [ "foo" .= "bar"
+                    , "top_level_transaction_id" .= transactionIdToText someTransactionId
+                    ]
+                  , Just (FilterByTopLevelTransactionId someTransactionId)
+                  )
+                , ( [ "top_level_transaction_id" .= transactionIdToText someTransactionId
+                    , "top_level_transaction_id" .= transactionIdToText someOtherTransactionId
+                    ]
+                  , Nothing
+                  )
+                , ( [ "top_level_transaction_id" .= transactionIdToText someTransactionId
+                    , "transaction_id" .= transactionIdToText someOtherTransactionId
+                    ]
+                  , Nothing
+                  )
+                , ( [ "transaction_id" .= transactionIdToText someOtherTransactionId
+                    , "top_level_transaction_id" .= transactionIdToText someTransactionId
+                    ]
+                  , Nothing
+                  )
+                , ( [ "policy_id" .= policyIdToText somePolicyId
+                    , "top_level_transaction_id" .= transactionIdToText someTransactionId
+                    ]
+                  , Nothing
+                  )
+                , ( [ "top_level_transaction_id" .= transactionIdToText someTransactionId
+                    , "policy_id" .= policyIdToText somePolicyId
+                    ]
+                  , Nothing
+                  )
+                , ( [ "top_level_transaction_id" .= transactionIdToText someTransactionId
+                    , "output_index" .= "14"
+                    ]
+                  , Nothing
+                  )
+                , ( [ "output_index" .= "14"
+                    , "top_level_transaction_id" .= transactionIdToText someTransactionId
+                    ]
+                  , Nothing
+                  )
+                , ( [ "top_level_transaction_id" .= transactionIdToText someTransactionId
+                    , "policy_id" .= policyIdToText somePolicyId
+                    , "asset_name" .= assetNameToText someAssetName
+                    ]
+                  , Nothing
+                  )
+                , ( [ "top_level_transaction_id" .= "foo"
+                    ]
+                  , Nothing
+                  )
                 ]
 
 --

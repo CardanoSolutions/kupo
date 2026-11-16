@@ -1828,6 +1828,17 @@ components:
       description: |
         A query flag (i.e. `?strict`) to only look for checkpoints that strictly match the provided slot. The behavior otherwise is to look for the largest nearest slot smaller or equal to the one provided.
 
+    top-level-transaction-id:
+      name: top_level_transaction_id
+      in: query
+      required: false
+      schema:
+        $ref: "#/components/schemas/TransactionId"
+      description: |
+        Filters results by top-level transaction id to retrieve the outputs created by the sub-transactions of that transaction. Outputs created by the top-level transaction itself are not returned; match them with a `*@<transaction id>` pattern or the `transaction_id` filter.
+        Cannot be combined with `policy_id`, `asset_name`, `transaction_id` or `output_index`, nor given more than once; the server then answers with a 400 error.
+        Like the other query filters, it is applied after the pattern has selected its matches.
+
     transaction-id: &transaction-id
       name: transaction_id
       in: query
@@ -1836,6 +1847,7 @@ components:
         $ref: "#/components/schemas/TransactionId"
       description: |
         Filters results by transaction id to retrieve items originating from that transaction only.
+        The id of a Dijkstra sub-transaction is accepted too; it selects the outputs created by that sub-transaction.
         Useful when combined with a pattern as path-parameter.
 
         > <sup><strong>WARNING</strong></sup> <br/>
@@ -1913,6 +1925,7 @@ paths:
         - $ref: "#/components/parameters/asset-name"
         - $ref: "#/components/parameters/transaction-id"
         - $ref: "#/components/parameters/output-index"
+        - $ref: "#/components/parameters/top-level-transaction-id"
       responses:
         200:
           description: OK
@@ -1960,6 +1973,7 @@ paths:
         - $ref: "#/components/parameters/asset-name"
         - $ref: "#/components/parameters/transaction-id"
         - $ref: "#/components/parameters/output-index"
+        - $ref: "#/components/parameters/top-level-transaction-id"
       responses:
         200:
           description: OK

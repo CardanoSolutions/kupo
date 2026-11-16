@@ -701,6 +701,8 @@ handleGetMatches resHeaders reqHeaders patternQuery queryParams Database{..} = h
                         \result -> fst (outputReference result) == outRef
                     FilterByTransactionId transactionId ->
                         \result -> (getTransactionId . fst . outputReference) result == transactionId
+                    FilterByTopLevelTransactionId transactionId ->
+                        \result -> (fst <$> subTransactionOf result) == Just transactionId
          in
             \yield result ->
                 when (predicateA result && predicateB result) (yield result)

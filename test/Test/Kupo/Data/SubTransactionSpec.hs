@@ -26,6 +26,9 @@ import Cardano.Ledger.Plutus.ExUnits
 import Control.Lens
     ( (.~)
     )
+import Data.Aeson.Lens
+    ( key
+    )
 import Kupo.App.Database
     ( newDBPool
     )
@@ -33,8 +36,14 @@ import Kupo.App.Database.Types
     ( DBPool (..)
     , Database (..)
     )
+import Kupo.App.Http
+    ( app
+    )
 import Kupo.Control.MonadLog
     ( nullTracer
+    )
+import Kupo.Control.MonadSTM
+    ( MonadSTM (..)
     )
 import Kupo.Data.Cardano
     ( BinaryData
@@ -47,12 +56,14 @@ import Kupo.Data.Cardano
     , Point
     , Script
     , ScriptHash
+    , SubTransactionIndex
     , Transaction (..)
     , TransactionId
     , getPointSlotNo
     , hashBinaryData
     , hashScript
     , mkOutputReference
+    , transactionIdToText
     )
 import Kupo.Data.Configuration
     ( DatabaseLocation (..)
@@ -88,7 +99,14 @@ import Test.Hspec
     , context
     , parallel
     , shouldBe
+    , shouldReturn
     , specify
+    )
+import Test.Kupo.App.Http.Client
+    ( decodeResult
+    )
+import Test.Kupo.App.HttpSpec
+    ( healthStub
     )
 import Test.Kupo.Data.Generators
     ( genBinaryData
@@ -106,7 +124,13 @@ import Test.QuickCheck
     )
 
 import qualified Cardano.Ledger.Dijkstra.Core as Ledger
+import qualified Data.Aeson as Json
+import qualified Data.Aeson.Types as Json
 import qualified Data.Map as Map
+import qualified Data.Text as T
+import qualified Network.HTTP.Types.Status as Http
+import qualified Network.Wai as Wai
+import qualified Network.Wai.Test as Wai
 
 spec :: Spec
 spec = parallel $ do
@@ -297,6 +321,108 @@ spec = parallel $ do
                 , ((mkOutputReference (topLevelId top) 0, 0), Nothing, Nothing, Nothing)
                 ]
 
+    context "http" $ do
+        specify "filters matches by the top-level transaction of the sub-transactions that created them" $ do
+            withIndexedBlocks $ \(Indexed funding sub0 sub1 top) application -> do
+                let path filter_ = "/matches?order=oldest_first&" <> filter_ <> "="
+                creatorsAt application (path "top_level_transaction_id" <> transactionIdToText (topLevelId top))
+                    `shouldReturn`
+                    [ (subId sub0, Just (topLevelId top, 0))
+                    , (subId sub1, Just (topLevelId top, 1))
+                    ]
+                creatorsAt application (path "top_level_transaction_id" <> transactionIdToText (topLevelId funding))
+                    `shouldReturn` []
+                creatorsAt application (path "top_level_transaction_id" <> transactionIdToText (subId sub0))
+                    `shouldReturn` []
+
+        specify "rejects the top-level transaction filter combined with other filters or given twice" $ do
+            withIndexedBlocks $ \(Indexed _ _ _ top) application -> do
+                let topLevel = "top_level_transaction_id=" <> transactionIdToText (topLevelId top)
+                let policyId = T.replicate 56 "0"
+                forM_
+                    [ topLevel <> "&transaction_id=" <> transactionIdToText (topLevelId top)
+                    , topLevel <> "&policy_id=" <> policyId
+                    , topLevel <> "&policy_id=" <> policyId <> "&asset_name=00"
+                    , topLevel <> "&output_index=0"
+                    , "output_index=0&" <> topLevel
+                    , topLevel <> "&" <> topLevel
+                    , "top_level_transaction_id=foo"
+                    ] $ \query -> do
+                        response <- getResponse application ("/matches?" <> query)
+                        (query, Http.statusCode (Wai.simpleStatus response)) `shouldBe` (query, 400)
+
+        specify "matches by the id of a sub-transaction through the transaction_id filter and patterns" $ do
+            withIndexedBlocks $ \(Indexed _ _ sub1 top) application -> do
+                let expectedSub = [(subId sub1, Just (topLevelId top, 1))]
+                let subIdText = transactionIdToText (subId sub1)
+                creatorsAt application ("/matches?transaction_id=" <> subIdText) `shouldReturn` expectedSub
+                creatorsAt application ("/matches/*@" <> subIdText) `shouldReturn` expectedSub
+                creatorsAt application ("/matches/0@" <> subIdText) `shouldReturn` expectedSub
+                -- The id of the top-level transaction only matches its own outputs.
+                let topIdText = transactionIdToText (topLevelId top)
+                creatorsAt application ("/matches?transaction_id=" <> topIdText)
+                    `shouldReturn` [(topLevelId top, Nothing)]
+                creatorsAt application ("/matches/*@" <> topIdText)
+                    `shouldReturn` [(topLevelId top, Nothing)]
+
+        specify "reports the sub-transaction of a match, and of its spender, as null or a value" $ do
+            withIndexedBlocks $ \(Indexed funding sub0 sub1 top) application -> do
+                let topIdText = transactionIdToText (topLevelId top)
+                let field name = (^? key name)
+                [subMatch] <- getJson application ("/matches/*@" <> transactionIdToText (subId sub1))
+                field "sub_transaction_index" subMatch `shouldBe` Just (Json.Number 1)
+                field "top_level_transaction_id" subMatch `shouldBe` Just (Json.String topIdText)
+                [topMatch] <- getJson application ("/matches/*@" <> topIdText)
+                field "sub_transaction_index" topMatch `shouldBe` Just Json.Null
+                field "top_level_transaction_id" topMatch `shouldBe` Just Json.Null
+                [fundingMatch] <- getJson application
+                    ("/matches?spent&transaction_id=" <> transactionIdToText (topLevelId funding) <> "&output_index=0")
+                (fundingMatch ^? key "spent_at" . key "transaction_id")
+                    `shouldBe` Just (Json.String $ transactionIdToText $ subId sub0)
+                (fundingMatch ^? key "spent_at" . key "top_level_transaction_id")
+                    `shouldBe` Just (Json.String topIdText)
+
+        specify "reports an ordinary spender after a spending sub-transaction is rolled back" $ do
+            (pt1, pt2, pt3) <- generate $ (,,)
+                <$> genNonGenesisPointBetween (1, 10)
+                <*> genNonGenesisPointBetween (11, 20)
+                <*> genNonGenesisPointBetween (21, 30)
+            [fundingInput, input, otherInput] <- generate (vectorOf 3 genOutputReference)
+            [spent, subOutput, output] <- generate (vectorOf 3 genOutput)
+            let funding = mkTransaction [fundingInput] [spent]
+            let fundingRef = mkOutputReference (topLevelId funding) 0
+            let sub = mkTransaction [fundingRef] [subOutput]
+            let top = mkTransaction [input] [output] & withSubTransactions [sub]
+            let ordinary = mkTransaction [fundingRef, otherInput] []
+            let rowCodecs = Codecs
+                    { toResult = resultToRow
+                    , toBinaryData = binaryDataToRow
+                    , toScript = scriptToRow
+                    , toPolicy = policyToRow
+                    }
+            withInMemoryDatabase $ \database@Database{..} -> do
+                let index block = do
+                        let Match{consumed, produced} = matchBlock rowCodecs matchAll block
+                        runTransaction $ do
+                            insertCheckpoints [getPoint block]
+                            insertInputs produced
+                            void $ Map.traverseWithKey markInputs consumed
+                index (DijkstraBlock pt1 [funding])
+                index (DijkstraBlock pt2 [top])
+                let matchesPath = "/matches?spent&transaction_id=" <> transactionIdToText (topLevelId funding)
+                application2 <- newApplication database (DijkstraBlock pt2 [top])
+                [before] <- getJson application2 matchesPath
+                (before ^? key "spent_at" . key "transaction_id")
+                    `shouldBe` Just (Json.String $ transactionIdToText $ subId sub)
+                void $ runTransaction $ rollbackTo (getPointSlotNo pt1)
+                index (DijkstraBlock pt3 [ordinary])
+                application3 <- newApplication database (DijkstraBlock pt3 [ordinary])
+                [after] <- getJson application3 matchesPath
+                (after ^? key "spent_at" . key "transaction_id")
+                    `shouldBe` Just (Json.String $ transactionIdToText $ topLevelId ordinary)
+                (after ^? key "spent_at" . key "top_level_transaction_id")
+                    `shouldBe` Just Json.Null
+
 --
 -- Helpers
 --
@@ -402,6 +528,91 @@ withSpendRedeemer
 withSpendRedeemer ix redeemer =
     Ledger.witsTxL . Ledger.rdmrsTxWitsL .~ Redeemers
         (fromList [(Ledger.SpendingPurpose (Ledger.AsIx ix), (binaryDataToData redeemer, ExUnits 0 0))])
+
+-- | A funding transaction, a top-level transaction spending its outputs from
+-- two sub-transactions, all indexed in an in-memory database behind the HTTP
+-- application.
+data Indexed = Indexed
+    !(Ledger.Tx Ledger.TopTx DijkstraEra)
+    !(Ledger.Tx Ledger.SubTx DijkstraEra)
+    !(Ledger.Tx Ledger.SubTx DijkstraEra)
+    !(Ledger.Tx Ledger.TopTx DijkstraEra)
+
+withIndexedBlocks
+    :: (Indexed -> Wai.Application -> IO a)
+    -> IO a
+withIndexedBlocks action = do
+    (pt1, pt2) <- generate $ (,)
+        <$> genNonGenesisPointBetween (1, 10)
+        <*> genNonGenesisPointBetween (11, 20)
+    [fundingInput, subInput, input] <- generate (vectorOf 3 genOutputReference)
+    [spent0, spent1, subOutput0, subOutput1, output] <- generate (vectorOf 5 genOutput)
+    let funding = mkTransaction [fundingInput] [spent0, spent1]
+    let sub0 = mkTransaction [mkOutputReference (topLevelId funding) 0] [subOutput0]
+    let sub1 = mkTransaction [mkOutputReference (topLevelId funding) 1, subInput] [subOutput1]
+    let top = mkTransaction [input] [output] & withSubTransactions [sub0, sub1]
+    let blocks = [DijkstraBlock pt1 [funding], DijkstraBlock pt2 [top]]
+    let rowCodecs = Codecs
+            { toResult = resultToRow
+            , toBinaryData = binaryDataToRow
+            , toScript = scriptToRow
+            , toPolicy = policyToRow
+            }
+    withInMemoryDatabase $ \database@Database{..} -> do
+        let Match{consumed, produced} = foldMap (matchBlock rowCodecs matchAll) blocks
+        runTransaction $ do
+            insertCheckpoints (getPoint <$> blocks)
+            insertInputs produced
+            void $ Map.traverseWithKey markInputs consumed
+        application <- newApplication database (DijkstraBlock pt2 [top])
+        action (Indexed funding sub0 sub1 top) application
+
+newApplication
+    :: Database IO
+    -> DijkstraBlock
+    -> IO Wai.Application
+newApplication database block = do
+    patternsVar <- newTVarIO mempty
+    pure $ app
+        (pure Nothing)
+        (\_send _mode callback -> callback database)
+        (\_point _handler -> pure ())
+        (\_point reply -> reply (Just block))
+        patternsVar
+        healthStub
+
+getResponse
+    :: Wai.Application
+    -> Text
+    -> IO Wai.SResponse
+getResponse application path =
+    Wai.runSession
+        (Wai.request $ Wai.setPath Wai.defaultRequest (encodeUtf8 path))
+        application
+
+getJson
+    :: Wai.Application
+    -> Text
+    -> IO [Json.Value]
+getJson application path = do
+    response <- getResponse application path
+    Http.statusCode (Wai.simpleStatus response) `shouldBe` 200
+    either fail pure $ Json.eitherDecode (Wai.simpleBody response)
+
+-- | The transaction that created each match, with its position in its top-level transaction.
+creatorsAt
+    :: Wai.Application
+    -> Text
+    -> IO [(TransactionId, Maybe (TransactionId, SubTransactionIndex))]
+creatorsAt application path = do
+    response <- getResponse application path
+    Http.statusCode (Wai.simpleStatus response) `shouldBe` 200
+    results <- either fail pure $
+        eitherDecodeJson (Json.listParser decodeResult) (Wai.simpleBody response)
+    pure
+        [ (getTransactionId (fst outputReference), subTransactionOf)
+        | Result{outputReference, subTransactionOf} <- results
+        ]
 
 --
 -- Generators
