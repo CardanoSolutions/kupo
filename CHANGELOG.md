@@ -4,7 +4,7 @@
 
 - Kupo now indexes Dijkstra blocks when it is connected directly to cardano-node. With Ogmios, Kupo stops with an error at the first Dijkstra block, because Ogmios does not serialise Dijkstra transactions yet.
 
-- A Dijkstra transaction that carries sub-transactions is not indexed yet. Kupo stops with an error that names the transaction.
+- Kupo now indexes Dijkstra sub-transactions when it is connected directly to cardano-node, instead of stopping at the first transaction that carries them. Kupo records the outputs that each sub-transaction creates and the inputs that it spends under the sub-transaction's own id, with the index of its top-level transaction in the block. A `*@<transaction id>` pattern matches the outputs of that transaction only, so the id of a top-level transaction does not match the outputs of its sub-transactions. When a top-level transaction fails phase-2 validation, its sub-transactions create and spend nothing.
 
 - Kupo now records database migrations in a `migrations` table, and no longer runs heavy or breaking migrations silently at startup:
   - When the database needs a blocking migration, Kupo refuses to start and exits with code 3. Run `kupo db migrate`, then start Kupo again.

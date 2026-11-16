@@ -63,7 +63,6 @@ library:
     - bytestring
     - cardano-crypto-class
     - cardano-crypto-wrapper
-    - cardano-data
     - cardano-ledger-allegra
     - cardano-ledger-alonzo
     - cardano-ledger-api

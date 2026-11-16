@@ -104,7 +104,6 @@ import qualified Cardano.Ledger.Alonzo.TxWits as Ledger
 import qualified Cardano.Ledger.Babbage.Core as Ledger
 import qualified Cardano.Ledger.Block as Ledger
 import qualified Cardano.Ledger.Dijkstra.Core as Ledger
-import qualified Data.OMap.Strict as OMap
 import qualified Data.Set as Set
 
 -- IsBlock
@@ -171,19 +170,14 @@ class HasTransactionId (BlockBody block) => IsBlock (block :: Type) where
 
 -- Block
 
--- | Raised on a block carrying Dijkstra sub-transactions, which are not indexed yet.
+-- | Raised on a Dijkstra block whose sub-transactions Kupo cannot index.
 data UnsupportedSubTransactions
-    = UnsupportedSubTransactions !TransactionId
-    -- ^ A Dijkstra transaction carries sub-transactions.
-    | UnverifiableSubTransactions !Point
+    = UnverifiableSubTransactions !Point
     -- ^ A Dijkstra block whose transactions Kupo cannot inspect.
     deriving (Show)
 
 instance Exception UnsupportedSubTransactions where
     displayException = \case
-        UnsupportedSubTransactions txId ->
-            "Dijkstra transaction " <> toString (transactionIdToText txId)
-                <> " carries sub-transactions, which Kupo does not index yet."
         UnverifiableSubTransactions point ->
             "Ogmios does not serialise Dijkstra transactions yet, so Kupo cannot index the block at slot "
                 <> toString (slotNoToText (getPointSlotNo point))
@@ -242,20 +236,8 @@ instance IsBlock Block where
         BlockDijkstra (ShelleyBlock (Ledger.Block _ txs) _) ->
             foldrWithIndex (\ix -> fn ix . TransactionDijkstra) result (txs ^. Ledger.txSeqBlockBodyL)
 
-    checkSubTransactions = \case
-        BlockDijkstra (ShelleyBlock (Ledger.Block _ txs) _) ->
-            traverse_ rejectSubTransactions (txs ^. Ledger.txSeqBlockBodyL)
-        _ ->
-            Right ()
-      where
-        -- Sub-transactions are not indexed yet: fail loudly instead of
-        -- silently dropping their inputs and outputs.
-        rejectSubTransactions
-            :: Ledger.Tx Ledger.TopTx DijkstraEra
-            -> Either UnsupportedSubTransactions ()
-        rejectSubTransactions tx =
-            unless (OMap.null (tx ^. Ledger.bodyTxL . Ledger.subTransactionsTxBodyL)) $
-                Left (UnsupportedSubTransactions (Ledger.txIdTx @DijkstraEra tx))
+    checkSubTransactions =
+        const (Right ())
 
     subTransactions
         :: Transaction

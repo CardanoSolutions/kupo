@@ -207,7 +207,6 @@ library
     , bytestring
     , cardano-crypto-class
     , cardano-crypto-wrapper
-    , cardano-data
     , cardano-diffusion
     , cardano-ledger-allegra
     , cardano-ledger-alonzo
