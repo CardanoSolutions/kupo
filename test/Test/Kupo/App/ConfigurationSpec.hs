@@ -12,6 +12,11 @@ module Test.Kupo.App.ConfigurationSpec
 
 import Kupo.Prelude
 
+import Data.Aeson
+    ( encodeFile
+    , object
+    , (.=)
+    )
 import Kupo.App.Configuration
     ( parseNetworkParameters
     )
@@ -20,6 +25,16 @@ import Kupo.Data.Configuration
     , NetworkMagic (..)
     , NetworkParameters (..)
     , mkSystemStart
+    )
+import System.Directory
+    ( copyFile
+    , createDirectoryIfMissing
+    )
+import System.FilePath
+    ( (</>)
+    )
+import System.IO.Temp
+    ( withSystemTempDirectory
     )
 import Test.Hspec
     ( Spec
@@ -37,3 +52,25 @@ spec = parallel $ do
             networkMagic  params `shouldBe` NetworkMagic 764824073
             systemStart   params `shouldBe` mkSystemStart 1506203091
             slotsPerEpoch params `shouldBe` EpochSlots 21600
+
+        specify "mainnet, nested under Configuration and Protocol" $ do
+            let genesis = "./config/network/mainnet/genesis"
+            withSystemTempDirectory "kupo-configuration" $ \dir -> do
+                createDirectoryIfMissing True (dir </> "genesis")
+                createDirectoryIfMissing True (dir </> "node")
+                copyFile (genesis </> "byron.json") (dir </> "genesis" </> "byron.json")
+                copyFile (genesis </> "shelley.json") (dir </> "genesis" </> "shelley.json")
+                let configFile = dir </> "node" </> "configuration.yaml"
+                encodeFile configFile $ object
+                    [ "Version" .= (2 :: Int)
+                    , "Configuration" .= object
+                        [ "Protocol" .= object
+                            [ "ByronGenesisFile" .= ("../genesis/byron.json" :: Text)
+                            , "ShelleyGenesisFile" .= ("../genesis/shelley.json" :: Text)
+                            ]
+                        ]
+                    ]
+                params <- parseNetworkParameters configFile
+                networkMagic  params `shouldBe` NetworkMagic 764824073
+                systemStart   params `shouldBe` mkSystemStart 1506203091
+                slotsPerEpoch params `shouldBe` EpochSlots 21600

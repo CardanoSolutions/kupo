@@ -150,9 +150,13 @@ fetchNetworkParameters ws = do
 parseNetworkParameters :: FilePath -> IO NetworkParameters
 parseNetworkParameters configFile = runOrDie $ do
     config <- decodeYaml @Yaml.Value configFile
+    -- The cardano-config envelope nests the keys; the legacy layout is flat.
+    let genesisFile name = case config ^? key "Configuration" of
+            Just envelope -> envelope ^? key "Protocol" . key name . _String
+            Nothing -> config ^? key name . _String
     let genesisFiles = (,)
-            <$> config ^? key "ByronGenesisFile" . _String
-            <*> config ^? key "ShelleyGenesisFile" . _String
+            <$> genesisFile "ByronGenesisFile"
+            <*> genesisFile "ShelleyGenesisFile"
     case genesisFiles of
         Nothing ->
             throwE "missing or invalid 'ByronGenesisFile' and/or 'ShelleyGenesisFile' from Cardano's configuration"
