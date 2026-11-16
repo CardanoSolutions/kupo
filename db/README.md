@@ -21,6 +21,9 @@ CREATE TABLE `inputs` (
   `spent_at` INTEGER,
   `spent_by` BLOB,
   `spent_with` BLOB,
+  `sub_transaction_index` INTEGER,
+  `top_level_transaction_id` BLOB,
+  `spent_by_top_level_transaction_id` BLOB,
 
   `output_reference` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, 1, 34)) VIRTUAL,
   `output_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -4, 2)) VIRTUAL,
@@ -115,6 +118,11 @@ Kupo refuses a database whose registry holds an id that it does not know, becaus
 - Register a data repair, applied by `kupo db migrate`, that fixes `spent_by` and `spent_with` of the spends recorded before the cutoff slot: since v2.10.0, Kupo numbered the inputs of a transaction from the last one.
 - On a database upgraded from `version=9` or older, which holds no such spends, record the repair as skipped instead.
 - The repair needs an index that matches `*`, was synchronised from origin and was never pruned with `--prune-utxo`: an interrupted prune can leave only the last inputs of a transaction, which look like a complete set. Resynchronise any other index.
+
+### Migration to `version=13`
+
+- Add `sub_transaction_index` and `top_level_transaction_id` columns to `inputs`. For an output created by a Dijkstra sub-transaction, they hold the position of the sub-transaction among those of its top-level transaction, starting at 0, and the id of the top-level transaction; `ext_output_reference` then holds the id of the sub-transaction itself. Both are `NULL` for an output of a top-level transaction.
+- Add a `spent_by_top_level_transaction_id` column to `inputs`. When a Dijkstra sub-transaction spends the output, it holds the id of the top-level transaction, and `spent_by` holds the id of the sub-transaction. It is `NULL` otherwise.
 
 <p align="right"><code>v2.10.0</code></p>
 <hr/>
