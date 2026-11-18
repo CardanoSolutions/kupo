@@ -28,6 +28,7 @@ extra-source-files:
     db/v2.1.0/002.sql
     db/v2.1.0/003.sql
     db/v2.10.0/001.sql
+    db/v2.12.0/001.sql
     db/v2.2.0/001.sql
 data-files:
     docs/api/nightly.yaml
@@ -58,6 +59,23 @@ library
       Kupo.App.ChainSync.Ogmios
       Kupo.App.Configuration
       Kupo.App.Database
+      Kupo.App.Database.Migration
+      Kupo.App.Database.Migration.Command
+      Kupo.App.Database.Migration.Definition
+      Kupo.App.Database.Migration.Plan
+      Kupo.App.Database.Migration.Status
+      Kupo.App.Database.Migration.V1_0_0_001
+      Kupo.App.Database.Migration.V1_0_0_002
+      Kupo.App.Database.Migration.V1_0_0_beta_001
+      Kupo.App.Database.Migration.V1_0_1_001
+      Kupo.App.Database.Migration.V2_0_0_beta_001
+      Kupo.App.Database.Migration.V2_10_0_001
+      Kupo.App.Database.Migration.V2_12_0_001
+      Kupo.App.Database.Migration.V2_1_0_001
+      Kupo.App.Database.Migration.V2_1_0_002
+      Kupo.App.Database.Migration.V2_1_0_003
+      Kupo.App.Database.Migration.V2_2_0_001
+      Kupo.App.Database.SQLite.Transaction
       Kupo.App.Database.Types
       Kupo.App.FetchBlock.Node
       Kupo.App.FetchBlock.Ogmios
@@ -205,6 +223,7 @@ library
     , containers
     , contra-tracer
     , contra-tracers
+    , direct-sqlite
     , directory
     , fast-bech32
     , file-embed
@@ -316,6 +335,7 @@ test-suite unit
   main-is: Spec.hs
   other-modules:
       Test.Kupo.App.ConfigurationSpec
+      Test.Kupo.App.Database.MigrationSpec
       Test.Kupo.App.Http.Client
       Test.Kupo.App.HttpSpec
       Test.Kupo.App.MailboxSpec
@@ -390,6 +410,7 @@ test-suite unit
     , bytestring
     , cardano-crypto-class
     , containers
+    , contra-tracer
     , directory
     , filepath
     , hspec

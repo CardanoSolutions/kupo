@@ -81,6 +81,7 @@ library:
     - containers
     - contra-tracer
     - contra-tracers
+    - direct-sqlite
     - directory
     - fast-bech32
     - file-embed
@@ -134,6 +135,7 @@ tests:
     - bytestring
     - cardano-crypto-class
     - containers
+    - contra-tracer
     - directory
     - filepath
     - hspec

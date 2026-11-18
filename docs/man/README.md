@@ -23,6 +23,13 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
   --into DIRECTORY\
   --match PATTERN
 
+**kupo** **db** **status**
+  --workdir DIRECTORY
+
+**kupo** **db** **migrate**
+  --workdir DIRECTORY\
+  [--confirm-complete-index]
+
 **kupo** ((-v|--version) | **version**)
 
 # DESCRIPTION
@@ -120,6 +127,11 @@ kupo - Fast, lightweight & configurable chain-index for Cardano.
     This flag has no effect if a database with indexes already exists. So make sure to turn it on for the very first run.
 
     (default: *disabled*).
+
+**--confirm-complete-index**
+:   Confirm that the index matches `*` and was synchronised from origin. Some data repairs need this confirmation, because the database cannot prove it.
+
+    (**NOTE**: Only for **db migrate**)
 
 **--log-level**
 :   Minimal severity of all log messages.
@@ -290,7 +302,10 @@ Online documentation and API reference: <https://cardanosolutions.github.io/kupo
 : Interrupted by user.
 
 **1**
-: Invalid configuration or options.
+: Invalid configuration or options, or a database that a newer version of Kupo migrated. **kupo db status** exits with 1 in that case too. With **db migrate**, also when a data repair stays pending.
+
+**3**
+: The database needs a blocking migration. Run **kupo db migrate**, then start Kupo again. **kupo db status** exits with 3 in this case too.
 
 # BUGS
 See and report issues on Github: <https://github.com/CardanoSolutions/kupo/issues>

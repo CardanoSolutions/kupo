@@ -4,9 +4,7 @@
 
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Kupo.App.Database.SQLite
     (
@@ -50,16 +48,11 @@ import Kupo.Prelude
 import Control.Exception
     ( IOException
     , handle
-    , mask
-    , onException
     , throwIO
     )
 import Control.Tracer
     ( Tracer
     , traceWith
-    )
-import Data.FileEmbed
-    ( embedFile
     )
 import Data.Scientific
     ( scientific
@@ -81,15 +74,22 @@ import Database.SQLite.Simple
     , execute
     , execute_
     , fold_
-    , nextRow
     , query_
     , totalChanges
     , withConnection'
-    , withStatement
     )
 import GHC.TypeLits
     ( KnownSymbol
     , symbolVal
+    )
+import Kupo.App.Database.Migration
+    ( checkMigrations
+    , migrations
+    , refuseUnknownMigrations
+    , runMigrations
+    )
+import Kupo.App.Database.SQLite.Transaction
+    ( withTransaction
     )
 import Kupo.Control.MonadAsync
     ( concurrently_
@@ -363,12 +363,14 @@ withLongLivedConnection
 withLongLivedConnection tr (DBLock shortLived longLived) k file deferIndexes action = do
     let (str, flags) = mkConnectionString file ReadWrite
     withConnection' str flags $ \conn -> do
+        -- journal_mode and optimize may write to the file, so refuse a newer Kupo's database first.
+        refuseUnknownMigrations tr conn migrations
         execute_ conn "PRAGMA page_size = 32768"
         execute_ conn "PRAGMA cache_size = 1024"
         execute_ conn "PRAGMA synchronous = NORMAL"
         execute_ conn "PRAGMA journal_mode = WAL"
         execute_ conn "PRAGMA optimize"
-        databaseVersion conn >>= runMigrations tr conn
+        runMigrations tr conn migrations
         installIndexes tr conn deferIndexes
         execute_ conn "PRAGMA foreign_keys = ON"
         action (mkDatabase (contramap DatabaseConnection tr) ReadWrite k (bracketConnection conn))
@@ -393,6 +395,10 @@ newDBPool
     -> IO (DBPool IO)
 newDBPool tr isReadOnly dbLocation longestRollback = do
     dbFile <- newDatabaseFile tr isReadOnly dbLocation
+    -- Replicas never migrate, but they refuse the same databases as the writer does.
+    when isReadOnly $ do
+        let (str, flags) = mkConnectionString dbFile ReadOnly
+        withConnection' str flags $ \conn -> checkMigrations tr conn migrations
     lock <- liftIO newLock
 
     (maxConcurrentWriters, maxConcurrentReaders) <-
@@ -439,13 +445,14 @@ newDBPool tr isReadOnly dbLocation longestRollback = do
 -- It is therefore also the connection from which we check for and run database migrations when
 -- needed. Note that this bracket will also create the database if it doesn't exist.
 withWriteOnlyConnection
-    :: DatabaseFile
+    :: Tracer IO TraceDatabase
+    -> DatabaseFile
     -> (Sqlite.Connection -> Database IO -> IO a)
     -> IO a
-withWriteOnlyConnection file action = do
+withWriteOnlyConnection tr file action = do
     let (str, flags) = mkConnectionString file WriteOnly
     withConnection' str flags $ \conn -> do
-        databaseVersion conn >>= runMigrations nullTracer conn
+        runMigrations tr conn migrations
         installIndexes nullTracer conn SkipNonEssentialIndexes
         execute_ conn "PRAGMA synchronous = OFF"
         execute_ conn "PRAGMA journal_mode = OFF"
@@ -494,7 +501,7 @@ copyDatabase (tr, progress) fromDir intoDir patterns = do
         copyFile fromFile intoFile
         lock <- newLock
         withShortLivedConnection tr ReadOnly lock longestRollback (OnDisk fromFile) $ \from -> do
-            withWriteOnlyConnection (OnDisk intoFile) $ \conn into -> do
+            withWriteOnlyConnection tr (OnDisk intoFile) $ \conn into -> do
                 execute_ conn "PRAGMA foreign_keys = OFF"
                 mapM_ (cleanup conn) ["inputs", "policies", "patterns"]
                 runTransaction into (insertPatterns into patterns)
@@ -1100,33 +1107,6 @@ retryWhenBusy tr retryPolicy attempts action =
   where
     retryingIn = retryPolicy attempts
 
--- NOTE: Not using sqlite-simple's version because it lacks the crucial
--- 'onException' on commits; The commit operation may throw an 'SQLiteBusy'
--- exception when concurrent transactions are begin executed.
--- Yet, because it doesn't rollback in this case, it leaves the transaction in
--- an odd shrodinger state and makes it hard for the caller to properly handle
--- the exception (was the transaction rolled back or not? Is it safe to retry
--- it?). So, this slightly modified version makes sure to also rollback on a
--- failed commit; allowing caller to simply retry the whole transaction on
--- failure.
-withTransaction :: Connection -> ConnectionType -> IO a -> IO a
-withTransaction conn mode action =
-  mask $ \restore -> do
-    begin mode
-    r <- restore action `onException` rollback
-    commit `onException` rollback
-    return r
-  where
-    begin = \case
-        ReadOnly ->
-            execute_ conn "BEGIN DEFERRED TRANSACTION"
-        ReadWrite ->
-            execute_ conn "BEGIN IMMEDIATE TRANSACTION"
-        WriteOnly ->
-            execute_ conn "BEGIN EXCLUSIVE TRANSACTION"
-    commit   = execute_ conn "COMMIT TRANSACTION"
-    rollback = execute_ conn "ROLLBACK TRANSACTION"
-
 -- Run one or more effectful queries (DELETE, UPDATE, ...) and return the total number
 -- of changes.
 withTotalChanges :: Connection -> IO () -> IO Int
@@ -1242,73 +1222,8 @@ dropIndexIfExists tr conn indexName wasTemporary = do
         ]
 
 --
--- Migrations
---
-
-type MigrationRevision = Int
-
-type Migration = [Query]
-
-databaseVersion :: Connection -> IO MigrationRevision
-databaseVersion conn =
-    withStatement conn "PRAGMA user_version" $ \stmt -> do
-        nextRow stmt >>= \case
-            Just (Only version) ->
-                pure version
-            _unexpectedVersion ->
-                throwIO UnexpectedUserVersion
-
-runMigrations :: Tracer IO TraceDatabase -> Connection -> MigrationRevision -> IO ()
-runMigrations tr conn currentVersion = do
-    let missingMigrations = drop currentVersion migrations
-    traceWith tr (DatabaseCurrentVersion currentVersion)
-    if null missingMigrations then
-        traceWith tr DatabaseNoMigrationNeeded
-    else do
-        let targetVersion = currentVersion + length missingMigrations
-        traceWith tr $ DatabaseRunningMigration currentVersion targetVersion
-        executeMigrations missingMigrations
-  where
-    executeMigrations = \case
-        [] -> do
-            pure ()
-        (instructions):rest -> do
-            void $ withTransaction conn ReadWrite $ traverse (execute_ conn) instructions
-            executeMigrations rest
-
-migrations :: [Migration]
-migrations =
-    [ mkMigration ix (decodeUtf8 migration)
-    | (ix, migration) <- zip
-        [1..]
-        [ $(embedFile "db/v1.0.0-beta/001.sql")
-        , $(embedFile "db/v1.0.0/001.sql")
-        , $(embedFile "db/v1.0.0/002.sql")
-        , $(embedFile "db/v1.0.1/001.sql")
-        , $(embedFile "db/v2.0.0-beta/001.sql")
-        , $(embedFile "db/v2.1.0/001.sql")
-        , $(embedFile "db/v2.1.0/002.sql")
-        , $(embedFile "db/v2.1.0/003.sql")
-        , $(embedFile "db/v2.2.0/001.sql")
-        , $(embedFile "db/v2.10.0/001.sql")
-        ]
-    ]
-  where
-    mkMigration :: Int -> Text -> Migration
-    mkMigration i sql =
-        ("PRAGMA user_version = " <> show i <> ";")
-        : (fmap Query . filter (not . T.null . T.strip) . T.splitOn ";") sql
-
---
 -- Exceptions
 --
-
--- | Somehow, a 'PRAGMA user_version' didn't yield a number but, either nothing
--- or something else?
-data UnexpectedUserVersionException
-    = UnexpectedUserVersion
-    deriving Show
-instance Exception UnexpectedUserVersionException
 
 -- | Something went wrong when unmarshalling data from the database.
 data UnexpectedRowException

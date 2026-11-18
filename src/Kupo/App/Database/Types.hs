@@ -235,6 +235,38 @@ data TraceDatabase where
     DatabaseRunningMigration
         :: { from :: Int, to :: Int }
         -> TraceDatabase
+    DatabaseMigrationFailed
+        :: { failedMigration :: Text, errorMessage :: Text }
+        -> TraceDatabase
+    DatabaseMigrationRequired
+        :: { pendingMigrations :: [Text], hint :: Text }
+        -> TraceDatabase
+    DatabasePendingRepairs
+        :: { pendingRepairs :: [Text], hint :: Text }
+        -> TraceDatabase
+    DatabaseReplicaNotMigrated
+        :: { unappliedMigrations :: [Text], hint :: Text }
+        -> TraceDatabase
+    DatabaseMigratedByNewerKupo
+        :: { unknownMigrations :: [Text], hint :: Text }
+        -> TraceDatabase
+    DatabaseRepairPostponed
+        :: { repair :: Text, unmetPrecondition :: Text }
+        -> TraceDatabase
+    DatabaseRepairStarted
+        :: { repair :: Text, resumeFrom :: Maybe Text }
+        -> TraceDatabase
+    DatabaseRepairBatch
+        :: { repair :: Text, batch :: Word, cursor :: Maybe Text }
+        -> TraceDatabase
+    DatabaseRepairFailed
+        :: { repair :: Text, errorMessage :: Text }
+        -> TraceDatabase
+    DatabaseRepairApplied
+        :: { repair :: Text, summary :: Text }
+        -> TraceDatabase
+    DatabaseUpToDate
+        :: TraceDatabase
     DatabaseCreateIndex
         :: { newIndex :: Text }
         -> TraceDatabase
@@ -284,6 +316,17 @@ instance HasSeverityAnnotation TraceDatabase where
         DatabaseCurrentVersion{}       -> Info
         DatabaseNoMigrationNeeded{}    -> Debug
         DatabaseRunningMigration{}     -> Notice
+        DatabaseMigrationFailed{}      -> Error
+        DatabaseMigrationRequired{}    -> Error
+        DatabasePendingRepairs{}       -> Warning
+        DatabaseReplicaNotMigrated{}   -> Warning
+        DatabaseMigratedByNewerKupo{}  -> Error
+        DatabaseRepairPostponed{}      -> Warning
+        DatabaseRepairStarted{}        -> Notice
+        DatabaseRepairBatch{}          -> Info
+        DatabaseRepairFailed{}         -> Error
+        DatabaseRepairApplied{}        -> Notice
+        DatabaseUpToDate{}             -> Notice
         DatabaseRunningInMemory{}      -> Warning
         DatabaseCreateIndex{}          -> Notice
         DatabaseIndexAlreadyExists{}   -> Debug

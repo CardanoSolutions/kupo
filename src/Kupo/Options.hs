@@ -22,6 +22,7 @@ module Kupo.Options
       -- * Tracers
     , Tracers (..)
     , TracersCopy (..)
+    , TracersMigrate (..)
     ) where
 
 import Kupo.Prelude hiding
@@ -110,6 +111,8 @@ data Command
     = Run !Configuration !(Tracers IO MinSeverities)
     | Copy !FilePath !FilePath !(Set Pattern)
     | HealthCheck !String !Int
+    | DbStatus !FilePath
+    | DbMigrate !FilePath !Bool
     | Version
     deriving (Eq, Show)
 
@@ -135,6 +138,8 @@ parserInfo = info (helper <*> parser) $ mempty
         healthCheckCommand
         <|>
         copyCommand
+        <|>
+        databaseCommand
         <|>
         ( Run
             <$> ( Configuration
@@ -397,6 +402,23 @@ tracersOption = fmap defaultTracers $ option severity $ mempty
             , [ "- Off" ]
             ]
 
+-- | --workdir=DIRECTORY
+workdirOption :: Parser FilePath
+workdirOption = option str $ mempty
+    <> long "workdir"
+    <> metavar "DIRECTORY"
+    <> help "Path to the working directory that holds the database."
+    <> completer (bashCompleter "directory")
+
+-- | [--confirm-complete-index]
+confirmCompleteIndexFlag :: Parser Bool
+confirmCompleteIndexFlag = switch $ mempty
+    <> long "confirm-complete-index"
+    <> help
+        ( "Confirm that the index matches '*' and was synchronised from origin. "
+          <> "Some data repairs need it, because the database cannot prove it."
+        )
+
 -- | --{from,into}=FILEPATH
 copyFilePathOption :: String -> Parser FilePath
 copyFilePathOption optName =
@@ -458,6 +480,35 @@ copyCommand =
         <*> copyFilePathOption "into"
         <*> fmap fromList (many patternOption)
 
+-- | db (status | migrate) --workdir DIRECTORY [--confirm-complete-index]
+databaseCommand :: Parser Command
+databaseCommand =
+    subparser $ command "db" $ info (helper <*> subcommands) $ mempty
+        <> progDesc "Show or apply the database migrations."
+  where
+    subcommands = subparser $ mempty
+        <> command "status" (info (helper <*> statusParser) $ mempty
+            <> progDesc
+                ( "Show the state of every database migration, without writing to the database. "
+                  <> "Exit with 3 when the database needs a blocking migration, and with 1 when "
+                  <> "a newer Kupo migrated it, as Kupo would at startup."
+                )
+           )
+        <> command "migrate" (info (helper <*> migrateParser) $ mempty
+            <> progDesc
+                ( "Apply every pending migration, blocking ones included, then run the pending "
+                  <> "data repairs. Resume an interrupted repair. Stop Kupo first. "
+                  <> "Exit with 1 when a repair stays pending."
+                )
+           )
+
+    statusParser = DbStatus
+        <$> workdirOption
+
+    migrateParser = DbMigrate
+        <$> workdirOption
+        <*> confirmCompleteIndexFlag
+
 --
 -- Tracers
 --
@@ -489,6 +540,14 @@ data TracersCopy m (kind :: TracerDefinition) = TracersCopy
 
 deriving instance Show (TracersCopy m MinSeverities)
 deriving instance Eq (TracersCopy m MinSeverities)
+
+data TracersMigrate m (kind :: TracerDefinition) = TracersMigrate
+    { tracerMigrate
+        :: !(TracerHKD kind (Tracer m TraceDatabase))
+    } deriving (Generic)
+
+deriving instance Show (TracersMigrate m MinSeverities)
+deriving instance Eq (TracersMigrate m MinSeverities)
 
 --
 -- Helper
