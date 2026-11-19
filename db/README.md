@@ -110,6 +110,12 @@ Kupo refuses a database whose registry holds an id that it does not know, becaus
 
 - Add a `migrations` table that records the state of each migration.
 
+### Migration to `version=12`
+
+- Register a data repair, applied by `kupo db migrate`, that fixes `spent_by` and `spent_with` of the spends recorded before the cutoff slot: since v2.10.0, Kupo numbered the inputs of a transaction from the last one.
+- On a database upgraded from `version=9` or older, which holds no such spends, record the repair as skipped instead.
+- The repair needs an index that matches `*`, was synchronised from origin and was never pruned with `--prune-utxo`: an interrupted prune can leave only the last inputs of a transaction, which look like a complete set. Resynchronise any other index.
+
 <p align="right"><code>v2.10.0</code></p>
 <hr/>
 

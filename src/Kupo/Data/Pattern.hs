@@ -578,9 +578,9 @@ matchBlock Codecs{..} patterns blk =
         -> Match result bin script policy
     fn pt ix tx Match{consumed, produced, datums, scripts, policies} = Match
         { consumed = Map.alter
-            (\st -> Just $ fst $ foldr
-                (\ref (refs, i) -> ((MatchOutputReference ref, i, spendRedeemer @block tx i):refs, i + 1))
-                (fromMaybe mempty st, 0)
+            (\st -> Just $ foldrWithIndex
+                (\i ref refs -> (MatchOutputReference ref, i, spendRedeemer @block tx i):refs)
+                (fromMaybe mempty st)
                 (spentInputs @block tx)
             )
             (getTransactionId tx, getPointSlotNo pt)
