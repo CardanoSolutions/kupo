@@ -114,6 +114,8 @@ invalidMatchFilter =
         { hint = "Invalid or incomplete filter query parameters! 'policy_id' and \
                  \'asset_name' query values must be encoded in base16. Be aware \
                  \that you MUST specify a 'policy_id' if you specify an 'asset_name'. \
+                 \'top_level_transaction_id' cannot be combined with 'policy_id', \
+                 \'transaction_id' or 'output_index'. \
                  \In case of doubts, check the documentation at: <https://cardanosolutions.github.io/kupo>!"
         , details = Nothing
         }

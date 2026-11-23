@@ -154,6 +154,9 @@ data Input = Input
     , spentAtHeaderHash :: !(Maybe ByteString)
     , spentBy :: !(Maybe ByteString)
     , spentWith :: !(Maybe ByteString)
+    , subTransactionIndex :: !(Maybe Word64)
+    , topLevelTransactionId :: !(Maybe ByteString)
+    , spentByTopLevelTransactionId :: !(Maybe ByteString)
     } deriving (Show)
 
 resultFromRow
@@ -178,6 +181,10 @@ resultFromRow row = App.Result
         outputReferenceFromRow <$> spentBy row
     , App.spentWith =
         redeemerFromRow <$> spentWith row
+    , App.subTransactionOf =
+        (,) <$> (unsafeTransactionIdFromBytes <$> topLevelTransactionId row) <*> subTransactionIndex row
+    , App.spentByTopLevelTransactionId =
+        unsafeTransactionIdFromBytes <$> spentByTopLevelTransactionId row
     }
 
 resultToRow
@@ -214,6 +221,14 @@ resultToRow x =
 
     spentWith =
         redeemerToRow <$> App.spentWith x
+
+    (topLevelTransactionId, subTransactionIndex) =
+        ( transactionIdToBytes . fst <$> App.subTransactionOf x
+        , snd <$> App.subTransactionOf x
+        )
+
+    spentByTopLevelTransactionId =
+        transactionIdToBytes <$> App.spentByTopLevelTransactionId x
 
 --
 -- Policy

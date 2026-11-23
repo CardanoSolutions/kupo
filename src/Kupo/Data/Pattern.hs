@@ -53,6 +53,7 @@ import Kupo.Data.Cardano
     , ScriptHash
     , ScriptReference (..)
     , SlotNo
+    , SubTransactionIndex
     , TransactionId
     , TransactionIndex
     , Value
@@ -442,6 +443,10 @@ data Result = Result
     , spentAt :: !(Maybe Point)
     , spentBy :: !(Maybe OutputReference)
     , spentWith :: !(Maybe BinaryData)
+    , subTransactionOf :: !(Maybe (TransactionId, SubTransactionIndex))
+        -- ^ For an output of a sub-transaction: the id of its top-level transaction, and its position in it.
+    , spentByTopLevelTransactionId :: !(Maybe TransactionId)
+        -- ^ For an input spent by a sub-transaction: the id of its top-level transaction.
     } deriving (Show, Eq)
 
 resultToJson
@@ -456,6 +461,10 @@ resultToJson referenceFlag quantityEncoding Result{..} = Json.pairs $ mconcat
         (transactionIdToJson (getTransactionId $ fst outputReference))
     , Json.pair "output_index"
         (outputIndexToJson (getOutputIndex $ fst outputReference))
+    , Json.pair "sub_transaction_index"
+        (maybe Json.null_ (toEncoding . snd) subTransactionOf)
+    , Json.pair "top_level_transaction_id"
+        (maybe Json.null_ (transactionIdToJson . fst) subTransactionOf)
     , Json.pair "address"
         (addressToJson address)
     , Json.pair "value"
@@ -493,6 +502,8 @@ resultToJson referenceFlag quantityEncoding Result{..} = Json.pairs $ mconcat
                         (headerHashToJson (unsafeGetPointHeaderHash point))
                     , Json.pair "transaction_id"
                         (maybe Json.null_ (transactionIdToJson . getTransactionId) spentBy)
+                    , Json.pair "top_level_transaction_id"
+                        (maybe Json.null_ transactionIdToJson spentByTopLevelTransactionId)
                     , Json.pair "input_index"
                         (maybe Json.null_ (outputIndexToJson . getOutputIndex) spentBy)
                     , Json.pair "redeemer"
@@ -532,7 +543,8 @@ data Codecs result bin script policy = Codecs
 
 -- | A higher-level record to represent the aggregation of matched results.
 data Match result bin script policy = Match
-    { consumed :: !(Map (TransactionId, SlotNo) [(Pattern, InputIndex, Maybe BinaryData)])
+    { consumed :: !(Map (TransactionId, Maybe TransactionId, SlotNo) [(Pattern, InputIndex, Maybe BinaryData)])
+        -- ^ Spent inputs, by spending transaction, its top-level transaction if it is a sub-transaction, and slot.
     , produced :: ![result]
     , datums :: ![bin]
     , scripts :: ![script]
@@ -568,36 +580,46 @@ matchBlock
     -> block
     -> Match result bin script policy
 matchBlock Codecs{..} patterns blk =
-    let pt = getPoint blk in foldBlock (fn pt) mempty blk
+    let pt = getPoint blk in foldBlock (fnBatch pt) mempty blk
   where
-    fn
+    -- Sub-transactions share the transaction index of their top-level transaction.
+    -- A discarded (phase-2 invalid) transaction or sub-transaction still puts its datums
+    -- and scripts on chain, so only those are collected, for lookup by hash.
+    fnBatch
         :: Point
         -> TransactionIndex
         -> BlockBody block
         -> Match result bin script policy
         -> Match result bin script policy
-    fn pt ix tx Match{consumed, produced, datums, scripts, policies} = Match
+    fnBatch pt ix tx result =
+        foldr
+            (\(subIx, subTx) -> fn pt ix (Just (getTransactionId tx, subIx)) subTx)
+            (fn pt ix Nothing tx (foldr collectWitnesses result (discardedSubTransactions @block tx)))
+            (zip [0 ..] (subTransactions @block tx))
+
+    fn
+        :: Point
+        -> TransactionIndex
+        -> Maybe (TransactionId, SubTransactionIndex)
+        -> BlockBody block
+        -> Match result bin script policy
+        -> Match result bin script policy
+    fn pt ix sub tx Match{consumed, produced, datums, scripts, policies} = collectWitnesses tx Match
         { consumed = Map.alter
             (\st -> Just $ foldrWithIndex
                 (\i ref refs -> (MatchOutputReference ref, i, spendRedeemer @block tx i):refs)
                 (fromMaybe mempty st)
                 (spentInputs @block tx)
             )
-            (getTransactionId tx, getPointSlotNo pt)
+            (getTransactionId tx, fst <$> sub, getPointSlotNo pt)
             consumed
 
         , produced =
             newProduced
 
-        , datums = Map.foldrWithKey
-            (\k v accum -> toBinaryData k v : accum)
-            datums
-            (witnessedDatums @block tx)
+        , datums
 
-        , scripts = Map.foldrWithKey
-            (\k v accum -> toScript k v : accum)
-            scripts
-            (witnessedScripts @block tx)
+        , scripts
 
         , policies =
             newPolicies
@@ -608,20 +630,37 @@ matchBlock Codecs{..} patterns blk =
                 (\pattern_ ->
                     flip
                         (foldr (\(r, p) (rs, ps) -> (r:rs, Set.union p ps)))
-                        (mapMaybeOutputs @block (match pt ix pattern_) tx)
+                        (mapMaybeOutputs @block (match pt ix sub pattern_) tx)
                 )
                 (produced, policies)
                 patterns
 
+    collectWitnesses
+        :: BlockBody block
+        -> Match result bin script policy
+        -> Match result bin script policy
+    collectWitnesses tx result@Match{datums, scripts} = result
+        { datums = Map.foldrWithKey
+            (\k v accum -> toBinaryData k v : accum)
+            datums
+            (witnessedDatums @block tx)
+
+        , scripts = Map.foldrWithKey
+            (\k v accum -> toScript k v : accum)
+            scripts
+            (witnessedScripts @block tx)
+        }
+
     match
         :: Point
         -> TransactionIndex
+        -> Maybe (TransactionId, SubTransactionIndex)
         -> Pattern
         -> OutputReference
         -> Output
         -> Metadata
         -> Maybe (result, Set policy)
-    match pt ix m outRef output metadata = do
+    match pt ix sub m outRef output metadata = do
         matching outRef output metadata m $>
             ( toResult Result
                 { outputReference = (outRef, ix)
@@ -633,6 +672,8 @@ matchBlock Codecs{..} patterns blk =
                 , spentAt = Nothing
                 , spentBy = Nothing
                 , spentWith = Nothing
+                , subTransactionOf = sub
+                , spentByTopLevelTransactionId = Nothing
                 }
             , foldrValue
                 (\policy _ -> Set.insert (toPolicy outRef policy))

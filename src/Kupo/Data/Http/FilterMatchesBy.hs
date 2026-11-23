@@ -27,6 +27,7 @@ data FilterMatchesBy
     = FilterByAssetId !AssetId
     | FilterByPolicyId !PolicyId
     | FilterByTransactionId !TransactionId
+    | FilterByTopLevelTransactionId !TransactionId
     | FilterByOutputReference !OutputReference
     | NoFilter
     deriving (Eq, Show, Generic)
@@ -40,6 +41,10 @@ data FilterMatchesBy
 -- The latter can be specified alone, whereas the former can only be specified
 -- if 'policy_id' is also present.
 --
+-- 'top_level_transaction_id' selects the outputs of the sub-transactions of a
+-- transaction. It cannot be combined with 'policy_id', 'transaction_id' or
+-- 'output_index'.
+--
 -- For examples:
 --
 -- ✓ ?policy_id=123
@@ -49,6 +54,7 @@ data FilterMatchesBy
 -- ✓ ?transaction_id=d0ae0c50209357e1356333b10d3a59ff4732e493f06c0ed9e82d1beacdd0343f
 -- ✓ ?foo=bar&transaction_id=d0ae0c50209357e1356333b10d3a59ff4732e493f06c0ed9e82d1beacdd0343f
 -- ✓ ?transaction_id=d0ae0c50209357e1356333b10d3a59ff4732e493f06c0ed9e82d1beacdd0343f&output_index=14
+-- ✓ ?top_level_transaction_id=d0ae0c50209357e1356333b10d3a59ff4732e493f06c0ed9e82d1beacdd0343f
 --
 -- x ?asset_name=456
 -- x ?policy_id=123&policy_id=456
@@ -57,27 +63,28 @@ data FilterMatchesBy
 -- x ?transaction_id=d0ae0c50209357e1356333b10d3a59ff4732e493f06c0ed9e82d1beacdd0343f&output_index=14&output_index=42
 -- x ?output_index=14
 -- x ?policy_id=d0ae0c50209357e1356333b10d3a59ff4732e493f06c0ed9e82d1bea&transaction_id=d0ae0c50209357e1356333b10d3a59ff4732e493f06c0ed9e82d1beacdd0343f
+-- x ?transaction_id=d0ae0c50209357e1356333b10d3a59ff4732e493f06c0ed9e82d1beacdd0343f&top_level_transaction_id=8beca7a84b0ed6d6c22d5f0edb8964a48b9566db20ef2a42c5ae609553a3fd89
+-- x ?top_level_transaction_id=d0ae0c50209357e1356333b10d3a59ff4732e493f06c0ed9e82d1beacdd0343f&output_index=14
 --
 filterMatchesBy
     :: Http.Query
     -> Maybe FilterMatchesBy
-filterMatchesBy = search Nothing Nothing
+filterMatchesBy = search Nothing Nothing Nothing
   where
-    search byPolicyId byTransactionId = \case
+    search byPolicyId byTransactionId byTopLevelTransactionId = \case
         [] ->
-            case (byPolicyId, byTransactionId) of
-                (Just{}, Just{})   -> Nothing
-                (Just f, Nothing)  -> Just f
-                (Nothing, Just f)  -> Just f
-                (Nothing, Nothing) -> Just NoFilter
+            case catMaybes [byPolicyId, byTransactionId, byTopLevelTransactionId] of
+                []  -> Just NoFilter
+                [f] -> Just f
+                _   -> Nothing
         ("policy_id", Just bytes):rest -> do
             str <- either (const Nothing) pure (decodeUtf8' bytes)
             guard (isNothing byPolicyId)
             policyId <- policyIdFromText str
-            search (Just (FilterByPolicyId policyId)) byTransactionId rest
+            search (Just (FilterByPolicyId policyId)) byTransactionId byTopLevelTransactionId rest
         ("asset_name", Just bytes):rest -> do
             str <- either (const Nothing) pure (decodeUtf8' bytes)
-            policyId <- case search byPolicyId byTransactionId rest of
+            policyId <- case search byPolicyId byTransactionId byTopLevelTransactionId rest of
                 Just (FilterByPolicyId policyId) ->
                     Just policyId
                 _noPolicyId ->
@@ -86,7 +93,7 @@ filterMatchesBy = search Nothing Nothing
             pure $ FilterByAssetId (policyId, assetName)
         ("output_index", Just bytes):rest -> do
             str <- either (const Nothing) pure (decodeUtf8' bytes)
-            txId <- case search byPolicyId byTransactionId rest of
+            txId <- case search byPolicyId byTransactionId byTopLevelTransactionId rest of
                 Just (FilterByTransactionId tId) ->
                     Just tId
                 _noTransactionId ->
@@ -97,6 +104,11 @@ filterMatchesBy = search Nothing Nothing
             str <- either (const Nothing) pure (decodeUtf8' bytes)
             guard (isNothing byTransactionId)
             outputRef <- transactionIdFromText str
-            search byPolicyId (Just (FilterByTransactionId outputRef)) rest
+            search byPolicyId (Just (FilterByTransactionId outputRef)) byTopLevelTransactionId rest
+        ("top_level_transaction_id", Just bytes):rest -> do
+            str <- either (const Nothing) pure (decodeUtf8' bytes)
+            guard (isNothing byTopLevelTransactionId)
+            transactionId <- transactionIdFromText str
+            search byPolicyId byTransactionId (Just (FilterByTopLevelTransactionId transactionId)) rest
         _:rest ->
-            search byPolicyId byTransactionId rest
+            search byPolicyId byTransactionId byTopLevelTransactionId rest

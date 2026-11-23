@@ -1,11 +1,62 @@
 ## Overview
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./schema-dark.png">
-    <img alt="Database schema." src="./schema-light.png">
-  </picture>
-</p>
+The diagram below is maintained by hand and must be updated with each migration.
+
+```mermaid
+erDiagram
+    inputs {
+        BLOB ext_output_reference PK
+        TEXT address
+        BLOB value
+        BLOB datum_info "nullable"
+        BLOB script_hash "nullable"
+        INTEGER created_at
+        INTEGER spent_at "nullable"
+        BLOB spent_by "nullable"
+        BLOB spent_with "nullable"
+        INTEGER sub_transaction_index "nullable"
+        BLOB top_level_transaction_id "nullable"
+        BLOB spent_by_top_level_transaction_id "nullable"
+        BLOB output_reference UK "virtual"
+        BLOB output_index "virtual"
+        BLOB transaction_index "virtual"
+        BLOB datum_hash "virtual, nullable"
+        TEXT payment_credential "virtual, nullable"
+    }
+    policies {
+        BLOB output_reference PK, FK
+        BLOB policy_id PK
+    }
+    checkpoints {
+        BLOB header_hash
+        INTEGER slot_no PK
+    }
+    binary_data {
+        BLOB binary_data_hash PK
+        BLOB binary_data
+    }
+    scripts {
+        BLOB script_hash PK
+        BLOB script
+    }
+    patterns {
+        TEXT pattern PK
+    }
+    migrations {
+        TEXT id PK
+        TEXT state
+        INTEGER cutoff_slot "nullable"
+        BLOB cursor "nullable"
+        TEXT kupo_version "nullable"
+        INTEGER registered_at
+        INTEGER applied_at "nullable"
+    }
+    inputs ||--o{ policies : "output_reference, ON DELETE CASCADE"
+    checkpoints ||..o{ inputs : "created_at, lookup, no FK"
+    checkpoints |o..o{ inputs : "spent_at, lookup, no FK"
+    binary_data |o..o{ inputs : "datum_hash, lookup, no FK"
+    scripts |o..o{ inputs : "script_hash, lookup, no FK"
+```
 
 <details>
   <summary>See complete definition</summary>
@@ -21,12 +72,15 @@ CREATE TABLE `inputs` (
   `spent_at` INTEGER,
   `spent_by` BLOB,
   `spent_with` BLOB,
+  `sub_transaction_index` INTEGER,
+  `top_level_transaction_id` BLOB,
+  `spent_by_top_level_transaction_id` BLOB,
 
   `output_reference` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, 1, 34)) VIRTUAL,
   `output_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -4, 2)) VIRTUAL,
   `transaction_index` BLOB NOT NULL GENERATED ALWAYS AS (substr(`ext_output_reference`, -2)) VIRTUAL,
   `datum_hash` BLOB GENERATED ALWAYS AS (substr(`datum_info`, 2)) VIRTUAL,
-  `payment_credential` TEXT COLLATE NOCASE NOT NULL GENERATED ALWAYS AS (substr(`address`, -56)) VIRTUAL,
+  `payment_credential` TEXT COLLATE NOCASE GENERATED ALWAYS AS (substr(`address`, -56)) VIRTUAL,
 
   PRIMARY KEY (`ext_output_reference`)
 );
@@ -34,6 +88,7 @@ CREATE TABLE `inputs` (
 CREATE UNIQUE INDEX `inputsByOutputReference` ON `inputs` (`output_reference`);
 
 CREATE INDEX `inputsByAddress` ON `inputs` (`address` COLLATE NOCASE);
+CREATE INDEX `inputsByDatumHash` ON `inputs` (`datum_hash`);
 CREATE INDEX `inputsByPaymentCredential` ON `inputs` (`payment_credential` COLLATE NOCASE);
 CREATE INDEX `inputsByCreatedAt` ON `inputs` (`created_at`);
 CREATE INDEX `inputsBySpentAt` ON `inputs` (`spent_at`);
@@ -47,6 +102,8 @@ CREATE TABLE `policies` (
     REFERENCES inputs(`output_reference`)
     ON DELETE CASCADE
 );
+
+CREATE INDEX `policiesByPolicyId` ON `policies` (`policy_id`);
 
 CREATE TABLE `checkpoints` (
   `header_hash` BLOB NOT NULL,
@@ -115,6 +172,11 @@ Kupo refuses a database whose registry holds an id that it does not know, becaus
 - Register a data repair, applied by `kupo db migrate`, that fixes `spent_by` and `spent_with` of the spends recorded before the cutoff slot: since v2.10.0, Kupo numbered the inputs of a transaction from the last one.
 - On a database upgraded from `version=9` or older, which holds no such spends, record the repair as skipped instead.
 - The repair needs an index that matches `*`, was synchronised from origin and was never pruned with `--prune-utxo`: an interrupted prune can leave only the last inputs of a transaction, which look like a complete set. Resynchronise any other index.
+
+### Migration to `version=13`
+
+- Add `sub_transaction_index` and `top_level_transaction_id` columns to `inputs`. For an output created by a Dijkstra sub-transaction, they hold the position of the sub-transaction among those of its top-level transaction, starting at 0, and the id of the top-level transaction; `ext_output_reference` then holds the id of the sub-transaction itself. Both are `NULL` for an output of a top-level transaction.
+- Add a `spent_by_top_level_transaction_id` column to `inputs`. When a Dijkstra sub-transaction spends the output, it holds the id of the top-level transaction, and `spent_by` holds the id of the sub-transaction. It is `NULL` otherwise.
 
 <p align="right"><code>v2.10.0</code></p>
 <hr/>

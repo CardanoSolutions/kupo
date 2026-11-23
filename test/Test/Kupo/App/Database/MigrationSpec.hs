@@ -133,7 +133,7 @@ spec = parallel $ do
             and (zipWith (<) keys (drop 1 keys)) `shouldBe` True
 
         specify "the known migrations are automatic, apart from the spent input repair" $
-            migrationKind <$> migrations `shouldBe` (AutomaticKind <$ take 11 knownIds) <> [RepairKind]
+            migrationKind <$> migrations `shouldBe` (AutomaticKind <$ take 11 knownIds) <> [RepairKind, AutomaticKind]
 
         specify "a repair names an earlier migration as the one that introduced its data" $
             [ repairId
@@ -249,18 +249,27 @@ spec = parallel $ do
             userVersion conn `shouldReturn` [10]
             addCheckpoint conn
             runMigrations nullTracer conn migrations
-            userVersion conn `shouldReturn` [12]
+            userVersion conn `shouldReturn` [13]
             -- Backfilled rows have no kupo_version and no applied_at.
             registryRows conn `shouldReturn`
                 [ (migrationId, "applied", isRegistry, isRegistry)
                 | Migration{migrationId} <- take 11 migrations
                 , let isRegistry = migrationId == "v2.12.0/001"
                 ]
-                <> [("v2.12.0/002", "pending", True, False)]
+                <> [("v2.12.0/002", "pending", True, False), ("v2.12.0/003", "applied", True, True)]
+
+        specify "an upgrade from user_version 12 adds empty sub-transaction columns to inputs" $ withDatabase $ \conn -> do
+            runMigrations nullTracer conn (take 12 migrations)
+            addCheckpoint conn
+            execute_ conn "INSERT INTO inputs (ext_output_reference, address, value, created_at) VALUES (zeroblob(36), 'addr', x'00', 42)"
+            runMigrations nullTracer conn migrations
+            userVersion conn `shouldReturn` [13]
+            query_ conn "SELECT sub_transaction_index, top_level_transaction_id, spent_by_top_level_transaction_id FROM inputs"
+                `shouldReturn` [(Nothing, Nothing, Nothing) :: (Maybe Int, Maybe ByteString, Maybe ByteString)]
 
         specify "a fresh database records repairs as skipped" $ withDatabase $ \conn -> do
             runMigrations nullTracer conn (migrations <> [synthetic RepairKind "test/repair"])
-            userVersion conn `shouldReturn` [13]
+            userVersion conn `shouldReturn` [14]
             registryRow conn "v2.12.0/002" `shouldReturn` [("skipped", Nothing)]
             registryRow conn "test/repair" `shouldReturn` [("skipped", Nothing)]
 
@@ -270,7 +279,7 @@ spec = parallel $ do
                 addCheckpoint conn
                 runMigrations nullTracer conn $
                     migrations <> [synthetic RepairKind "test/repair", syntheticTable Automatic "after"]
-                userVersion conn `shouldReturn` [14]
+                userVersion conn `shouldReturn` [15]
                 registryRow conn "test/repair" `shouldReturn` [("pending", Just 42)]
                 registryRow conn "test/after" `shouldReturn` [("applied", Nothing)]
                 syntheticTables conn `shouldReturn` ["synthetic_after"]
@@ -286,7 +295,7 @@ spec = parallel $ do
                         ]
                 runMigrations nullTracer conn extended
                     `shouldThrow` isMigrationRequiredFor ["test/blocking", "test/after"]
-                userVersion conn `shouldReturn` [13]
+                userVersion conn `shouldReturn` [14]
                 syntheticTables conn `shouldReturn` ["synthetic_before"]
                 registryRow conn "test/before" `shouldReturn` [("applied", Nothing)]
                 registryRow conn "test/blocking" `shouldReturn` []
@@ -510,7 +519,7 @@ spec = parallel $ do
             reportUnknown `shouldBe` []
             -- The database was fresh when Kupo registered the spent input repair.
             statusState <$> reportMigrations
-                `shouldBe` (Just Applied <$ take 11 migrations) <> [Just Skipped, Just Pending, Nothing]
+                `shouldBe` (Just Applied <$ take 11 migrations) <> [Just Skipped, Just Applied, Just Pending, Nothing]
             drop (length migrations) reportMigrations `shouldBe`
                 [ MigrationStatus
                     { statusId = "test/repair"
@@ -675,6 +684,7 @@ knownIds =
     , "v2.10.0/001"
     , "v2.12.0/001"
     , "v2.12.0/002"
+    , "v2.12.0/003"
     ]
 
 -- Sorts ids such as @v1.0.0-beta/001@ by version, a pre-release before its release, then by

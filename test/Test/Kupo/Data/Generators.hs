@@ -40,6 +40,7 @@ import Kupo.Data.Cardano
     , ScriptHash
     , ScriptReference (..)
     , SlotNo (..)
+    , SubTransactionIndex
     , TransactionId
     , TransactionIndex
     , Value
@@ -257,6 +258,10 @@ genTransactionIndex :: Gen TransactionIndex
 genTransactionIndex =
     fromIntegral <$> choose (0 :: Int, 255)
 
+genSubTransactionIndex :: Gen SubTransactionIndex
+genSubTransactionIndex =
+    fromIntegral <$> choose (0 :: Int, 255)
+
 genPattern :: Gen Pattern
 genPattern = oneof
     [ MatchAny <$> elements [ IncludingBootstrap, OnlyShelley ]
@@ -293,6 +298,8 @@ genResultWith genPoint = Result
     <*> frequency [(1, pure Nothing), (5, Just <$> genPoint)]
     <*> frequency [(1, pure Nothing), (5, Just <$> genOutputReference)]
     <*> frequency [(1, pure Nothing), (5, Just <$> genBinaryData)]
+    <*> frequency [(5, pure Nothing), (1, Just <$> ((,) <$> genTransactionId <*> genSubTransactionIndex))]
+    <*> frequency [(5, pure Nothing), (1, Just <$> genTransactionId)]
 
 genOutput :: Gen Output
 genOutput = mkOutput

@@ -29,6 +29,7 @@ extra-source-files:
     db/v2.1.0/003.sql
     db/v2.10.0/001.sql
     db/v2.12.0/001.sql
+    db/v2.12.0/003.sql
     db/v2.2.0/001.sql
 data-files:
     docs/api/nightly.yaml
@@ -72,6 +73,7 @@ library
       Kupo.App.Database.Migration.V2_10_0_001
       Kupo.App.Database.Migration.V2_12_0_001
       Kupo.App.Database.Migration.V2_12_0_002
+      Kupo.App.Database.Migration.V2_12_0_003
       Kupo.App.Database.Migration.V2_1_0_001
       Kupo.App.Database.Migration.V2_1_0_002
       Kupo.App.Database.Migration.V2_1_0_003
@@ -205,7 +207,6 @@ library
     , bytestring
     , cardano-crypto-class
     , cardano-crypto-wrapper
-    , cardano-data
     , cardano-diffusion
     , cardano-ledger-allegra
     , cardano-ledger-alonzo
@@ -356,6 +357,7 @@ test-suite unit
       Test.Kupo.Data.OgmiosSpec
       Test.Kupo.Data.Pattern.Fixture
       Test.Kupo.Data.PatternSpec
+      Test.Kupo.Data.SubTransactionSpec
       Test.Kupo.Data.UtxoConstraint
       Test.Kupo.Fixture
       Test.Kupo.OptionsSpec
@@ -411,6 +413,10 @@ test-suite unit
     , base
     , bytestring
     , cardano-crypto-class
+    , cardano-ledger-alonzo
+    , cardano-ledger-core
+    , cardano-ledger-dijkstra
+    , cardano-protocol
     , containers
     , contra-tracer
     , directory
@@ -423,8 +429,10 @@ test-suite unit
     , io-classes:si-timers
     , io-sim
     , kupo
+    , lens
     , lens-aeson
     , openapi3
+    , ouroboros-consensus:cardano
     , process
     , quickcheck-state-machine
     , relude

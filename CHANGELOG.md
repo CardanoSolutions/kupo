@@ -4,7 +4,13 @@
 
 - Kupo now indexes Dijkstra blocks when it is connected directly to cardano-node. With Ogmios, Kupo stops with an error at the first Dijkstra block, because Ogmios does not serialise Dijkstra transactions yet.
 
-- A Dijkstra transaction that carries sub-transactions is not indexed yet. Kupo stops with an error that names the transaction.
+- Kupo now indexes Dijkstra sub-transactions when it is connected directly to cardano-node, instead of stopping at the first transaction that carries them. Kupo records the outputs that each sub-transaction creates and the inputs that it spends under the sub-transaction's own id, with the index of its top-level transaction in the block. A `*@<transaction id>` pattern matches the outputs of that transaction only, so the id of a top-level transaction does not match the outputs of its sub-transactions. When a top-level transaction fails phase-2 validation, its sub-transactions create and spend nothing.
+
+- Each match returned by `/matches` now carries `sub_transaction_index` and `top_level_transaction_id`. For an output created by a Dijkstra sub-transaction, they give the position of the sub-transaction among those of its top-level transaction, starting at 0, and the id of that top-level transaction; `transaction_id` stays the id of the sub-transaction itself. Both are `null` for an output of a top-level transaction. The `spent_at` object of a match gains `top_level_transaction_id`: the id of the top-level transaction when a sub-transaction spent the output, `null` otherwise. Existing fields keep their meaning, and `transaction_index` is still the position of the top-level transaction in the block.
+
+- `/matches` accepts a new `top_level_transaction_id` query filter. It returns the outputs created by the Dijkstra sub-transactions of that top-level transaction, and not the outputs of the top-level transaction itself, which `*@<transaction id>` and `transaction_id` still return. Like `transaction_id`, it cannot be combined with `policy_id`, `asset_name` or `output_index`, nor given twice, and `transaction_id` and `top_level_transaction_id` exclude each other; Kupo then answers with a 400 error. The `transaction_id` filter and the `*@<transaction id>` and `<output index>@<transaction id>` patterns accept the id of a sub-transaction.
+
+- `/metadata/{slot}` includes the metadata of Dijkstra sub-transactions. Each entry gains `transaction_id`, the id of the transaction that carries the metadata, and `top_level_transaction_id`, the id of the top-level transaction for a sub-transaction and `null` otherwise. The metadata of the sub-transactions of a transaction comes first, in the order the ledger applies them, followed by the metadata of the transaction itself. The `transaction_id` filter accepts the id of a sub-transaction. The sub-transactions of a transaction that fails phase-2 validation have no entry.
 
 - Kupo now records database migrations in a `migrations` table, and no longer runs heavy or breaking migrations silently at startup:
   - When the database needs a blocking migration, Kupo refuses to start and exits with code 3. Run `kupo db migrate`, then start Kupo again.
@@ -26,6 +32,8 @@
 - Fixed network synchronisation calculations (see [#191](https://github.com/CardanoSolutions/kupo/issues/191)).
 
 - Fixed the input index and the redeemer reported in `spent_at` (`input_index` and `redeemer`) for transactions that spend two or more inputs. Since 2.10.0, Kupo numbered the inputs from the last one, so the index and the redeemer did not match the ledger. They now follow the ledger's input order. For the spends recorded before the upgrade, Kupo registers a data repair, and warns at every start until it is applied. If the index matches `*`, was synchronised from origin and was never pruned with `--prune-utxo`, run `kupo db migrate --confirm-complete-index` to apply it; otherwise, resynchronise.
+
+- At startup, Kupo adds three empty columns to the `inputs` table of an existing database, to prepare the indexing of Dijkstra sub-transactions. The change is automatic and instant, and needs no action.
 
 #### Removed
 

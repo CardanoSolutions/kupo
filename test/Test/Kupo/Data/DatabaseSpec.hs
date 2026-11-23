@@ -17,6 +17,7 @@ import Database.SQLite.Simple
     ( Connection
     , Query (..)
     , SQLData (..)
+    , execute
     , executeMany
     , execute_
     , query_
@@ -78,6 +79,7 @@ import Kupo.Data.Cardano
     , getOutputIndex
     , getPointSlotNo
     , getValue
+    , mkOutputReference
     , policyIdToBytes
     , slotNoToText
     )
@@ -88,7 +90,8 @@ import Kupo.Data.Configuration
     , getLongestRollback
     )
 import Kupo.Data.Database
-    ( SortDirection (..)
+    ( Input (..)
+    , SortDirection (..)
     , addressFromRow
     , addressToRow
     , datumFromRow
@@ -190,6 +193,7 @@ import Test.QuickCheck.Property
     ( Testable
     )
 
+import qualified Data.ByteString as BS
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Prelude
@@ -224,6 +228,91 @@ spec = parallel $ do
                     , whereClause
                     ]
                 sort (rowToAddress <$> rows) `shouldBe` results
+
+    context "sub-transaction columns" $ do
+        specify "stores non-NULL values and lets markInputsQry write the spending top-level transaction" $ do
+            result <- generate genResult
+            let topLevel = BS.replicate 32 0xaa
+            let spender = BS.replicate 32 0xbb
+            let respender = BS.replicate 32 0xcc
+            let row = (resultToRow result)
+                    { subTransactionIndex = Just 3
+                    , topLevelTransactionId = Just topLevel
+                    , spentByTopLevelTransactionId = Just spender
+                    }
+            let selectColumns =
+                    "SELECT sub_transaction_index, top_level_transaction_id, \
+                    \spent_by_top_level_transaction_id FROM inputs"
+            (stored, marked) <- withInMemoryDatabase' identity InstallIndexesIfNotExist 10 $ \Database{..} -> do
+                runTransaction $ do
+                    insertCheckpoints [createdAt result]
+                    insertInputs [row]
+                runTransaction $ ReaderT $ \conn -> do
+                    stored <- query_ conn selectColumns
+                    execute conn (markInputsQry $ MatchOutputReference $ fst $ outputReference result)
+                        [ SQLInteger 1, SQLNull, SQLNull, SQLBlob respender ]
+                    marked <- query_ conn selectColumns
+                    pure (stored, marked)
+            stored `shouldBe` [[SQLInteger 3, SQLBlob topLevel, SQLBlob spender]]
+            marked `shouldBe` [[SQLInteger 3, SQLBlob topLevel, SQLBlob respender]]
+
+        specify "markInputs records the top-level transaction of a spending sub-transaction only" $ do
+            result <- generate genResult
+            (spentBySub, spentByTop) <- generate ((,) <$> genOutputReference <*> genOutputReference)
+            (spender, topLevel) <- generate ((,) <$> genTransactionId <*> genTransactionId)
+            let unspent ref = resultToRow result
+                    { outputReference = (ref, snd (outputReference result))
+                    , spentAt = Nothing
+                    , spentBy = Nothing
+                    , spentWith = Nothing
+                    , spentByTopLevelTransactionId = Nothing
+                    }
+            let slotNo = getPointSlotNo (createdAt result)
+            spends <- withInMemoryDatabase' identity InstallIndexesIfNotExist 10 $ \Database{..} -> do
+                runTransaction $ do
+                    insertCheckpoints [createdAt result]
+                    insertInputs (unspent <$> [spentBySub, spentByTop])
+                    void $ markInputs (spender, Just topLevel, slotNo) [(MatchOutputReference spentBySub, 1, Nothing)]
+                    void $ markInputs (topLevel, Nothing, slotNo) [(MatchOutputReference spentByTop, 0, Nothing)]
+                acc <- newIORef []
+                runTransaction $ foldInputs (MatchAny IncludingBootstrap) Whole NoStatusFlag AsReference Asc
+                    (\Result{outputReference = (ref, _), spentBy = by, spentByTopLevelTransactionId = byTopLevel} ->
+                        modifyIORef' acc ((ref, by, byTopLevel) :)
+                    )
+                readIORef acc
+            sort spends `shouldBe` sort
+                [ (spentBySub, Just (mkOutputReference spender 1), Just topLevel)
+                , (spentByTop, Just (mkOutputReference topLevel 0), Nothing)
+                ]
+
+        specify "orders sub-transaction outputs before top-level ones, and reverses it when descending" $ do
+            result <- generate genResult
+            let mkRow txId outputIndex subTransaction = (resultToRow result)
+                    { extendedOutputReference = BS.replicate 32 txId <> BS.pack [0, outputIndex, 0, 7]
+                    , spentAtSlotNo = Nothing
+                    , spentAtHeaderHash = Nothing
+                    , spentBy = Nothing
+                    , spentWith = Nothing
+                    , subTransactionIndex = subTransaction
+                    , topLevelTransactionId = BS.replicate 32 0xee <$ subTransaction
+                    }
+            let topLevel = mkRow 1 0 Nothing
+            let subOne = mkRow 2 0 (Just 1)
+            let subZeroLate = mkRow 3 5 (Just 0)
+            let subZeroEarly = mkRow 4 1 (Just 0)
+            let foldReferences direction Database{..} = do
+                    ref <- newIORef []
+                    runTransaction $ foldInputs (MatchAny IncludingBootstrap) Whole NoStatusFlag AsReference direction
+                        (\r -> modifyIORef' ref (extendedOutputReferenceToRow (outputReference r) :))
+                    reverse <$> readIORef ref
+            (asc, desc) <- withInMemoryDatabase' identity InstallIndexesIfNotExist 10 $ \db@Database{..} -> do
+                runTransaction $ do
+                    insertCheckpoints [createdAt result]
+                    insertInputs [topLevel, subOne, subZeroLate, subZeroEarly]
+                (,) <$> foldReferences Asc db <*> foldReferences Desc db
+            let expected = extendedOutputReference <$> [subZeroEarly, subZeroLate, subOne, topLevel]
+            asc `shouldBe` expected
+            desc `shouldBe` reverse expected
 
     context "checkpoints" $ do
         let k = 100
@@ -262,11 +351,14 @@ spec = parallel $ do
             let slot = getPointSlotNo . createdAt
             let txIx = snd . outputReference
             let outIx = getOutputIndex . fst . outputReference
+            let subIx = fmap snd . subTransactionOf
+            -- Outputs of sub-transactions come first, by sub-transaction index.
+            let batchIx x = (isNothing (subIx x), subIx x, outIx x)
 
             let oldestFirst current successor
                     | slot current == slot successor =
                         if txIx current == txIx successor then
-                            label "same transaction index" (outIx current <= outIx successor)
+                            label "same transaction index" (batchIx current <= batchIx successor)
                         else
                             property (txIx current < txIx successor)
                     | otherwise =
@@ -275,7 +367,7 @@ spec = parallel $ do
             let mostRecentFirst current successor
                     | slot current == slot successor =
                         if txIx current == txIx successor then
-                            label "same transaction index" (outIx current >= outIx successor)
+                            label "same transaction index" (batchIx current >= batchIx successor)
                         else
                             property (txIx current >= txIx successor)
                     | otherwise =
@@ -288,12 +380,13 @@ spec = parallel $ do
                     shrinkList (const [])
 
             let showResults xs = toString $ unlines
-                    [ "sl/tx/out"
-                    , "---------"
+                    [ "sl/tx/sub/out"
+                    , "-------------"
                     , T.intercalate "\n" $ fmap (\x ->
                             T.intercalate "/"
                                 [ slotNoToText (slot x)
                                 , show (txIx x)
+                                , maybe "-" show (subIx x)
                                 , show (outIx x)
                                 ]
                         ) xs

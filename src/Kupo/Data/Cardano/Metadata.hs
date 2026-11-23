@@ -26,6 +26,10 @@ import Kupo.Data.Cardano.MetadataHash
     ( MetadataHash
     , metadataHashToJson
     )
+import Kupo.Data.Cardano.TransactionId
+    ( TransactionId
+    , transactionIdToJson
+    )
 import Ouroboros.Consensus.Util
     ( eitherToMaybe
     )
@@ -157,10 +161,14 @@ metadataFromJson = fmap mkMetadata . Json.withObject "Metadata"
                 )
             pure (Ledger.Map xs)
 
-metadataToJson' :: (MetadataHash, Metadata) -> Json.Encoding
-metadataToJson' (hash, meta) =
+-- | The metadata of a transaction, with the id of that transaction and, for a
+-- sub-transaction, the id of its top-level transaction.
+metadataToJson' :: (TransactionId, Maybe TransactionId, MetadataHash, Metadata) -> Json.Encoding
+metadataToJson' (transactionId, topLevelTransactionId, hash, meta) =
     encodeObject
-        [ ("hash", metadataHashToJson hash)
+        [ ("transaction_id", transactionIdToJson transactionId)
+        , ("top_level_transaction_id", maybe Json.null_ transactionIdToJson topLevelTransactionId)
+        , ("hash", metadataHashToJson hash)
         , ("raw", Json.text (metadataToText meta))
         , ("schema", metadataToJson meta)
         ]

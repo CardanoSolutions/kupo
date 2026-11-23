@@ -36,6 +36,8 @@ data Transaction
         !(Ledger.Tx Ledger.TopTx ConwayEra)
     | TransactionDijkstra
         !(Ledger.Tx Ledger.TopTx DijkstraEra)
+    | SubTransactionDijkstra
+        !(Ledger.Tx Ledger.SubTx DijkstraEra)
 
 instance HasTransactionId Transaction where
     getTransactionId = \case
@@ -54,4 +56,6 @@ instance HasTransactionId Transaction where
         TransactionConway tx ->
             Ledger.txIdTx @ConwayEra tx
         TransactionDijkstra tx ->
+            Ledger.txIdTx @DijkstraEra tx
+        SubTransactionDijkstra tx ->
             Ledger.txIdTx @DijkstraEra tx

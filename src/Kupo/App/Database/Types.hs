@@ -88,7 +88,7 @@ data Database (m :: Type -> Type) = Database
         -> DBTransaction m Int
 
     , markInputs
-        :: (TransactionId, SlotNo)
+        :: (TransactionId, Maybe TransactionId, SlotNo)
         -> [(Pattern, InputIndex, Maybe BinaryData)]
         -> DBTransaction m Int
 

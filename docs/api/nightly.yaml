@@ -894,10 +894,21 @@ components:
       type: object
       additionalProperties: false
       required:
+        - transaction_id
+        - top_level_transaction_id
         - hash
         - schema
         - raw
       properties:
+        transaction_id:
+          $ref: "#/components/schemas/TransactionId"
+
+        top_level_transaction_id:
+          description: The id of the top-level transaction carrying the sub-transaction that holds this metadata. `null` when the metadata belongs to a top-level transaction.
+          oneOf:
+            - $ref: "#/components/schemas/TransactionId"
+            - type: "null"
+
         hash:
           type: string
           description: A blake2b-256 hash digest of the raw serialized data
@@ -1201,6 +1212,7 @@ components:
         - slot_no
         - header_hash
         - transaction_id
+        - top_level_transaction_id
         - input_index
         - redeemer
       properties:
@@ -1212,6 +1224,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/TransactionId"
             - type: "null"
+        top_level_transaction_id:
+          description: The id of the top-level transaction carrying the sub-transaction that spent this output. `null` unless the spending transaction is a sub-transaction, in which case `transaction_id` is the id of the sub-transaction itself.
+          oneOf:
+            - $ref: "#/components/schemas/TransactionId"
+            - type: "null"
         input_index:
           oneOf:
             - $ref: "#/components/schemas/InputIndex"
@@ -1220,6 +1237,12 @@ components:
           oneOf:
             - $ref: "#/components/schemas/BinaryData"
             - type: "null"
+
+    SubTransactionIndex:
+      type: integer
+      description: The position of a sub-transaction among the sub-transactions of its top-level transaction, starting at 0.
+      minimum: 0
+      example: 1
 
     TransactionId:
       type: string
@@ -1297,6 +1320,8 @@ components:
         - transaction_index
         - transaction_id
         - output_index
+        - sub_transaction_index
+        - top_level_transaction_id
         - address
         - value
         - datum_hash
@@ -1310,6 +1335,16 @@ components:
           $ref: "#/components/schemas/TransactionId"
         output_index:
           $ref: "#/components/schemas/OutputIndex"
+        sub_transaction_index:
+          description: The position of the sub-transaction that created this output among the sub-transactions of its top-level transaction, starting at 0. `null` for an output of a top-level transaction.
+          oneOf:
+            - $ref: "#/components/schemas/SubTransactionIndex"
+            - type: "null"
+        top_level_transaction_id:
+          description: The id of the top-level transaction carrying the sub-transaction that created this output. `null` for an output of a top-level transaction. For an output of a sub-transaction, `transaction_id` is the id of the sub-transaction itself.
+          oneOf:
+            - $ref: "#/components/schemas/TransactionId"
+            - type: "null"
         address:
           $ref: "#/components/schemas/Address"
         value:
@@ -1349,6 +1384,8 @@ components:
         - transaction_index
         - transaction_id
         - output_index
+        - sub_transaction_index
+        - top_level_transaction_id
         - address
         - value
         - datum_hash
@@ -1362,6 +1399,16 @@ components:
           $ref: "#/components/schemas/TransactionId"
         output_index:
           $ref: "#/components/schemas/OutputIndex"
+        sub_transaction_index:
+          description: The position of the sub-transaction that created this output among the sub-transactions of its top-level transaction, starting at 0. `null` for an output of a top-level transaction.
+          oneOf:
+            - $ref: "#/components/schemas/SubTransactionIndex"
+            - type: "null"
+        top_level_transaction_id:
+          description: The id of the top-level transaction carrying the sub-transaction that created this output. `null` for an output of a top-level transaction. For an output of a sub-transaction, `transaction_id` is the id of the sub-transaction itself.
+          oneOf:
+            - $ref: "#/components/schemas/TransactionId"
+            - type: "null"
         address:
           $ref: "#/components/schemas/Address"
         value:
@@ -1792,6 +1839,17 @@ components:
       description: |
         A query flag (i.e. `?strict`) to only look for checkpoints that strictly match the provided slot. The behavior otherwise is to look for the largest nearest slot smaller or equal to the one provided.
 
+    top-level-transaction-id:
+      name: top_level_transaction_id
+      in: query
+      required: false
+      schema:
+        $ref: "#/components/schemas/TransactionId"
+      description: |
+        Filters results by top-level transaction id to retrieve the outputs created by the sub-transactions of that transaction. Outputs created by the top-level transaction itself are not returned; match them with a `*@<transaction id>` pattern or the `transaction_id` filter.
+        Cannot be combined with `policy_id`, `asset_name`, `transaction_id` or `output_index`, nor given more than once; the server then answers with a 400 error.
+        Like the other query filters, it is applied after the pattern has selected its matches.
+
     transaction-id: &transaction-id
       name: transaction_id
       in: query
@@ -1800,6 +1858,7 @@ components:
         $ref: "#/components/schemas/TransactionId"
       description: |
         Filters results by transaction id to retrieve items originating from that transaction only.
+        The id of a Dijkstra sub-transaction is accepted too; it selects the outputs created by that sub-transaction.
         Useful when combined with a pattern as path-parameter.
 
         > <sup><strong>WARNING</strong></sup> <br/>
@@ -1877,6 +1936,7 @@ paths:
         - $ref: "#/components/parameters/asset-name"
         - $ref: "#/components/parameters/transaction-id"
         - $ref: "#/components/parameters/output-index"
+        - $ref: "#/components/parameters/top-level-transaction-id"
       responses:
         200:
           description: OK
@@ -1924,6 +1984,7 @@ paths:
         - $ref: "#/components/parameters/asset-name"
         - $ref: "#/components/parameters/transaction-id"
         - $ref: "#/components/parameters/output-index"
+        - $ref: "#/components/parameters/top-level-transaction-id"
       responses:
         200:
           description: OK
@@ -2251,11 +2312,11 @@ paths:
       description: |
         Retrieve all metadata data seen in a block at the given slot, possibly filtered by transaction id.
 
-        Metadata are ordered according to their respective transaction's order in the block.
+        Metadata are ordered according to their respective transaction's order in the block. The metadata of the sub-transactions of a Dijkstra transaction come first, in the order the ledger applies them, followed by the metadata of the transaction itself. Each entry names the transaction that carries the metadata. The sub-transactions of a transaction that fails phase-2 validation are not applied and have no entry.
       parameters:
         - <<: *transaction-id
           description: |
-            Filters results by transaction id to retrieve items originating from that transaction only.
+            Filters results by transaction id to retrieve items originating from that transaction only. The id of a sub-transaction selects the metadata of that sub-transaction alone.
       responses:
         200:
           description: OK

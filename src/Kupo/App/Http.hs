@@ -188,7 +188,6 @@ import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Types as Json
 import qualified Data.ByteString as BS
 import qualified Data.List as L
-import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified GHC.Clock
 import qualified Kupo.Data.Http.Default as Default
@@ -701,6 +700,8 @@ handleGetMatches resHeaders reqHeaders patternQuery queryParams Database{..} = h
                         \result -> fst (outputReference result) == outRef
                     FilterByTransactionId transactionId ->
                         \result -> (getTransactionId . fst . outputReference) result == transactionId
+                    FilterByTopLevelTransactionId transactionId ->
+                        \result -> (fst <$> subTransactionOf result) == Just transactionId
          in
             \yield result ->
                 when (predicateA result && predicateB result) (yield result)
@@ -816,16 +817,23 @@ handleGetMetadata baseHeaders slotArg queryParams Database{..} fetchBlock =
                     \yield done -> do
                         either throwIO pure (checkSubTransactions blk)
                         traverse_ yield $ foldBlock
-                            (\ix tx ->
-                                if isNothing filterBy || Just (getTransactionId tx) == filterBy then
-                                    Map.alter (const $ userDefinedMetadata @block tx) ix
-                                else
-                                    identity
-                            )
-                            mempty
+                            (\_ix tx -> (<>) (filter isSelected $ metadataOf tx))
+                            []
                             blk
                         done
         atomically (takeTMVar response)
+      where
+        isSelected (transactionId, _topLevelTransactionId, _hash, _metadata) =
+            isNothing filterBy || Just transactionId == filterBy
+
+    -- A transaction's sub-transactions come first, in the order the ledger applies them.
+    metadataOf tx =
+        catMaybes $
+            fmap (entry (Just tx)) (subTransactions @block tx) <> [entry Nothing tx]
+
+    entry topLevel tx = do
+        (hash, metadata) <- userDefinedMetadata @block tx
+        pure (getTransactionId tx, getTransactionId <$> topLevel, hash, metadata)
 
 --
 -- /patterns
