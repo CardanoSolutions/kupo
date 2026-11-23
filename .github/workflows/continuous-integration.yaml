@@ -87,47 +87,54 @@ jobs:
     # Use the PR head SHA on pull_request events (not $GITHUB_SHA, which is the
     # ephemeral merge commit GitHub creates server-side and that Hydra doesn't see).
     # Falls back to $GITHUB_SHA on push events.
-    - name: Wait for kupo-tests in Hydra cache
+    - name: Wait for kupo binaries in Hydra cache
       env:
         TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       run: |
         set -o pipefail
         echo "Target SHA: $TARGET_SHA"
-        if ! out=$(nix eval --raw "git+https://github.com/$GITHUB_REPOSITORY?rev=$TARGET_SHA&submodules=1#kupo-tests"); then
-          echo "nix eval failed"
-          exit 1
-        fi
-        if [ -z "$out" ]; then
-          echo "nix eval returned an empty path"
-          exit 1
-        fi
-        drv=$(nix eval --raw "git+https://github.com/$GITHUB_REPOSITORY?rev=$TARGET_SHA&submodules=1#kupo-tests.drvPath" 2>/dev/null || true)
-        echo "Resolved store path: $out"
-        echo "Derivation path:     $drv"
-        echo "Waiting for $out in cache..."
+        flake_ref="git+https://github.com/$GITHUB_REPOSITORY?rev=$TARGET_SHA&submodules=1"
         deadline=$((SECONDS + 1800))
-        while true; do
-          if nix path-info --refresh --store https://cache.iog.io "$out" >/dev/null 2>&1; then
-            echo "Found in cache"
-            break
-          fi
-          if [ "$SECONDS" -ge "$deadline" ]; then
-            echo "Timed out after 30 minutes waiting for Hydra cache (path: $out)"
+        for attr in kupo-tests kupo-tests-accept kupo; do
+          if ! out=$(nix eval --raw "$flake_ref#$attr"); then
+            echo "nix eval failed for $attr"
             exit 1
           fi
-          echo "Not in cache yet, waiting 30s..."
-          sleep 30
+          if [ -z "$out" ]; then
+            echo "nix eval returned an empty path for $attr"
+            exit 1
+          fi
+          drv=$(nix eval --raw "$flake_ref#$attr.drvPath" 2>/dev/null || true)
+          echo "[$attr] resolved store path: $out"
+          echo "[$attr] derivation path:     $drv"
+          echo "[$attr] waiting for $out in cache..."
+          while true; do
+            if nix path-info --refresh --store https://cache.iog.io "$out" >/dev/null 2>&1; then
+              echo "[$attr] found in cache"
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Timed out after 30 minutes waiting for Hydra cache ($attr path: $out)"
+              exit 1
+            fi
+            echo "[$attr] not in cache yet, waiting 30s..."
+            sleep 30
+          done
         done
 
-    - name: Download test binary from Hydra cache
+    - name: Download binaries from Hydra cache
       env:
         TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       run: |
-        nix build "git+https://github.com/$GITHUB_REPOSITORY?rev=$TARGET_SHA&submodules=1#kupo-tests" \
-          --builders "" --max-jobs 0
+        flake_ref="git+https://github.com/$GITHUB_REPOSITORY?rev=$TARGET_SHA&submodules=1"
         mkdir -p bin
-        cp result/bin/unit bin/unit
-        chmod +x bin/unit
+        for pair in "kupo-tests:unit" "kupo-tests-accept:accept" "kupo:kupo"; do
+          attr="${pair%%:*}"
+          exe="${pair##*:}"
+          nix build "$flake_ref#$attr" --builders "" --max-jobs 0 -o "result-$exe"
+          cp "result-$exe/bin/$exe" "bin/$exe"
+          chmod +x "bin/$exe"
+        done
 
     - name: Download cardano-node configs
       env:
@@ -167,11 +174,27 @@ jobs:
       env:
         CARDANO_NODE_SOCKET: ${{ runner.temp }}/ipc/node.socket
         CARDANO_NODE_CONFIG: ${{ github.workspace }}/config/preprod/config.json
+      run: sudo -E ./bin/unit
+
+    # The accept suite asks `cardano-cli` for the node tip. The attribute is
+    # cached on cache.iog.io; --max-jobs 0 stops CI from ever building it.
+    - name: Provide cardano-cli
+      run: |
+        nix build "github:IntersectMBO/cardano-node/$CARDANO_NODE_VERSION#cardano-cli" \
+          --builders "" --max-jobs 0 -o result-cardano-cli
+        cp result-cardano-cli/bin/cardano-cli bin/cardano-cli
+
+    # Run from the checkout: the suite reads and writes test-accept/point-*.dat.
+    # sudo resets PATH, so pass it explicitly.
+    - name: Run acceptance tests
+      env:
+        CARDANO_NODE_SOCKET: ${{ runner.temp }}/ipc/node.socket
+        CARDANO_NODE_CONFIG: ${{ github.workspace }}/config/preprod/config.json
       # Skipped tests are known to be flaky.
       run: |
-        sudo -E ./bin/unit \
-          --skip "Dynamically add pattern and restart to a past point when at the tip" \
-          --skip "Auto-magically restart when reaching the tip"
+        sudo -E env "PATH=$PWD/bin:$PATH" ./bin/accept \
+          --skip "Auto-magically restarts when --defer-db-indexes is enabled" \
+          --skip "Dynamically adds pattern and rolls back (when at tip)"
 
     - name: Stop cardano-node
       if: always() && steps.node.outputs.node-started == 'true'
