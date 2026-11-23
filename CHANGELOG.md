@@ -33,6 +33,8 @@
 
 - At startup, Kupo adds three empty columns to the `inputs` table of an existing database, to prepare the indexing of Dijkstra sub-transactions. The change is automatic and instant, and needs no action.
 
+- Kupo now returns datums and redeemers from Babbage and Conway transaction witnesses with their on-chain bytes, as it already does for inline datums and other eras. Earlier versions returned a re-encoding of the same value, which cannot be used as-is to spend an output locked by that datum's hash. Databases built by earlier versions keep the re-encoded bytes.
+
 #### Removed
 
 N/A

@@ -62,17 +62,19 @@ fromAlonzoData =
 {-# INLINEABLE fromAlonzoData #-}
 
 fromBabbageData
-    :: Ledger.Data BabbageEra
+    :: HasCallStack
+    => Ledger.Data BabbageEra
     -> BinaryData
 fromBabbageData =
-    Ledger.dataToBinaryData . Ledger.upgradeData
+    unsafeBinaryDataFromBytes . Ledger.originalBytes
 {-# INLINEABLE fromBabbageData #-}
 
 fromConwayData
-    :: Ledger.Data ConwayEra
+    :: HasCallStack
+    => Ledger.Data ConwayEra
     -> BinaryData
 fromConwayData =
-    Ledger.dataToBinaryData . Ledger.upgradeData
+    unsafeBinaryDataFromBytes . Ledger.originalBytes
 {-# INLINEABLE fromConwayData #-}
 
 fromDijkstraData

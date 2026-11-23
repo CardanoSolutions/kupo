@@ -11,11 +11,18 @@ module Test.Kupo.Data.CardanoSpec
 import Kupo.Prelude
 
 import Kupo.Data.Cardano
-    ( addressFromBytes
+    ( BinaryData
+    , addressFromBytes
     , assetNameFromText
     , assetNameToText
+    , binaryDataToBytes
     , datumHashFromText
     , datumHashToText
+    , fromAlonzoData
+    , fromBabbageData
+    , fromConwayData
+    , fromDijkstraData
+    , hashBinaryData
     , hashScript
     , headerHashFromText
     , metadataFromJson
@@ -43,7 +50,8 @@ import Kupo.Data.Cardano
     , unsafeScriptHashFromBytes
     )
 import Test.Hspec
-    ( Spec
+    ( Expectation
+    , Spec
     , context
     , parallel
     , shouldBe
@@ -74,6 +82,7 @@ import Test.QuickCheck
     , (===)
     )
 
+import qualified Cardano.Ledger.Plutus.Data as Ledger
 import qualified Data.Aeson as Json
 import qualified Data.Aeson.Encoding as Json
 import qualified Data.Aeson.Types as Json
@@ -100,6 +109,18 @@ spec = parallel $ do
         prop "∀(x :: DatumHash). datumHashFromText (datumHashToText x) === x" $
             forAll genDatumHash $ \x ->
                 datumHashFromText (datumHashToText x) === Just x
+
+    context "BinaryData" $ do
+        -- Definite-length list; Plutus would re-encode it as an indefinite-length one.
+        let bytes = BS.pack [0x82, 0x01, 0x02]
+        specify "Alonzo witness datum keeps its on-chain bytes" $
+            keepsOnChainBytes @AlonzoEra fromAlonzoData bytes
+        specify "Babbage witness datum keeps its on-chain bytes" $
+            keepsOnChainBytes @BabbageEra fromBabbageData bytes
+        specify "Conway witness datum keeps its on-chain bytes" $
+            keepsOnChainBytes @ConwayEra fromConwayData bytes
+        specify "Dijkstra witness datum keeps its on-chain bytes" $
+            keepsOnChainBytes @DijkstraEra fromDijkstraData bytes
 
     context "Script" $ do
         prop "∀(x :: Script). scriptFromBytes (scriptToBytes x) === x" $
@@ -183,3 +204,14 @@ spec = parallel $ do
 genBytes :: Int -> Gen ByteString
 genBytes n =
     BS.pack <$> vectorOf n arbitrary
+
+keepsOnChainBytes
+    :: forall era. (Era era, HasCallStack)
+    => (Ledger.Data era -> BinaryData)
+    -> ByteString
+    -> Expectation
+keepsOnChainBytes convert bytes = do
+    let datum = unsafeDecodeCborAnn @era "Data" decCBOR (fromStrict bytes)
+    let binaryData = convert datum
+    binaryDataToBytes binaryData `shouldBe` bytes
+    hashBinaryData binaryData `shouldBe` Ledger.hashData datum
