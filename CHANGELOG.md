@@ -13,6 +13,8 @@
   - The new `kupo db migrate --workdir DIRECTORY` command applies the pending migrations and data repairs. Stop Kupo first. Some repairs need `--confirm-complete-index`, which confirms that the index matches `*` and was synchronised from origin.
   - Kupo, read-only replicas, `kupo copy` and `kupo db migrate` refuse a database that a newer version of Kupo has migrated.
 
+- Kupo now accepts both layouts of the node configuration given to `--node-config`: the flat layout of the public networks, and the layout with a `Configuration` section that cardano-node 11.2 and `cardano-testnet` write. It no longer exits at start-up with `Failed to configure network parameters` for the second layout (see [#22](https://github.com/IntersectMBO/kupo/issues/22)).
+
 #### Changed
 
 - Kupo now requires cardano-node 11.1 or later. It talks to the node over node-to-client version 23 only, so older nodes are no longer supported.
