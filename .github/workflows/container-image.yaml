@@ -47,6 +47,12 @@ jobs:
           exit 1
         fi
 
+    - name: Lint Dockerfile
+      uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+      with:
+        dockerfile: Dockerfile
+        failure-threshold: warning
+
     # The deadline is generous because CI includes a chain synchronization
     # that can still be running when the tag is pushed.
     - name: Wait for Continuous Integration to pass
