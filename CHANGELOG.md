@@ -19,6 +19,8 @@
 
 - Kupo is now built with GHC 9.12.
 
+- Kupo is now built against the ledger and consensus libraries of cardano-node 11.2 (cardano-ledger-core 1.23 and ouroboros-consensus 5.4).
+
 - Fixed network synchronisation calculations (see [#191](https://github.com/CardanoSolutions/kupo/issues/191)).
 
 - Fixed the input index and the redeemer reported in `spent_at` (`input_index` and `redeemer`) for transactions that spend two or more inputs. Since 2.10.0, Kupo numbered the inputs from the last one, so the index and the redeemer did not match the ledger. They now follow the ledger's input order. For the spends recorded before the upgrade, Kupo registers a data repair, and warns at every start until it is applied. If the index matches `*`, was synchronised from origin and was never pruned with `--prune-utxo`, run `kupo db migrate --confirm-complete-index` to apply it; otherwise, resynchronise.
