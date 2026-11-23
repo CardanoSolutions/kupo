@@ -187,6 +187,9 @@ decodePartialTransaction = Json.withObject "PartialTransaction" $ \o -> do
 
     bytes <- decodeBase16' hexText
 
+    -- NOTE: Hydra currently serialises transactions as Conway-era CBOR. When Hydra upgrades its
+    -- internal transaction encoding to Dijkstra, this line and the fromConway* calls below will
+    -- need to change.
     tx :: Ledger.Tx TopTx ConwayEra <- case decodeCborAnn @ConwayEra "PartialTransaction" decCBOR (fromStrict bytes) of
       Left e -> fail $ show e
       Right tx -> pure tx
@@ -311,6 +314,8 @@ decodeScriptInEnvelope = Json.withObject "ScriptInEnvelope" $ \o -> do
             scriptFromBytes' (BS.pack [2] <> nestedBytes)
         "PlutusScriptLanguage PlutusScriptV3" ->
             scriptFromBytes' (BS.pack [3] <> nestedBytes)
+        "PlutusScriptLanguage PlutusScriptV4" ->
+            scriptFromBytes' (BS.pack [4] <> nestedBytes)
         (_ :: Text) ->
             fail "unrecognized script language"
   where

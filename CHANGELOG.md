@@ -1,4 +1,4 @@
-### [2.12.0] - UNRELEASED
+### [Unreleased]
 
 #### Added
 
@@ -29,11 +29,37 @@
 
 - Kupo is now built against the ledger and consensus libraries of cardano-node 11.2 (cardano-ledger-core 1.23 and ouroboros-consensus 5.4).
 
-- Fixed network synchronisation calculations (see [#191](https://github.com/CardanoSolutions/kupo/issues/191)).
-
 - Fixed the input index and the redeemer reported in `spent_at` (`input_index` and `redeemer`) for transactions that spend two or more inputs. Since 2.10.0, Kupo numbered the inputs from the last one, so the index and the redeemer did not match the ledger. They now follow the ledger's input order. For the spends recorded before the upgrade, Kupo registers a data repair, and warns at every start until it is applied. If the index matches `*`, was synchronised from origin and was never pruned with `--prune-utxo`, run `kupo db migrate --confirm-complete-index` to apply it; otherwise, resynchronise.
 
 - At startup, Kupo adds three empty columns to the `inputs` table of an existing database, to prepare the indexing of Dijkstra sub-transactions. The change is automatic and instant, and needs no action.
+
+#### Removed
+
+N/A
+
+### [2.12.0] - 2026-07-18
+
+#### Added
+
+- Allow controlling return type of asset quantities through a media query. Allowing string instead of integer when using `Accept: application/json:asset-quantity=string`.
+
+- New slot-range index usage for wildcard (*) match queries (see [#194](https://github.com/CardanoSolutions/kupo/issues/194)).
+
+- Custom indexes can now be added via environment variable, prefixed with `KUPO_INDEX_`. They behave as standard indexes with regards to `--defer-db-indexes` and are only installed if not already present. Indexes are named after the environment variable (after the dropping the prefix). So for example, to add an index for unspent inputs by payment credential, you can now provide:
+
+  ```console
+  KUPO_INDEX_inputsByPaymentCredentialUnspent="inputs(payment_credential COLLATE NOCASE) WHERE spent_at IS NULL" kupo ...
+  ```
+
+#### Changed
+
+- Bumped internal dependencies to cardano-node==11.0.1.
+
+- Fixed network synchronisation calculations (see [#191](https://github.com/CardanoSolutions/kupo/issues/191)).
+
+- Rework some integration tests to avoid issues with closed file handles.
+
+- Fixed read-only mode requiring write permissions on the database directory.
 
 #### Removed
 

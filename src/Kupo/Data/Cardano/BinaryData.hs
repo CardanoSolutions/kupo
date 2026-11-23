@@ -65,9 +65,7 @@ fromBabbageData
     :: Ledger.Data BabbageEra
     -> BinaryData
 fromBabbageData =
-      Ledger.dataToBinaryData
-    . (Ledger.upgradeData :: Ledger.Data ConwayEra -> Ledger.Data DijkstraEra)
-    . Ledger.upgradeData
+    Ledger.dataToBinaryData . Ledger.upgradeData
 {-# INLINEABLE fromBabbageData #-}
 
 fromConwayData

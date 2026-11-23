@@ -6,6 +6,7 @@ module Kupo.Data.Http.QuantityEncoding
     ( QuantityEncoding(..)
     , adjustMediaType
     , mediaTypeParam
+    , matchAcceptHeader
     ) where
 
 import Kupo.Prelude
@@ -16,6 +17,7 @@ import qualified Prelude as P
 
 import Network.HTTP.Media
     ( MediaType
+    , mapAccept
     , mapContentMedia
     , renderHeader
     , (//)
@@ -28,24 +30,48 @@ import Network.HTTP.Types
     )
 
 data QuantityEncoding = EncodeAsInteger | EncodeAsString
-    deriving Show
+    deriving (Show, Eq)
 
 adjustMediaType :: QuantityEncoding -> ResponseHeaders -> ResponseHeaders
-adjustMediaType EncodeAsInteger = P.id
-adjustMediaType EncodeAsString  = map insertParam
+adjustMediaType = \case
+    EncodeAsInteger -> P.id
+    EncodeAsString -> map insertParam
 
 mediaTypeParam :: (ByteString, ByteString)
 mediaTypeParam = ("asset-quantity", "string")
 
 insertParam :: Header -> Header
-insertParam (n,v)
-    | n == hContentType = (n, maybe v P.id (mapContentMedia mmap v))
+insertParam (n, v)
+    | n == hContentType = (n, fromMaybe v (mapContentMedia mmap v))
     | otherwise         = (n, v)
+  where
+    mmap :: [(MediaType,ByteString)]
+    mmap =
+        [ ( "application" // "json" /: ("charset", "utf-8")
+          , renderHeader $ "application" // "json" /: ("charset", "utf-8") /: mediaTypeParam
+          )
+        , ( "application"//"json"
+          , renderHeader $ "application" // "json" /: mediaTypeParam
+          )
+        ]
 
-mmap :: [(MediaType,ByteString)]
-mmap =
-    [("application"//"json"/:("charset","utf-8"),
-      renderHeader $ "application"//"json"/:("charset","utf-8")/:mediaTypeParam)
-    ,("application"//"json",
-      renderHeader $ "application"//"json"/:mediaTypeParam)
-    ]
+matchAcceptHeader :: Maybe ByteString -> QuantityEncoding
+matchAcceptHeader header = fromMaybe EncodeAsInteger $ header >>= mapAccept qualities
+  where
+    qualities =
+        [ ("application" // "json"
+          , EncodeAsInteger
+          )
+        , ("application" // "json" /: ("charset", "utf-8")
+          , EncodeAsInteger
+          )
+        , ("application" // "json" /: mediaTypeParam
+          , EncodeAsString
+          )
+        , ("application" // "json" /: mediaTypeParam /: ("charset", "utf-8")
+          , EncodeAsString
+          )
+        , ("application" // "json" /: ("charset", "utf-8") /: mediaTypeParam
+          , EncodeAsString
+          )
+        ]

@@ -33,8 +33,8 @@ extra-source-files:
     db/v2.2.0/001.sql
 data-files:
     docs/api/nightly.yaml
-    docs/api/v2.10.0.yaml
     docs/api/v2.11.0.yaml
+    docs/api/v2.12.0.yaml
 
 source-repository head
   type: git
@@ -332,6 +332,74 @@ executable kupo
   if flag(postgres)
     cpp-options: -Dpostgres
 
+test-suite accept
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Test.KupoSpec
+      Paths_kupo
+  autogen-modules:
+      Paths_kupo
+  hs-source-dirs:
+      test-accept
+  default-extensions:
+      BangPatterns
+      BinaryLiterals
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveTraversable
+      DerivingStrategies
+      EmptyDataDecls
+      ExistentialQuantification
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      InstanceSigs
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      NamedFieldPuns
+      NoImplicitPrelude
+      NumericUnderscores
+      OverloadedStrings
+      PartialTypeSignatures
+      PatternGuards
+      RankNTypes
+      ScopedTypeVariables
+      StandaloneDeriving
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      TypeSynonymInstances
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wunused-packages -threaded -rtsopts -with-rtsopts=-N
+  build-tool-depends:
+      hspec-discover:hspec-discover
+    , kupo:kupo
+  build-depends:
+      aeson
+    , async
+    , base
+    , bytestring
+    , containers
+    , directory
+    , hspec
+    , hspec-expectations
+    , http-client
+    , http-types
+    , process
+    , temporary
+    , text
+    , typed-process
+  default-language: Haskell2010
+
 test-suite unit
   type: exitcode-stdio-1.0
   main-is: Spec.hs
@@ -431,9 +499,9 @@ test-suite unit
     , kupo
     , lens
     , lens-aeson
+    , network
     , openapi3
     , ouroboros-consensus:cardano
-    , process
     , quickcheck-state-machine
     , relude
     , sqlite-simple

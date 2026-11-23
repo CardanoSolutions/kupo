@@ -119,9 +119,6 @@ import Kupo.Data.Http.GetCheckpointMode
 import Kupo.Data.Http.OrderMatchesBy
     ( orderMatchesBy
     )
-import Kupo.Data.Http.QuantityEncoding
-    ( QuantityEncoding (..)
-    )
 import Kupo.Data.Http.ReferenceFlag
     ( referenceFlagFromQueryParams
     )
@@ -150,13 +147,6 @@ import Kupo.Data.Pattern
     , patternToText
     , resultToJson
     , wildcard
-    )
-import Network.HTTP.Media
-    ( mapAccept
-    )
-import Network.HTTP.Media.MediaType
-    ( (//)
-    , (/:)
     )
 import Network.HTTP.Types
     ( Header
@@ -631,20 +621,7 @@ handleGetMatches resHeaders reqHeaders patternQuery queryParams Database{..} = h
     sortDirection <- mkSortDirection <$> orderMatchesBy queryParams
         `orAbort` Errors.invalidSortDirection
 
-    let qualities =
-            [ ("application" // "json" /: QuantityEncoding.mediaTypeParam
-              , EncodeAsString
-              )
-            , ("application" // "json" /: QuantityEncoding.mediaTypeParam /: ("charset", "utf-8")
-              , EncodeAsString
-              )
-            , ("application" // "json" /: ("charset", "utf-8") /: QuantityEncoding.mediaTypeParam
-              , EncodeAsString
-              )
-            ]
-
-    let quantityEncoding = (findAcceptHeader reqHeaders >>= mapAccept qualities)
-            & fromMaybe EncodeAsInteger
+    let quantityEncoding = QuantityEncoding.matchAcceptHeader (findAcceptHeader reqHeaders)
 
     let resHeaders' = (QuantityEncoding.adjustMediaType quantityEncoding resHeaders)
 

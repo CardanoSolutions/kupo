@@ -147,12 +147,12 @@ tests:
     - http-types
     - io-classes
     - io-sim
+    - network
     - kupo
     - lens
     - lens-aeson
     - openapi3
     - ouroboros-consensus:cardano
-    - process
     - QuickCheck
     - quickcheck-state-machine
     - relude
@@ -167,8 +167,30 @@ tests:
     - wai-extra
     - websockets
     - yaml
-    build-tools:
+    build-tool-depends:
     - hspec-discover
+  accept:
+    main: Spec.hs
+    source-dirs: test-accept
+    ghc-options: *ghc-options-test
+    dependencies:
+    - aeson
+    - async
+    - base
+    - bytestring
+    - containers
+    - directory
+    - hspec
+    - hspec-expectations
+    - http-client
+    - http-types
+    - process
+    - temporary
+    - text
+    - typed-process
+    build-tool-depends:
+    - hspec-discover
+    - kupo
 
 executables:
   kupo:
