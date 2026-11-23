@@ -41,6 +41,7 @@ import Data.Map.Strict
 import Data.Maybe
     ( catMaybes
     , fromJust
+    , listToMaybe
     )
 import Network.HTTP.Client
     ( HttpException
@@ -489,10 +490,10 @@ containsCheckpoints :: ResponseCheck
 containsCheckpoints = checkpoints (const True)
 
 hasReached :: Point -> ResponseCheck
-hasReached (Point slot _) = checkpoints ((>= slot) . head)
+hasReached (Point slot _) = checkpoints (maybe False (>= slot) . listToMaybe)
 
 hasNotReached :: Point -> ResponseCheck
-hasNotReached (Point slot _) = checkpoints ((< slot) . head)
+hasNotReached (Point slot _) = checkpoints (maybe False (< slot) . listToMaybe)
 
 laterThan :: Point -> ResponseCheck
 laterThan (Point slot _) = checkpoints (all (>= slot))
