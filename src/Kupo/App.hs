@@ -485,9 +485,16 @@ withFetchBlockClient chainProducer callback = do
                         chainSyncClient
                 )
         CardanoNodeToNode{nodeHost, nodePort} -> do
-            requests <- newEmptyTMVarIO
-            let fetchBlockClient point respond =
-                    atomically $ putTMVar requests (point, respond)
+            (chainSyncClient, fetchHeaderClient) <- Node.newFetchBlockClient
+            blockRequests <- newEmptyTMVarIO
+            let
+                fetchBlockClient ancestorPoint respond = do
+                    fetchHeaderClient ancestorPoint $ \mHeader ->
+                        case mHeader of
+                            Nothing -> respond Nothing
+                            Just hdr -> do
+                                let point = headerPoint hdr
+                                atomically $ putTMVar blockRequests (point, respond)
 
             race_
                 (callback fetchBlockClient)
@@ -495,14 +502,15 @@ withFetchBlockClient chainProducer callback = do
                     networkParameters <- resolveNetworkParameters chainProducer
                     magic <- networkMagicOrThrow networkParameters
                     slots <- slotsPerEpochOrThrow networkParameters
-                    withBlockFetchServerNtoN
+                    withChainSyncServerNtoN
                         noConnectionStatusToggle
                         [ nodeToNodeVMin .. maxBound ]
                         magic
                         slots
                         nodeHost
                         nodePort
-                        (NodeToNode.newOnDemandFetchBlockClient requests)
+                        chainSyncClient
+                        (Just (NodeToNode.newOnDemandFetchBlockClient blockRequests))
                 )
 
 newFetchTipClient
